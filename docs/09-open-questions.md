@@ -102,6 +102,32 @@ Grouped by who can answer them. Each links to the spike or milestone that resolv
   `libclang-17.so.17` while Ubuntu ships 20/21, failing with a bare exit 127. A user-local
   symlink works, but CI must pin the binary and its libclang deliberately.
 
+## 9.3c Answered by S2 (2026-09-18)
+
+- **Scala 3 works on Android and costs ~74 KB of APK** (102 230 B vs a 26 910 B Kotlin twin)
+  against a 4 MB budget, with 1 783 dex methods. Cold start **457 ms** median (budget 500 ms),
+  but **1.40× the Kotlin twin** — meets the absolute bar, misses "within 20%". Re-measure on a
+  physical device at M2 and try Baseline Profiles before accepting it as inherent.
+- **Three build settings are mandatory and none is discoverable.** Two fail at *runtime* with
+  errors naming no Scala concept, so the framework's generated Gradle shell must apply them:
+  1. `android.enableR8.fullMode=false` — full mode (AGP 8+ default) strips lazy-val backing
+     fields even when `-keepclassmembers` says otherwise, crashing inside `scala.math.BigDecimal$`.
+  2. `-keepclassmembers class ** { *** *$lzy*; }` — `lazy val` resolves its field by *name* via
+     `MethodHandles.findVarHandle`. `-keepclassmembernames` is not enough (stops renaming, not removal).
+  3. `packaging { resources { excludes += "**/*.tasty" } }` — `scala3-library` ships ~7.5 MB of
+     TASTy as jar resources that nothing strips. Without it the APK is **3.89 MB**; with it, 81 KB.
+- **Question 4 answered (sbt-built AAR vs Gradle `scala` plugin).** The Gradle `scala` plugin
+  **cannot** coexist with AGP — it applies `JavaPlugin`, which collides on the `implementation`
+  configuration. So sbt/mill builds the artifact and a generated Gradle project consumes it, as
+  §7.9 proposed. Verified, not assumed.
+- **Scala 3.9's minimum `-java-output-version` is 17** (8, 9, 11 and 16 are all rejected);
+  emitted bytecode is major 61. Fine at minSdk 26 with AGP 9, no core-library desugaring needed.
+- **Every `lazy val` the framework ships costs a reflective `findVarHandle` at class-init** —
+  both the crash risk above and a cold-start cost. Prefer avoiding them in framework code.
+- **AGP 9 rejects `org.jetbrains.kotlin.android`** (Kotlin support is built in), and **sbt 2
+  cannot put a `File` on a classpath** (`unmanagedJars` needs `HashedVirtualFileRef`; use the
+  `lib/` convention). sbt 2 artifacts are symlinks into a CAS — scripts must `readlink -f`.
+
 ## 9.4 Not yet researched (deliberately deferred)
 
 - Push notifications, deep links, background tasks, app extensions.

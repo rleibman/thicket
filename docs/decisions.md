@@ -17,7 +17,7 @@ adding a dated entry to the Decision log at the bottom, not by editing the table
 | munit | **1.3.6**; `munit-scalacheck` is versioned separately at **1.3.1**. | All spikes. |
 | scalafmt | 3.11.5 (`.scalafmt.conf` in `spikes/_template/`). | |
 | JDK | JDK 21 LTS for Android work. The Linux box has **OpenJDK 23-ea** on `PATH`; S5 ran fine on it, but AGP requires a non-EA JDK ≥ 17 — install 21 via `cs java --jvm temurin:21` for S2. | |
-| Android | min SDK 26, target/compile SDK latest stable; AGP latest stable 9.x; Gradle wrapper. Android SDK **not installed** on the Linux box — S2 brief covers installing cmdline-tools (ask first). | |
+| Android | min SDK 26, compile/target SDK **36**, AGP **9.4.1**, Gradle **9.7.1**, build-tools 37.0.0. SDK installed at `~/Android/Sdk` (2026-09-18) with an `android-36 google_apis x86_64` image; AVD `s2test`. **Three mandatory settings for Scala** — `android.enableR8.fullMode=false`, the `*$lzy*` keep rule, and excluding `**/*.tasty` from packaging (S2). | Note `platforms;android-37` is listed by sdkmanager but is not installable. |
 | iOS/macOS | Xcode latest stable; deployment target iOS 17 / macOS 13; Swift 6 language mode is *not* required in the shim (use 5 mode to avoid strict-concurrency noise). | |
 | C toolchain | clang (present: 21 on Linux; Apple clang on Mac). Scala Native on Linux needs `zlib1g-dev` and **`libunwind-dev`** (installed 2026-09-18). | |
 
@@ -33,6 +33,9 @@ adding a dated entry to the Decision log at the bottom, not by editing the table
 - **`sbt test` is incremental** and runs *nothing* when sources are unchanged — which reads as a
   pass. Use **`testOnly *`** in briefs, scripts and CI.
 - **`-Xfatal-warnings` is deprecated** in Scala 3.9: use `-Werror`.
+- **Minimum `-java-output-version` for Scala 3.9 is 17** (S2). 8/9/11/16 are rejected.
+- **`unmanagedJars` cannot take a `File`** (classpaths are `HashedVirtualFileRef`); use the
+  `lib/` convention. Built artifacts are symlinks into `~/.cache/sbt/v2/cas` — `readlink -f` them.
 - Scala.js `runMain` is not available; set `Compile / mainClass` and
   `scalaJSUseMainModuleInitializer := true`, then use `run`.
 

@@ -1,7 +1,7 @@
 # S4 — Yoga layout from Scala — REPORT
 
-**Date:** 2026-09-18 · **Machine:** Linux (Ubuntu), clang 21.1.8, gcc 15.2, cmake 4.2.3
-**Versions:** Scala **3.9.0** · sbt **2.0.9** · Scala Native **0.5.12** · sn-bindgen **0.4.5**
+**Date:** 2026-09-18 · **Machine:** Linux (Ubuntu), clang 21.1.8, gcc 15.2, cmake 4.2.3 **Versions:** Scala **3.9.0** ·
+sbt **2.0.9** · Scala Native **0.5.12** · sn-bindgen **0.4.5**
 · Yoga **3.2.1** (pinned, commit `042f501`) · munit 1.3.6
 
 ## Result: **PASS-WITH-RISK**
@@ -14,23 +14,23 @@ Separately, the JVM/Android route is worse than the brief assumed.
 
 ## Measurements
 
-| Criterion | Target | Measured | How |
-|---|---|---|---|
-| 1 000-node tree layout | < 2 ms | **0.344 ms** (avg of 100 passes, 1001 nodes, dirtied each pass) | `native/testOnly *`, printed as `[S4]` |
-| Layout correctness | CSS flexbox | **holds** | Row with `flexGrow:1` + fixed 100pt child on a 300pt parent → 200/100 split; 10 equal flex columns of 390pt → 39pt each |
-| Measure callback, native signature | works | **BROKEN** — returns `222.0 x 0.0` for `{111, 222}` | see below |
-| Measure callback, via C trampoline | works | **correct: `111.0 x 222.0`** | see below |
-| Tests | all pass | **4/4** | `sbt "native/testOnly *"` |
-| `libyogacore.a` | — | **492 KB** (Release, PIC) | `cmake --build --target yogacore` |
-| Generated bindings | — | **1 795 lines** from one header | sn-bindgen |
-| Scala Native link (releaseFast, incl. Yoga) | — | ~12 s | sbt log |
+| Criterion                                   | Target      | Measured                                                        | How                                                                                                                     |
+|---------------------------------------------|-------------|-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| 1 000-node tree layout                      | < 2 ms      | **0.344 ms** (avg of 100 passes, 1001 nodes, dirtied each pass) | `native/testOnly *`, printed as `[S4]`                                                                                  |
+| Layout correctness                          | CSS flexbox | **holds**                                                       | Row with `flexGrow:1` + fixed 100pt child on a 300pt parent → 200/100 split; 10 equal flex columns of 390pt → 39pt each |
+| Measure callback, native signature          | works       | **BROKEN** — returns `222.0 x 0.0` for `{111, 222}`             | see below                                                                                                               |
+| Measure callback, via C trampoline          | works       | **correct: `111.0 x 222.0`**                                    | see below                                                                                                               |
+| Tests                                       | all pass    | **4/4**                                                         | `sbt "native/testOnly *"`                                                                                               |
+| `libyogacore.a`                             | —           | **492 KB** (Release, PIC)                                       | `cmake --build --target yogacore`                                                                                       |
+| Generated bindings                          | —           | **1 795 lines** from one header                                 | sn-bindgen                                                                                                              |
+| Scala Native link (releaseFast, incl. Yoga) | —           | ~12 s                                                           | sbt log                                                                                                                 |
 
 ## The headline finding: struct-by-value returns from Scala callbacks are broken
 
 `YGMeasureFunc` is `YGSize (*)(YGNodeConstRef, float, YGMeasureMode, float, YGMeasureMode)` —
 it returns a two-float struct **by value**. sn-bindgen types this correctly as
-`CFuncPtr5[..., YGSize]` and it *compiles*. At runtime, Yoga invokes the Scala function
-(verified: the call counter increments), but reads the wrong values:
+`CFuncPtr5[..., YGSize]` and it *compiles*. At runtime, Yoga invokes the Scala function (verified: the call counter
+increments), but reads the wrong values:
 
 ```
 [S4] direct (struct by value): called=1 -> 222.0 x 0.0, wanted 111.0 x 222.0
@@ -42,8 +42,8 @@ The returned fields are shifted by one: Yoga reads our `height` as `width` and g
 0.5.12 evidently does not implement that convention for a `CFuncPtr` it generates. **It fails
 silently** — no crash, no warning, just wrong layout — which is the dangerous kind of bug.
 
-Note the asymmetry: calling *into* C works fine, because sn-bindgen emits C glue
-(`__sn_wrap_…`) for extern functions that return structs by value. There is no such glue for
+Note the asymmetry: calling *into* C works fine, because sn-bindgen emits C glue (`__sn_wrap_…`) for extern functions
+that return structs by value. There is no such glue for
 callbacks going C → Scala, and that is exactly the direction a UI framework needs.
 
 ### The fix (implemented, `native/src/main/resources/scala-native/measure_shim.c`)
@@ -86,19 +86,19 @@ The brief's option (a) was "the Java binding from the React Native ecosystem". R
   supports 32-bit x86 libraries. A physical arm64 device is fine.
 - AAR size: 527 KB compressed, 1.3 MB uncompressed (relevant to N-03's 4 MB APK budget).
 
-Option (b), our own JNI build, was **not implemented** — deliberately. It is only needed for a
-*desktop* JVM, and the plan has no desktop JVM target (desktop is Scala Native). For Android,
+Option (b), our own JNI build, was **not implemented** — deliberately. It is only needed for a *desktop* JVM, and the
+plan has no desktop JVM target (desktop is Scala Native). For Android,
 the remaining choices are: ship the AAR and require arm64 (fine for devices, awkward for
-emulators), or build Yoga for all four Android ABIs with the NDK and write a small JNI shim.
-**Recommendation: decide this inside S2/M2 with a real emulator and device**, since it is an
+emulators), or build Yoga for all four Android ABIs with the NDK and write a small JNI shim. **Recommendation: decide
+this inside S2/M2 with a real emulator and device**, since it is an
 Android packaging question, not a layout question.
 
 ## Fourth finding: sn-bindgen toolchain frictions (all worked around)
 
 1. **libclang version pinning.** The prebuilt `bindgen` binary is dynamically linked against
    `libclang-17.so.17`; Ubuntu ships 20 and 21, so it fails with exit 127 and a bare
-   "cannot open shared object file". A user-local symlink to `libclang-20.so.20` works fine
-   (libclang's C API is stable), needs no root, and is documented in `README.md`. For CI this
+   "cannot open shared object file". A user-local symlink to `libclang-20.so.20` works fine (libclang's C API is
+   stable), needs no root, and is documented in `README.md`. For CI this
    must be pinned properly — it is a real bus-factor/reproducibility risk (S-02).
 2. **C glue is generated into both Compile and Test scopes**, so the test binary links two
    copies and fails with ~20 `multiple definition of __sn_wrap_…` errors. Setting
@@ -139,8 +139,8 @@ together with pinning the bindgen binary and its libclang.
    rejects closures over local state in `CFuncPtr` at compile time. Also: the shim's global
    callback slot must become per-node context via `YGNodeSetContext`.
 3. **`docs/04` §4.8 risk register — add "Scala Native struct-by-value ABI".** This will recur
-   wherever a C or Objective-C API returns a small struct: `CGSize`, `CGRect`, `CGPoint` are
-   *everywhere* in UIKit/AppKit. **S3 must test `CGSize`/`CGRect` returns explicitly**, and the
+   wherever a C or Objective-C API returns a small struct: `CGSize`, `CGRect`, `CGPoint` are *everywhere* in
+   UIKit/AppKit. **S3 must test `CGSize`/`CGRect` returns explicitly**, and the
    Swift shim should adopt out-parameters as a blanket rule rather than discovering this per-API.
    This is the most transferable finding of the spike.
 4. **`docs/09` — replace open question 6** ("Yoga on JVM: RN artefact vs our own JNI") with the
