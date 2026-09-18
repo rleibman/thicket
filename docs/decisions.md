@@ -69,6 +69,14 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-18 — **Apple spikes run on the iOS simulator only**; no physical iPhone is
+  available. Sufficient for go/no-go (the question is whether the Scala Native runtime
+  works on iOS at all); device signing, arm64-only codegen and real memory pressure are
+  deferred to M1. S1's brief updated accordingly.
+- 2026-09-18 — **Repo hosted on the user's Forgejo**
+  (`ssh://forgejo@forgejo.leibmanland.com/rleibman/scala-ui.git`), matching meal-o-rama,
+  rather than GitHub. Push-to-create is disabled server-side, so the repo must be created
+  in the web UI before the first push.
 - 2026-09-18 — **Version policy set by the user: always target the latest stable Scala and sbt,
   for all projects.** Consequently sbt 1.13→**2.0.9** and Scala 3.3.8 LTS→**3.9.0**. The earlier
   claim that the Scala.js/Native/crossproject plugins are sbt-1-only was **wrong** — they publish

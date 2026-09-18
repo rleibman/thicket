@@ -32,12 +32,21 @@ Record which clang is picked up (`clang --version`) in the spike REPORT.
     curl -fsSL https://claude.ai/install.sh | bash
     # or: npm install -g @anthropic-ai/claude-code
 
+### Scope note
+
+**Simulator only** (user decision, 2026-09-18): no physical iPhone is available. S1/S3/S8
+run on the iOS simulator and report device figures as "not measured". That is sufficient
+for the go/no-go call; device measurements move to M1.
+
 ## 4. The repository
 
-Whatever transport we agree on (private GitHub repo, or rsync from the Linux box):
+Hosted on the user's Forgejo:
 
-    git clone <url> scala-ui && cd scala-ui
-    git checkout plan/phase-0-spikes
+    git clone ssh://forgejo@forgejo.leibmanland.com/rleibman/scala-ui.git
+    cd scala-ui && git checkout plan/phase-0-spikes
+
+The Mac needs an SSH key registered with Forgejo (Settings → SSH keys), the same way
+meal-o-rama is set up.
 
 ## 5. Sanity check before starting a spike
 

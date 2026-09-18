@@ -29,8 +29,10 @@ threading load?
    - `scalaui_register_callback(cb: CFuncPtr1[CString, Unit]): Unit` and
      `scalaui_fire(): Unit` — calls the Swift callback from Scala (prepares S3)
    Cross-compile via `nativeConfig ~= { _.withTargetTriple(...) }` for
-   `arm64-apple-ios17.0-simulator`, `arm64-apple-ios17.0` (device) and, if the
-   Mac is Intel, `x86_64-apple-ios17.0-simulator`. Pass the iOS SDK via
+   `arm64-apple-ios17.0-simulator` (primary) and, if the Mac is Intel,
+   `x86_64-apple-ios17.0-simulator`. Also *attempt* the device triple
+   `arm64-apple-ios17.0` and report whether it links, even though nothing will run it —
+   a link failure there is itself a finding. Pass the iOS SDK via
    `-isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)` in compile and link
    options. Expect to fight: `-target` vs triple naming (Scala Native's triple
    parser may not know `-simulator`), missing `libunwind`/`zlib` for the target,
@@ -41,17 +43,24 @@ threading load?
 3. Try GC variants: `immix` (default), `boehm` (if libgc can be built for iOS),
    `none`. Record which start, which survive the stress test.
 4. Measurements in `REPORT.md`:
-   - `.a` size and final `.app` binary size after Xcode strip (hello-world) — target ≤ 6 MB (N-03)
+   - `.a` size and final `.app` binary size after Xcode strip (hello-world) — target ≤ 6 MB
+     (N-03). Note: simulator slices are not a fair size proxy for a shipped device binary;
+     record the number but flag the caveat.
    - time from `scalaui_hello` first call to return (runtime init) — target ≤ 50 ms
    - `scalaui_alloc_stress(600)` on the simulator without crash; peak memory from Instruments/Xcode gauge
    - `scalaui_thread_test(8)` correct
    - Scala Native **link time** for the debug build (this is the DX risk in `04` §4.3)
    - Does LLDB/Xcode show Scala frames with readable names when you breakpoint in `scalaui_hello`?
-5. If a physical iPhone is available: repeat 4 on device; note signing steps.
+5. **Physical device: out of scope** (user decision 2026-09-18 — no iPhone available).
+   Report device numbers as "not measured". A device check moves to M1, where it
+   matters for real startup/size figures and for exercising code signing.
 
 ## Pass criteria
-- Simulator: all five functions work; alloc stress runs 10 min without crash under at least one GC; threads work.
-- Device (bonus): same.
+- Simulator: all five functions work; alloc stress runs 10 min without crash under at
+  least one GC; threads work. **This alone is enough to decide go/no-go**: the question
+  is whether the Scala Native runtime functions on iOS at all, and the simulator answers
+  it. Device-specific risks (signing, arm64-only codegen, real memory pressure) are
+  deferred, and the report must say so explicitly rather than implying full coverage.
 
 ## PASS-WITH-RISK
 - Works only with `boehm` or `none` GC; or needs a Scala Native snapshot; or needs a patched runtime. Document precisely.
