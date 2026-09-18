@@ -10,7 +10,7 @@ spike's `BRIEF.md`. Write `REPORT.md` when done (format in `CLAUDE.md`).
 | `s1-native-ios/` | Does Scala Native run on iOS (simulator + device)? | macOS | not started |
 | `s4-yoga/` | Yoga layout from Scala Native and from the JVM | Linux | **PASS-WITH-RISK** (2026-09-18) |
 | `s3-swift-shim/` | Scala Native ⇄ Swift C-ABI shim: ergonomics and cost | macOS | not started |
-| `s7-gtk4/` | GTK4 renderer smoke test with existing bindings | Linux | not started |
+| `s7-gtk4/` | GTK4 renderer smoke test with existing bindings | Linux | **PASS** (2026-09-18) |
 | `s8-zio-ios/` | ZIO 2 runtime on Scala Native on iOS | macOS | not started |
 | `s6-calibration/` | Baselines: ScalaFX+Gluon on iPhone, Slinky-native/Expo | macOS | optional |
 

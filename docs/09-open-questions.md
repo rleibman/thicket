@@ -128,6 +128,34 @@ Grouped by who can answer them. Each links to the spike or milestone that resolv
   cannot put a `File` on a classpath** (`unmanagedJars` needs `HashedVirtualFileRef`; use the
   `lib/` convention). sbt 2 artifacts are symlinks into a CAS — scripts must `readlink -f`.
 
+## 9.3d Answered by S7 (2026-09-18)
+
+GTK4 works from Scala Native with the published bindings (no regeneration needed):
+~95 ms to a presented window, 2.5 MB releaseFast binary, 5.7 s link. The valuable output is
+**four defects in the renderer contract of §7.4**, found by making it meet a real toolkit:
+
+1. **`setFrame` is not universally expressible.** A `GtkBox` positions its own children;
+   honouring a Yoga-computed rectangle would require `GtkFixed` everywhere, discarding GTK's
+   own sizing, RTL and baseline alignment. The Yoga-box-vs-native-container distinction cannot
+   be per-`WidgetKind` as written — the renderer must *declare* it
+   (`layoutMode(kind): FrameBased | ToolkitManaged`), and the reconciler must drive both.
+   **This tension exists on every native toolkit; GTK is the easiest one.**
+2. **`insertChild(parent, child, index)`** has no GTK primitive. Specify it by *preceding
+   sibling* instead of index — every toolkit can express that.
+3. **`measure` must return min *and* natural size.** GTK (and CSS min-content/max-content)
+   depend on the distinction; one `MeasuredSize` loses it.
+4. **Name collisions**: a contract-level `Size` is shadowed by `scalanative.unsafe.Size`.
+   Audit `renderer-api` for `Size`, `Rect`, `Point`, `Tag`, `Zone` before M0.
+
+Also: **accessibility is free on GTK** (button role=3/BUTTON, label role=22/LABEL, unprompted),
+the **handle table works** on a second toolkit, and **`Long` ⇄ `Ptr` needs
+`Intrinsics.castLongToRawPtr`** — `id.asInstanceOf[Ptr[Byte]]` compiles and throws at runtime,
+the same "type-checks, fails later" family as S4's struct-return bug.
+
+**Sequencing suggestion:** GTK is the cheapest renderer to build, so iterate the contract there
+before committing to the Apple shim — consider doing M3's contract work before M2, while
+keeping M1 (iOS) first for toolchain risk.
+
 ## 9.4 Not yet researched (deliberately deferred)
 
 - Push notifications, deep links, background tasks, app extensions.

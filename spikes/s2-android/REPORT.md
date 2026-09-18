@@ -1,7 +1,7 @@
 # S2 — Scala 3 on Android with R8 (2026) — REPORT
 
-**Date:** 2026-09-18 · **Machine:** Linux (Ubuntu), KVM present
-**Versions:** Scala **3.9.0** · sbt **2.0.9** · JDK **temurin 21.0.12.1** · Gradle **9.7.1**
+**Date:** 2026-09-18 · **Machine:** Linux (Ubuntu), KVM present **Versions:** Scala **3.9.0** · sbt **2.0.9** · JDK
+**temurin 21.0.12.1** · Gradle **9.7.1**
 · AGP **9.4.1** · compileSdk/targetSdk **36** · minSdk **26** · build-tools 37.0.0
 · emulator: `system-images;android-36;google_apis;x86_64`, Pixel 6 profile, headless
 
@@ -16,18 +16,18 @@ absolute one.
 
 ## Measurements
 
-| Criterion | Target | Measured | How |
-|---|---|---|---|
-| Release APK size (Scala) | — | **102 230 B** | `stat` on `app-scala-release.apk` |
-| Release APK size (Kotlin twin) | — | **26 910 B** | same |
-| **APK delta** | **≤ 4 MB (N-03)** | **75 320 B (≈ 74 KB)** — **53× under budget** | difference |
-| Dex methods (Scala / Kotlin) | — | **1 783 / 187** → +1 596 | `apkanalyzer dex references` |
-| **Cold start, Scala** | **≤ 500 ms (N-01)** | **457 ms** median of 10 | `am start -W -S`, `TotalTime`, force-stop between runs |
-| Cold start, Kotlin twin | — | **327 ms** median of 10 | same |
-| Cold start ratio | within 20% of Kotlin | **1.40× (+130 ms)** — **misses** | derived |
-| **Edit → running on device** | **≤ 30 s (D-01 tier 3)** | **17.2 s** | one-line edit, `sbt package` + copy jar + `gradlew installDebug`, all `--no-daemon` |
-| Runtime correctness | no errors | **clean** | see below |
-| Release build (Scala, warm) | — | 14–16 s | `gradlew assembleRelease --no-daemon` |
+| Criterion                      | Target                   | Measured                                      | How                                                                                 |
+|--------------------------------|--------------------------|-----------------------------------------------|-------------------------------------------------------------------------------------|
+| Release APK size (Scala)       | —                        | **102 230 B**                                 | `stat` on `app-scala-release.apk`                                                   |
+| Release APK size (Kotlin twin) | —                        | **26 910 B**                                  | same                                                                                |
+| **APK delta**                  | **≤ 4 MB (N-03)**        | **75 320 B (≈ 74 KB)** — **53× under budget** | difference                                                                          |
+| Dex methods (Scala / Kotlin)   | —                        | **1 783 / 187** → +1 596                      | `apkanalyzer dex references`                                                        |
+| **Cold start, Scala**          | **≤ 500 ms (N-01)**      | **457 ms** median of 10                       | `am start -W -S`, `TotalTime`, force-stop between runs                              |
+| Cold start, Kotlin twin        | —                        | **327 ms** median of 10                       | same                                                                                |
+| Cold start ratio               | within 20% of Kotlin     | **1.40× (+130 ms)** — **misses**              | derived                                                                             |
+| **Edit → running on device**   | **≤ 30 s (D-01 tier 3)** | **17.2 s**                                    | one-line edit, `sbt package` + copy jar + `gradlew installDebug`, all `--no-daemon` |
+| Runtime correctness            | no errors                | **clean**                                     | see below                                                                           |
+| Release build (Scala, warm)    | —                        | 14–16 s                                       | `gradlew assembleRelease --no-daemon`                                               |
 
 Emulator, not a physical device. Absolute cold-start numbers on real hardware will differ;
 the **ratio** is the transferable figure.
@@ -62,8 +62,8 @@ Caused by: java.lang.NoSuchFieldException: No field cache$lzy1 in class Ly0;
   at java.lang.invoke.MethodHandles$Lookup.findVarHandle
 ```
 
-`y0` de-obfuscates (via `mapping.txt`) to **`scala.math.BigDecimal$`**, and R8 had stripped
-*every* field from it. Scala 3 compiles `lazy val x` into a backing field `x$lzy1` plus a
+`y0` de-obfuscates (via `mapping.txt`) to **`scala.math.BigDecimal$`**, and R8 had stripped *every* field from it. Scala
+3 compiles `lazy val x` into a backing field `x$lzy1` plus a
 `VarHandle` obtained in `<clinit>` by **reflective lookup on the field's name**. R8 full mode
 cannot see that reference, removes the field, and keeps the `<clinit>` that looks for it.
 Crucially, `-keepclassmembers` **does not save it in full mode** — the rule is present in
@@ -114,8 +114,8 @@ packaging { resources { excludes += setOf("**/*.tasty", "rootdoc.txt", "library.
   Gradle's `scala` plugin applies `JavaPlugin`, which collides with AGP's own configurations.
   So **the sbt-builds-a-JAR, Gradle-consumes-it shape is the only one available**, and the
   framework's tooling (P-05) must own that hand-off rather than hoping for a Gradle plugin.
-- **AGP 9 rejects the Kotlin plugin.** `org.jetbrains.kotlin.android` now errors out
-  ("no longer required for Kotlin support since AGP 9.0", issuetracker 438678642); Kotlin
+- **AGP 9 rejects the Kotlin plugin.** `org.jetbrains.kotlin.android` now errors out ("no longer required for Kotlin
+  support since AGP 9.0", issuetracker 438678642); Kotlin
   support is built in.
 - **sbt 2: `unmanagedJars` cannot take a `File`.** Classpath entries are `HashedVirtualFileRef`,
   so neither `Attributed.blank(file(...))` nor `fileConverter.toVirtualFile(...)` type-checks.
