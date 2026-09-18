@@ -1,0 +1,20 @@
+target/
+project/target/
+project/project/
+.bsp/
+.metals/
+.bloop/
+.idea/
+.vscode/
+*.iml
+node_modules/
+dist/
+.DS_Store
+# Android / Xcode shells generated inside spikes
+spikes/**/build/
+spikes/**/.gradle/
+spikes/**/local.properties
+spikes/**/*.xcuserdata/
+spikes/**/DerivedData/
+# measurements are committed; raw traces are not
+spikes/**/traces/
