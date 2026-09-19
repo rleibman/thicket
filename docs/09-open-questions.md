@@ -191,6 +191,48 @@ bug where javalib's `LinktimeInfo.isMac` rejects the `ios` OS while the toolchai
 **it type-checks and fails later.** That is now three of four Apple/native spikes hitting the
 same failure mode; it is worth treating as a standing expectation rather than a coincidence.
 
+## 9.3f Answered by S3 (2026-09-19)
+
+**The Scala-core-drives-UIKit-through-a-Swift-shim design works and is fast.** Tap round
+trip **433 ns** against N-05's 5 µs budget, no leak over 100k taps (RSS +0.06 MB), real
+UIControl event dispatch reaching a Scala closure, and background-thread → main-thread
+updates working. sn-bindgen consumed the C header completely. Full numbers in
+`spikes/s3-swift-shim/REPORT.md`.
+
+Four things for the design docs:
+
+1. **A foreign event loop deadlocks the GC unless Scala yields Managed state.** Scala Native
+   stops the world by waiting for every Managed thread to reach a safepoint; the UIKit main
+   thread calls `ScalaNativeInit`, returns to `CFRunLoop` and parks in `mach_msg` — Managed,
+   in native code, polling nothing. The first GC from any other Scala thread hangs, then
+   aborts. Fix: `scalanative_GC_set_mutator_thread_state(Unmanaged)` on every return into the
+   host loop, Managed on re-entry, via one guarded trampoline. **This is not iOS-specific** —
+   GTK, Win32 and AppKit have the same shape, and S7 escaped it only by never allocating off
+   the main thread.
+
+2. **`@blocking` is the wrong default on shim externs.** Measured: annotating all externs
+   doubles `sui_label_set_text` (216 → 444 ns) and the soak passes identically without it,
+   because UIKit calls return far inside the 10 s safepoint timeout. Reserve it for calls that
+   can genuinely block — I/O, modal presentation.
+
+3. **The real cost is string encoding, not the ABI.** Crossing into Swift costs 216 ns;
+   `Zone` + `toCString` per call costs 3420 ns — **16×** more. Renderer property paths need a
+   reusable encode buffer or interning, and per-call `Zone` allocation is the wrong shape.
+
+4. **S4's struct-by-value bug reproduces on arm64 and is worse** — `0.0 x 0.0` rather than
+   x86-64's shifted `222.0 x 0.0`. Same silent wrong answer, different wrongness per ABI. The
+   "no structs by value across a Scala callback" rule is confirmed on the architecture that
+   ships, and flattening `CGRect` to four doubles is vindicated.
+
+Shim cost for §7.10 sizing: **~5.8 non-comment lines of Swift per exported function** (21
+functions in 121 lines). The v1 catalogue at ~6 functions per component ≈ 240 functions ≈
+1,400 lines of repetitive Swift that must track the C header and the Scala bindings —
+**a strong argument for generating all three from one widget description.**
+
+Also: `@_cdecl` collides with its own C declaration, so the header must be split into types
+(imported by Swift) and functions (read by sn-bindgen only); and **iOS 27 traps at launch on
+apps that do not adopt the `UIScene` lifecycle**, so the app template must be scene-based.
+
 ## 9.4 Not yet researched (deliberately deferred)
 
 - Push notifications, deep links, background tasks, app extensions.

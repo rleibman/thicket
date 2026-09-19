@@ -69,6 +69,22 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-19 — **S3 PASSED: the Swift C-ABI shim design is sound.** Round trip 433 ns vs
+  N-05's 5 µs; no leak over 100k taps; sn-bindgen consumed the header. Full report in
+  `spikes/s3-swift-shim/REPORT.md`. Binding consequences:
+  (a) **Scala must mark itself GC-Unmanaged whenever it returns into a host event loop**
+  (`scalanative_GC_set_mutator_thread_state`), or the first GC from a background thread
+  deadlocks against the run loop and aborts. Applies to GTK and Win32 too, not just Apple.
+  (b) **Shim ABI rules, all now measured:** no struct by value across a Scala callback
+  (S4's bug reproduces on arm64, returning zeros); callback context is `int64_t`, never
+  `void*`; strings leaving the shim use caller-supplied buffers.
+  (c) **`@blocking` is not the default** on shim externs — it doubles per-call cost
+  (216 → 444 ns) and bought nothing in a 400-round GC soak.
+  (d) The C header is split types/functions so Swift can implement `@_cdecl` without a
+  redeclaration clash, and the iOS app template must adopt the `UIScene` lifecycle
+  (iOS 27 traps at launch otherwise).
+  **Gate: S1 ∧ S2 ∧ S3 have all passed — `08` §8.1's go decision is a go**, with each
+  report's risks recorded.
 - 2026-09-19 — **S1 PASSED (with risk): Scala Native 0.5.12 runs on the iOS simulator.**
   Full report in `spikes/s1-native-ios/REPORT.md`. Three binding consequences:
   (a) **iOS builds must set the linktime property
