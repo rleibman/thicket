@@ -156,6 +156,41 @@ the same "type-checks, fails later" family as S4's struct-return bug.
 before committing to the Apple shim — consider doing M3's contract work before M2, while
 keeping M1 (iOS) first for toolchain risk.
 
+## 9.3e Answered by S1 (2026-09-19)
+
+**Scala Native 0.5.12 runs on iOS** (simulator, arm64): runtime starts in ~0.6 ms, 779 M
+objects allocated over 10 minutes with RSS flat at 13.53 MB, threads correct, Scala→C
+callbacks work, 1.90 MB stripped app binary. The `arm64-apple-ios17.0` *device* triple also
+links, though nothing ran it. Full numbers in `spikes/s1-native-ios/REPORT.md`.
+
+Three things the plan has to absorb:
+
+1. **Scala code must never be called from a GCD queue.** It segfaults in `Allocator_Alloc`:
+   Scala Native's GC keeps per-thread allocator state and only knows threads it created, and
+   0.5.12 has **no API to attach an existing foreign thread** (`ScalaNativeGC.h` offers only
+   `scalanative_GC_pthread_create`, which *creates* a registered thread). The main thread and
+   Scala-created `java.lang.Thread`s are fine. This constrains every Apple renderer and, more
+   sharply, **S8**: ZIO's executor must be backed by Scala-created threads, and
+   `ZIO.attemptBlocking`'s pool must be checked against this before use.
+
+2. **`java.time`, `java.text` and `java.util.Locale` do not exist in Scala Native's javalib.**
+   Not an iOS issue — it would fail identically on Linux. Any `scala-ui-core` API exposing
+   dates/times needs a decision at M0: ship a `java.time` subset, abstract the clock behind a
+   platform interface, or depend on a cross-published date-time library. Related and worse:
+   **these gaps compile cleanly and only fail at `nativeLink`**, so CI must run `nativeLink`
+   for every module, not just `compile`, or they reach `main` unnoticed.
+
+3. **immix is the only GC available on iOS.** `boehm` needs `gc/gc.h` and `commix` needs
+   `sys/posix_sem.h`; neither is in the iOS SDK. `none` links but leaks by design (4 GB in
+   10 s). There is no fallback, so M1 should re-verify immix on a physical device early.
+
+Also: iOS builds need `scala.scalanative.meta.linktimeinfo.target.os = "darwin"` set as a
+linktime property or **`java.lang.Thread` does not link at all** — an upstream Scala Native
+bug where javalib's `LinktimeInfo.isMac` rejects the `ios` OS while the toolchain's own
+`Config.targetsMac` accepts it. Same family as S4's struct-return bug and S7's `Ptr` cast:
+**it type-checks and fails later.** That is now three of four Apple/native spikes hitting the
+same failure mode; it is worth treating as a standing expectation rather than a coincidence.
+
 ## 9.4 Not yet researched (deliberately deferred)
 
 - Push notifications, deep links, background tasks, app extensions.

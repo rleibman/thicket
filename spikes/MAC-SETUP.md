@@ -1,4 +1,4 @@
-a# macOS setup for the Apple spikes (S1, S3, S8, S6)
+# macOS setup for the Apple spikes (S1, S3, S8, S6)
 
 Run this once on the Mac, then start Claude Code in the repo root and give it a
 one-line prompt naming the spike (see "Handoff" below).
@@ -15,7 +15,15 @@ a simulator runtime and `xcodebuild`).
     xcrun --sdk iphonesimulator --show-sdk-path     # must print a path
     xcrun simctl list runtimes | grep iOS           # need at least one iOS 17+ runtime
 
-If no runtime is listed: Xcode → Settings → Components → install an iOS runtime.
+If no runtime is listed — and on a fresh Xcode 27 install none is, the SDK ships but the
+runtime image does not — install it from the command line rather than the GUI:
+
+    xcodebuild -downloadPlatform iOS      # ~8 GB, 20-40 min
+    xcrun simctl list runtimes            # now shows e.g. iOS 27.0
+    xcrun simctl list devices available   # bootable devices appear with the runtime
+
+Accept the licence first if `xcodebuild` refuses: `sudo xcodebuild -license accept`.
+(Xcode → Settings → Platforms also works, but the CLI is scriptable and shows progress.)
 
 ## 2. Scala toolchain
 

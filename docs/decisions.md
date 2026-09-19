@@ -69,6 +69,21 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-19 — **S1 PASSED (with risk): Scala Native 0.5.12 runs on the iOS simulator.**
+  Full report in `spikes/s1-native-ios/REPORT.md`. Three binding consequences:
+  (a) **iOS builds must set the linktime property
+  `scala.scalanative.meta.linktimeinfo.target.os = "darwin"`** — without it `java.lang.Thread`
+  does not link, because javalib's `LinktimeInfo.isMac` rejects the `ios` OS while Scala
+  Native's own `Config.targetsMac` accepts it. This is the iOS equivalent of Android's three
+  mandatory R8 settings.
+  (b) **Scala code must only run on the main thread or on Scala-created threads — never a GCD
+  queue**, which segfaults in the GC allocator; Scala Native 0.5.12 cannot attach a foreign
+  thread. Binding on S3, S8 and every Apple renderer.
+  (c) **immix is the only GC that builds for iOS** (boehm and commix need headers absent from
+  the iOS SDK), so there is no fallback collector.
+  Also recorded: `java.time`, `java.text` and `java.util.Locale` are absent from Scala Native's
+  javalib, and such gaps fail only at `nativeLink`, never at `compile` — so CI must run
+  `nativeLink` per module. Measured on Xcode 27.0 / iOS 27.0 simulator / Apple clang 21.0.0.
 - 2026-09-18 — **Apple spikes run on the iOS simulator only**; no physical iPhone is
   available. Sufficient for go/no-go (the question is whether the Scala Native runtime
   works on iOS at all); device signing, arm64-only codegen and real memory pressure are
