@@ -69,6 +69,25 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-19 — **S8 PASSED: ZIO 2.1.26 runs on Scala Native on iOS.** Runtime init 1.2 ms,
+  +3.25 MB RSS, 37,500/37,500 ticks delivered at 2.1% CPU over 10 minutes, prompt
+  interruption, no crash. `spikes/s8-zio-ios/REPORT.md`. Binding consequences:
+  (a) **ZIO on Native requires `io.github.cquiroz::scala-java-time` 2.7.0** —
+  `zio.Duration` is `java.time.Duration` and Scala Native has no `java.time`; ZIO's Native
+  artefacts do not supply a substitute, and without it ZIO does not link.
+  (b) **Apple shipping configuration is `Mode.releaseFast` + `LTO.full` + `-lc++`** at the
+  final link. That is 5.75 MB stripped (inside N-03's 6 MB) versus 7.73 MB with LTO off.
+  `LTO.thin` is warned against on Mac by Scala Native's own Validator — use `full`.
+  (c) **`ZStream.tick` is fixed-delay, not fixed-rate**, so it yields ~55–58 Hz, not 60.
+  100% of ticks arrive; they just arrive late. Frame pacing needs `Schedule.fixed` or a
+  display link — but note fixed-delay is also why resuming from background produces no
+  catch-up burst.
+  The §7.13 decision that the **ZIO bridge is first-class from M0 stands** — the size and
+  runtime costs are all inside budget.
+  Also: **do not drive build configuration from environment variables in sbt 2.** Beyond the
+  server capturing env at startup (S1), sbt 2 caches the evaluated setting in its CAS with
+  `sys.env` outside the cache key, so a stale value survives killing the server and
+  `touch build.sbt`; only a content change or deleting `target/out` clears it.
 - 2026-09-19 — **S3 PASSED: the Swift C-ABI shim design is sound.** Round trip 433 ns vs
   N-05's 5 µs; no leak over 100k taps; sn-bindgen consumed the header. Full report in
   `spikes/s3-swift-shim/REPORT.md`. Binding consequences:

@@ -233,6 +233,47 @@ Also: `@_cdecl` collides with its own C declaration, so the header must be split
 (imported by Swift) and functions (read by sn-bindgen only); and **iOS 27 traps at launch on
 apps that do not adopt the `UIScene` lifecycle**, so the app template must be scene-based.
 
+## 9.3g Answered by S8 (2026-09-19)
+
+**ZIO 2.1.26 runs on Scala Native on iOS, and runs well.** Two independent 10-minute runs:
+`Runtime.default` init **1.2 ms**, ZIO adds **+3.25 MB RSS**, **37,500/37,500 ticks delivered
+(100.0%)** driving UI updates through a main-thread executor, **2.1% CPU**, fibre checksum
+matching an independently computed value, interruption in 0.06 ms, no crash and no GC
+warning. Full numbers in `spikes/s8-zio-ios/REPORT.md`.
+
+1. **ZIO needs a `java.time` polyfill on Native.** `zio.Duration` *is* `java.time.Duration`
+   and Scala Native has no `java.time` (§9.3e). ZIO's Native artefacts do not supply a
+   substitute, so every downstream build must add
+   `io.github.cquiroz::scala-java-time` (2.7.0). Without it ZIO does not link at all.
+
+2. **`releaseFast` + `LTO.full` is what makes the size budget work.** LTO off: 7.73 MB
+   stripped, over N-03's 6 MB. `LTO.full`: **5.75 MB**, under it, with every test still
+   passing. Two gotchas — `LTO.full` needs `-lc++` at the final link (Scala Native's
+   `ExceptionWrapper` pulls in `std::exception`, invisible until LTO merges objects), and
+   Scala Native's `Validator` warns `LTO.thin` is unstable on Mac, so use `full`.
+
+3. **`ZStream.tick(16.millis)` is not 60 Hz.** Every tick is delivered, but it is a
+   fixed-*delay* schedule, so the period is 16 ms plus the body's cost: 37,500 ticks took
+   653–678 s rather than 600, an effective **55–58 Hz**. A frame loop that must track
+   wall-clock needs `Schedule.fixed` or a `CADisplayLink`-driven source. The flip side is
+   good: on app resume after backgrounding the stream continues at its normal rate rather
+   than firing a burst of queued ticks, so whatever replaces `tick` must not reintroduce a
+   catch-up stampede.
+
+4. **Backgrounding is safe.** Sending the app to the background suspends it (as iOS does to
+   any app) and returning resumes cleanly — no priority inversion, no hang, no crash, no GC
+   warning. The ZIO scheduler and UIKit's main thread do not fight.
+
+Smaller things: **`Thread.activeCount()` is meaningless on Scala Native** (reported 14 → 1
+while a blocking pool thread was in use — the thread *name* is reliable, the count is not);
+`import zio.*` shadows `java.lang.System` with `zio.System`; and `SubscriptionRef.changes`
+needs the consumer subscribed before the first `set`, or a `take(n)` hangs rather than fails.
+
+Also, sharpening §9.3e's sbt note: **sbt 2 caches env-driven settings in its content-addressed
+store and `sys.env` is not part of the cache key**, so a stale value survives killing the
+server *and* `touch build.sbt`. Only a real content change or deleting `target/out` clears it.
+Do not drive build configuration from environment variables in sbt 2.
+
 ## 9.4 Not yet researched (deliberately deferred)
 
 - Push notifications, deep links, background tasks, app extensions.
