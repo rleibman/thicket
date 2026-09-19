@@ -1,4 +1,4 @@
-# macOS setup for the Apple spikes (S1, S3, S8, S6)
+a# macOS setup for the Apple spikes (S1, S3, S8, S6)
 
 Run this once on the Mac, then start Claude Code in the repo root and give it a
 one-line prompt naming the spike (see "Handoff" below).
