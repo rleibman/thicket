@@ -22,18 +22,36 @@ trait Signal[+A]:
   /** Tracked read: the enclosing computation re-runs when this changes. */
   def apply()(using Tracking): A
 
-  def map[B](f: A => B)(using Owner): Signal[B] =
-    Signal.computed(f(this.apply()))
+  /** A derived view of this signal.
+    *
+    * Deliberately *not* a graph node: it holds no state, registers nothing, and needs no
+    * `Owner`, so it can be used freely in UI code without threading a lifetime through
+    * every function. `f` re-runs on each read, and reads track this signal's source.
+    *
+    * The trade is memoisation: a `map` does not cut off propagation when `f` returns an
+    * unchanged value. Where that matters — an expensive `f`, or a coarse source feeding a
+    * narrow view — use [[Signal.computed]], which memoises and takes an `Owner`. This is
+    * the same split as SolidJS's derived functions vs `createMemo`.
+    */
+  def map[B](f: A => B): Signal[B] = new Signal.Derived(this, f)
 
-  def zip[B](that: Signal[B])(using Owner): Signal[(A, B)] =
-    Signal.computed((this.apply(), that.apply()))
+  def zip[B](that: Signal[B]): Signal[(A, B)] =
+    new Signal.Derived[A, (A, B)](this, _ => (this.now, that.now)):
+      override def apply()(using Tracking): (A, B) = (Signal.this.apply(), that.apply())
+      override def now: (A, B)                     = (Signal.this.now, that.now)
 
 object Signal:
+
+  /** A pass-through view of another signal. Stateless, so nothing owns or disposes it. */
+  private[signals] class Derived[A, B](source: Signal[A], f: A => B) extends Signal[B]:
+    def now: B                     = f(source.now)
+    def apply()(using Tracking): B = f(source())
+
   /** Never changes; does not participate in the graph. */
   def const[A](a: A): Signal[A] = new Signal[A]:
     def now: A                        = a
     def apply()(using Tracking): A    = a
-    override def map[B](f: A => B)(using Owner): Signal[B] = const(f(a))
+    override def map[B](f: A => B): Signal[B] = const(f(a))
 
   /** A derived value. Lazy: recomputed only when read after a dependency changed. */
   def computed[A](f: Tracking ?=> A)(using owner: Owner): Signal[A] =

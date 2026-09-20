@@ -82,7 +82,16 @@ private[core] object Slot:
 
     w.attrs.foreach:
       case r: Attr.Reactive[?] =>
-        val _ = Signal.effect(renderer.update(handle, Seq(r.toProp(r.signal()))))
+        // `Signal.map` is a stateless view and does not memoise, so a coarse source can
+        // re-fire an effect whose derived value is unchanged. Deduplicating here puts the
+        // cutoff exactly where it pays — at the renderer boundary — without asking app
+        // code to carry an `Owner` for `Signal.computed`.
+        var last: Option[scalaui.renderer.Prop] = None
+        val _ = Signal.effect:
+          val p = r.toProp(r.signal())
+          if !last.contains(p) then
+            last = Some(p)
+            renderer.update(handle, Seq(p))
       case Attr.Static(_) => ()
 
     val children = mountChildren(renderer, w.children, handle)

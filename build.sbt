@@ -86,10 +86,34 @@ lazy val rendererGtk = project
   )
   .settings(gtkNativeSettings)
 
+/** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
+  *
+  * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot
+  * put a `File` on a classpath — run `modules/renderer-android/setup.sh` first.
+  */
+lazy val rendererAndroid = project
+  .in(file("modules/renderer-android"))
+  .dependsOn(core.jvm)
+  .settings(commonSettings)
+  .settings(
+    name := "scala-ui-renderer-android",
+    // Android's runtime is not the JVM's: target the bytecode ART accepts. Scala 3.9
+    // cannot emit lower than 17 (S2), which AGP handles with desugaring.
+    scalacOptions ++= Seq("-release", "17")
+  )
+
+/** The example UI, shared by every example app and free of platform references. */
+lazy val examplesShared = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("examples/shared"))
+  .dependsOn(core)
+  .settings(commonSettings, name := "scala-ui-examples-shared", publish / skip := true)
+  .jvmSettings(scalacOptions ++= Seq("-release", "17"))
+
 lazy val counterGtk = project
   .in(file("examples/counter-gtk"))
   .enablePlugins(ScalaNativePlugin)
-  .dependsOn(rendererGtk)
+  .dependsOn(rendererGtk, examplesShared.native)
   .settings(commonSettings)
   .settings(gtkNativeSettings)
   .settings(
@@ -97,6 +121,21 @@ lazy val counterGtk = project
     publish / skip := true,
     // Two demos in one project; pick with `counterGtk/runMain`.
     Compile / mainClass := Some("example.Todo")
+  )
+
+/** The Android example's Scala half: compiled to a plain JAR that the Gradle project in
+  * `examples/todo-android/app` consumes. Gradle's `scala` plugin cannot coexist with AGP
+  * (it applies JavaPlugin, which collides on the `implementation` configuration), so this
+  * hand-off is the only shape available — see S2.
+  */
+lazy val todoAndroid = project
+  .in(file("examples/todo-android/scala"))
+  .dependsOn(rendererAndroid, examplesShared.jvm)
+  .settings(commonSettings)
+  .settings(
+    name := "todo-android",
+    publish / skip := true,
+    scalacOptions ++= Seq("-release", "17")
   )
 
 lazy val root = project

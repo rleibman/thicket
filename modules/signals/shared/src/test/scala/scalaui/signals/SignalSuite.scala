@@ -192,9 +192,7 @@ class SignalSuite extends munit.FunSuite:
     assertEquals(good, 2, "the second effect still ran")
     o.dispose()
 
-  test("map and zip"):
-    val o = Owner()
-    given Owner = o
+  test("map and zip need no Owner: they are stateless views"):
     val a       = Var(2)
     val b       = Var("x")
     val doubled = a.map(_ * 2)
@@ -204,7 +202,23 @@ class SignalSuite extends munit.FunSuite:
     a.set(3)
     assertEquals(doubled.now, 6)
     assertEquals(both.now, (3, "x"))
-    o.dispose()
+
+  test("map does not memoise; computed does"):
+    // The documented trade: `map` is a free, unowned view that re-runs `f` on every read,
+    // so it cannot cut off propagation. `computed` memoises and takes an Owner.
+    val o = Owner(); given Owner = o
+    val a = Var(0)
+
+    var viaMap = 0
+    Signal.effect { a.map(_ % 2)(); viaMap += 1 }
+    var viaComputed = 0
+    val parity = Signal.computed(a() % 2)
+    Signal.effect { parity(); viaComputed += 1 }
+
+    assertEquals((viaMap, viaComputed), (1, 1))
+    a.set(2) // 0 -> 2: parity unchanged
+    assertEquals(viaMap, 2, "map re-fires because it tracks the source directly")
+    assertEquals(viaComputed, 1, "computed cuts off on an unchanged value")
 
   test("const does not participate in the graph"):
     val o = Owner()

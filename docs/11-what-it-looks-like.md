@@ -78,8 +78,8 @@ Of the mockup, roughly **20%** is real. Concretely, after M0 + structural reconc
 | **`Show` and `ForEach` with keyed diffing and in-place moves** | virtualisation (`LazyColumn`) — `ForEach` mounts every row |
 | **`Fragment`** — several children in one slot | forms, refinements, `.platform`, swipe actions |
 | `Column`, `Row`, `Label`, `Button` | every other widget in the mockup |
-| The renderer contract + GTK4 renderer + a `TestRenderer` | `TestApp`, `UiSpec` |
-| Two runnable GTK demos, one self-verifying | `Async` as an exhaustive match |
+| The renderer contract + **GTK4 and Android renderers** + a `TestRenderer` | `TestApp`, `UiSpec` |
+| **One shared UI mounting on Linux and Android unchanged** | `Async` as an exhaustive match |
 | Owner never appears in app code | |
 
 `ForEach` already gives the mockup's central promise: a row whose item keeps its key but
@@ -100,8 +100,8 @@ Each step is chosen to make the next one cheap, and to keep something runnable a
 1. ~~**Structural reconciliation**~~ — **done.** `Show`, `ForEach` with keyed diffing,
    `Fragment`, in-place reordering via a `moveAfter` contract primitive, and regions that
    nest and sit transparently between static siblings.
-2. **A second renderer** — Android, reusing S2's build shape. This is where the contract gets
-   its real test, and it puts the framework on the user's own phone.
+2. ~~**A second renderer**~~ — **done.** Android, via S2's sbt→JAR→Gradle shape. The
+   contract survived a structurally different toolkit unchanged; see §11.7.
 3. **`Screen` and `Nav`** — the route ADT, a native navigation container per platform. This is
    what turns "widgets" into "an app".
 4. **The ZIO bridge** — `asSignal`, `Async`, `launch`, component scopes. S8 proved the runtime
@@ -125,3 +125,33 @@ in mind.
 The other risk is that idea 7 is a promise about taste. "One declaration, three idioms" only
 holds if someone keeps making judgement calls about what a swipe action *means* on GTK. That
 is not a type system problem and it does not get easier with scale.
+
+## 11.7 What the second renderer proved (and cost)
+
+`examples/shared/.../TodoUi.scala` is mounted unchanged by the GTK renderer on Linux and by
+the Android renderer on a phone. The same self-test — drive the model, read the widget order
+back out of the *toolkit* — passes on both. The contract needed **no changes** to accommodate
+Android, which is the first real evidence that it is an abstraction rather than a description
+of GTK.
+
+Where the two renderers genuinely differ is instructive:
+
+| | GTK4 | Android |
+|---|---|---|
+| Child insertion | no insert-at-index; `prepend` / `insert_child_after` | `addView(child, index)` — index is native |
+| Reorder | `gtk_box_reorder_child_after`, so `moveAfter` is overridden | no primitive; the contract's remove+insert default is used |
+| Spacing | a box property | no such property — recomputed as child margins on every structural change |
+| Threading | `g_idle_add` | `Handler(Looper.getMainLooper)` |
+
+The `insertAfter`-by-sibling decision (from S7, because GTK has no index) turned out to cost
+Android nothing: `indexOfChild(after) + 1` recovers the index. Had the contract been written
+against Android first, it would have specified an index and GTK would have had to emulate it.
+
+**It also cost something.** Android cold start for the todo app is **549 ms median**
+(8 runs, emulator), against S2's 457 ms for a bare Scala activity and an N-01 budget of
+**500 ms**. So the framework adds roughly **90 ms** and the app is now *over* budget. That is
+an emulator figure and the app does more than S2's did, but it is a real regression against a
+real requirement and it should be attacked before the catalogue grows — most likely by
+deferring work out of `onCreate` and by measuring what mounting actually costs.
+
+Release APK: **136 KB**, framework and app together.

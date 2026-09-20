@@ -10,10 +10,14 @@ project/project/
 node_modules/
 dist/
 .DS_Store
-# Android / Xcode shells generated inside spikes
+# Android / Xcode shells generated inside spikes and examples
 spikes/**/build/
 spikes/**/.gradle/
 spikes/**/local.properties
+examples/**/build/
+examples/**/.gradle/
+examples/**/local.properties
+modules/**/lib/
 spikes/**/*.xcuserdata/
 spikes/**/DerivedData/
 # measurements are committed; raw traces are not
