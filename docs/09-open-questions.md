@@ -270,9 +270,57 @@ while a blocking pool thread was in use — the thread *name* is reliable, the c
 needs the consumer subscribed before the first `set`, or a `take(n)` hangs rather than fails.
 
 Also, sharpening §9.3e's sbt note: **sbt 2 caches env-driven settings in its content-addressed
-store and `sys.env` is not part of the cache key**, so a stale value survives killing the
-server *and* `touch build.sbt`. Only a real content change or deleting `target/out` clears it.
-Do not drive build configuration from environment variables in sbt 2.
+store and `sys.env` is not part of the cache key.** A stale value survives killing the server,
+`touch build.sbt`, a real content edit, *and* `rm -rf target/out` — the CAS lives in
+`~/.cache/sbt/v2/cas`, not under `target/`. S6 hit this again and silently built an
+iOS-*device* archive from a build that said simulator; only the linker caught it. The fix is
+to remove the `sys.env` read and write the value literally. **Do not drive build configuration
+from environment variables in sbt 2.**
+
+## 9.3h Answered by S6 (2026-09-20)
+
+**Calibration numbers, measured identically for three hello apps** (label + button + counter)
+on the same Mac and simulator. Full method and caveats in `spikes/s6-calibration/REPORT.md`.
+
+| | A — React Native/Expo | B — native shims | D — JavaFX + Gluon |
+|---|---|---|---|
+| App bundle (sim) | 26.0 MB | **0.53 MB** | cannot build |
+| Stripped binary (device arm64) | — | **0.53 MB** | 60.06 MB |
+| Cold start → first render | 702 ms | **425 ms** | not measurable |
+| RSS | 203.2 MB | **152.4 MB** | not measurable |
+
+**Option B is 49× smaller than A and 113× smaller than D, starts 1.65× faster than A, and
+uses 51 MB less RSS.** Note ~139 MB of every RSS figure is UIKit itself (S1's UI-less harness
+sat at 13.5 MB), so A's real overhead is the +51 MB on top, not the absolute number.
+
+Three things that change how `docs/06` should read:
+
+1. **There is no Scala 3 React Native facade.** `slinky-native` is published only for
+   Scala 2.13; `slinky-native_sjs1_3` does not exist at any version. `docs/06` says Slinky is
+   "effectively unmaintained for RN" — the measured fact is stronger: it was *never published
+   for Scala 3*. Option A's "Effort: 4" score assumes a facade library that this project
+   cannot use, so the numbers above are for plain-JS RN and are a **floor**.
+
+2. **Gluon's iOS toolchain has been frozen for two years while its tooling moved on.** iOS
+   builds must use Gluon's patched GraalVM; its newest release is 2024-09-08 (966 MB), yet
+   `gluonfx-maven-plugin`/`substrate` shipped through June 2026. The drift shows up as
+   `Missing CAP cache value` failures. Four builds failed before one worked, each for a
+   different version reason, and the winning combination is the plugin dated ten days after
+   that frozen GraalVM (1.0.24) plus **Maven exactly 3.8.8** (3.9.x is hard-refused).
+
+3. **Gluon's `ios-sim` target is x86_64-only**, so on Apple Silicon a Gluon iOS app cannot be
+   run at all without a physical device. With no iPhone available, Option D has no measurable
+   startup or memory here — which is itself a verdict on it as a development path.
+
+Also: **Expo's generated iOS template traps at launch on iOS 27** with the same
+`NoSceneLifecycleAdoption` assertion S3 hit — Expo ships `ExpoAppSceneDelegate` but
+`expo prebuild` does not wire it up, so a brand-new project needs two edits to generated
+native files that are lost on every prebuild. And **CocoaPods is required for any RN/Expo iOS
+build and is missing from `spikes/MAC-SETUP.md`** (installing it pulls Ruby and OpenSSL).
+
+Suggested edit to §6.1: **add a binary-size row** — it is the most discriminating number
+measured (0.53 / 26.0 / 60.06 MB), and N-03 makes size a requirement even though the scoring
+table never mentions it.
 
 ## 9.4 Not yet researched (deliberately deferred)
 
