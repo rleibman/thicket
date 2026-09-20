@@ -218,11 +218,19 @@ existed, so `take(5)` waited forever and the test **hung rather than failed**. F
 S1 recorded that the sbt server captures the environment at startup. S8 found it is worse:
 after `pkill`-ing the server **and** confirming `S8_MODE` was absent from the new server's
 environment, `nativeConfig` still reported `release-fast`. sbt 2 caches the evaluated setting
-in its content-addressed store and `sys.env` is not part of the cache key, so the stale value
-survives a server restart *and* `touch build.sbt`. Only a real content change or deleting
-`target/out` clears it. **Conclusion: do not drive build configuration from environment
-variables in sbt 2 at all** — S1 reached this by a different route; S8 confirms it is not
-merely a server-lifetime issue.
+in its content-addressed store and `sys.env` is not part of the cache key.
+
+**Correction, from re-testing this in S6:** the stale value survives *more* than first
+reported here. It survived killing the server, `touch build.sbt`, a real content edit to
+`build.sbt`, **and `rm -rf target/out`** — S6 built an iOS-*device* archive while the build
+said simulator, and only noticed because the linker refused the object files. The CAS lives
+in `~/.cache/sbt/v2/cas`, not under `target/`, which is why clearing the project output does
+nothing. What actually fixes it is **removing the `sys.env` read** and writing the value
+literally.
+
+**Conclusion: do not drive build configuration from environment variables in sbt 2 at all.**
+S1 reached this by a different route; S8 and S6 confirm it is neither a server-lifetime issue
+nor something a clean can rescue.
 
 ---
 

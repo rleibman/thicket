@@ -35,6 +35,13 @@ Accept the licence first if `xcodebuild` refuses: `sudo xcodebuild -license acce
 Scala Native uses Apple clang from Xcode; no separate LLVM install is needed.
 Record which clang is picked up (`clang --version`) in the spike REPORT.
 
+## 2a. CocoaPods (only for the React Native comparison, S6)
+
+Not needed for S1/S3/S8 — the Scala Native path uses `swiftc` and `xcodebuild` directly. Any
+React Native / Expo iOS build does need it (S6 found this the hard way):
+
+    brew install cocoapods     # also pulls Ruby and OpenSSL
+
 ## 3. Claude Code
 
     curl -fsSL https://claude.ai/install.sh | bash

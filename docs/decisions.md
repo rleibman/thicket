@@ -69,6 +69,21 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-20 — **S6 done (partial, as its brief allows): calibration baselines measured.**
+  Three hello apps, one harness, same machine. Option B (the recommendation) 0.53 MB / 425 ms /
+  152.4 MB RSS; Option A (React Native/Expo) 26.0 MB / 702 ms / 203.2 MB; Option D (JavaFX +
+  Gluon) 60.06 MB device binary and **no runtime numbers** — its `ios-sim` target is x86_64-only
+  and will not build on Apple Silicon. `spikes/s6-calibration/REPORT.md`. Consequences:
+  (a) **Option A is not available to this project in Scala** — `slinky-native` has no Scala 3
+  build at any version, so §6.1's effort score for A assumes a facade library that does not
+  exist for Scala 3.
+  (b) **Option D's iOS toolchain is frozen**: Gluon's mandatory patched GraalVM last shipped
+  2024-09-08 while its plugin shipped through 2026-06, and only plugin 1.0.24 + Maven exactly
+  3.8.8 builds at all.
+  (c) **`docs/06` §6.1 should gain a binary-size row** — the sharpest number measured, and
+  N-03 already makes size a requirement.
+  (d) **CocoaPods belongs in `spikes/MAC-SETUP.md`** if Option A is ever revisited.
+  The Option B recommendation survives calibration on every axis measured.
 - 2026-09-19 — **S8 PASSED: ZIO 2.1.26 runs on Scala Native on iOS.** Runtime init 1.2 ms,
   +3.25 MB RSS, 37,500/37,500 ticks delivered at 2.1% CPU over 10 minutes, prompt
   interruption, no crash. `spikes/s8-zio-ios/REPORT.md`. Binding consequences:

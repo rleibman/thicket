@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>dev.scalaui</groupId>
+  <artifactId>s6-optiond</artifactId>
+  <version>0.0.0-S6</version>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- 21, not 23. Gluon's GraalVM is JDK 23, but Scala 3.9 rejects 23 as a
+         -java-output-version ("23 is not a valid choice"), and JDK 21 bytecode runs on it
+         perfectly well. The pairing needs an explicit lower target. -->
+    <maven.compiler.release>21</maven.compiler.release>
+    <scala.version>3.9.0</scala.version>
+    <javafx.version>23.0.1</javafx.version>
+    <mainClassName>scalaui.s6d.HelloD</mainClassName>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.scala-lang</groupId>
+      <artifactId>scala3-library_3</artifactId>
+      <version>${scala.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-controls</artifactId>
+      <version>${javafx.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src/main/scala</sourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>net.alchim31.maven</groupId>
+        <artifactId>scala-maven-plugin</artifactId>
+        <version>4.9.2</version>
+        <executions>
+          <execution>
+            <goals><goal>compile</goal></goals>
+          </execution>
+        </executions>
+        <configuration>
+          <scalaVersion>${scala.version}</scalaVersion>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>com.gluonhq</groupId>
+        <artifactId>gluonfx-maven-plugin</artifactId>
+        <version>1.0.24</version>
+        <configuration>
+          <target>${gluonfx.target}</target>
+          <mainClass>${mainClassName}</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>ios-sim</id>
+      <properties><gluonfx.target>ios-sim</gluonfx.target></properties>
+    </profile>
+    <profile>
+      <!-- arm64 device. gluonfx's `ios-sim` target is x86_64 only, which on Apple Silicon
+           means it cannot produce a native simulator build at all. -->
+      <id>ios</id>
+      <properties><gluonfx.target>ios</gluonfx.target></properties>
+    </profile>
+    <profile>
+      <id>host</id>
+      <properties><gluonfx.target>host</gluonfx.target></properties>
+    </profile>
+  </profiles>
+</project>

@@ -1,0 +1,12 @@
+node_modules/
+.expo/
+build/
+ios/
+android/
+target/
+*.app/
+tools/apache-maven-*/
+tools/graalvm*/
+
+# create-expo-app drops a .claude/ enabling its own plugin; not this project's choice.
+.claude/
