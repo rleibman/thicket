@@ -87,6 +87,15 @@ final class GtkRenderer extends Renderer:
   def removeChild(parent: Handle, child: Handle): Unit =
     gtk_box_remove(parent.asInstanceOf[Ptr[GtkBox]], child)
 
+  /** GTK can reorder in place, so override the contract's remove+insert default: a
+    * detach/attach cycle would drop focus and restart any running animation.
+    */
+  override def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit =
+    val box = parent.asInstanceOf[Ptr[GtkBox]]
+    after match
+      case None    => gtk_box_reorder_child_after(box, child, null)
+      case Some(a) => gtk_box_reorder_child_after(box, child, a)
+
   def destroy(handle: Handle): Unit =
     tapIds.remove(handle).foreach(Handles.release)
     kinds.remove(handle)

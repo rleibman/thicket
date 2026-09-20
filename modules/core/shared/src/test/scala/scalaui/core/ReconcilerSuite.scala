@@ -65,7 +65,7 @@ class ReconcilerSuite extends munit.FunSuite:
     count.set(2)
     assertEquals(r.text(label), "1", "a disposed owner's effects must not fire")
 
-    m.dispose(r)
+    m.dispose()
     assertEquals(r.destroyed.toSet, Set(m.handle, label))
 
   test("static props are applied at create time, not via an effect"):

@@ -22,6 +22,19 @@ object GtkApp:
     (_: Owner) ?=> throw IllegalStateException("GtkApp.run was not given a UI")
   private val rootOwner: Owner                = Owner()
 
+  /** The mounted root widget, available once the window has been built. Demos and tests
+    * use it with [[GtkInspect]] to read the tree back out of GTK.
+    */
+  var rootHandle: Ptr[GtkWidget] = null
+
+  /** Runs `f` on the GTK main loop. Safe from any thread. */
+  def postToUi(f: () => Unit): Unit =
+    val id = Handles.register(f)
+    val _  = sn.gnome.glib.internal.g_idle_add(
+      sn.gnome.glib.internal.GSourceFunc(Handles.idle),
+      Handles.idToPointer(id)
+    )
+
   private val onActivate: CFuncPtr2[Ptr[Byte], Ptr[Byte], Unit] =
     CFuncPtr2.fromScalaFunction { (app: Ptr[Byte], _: Ptr[Byte]) =>
       GcState.guarded:
@@ -34,6 +47,7 @@ object GtkApp:
         val renderer = GtkRenderer()
         given Owner  = rootOwner
         val mounted  = Reconciler.mount(renderer, build)
+        rootHandle = mounted.handle
         gtk_window_set_child(w, mounted.handle)
         gtk_window_present(w)
     }

@@ -12,13 +12,23 @@ final class Owner private[signals] (parent: Owner | Null) extends Disposable:
 
   if parent != null then parent.nn.children += this
 
+  private def forget(child: Disposable): Unit =
+    if !isDisposed then
+      val i = children.indexOf(child)
+      if i >= 0 then children.remove(i)
+
   def own(d: Disposable): Unit =
     if isDisposed then d.dispose()
     else children += d
 
   def disposed: Boolean = isDisposed
 
-  /** Disposes children in reverse creation order, then itself. Idempotent. */
+  /** Disposes children in reverse creation order, then itself, and unlinks from its
+    * parent. Idempotent.
+    *
+    * The unlink matters: a dynamic region (`Show`, `ForEach`) creates and disposes a child
+    * owner on every update, and without this the parent's buffer would grow forever.
+    */
   def dispose(): Unit =
     if !isDisposed then
       isDisposed = true
@@ -27,6 +37,7 @@ final class Owner private[signals] (parent: Owner | Null) extends Disposable:
         children(i).dispose()
         i -= 1
       children.clear()
+      if parent != null then parent.nn.forget(this)
 
 object Owner:
   /** A new detached lifetime; caller is responsible for disposing it. */

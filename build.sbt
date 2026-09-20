@@ -92,7 +92,12 @@ lazy val counterGtk = project
   .dependsOn(rendererGtk)
   .settings(commonSettings)
   .settings(gtkNativeSettings)
-  .settings(name := "counter-gtk", publish / skip := true)
+  .settings(
+    name := "counter-gtk",
+    publish / skip := true,
+    // Two demos in one project; pick with `counterGtk/runMain`.
+    Compile / mainClass := Some("example.Todo")
+  )
 
 lazy val root = project
   .in(file("."))

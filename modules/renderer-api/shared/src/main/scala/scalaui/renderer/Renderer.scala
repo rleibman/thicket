@@ -81,6 +81,17 @@ trait Renderer:
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit
 
   def removeChild(parent: Handle, child: Handle): Unit
+
+  /** Move an already-attached `child` to sit directly after `after` (first when `None`).
+    *
+    * Keyed list reconciliation reorders existing widgets, and doing that as
+    * remove-then-insert destroys focus, scroll position and in-flight animations on most
+    * toolkits. The default is still remove+insert so a renderer need not implement it;
+    * anything with a native reorder should override.
+    */
+  def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit =
+    removeChild(parent, child)
+    insertAfter(parent, child, after)
   def destroy(handle: Handle): Unit
 
   def measure(handle: Handle, constraints: Constraints): Measurement

@@ -69,16 +69,25 @@ The last column is the pitch. If it does not hold, there is no reason to build t
 
 ## 11.4 What exists today, honestly
 
-Of the mockup, roughly **15%** is real. Concretely, after M0:
+Of the mockup, roughly **20%** is real. Concretely, after M0 + structural reconciliation:
 
 | Real now | Invented in the mockup |
 |---|---|
 | `Signal`, `Var`, `computed`, `effect`, `Owner` lifetimes | everything ZIO-facing (`asSignal`, `launch`, `Async`) |
-| `Element`, `Attr`, the reconciler, one effect per reactive attribute | structural reconciliation (`ForEach`, `Async` branches) |
+| `Element`, `Attr`, the reconciler, one effect per reactive attribute | `Screen`, `Nav`, `Route`, tabs, toolbars |
+| **`Show` and `ForEach` with keyed diffing and in-place moves** | virtualisation (`LazyColumn`) — `ForEach` mounts every row |
+| **`Fragment`** — several children in one slot | forms, refinements, `.platform`, swipe actions |
 | `Column`, `Row`, `Label`, `Button` | every other widget in the mockup |
-| The renderer contract + GTK4 renderer + a `TestRenderer` | `Screen`, `Nav`, `Route`, tabs, toolbars |
-| A counter app that builds and runs | forms, refinements, `.platform`, swipe actions |
-| Owner never appears in app code | `TestApp`, `UiSpec` |
+| The renderer contract + GTK4 renderer + a `TestRenderer` | `TestApp`, `UiSpec` |
+| Two runnable GTK demos, one self-verifying | `Async` as an exhaustive match |
+| Owner never appears in app code | |
+
+`ForEach` already gives the mockup's central promise: a row whose item keeps its key but
+changes its data is **patched, not rebuilt** — measured at exactly one renderer call for one
+changed item in a three-item list. What it does not yet do is *virtualise*, so a thousand
+rows really are a thousand widgets. That is the difference between `ForEach` and the
+mockup's `LazyColumn`, and it is a renderer-level concern (`UITableView`, `RecyclerView`,
+`GtkListView`) rather than a reconciler one.
 
 The counter in `examples/counter-gtk` is 14 lines and looks like the mockup's inner blocks
 already. The gap is not in the *shape* of the API — it is in breadth and in everything above
@@ -88,8 +97,9 @@ the element tree.
 
 Each step is chosen to make the next one cheap, and to keep something runnable at every point.
 
-1. **Structural reconciliation** — `Show`, `ForEach` with keys, subtree replace. Without it
-   nothing above can exist, and it is the last piece of the core that is genuinely hard.
+1. ~~**Structural reconciliation**~~ — **done.** `Show`, `ForEach` with keyed diffing,
+   `Fragment`, in-place reordering via a `moveAfter` contract primitive, and regions that
+   nest and sit transparently between static siblings.
 2. **A second renderer** — Android, reusing S2's build shape. This is where the contract gets
    its real test, and it puts the framework on the user's own phone.
 3. **`Screen` and `Nav`** — the route ADT, a native navigation container per platform. This is

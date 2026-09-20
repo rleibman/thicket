@@ -3,13 +3,7 @@ package scalaui.core
 import scalaui.renderer.{Prop, WidgetKind}
 import scalaui.signals.Signal
 
-/** The declarative description of a UI. Cheap to build and throw away; the reconciler
-  * turns it into retained native widgets.
-  *
-  * Properties may be static or reactive. A reactive property does not make the element
-  * tree reactive: the reconciler subscribes to it and patches exactly that one widget,
-  * which is the fine-grained-updates property inherited from the signals layer.
-  */
+/** A property of a widget, static or signal-driven. */
 sealed trait Attr
 
 object Attr:
@@ -17,52 +11,110 @@ object Attr:
 
   /** A property driven by a signal.
     *
-    * The signal is kept *unmapped*, with the conversion carried alongside it, because
-    * `Signal.map` requires a `using Owner` (S5) and threading a lifetime through every DSL
-    * call would put it in app code. The reconciler already owns a lifetime, so it does the
-    * mapping at mount time and the DSL stays free of it.
+    * The signal is kept *unmapped*, with the conversion carried alongside, because
+    * `Signal.map` needs a `using Owner` and threading a lifetime through every DSL call
+    * would put it in app code. The reconciler already owns a lifetime and maps at mount
+    * time, so app code never mentions `Owner`.
     */
   final case class Reactive[A](signal: Signal[A], toProp: A => Prop) extends Attr
 
-final case class Element(
-    kind: WidgetKind,
-    attrs: Seq[Attr],
-    children: Seq[Element]
-)
+/** The declarative description of a UI.
+  *
+  * Most of a tree is [[Element.Widget]], which is fixed once mounted — only its properties
+  * change. The two *dynamic* cases are where structure changes over time, and they are
+  * deliberately the only two: everything else a UI needs to do structurally
+  * (switch, optional, tabs) can be expressed with them, and each one costs real complexity
+  * in the reconciler.
+  */
+sealed trait Element
 
-/** The widget constructors. Deliberately plain functions taking varargs children rather
-  * than the context-function builder sketched in §7.3 — that syntax can be layered on
-  * later without changing this, and starting simple keeps the reconciler honest.
+object Element:
+  final case class Widget(
+      kind: WidgetKind,
+      attrs: Seq[Attr],
+      children: Seq[Element]
+  ) extends Element
+
+  /** Mounts `body` while `when` holds, and unmounts it — disposing its effects — when it
+    * does not. `body` is by-name because it must be re-evaluated on each remount.
+    */
+  final case class Show(when: Signal[Boolean], body: () => Element) extends Element
+
+  /** A keyed list. Items that keep their key keep their widgets, so reordering moves
+    * existing widgets rather than rebuilding them — which is what preserves focus,
+    * scroll position and animations.
+    *
+    * The body receives a `Signal[A]`, not an `A`. That is deliberate: when an item's key
+    * survives but its *data* changes, the row must update without being rebuilt. Handing
+    * the body a plain value would make the row's content a snapshot taken at mount time,
+    * and the list would silently show stale data — which is the failure mode keying
+    * otherwise introduces. With a signal, a changed field patches exactly the widget
+    * bound to it.
+    */
+  final case class ForEach[A, K](
+      items: Signal[Seq[A]],
+      key: A => K,
+      body: Signal[A] => Element
+  ) extends Element
+
+  /** Several elements in one slot, with no widget of their own. Lets a dynamic region
+    * produce more than one child.
+    */
+  final case class Fragment(children: Seq[Element]) extends Element
+
+/** The widget constructors.
+  *
+  * Plain functions with varargs children rather than the context-function builder sketched
+  * in §7.3 — that syntax can be layered on later without changing any of this.
   */
 object dsl:
   import Attr.*
+  import Element.*
 
   private def text(v: String | Signal[String]): Attr = v match
     case s: String                    => Static(Prop.Text(s))
     case s: Signal[String] @unchecked => Reactive(s, Prop.Text(_))
 
   def Label(value: String | Signal[String]): Element =
-    Element(WidgetKind.Label, Seq(text(value)), Nil)
+    Widget(WidgetKind.Label, Seq(text(value)), Nil)
 
   def Button(value: String | Signal[String], enabled: Boolean = true)(
       onTap: => Unit
   ): Element =
-    Element(
+    Widget(
       WidgetKind.Button,
       Seq(text(value), Static(Prop.OnTap(() => onTap)), Static(Prop.Enabled(enabled))),
       Nil
     )
 
   def Column(spacing: Int = 0, padding: Int = 0)(children: Element*): Element =
-    Element(
+    Widget(
       WidgetKind.Column,
       Seq(Static(Prop.Spacing(spacing)), Static(Prop.Padding(padding))),
       children
     )
 
   def Row(spacing: Int = 0, padding: Int = 0)(children: Element*): Element =
-    Element(
+    Widget(
       WidgetKind.Row,
       Seq(Static(Prop.Spacing(spacing)), Static(Prop.Padding(padding))),
       children
     )
+
+  /** Show `body` only while `when` is true. */
+  def Show(when: Signal[Boolean])(body: => Element): Element =
+    Element.Show(when, () => body)
+
+  /** Render one element per item, identified by `key`.
+    *
+    * `body` receives a `Signal[A]` so a row updates in place when its item's data changes.
+    */
+  def ForEach[A, K](items: Signal[Seq[A]], key: A => K)(
+      body: Signal[A] => Element
+  ): Element = Element.ForEach(items, key, body)
+
+  /** Group elements without introducing a widget. */
+  def Fragment(children: Element*): Element = Element.Fragment(children)
+
+  /** Nothing. Useful as the `else` of a `Show`-like conditional. */
+  val Empty: Element = Element.Fragment(Nil)
