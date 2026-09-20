@@ -31,8 +31,17 @@ is a *go with risk noted*.
 | **M5 — DX & 0.1 release** (2 mo)            | `scala-ui` CLI, `doctor`, docs site (built with the dev canvas), inspector v0, semver policy, contributor guide                                   | 15-minute getting started verified by a newcomer per platform; 0.1.0 on Maven Central                             |
 | **M6 — Windows WinUI 3 & hardening** (4 mo) | WinUI 3 shim; perf work; crash symbolication; LTS planning                                                                                        | Feature parity across five platforms; 1.0 candidate                                                               |
 
+> **Estimate recalibration (2026-09-19).** The spike budgets above were wrong by a large
+> factor: phase 0 was budgeted at 6–8 weeks and took roughly one working day across two
+> machines. The milestone figures below were produced by the same reasoning and should be
+> treated as equally inflated. They are left in place only as *relative* sizing — M4 really is
+> larger than M1 — and the project should be steered by working software rather than by this
+> table. Concretely: build the smallest thing that runs, on one platform, and re-estimate from
+> the actual slope.
+
 Total ≈ 20 months to a 1.0 candidate with 2–3 consistent contributors; roughly
-half that to a credible 0.1 on iOS + Android + macOS.
+half that to a credible 0.1 on iOS + Android + macOS. **See the recalibration note above —
+do not plan against these numbers.**
 
 ## 8.3 Measurement plan
 
