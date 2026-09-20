@@ -1,6 +1,6 @@
 # 10. Phase 0 findings and the go/no-go decision
 
-**Date:** 2026-09-19 · **Spikes run:** S1, S2, S3, S4, S5, S7, S8 (S6 calibration not run)
+**Date:** 2026-09-19, calibration added 2026-09-20 · **Spikes run:** all eight
 
 ## 10.1 Verdict: **GO**
 
@@ -15,10 +15,27 @@
 | S5 | Cross-platform signals? | PASS |
 | S7 | GTK4 renderer? | PASS |
 | S8 | ZIO 2 on iOS? | PASS |
+| S6 | How do the alternatives actually measure up? | PASS (partial) |
 
 The project is **technically feasible**. Not one of the toolchain risks the plan was most
 afraid of actually materialised. But the shape of the risk has *inverted*, and that changes
 what should be built first — see §10.5.
+
+### The recommendation survived calibration
+
+S6 built the same hello app three ways and measured it on one rig (iOS 27 simulator,
+Apple Silicon). Option B — the recommendation — is **0.53 MB** against React Native's
+**26.0 MB** and Gluon's **60.06 MB**, starts in **425 ms** against RN's 702 ms, and uses
+51 MB less RSS. Two findings go beyond the numbers:
+
+- **`slinky-native` has no Scala 3 build at all.** Option A is not merely unmaintained for
+  Scala; it is unavailable, and taking it would mean writing React Native facades from
+  scratch. `docs/06` scored A's effort 4 on the opposite assumption.
+- **Gluon's iOS toolchain has been frozen for two years** and its simulator target is
+  x86_64-only, so Option D could not be run on the available Mac at all.
+
+`docs/06` §6.1 is re-scored accordingly, with a size row added — size being both an N-03
+requirement and the most discriminating property measured. B now leads 67/80 to F's 65.
 
 ## 10.2 Every budget, measured
 

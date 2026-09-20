@@ -12,7 +12,7 @@ spike's `BRIEF.md`. Write `REPORT.md` when done (format in `CLAUDE.md`).
 | `s3-swift-shim/` | Scala Native ⇄ Swift C-ABI shim: ergonomics and cost | macOS | **PASS** (2026-09-19) |
 | `s7-gtk4/` | GTK4 renderer smoke test with existing bindings | Linux | **PASS** (2026-09-18) |
 | `s8-zio-ios/` | ZIO 2 runtime on Scala Native on iOS | macOS | **PASS** (2026-09-19) |
-| `s6-calibration/` | Baselines: ScalaFX+Gluon on iPhone, Slinky-native/Expo | macOS | not run (optional) |
+| `s6-calibration/` | Baselines: ScalaFX+Gluon on iPhone, Slinky-native/Expo | macOS | **PASS (partial)** (2026-09-20) |
 
 `_template/` holds the shared `.scalafmt.conf` and a minimal `project/build.properties`
 to copy into a new spike.

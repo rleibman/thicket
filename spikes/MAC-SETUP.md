@@ -42,6 +42,12 @@ React Native / Expo iOS build does need it (S6 found this the hard way):
 
     brew install cocoapods     # also pulls Ruby and OpenSSL
 
+### If you ever build a React Native / Expo comparison (S6)
+
+CocoaPods is required for any RN/Expo iOS build and is easy to miss:
+
+    brew install cocoapods     # also pulls Ruby and OpenSSL
+
 ## 3. Claude Code
 
     curl -fsSL https://claude.ai/install.sh | bash

@@ -14,10 +14,16 @@ new facades on scalajs-react); Expo for tooling; RN-Windows / RN-macOS for deskt
 - **Usability:** Fast Refresh and Expo tooling are excellent ✔; but two toolchains (sbt + npm/Metro), JS interop
   debugging, and Scala.js `js.Dynamic` leakage ✘.
 - **Stability:** inherits RN's upgrade churn; Scala facades must track RN releases;
-  Slinky is effectively unmaintained for RN ✘.
+  **S6 measured the decisive fact: `slinky-native` was never published for Scala 3 at all** —
+  only `_sjs1_2.13` exists, and its newest artefacts are git-hash snapshots off 0.7.5. That is
+  a stronger claim than "unmaintained": there is no Scala 3 React Native facade to maintain ✘✘.
+  S6 also needed two hand edits to `expo prebuild`-generated native code just to launch on
+  iOS 27 — to files every subsequent prebuild regenerates. Day one of a brand-new project.
 - **Performance:** RN's new architecture (JSI/Fabric, synchronous) is good; JS
   engine (Hermes) adds startup and memory ✘.
-- **Effort:** low–medium (months to something usable).
+- **Effort:** *reassessed after S6.* The low-effort story depended on a facade library that
+  does not exist for Scala 3, so this option now begins with writing and maintaining RN
+  facades from scratch.
 - **Verdict:** best *time-to-demo* with real native widgets. Poor *identity*: it is
   React Native written in Scala, it never addresses desktop well, and the JS runtime
   contradicts goal G5. Useful as a benchmark to beat, not as the product.
@@ -65,12 +71,20 @@ Existing Java toolchain: JavaFX UI, compiled to native for iOS/Android by Substr
 - **Fidelity:** JavaFX Modena / Gluon Glisten themes — not native ✘.
 - **Usability:** mature desktop story, SceneBuilder; mobile build chain is heavy and
   depends on Gluon's GraalVM builds ~.
-- **Stability:** JavaFX is well maintained (OpenJFX 25 LTS line); Gluon is a small
-  company ~.
+- **Stability:** JavaFX is well maintained (OpenJFX 25 LTS line). **Gluon's iOS path is
+  frozen: the GraalVM fork it mandates was last published 2024-09-08**, two years before S6
+  measured it, while the plugin and substrate kept shipping — so the tooling has drifted from
+  the GraalVM it requires, and only the plugin contemporary with the frozen fork works. Not
+  "a small company might stop"; it has not shipped in two years ✘.
 - **Performance:** native-image startup is fine; JavaFX rendering is fine ✔.
-- **Effort:** low (weeks) — Scala works with JavaFX today.
-- **Verdict:** the fastest route to *a Scala app on an iPhone*, worth a one-week
-  experiment for calibration. Cannot meet G1.
+- **Effort:** *reassessed after S6.* Low on desktop/JVM, which is what the original score
+  reflected. The **iOS** path took five failed builds against version-pinned tooling (plugin
+  1.0.24 exactly, Maven 3.8.8 exactly, a 966 MB two-year-old GraalVM), and **`ios-sim` is
+  x86_64-only, so an Apple Silicon Mac cannot run a Gluon iOS app at all** without a device.
+- **Verdict:** ~~the fastest route to a Scala app on an iPhone~~ — S6 ran that experiment and
+  it is not fast. A hello world is **60.06 MB** stripped on device: 112× Option B on the same
+  triple, and 10× the N-03 budget. It could not be launched at all on the available hardware.
+  Fails G1 and now N-03 too.
 
 ## Option E — Scala.js in a webview shell (Tauri 2 / Capacitor)
 
@@ -99,17 +113,50 @@ consumed by Jetpack Compose on Android.
 
 Weights reflect the popularity analysis in `02-…`. 1 = poor, 5 = excellent.
 
-| Criterion (weight)                  | A: RN         | B: native shims | C: Skia | D: JavaFX/Gluon | E: webview | F: logic only |
-|-------------------------------------|---------------|-----------------|---------|-----------------|------------|---------------|
-| Platform fidelity (×3)              | 4 (desktop 2) | 5               | 3       | 2               | 2          | 5             |
-| Developer usability (×3)            | 4             | 4*              | 4       | 3               | 4          | 2             |
-| Stability / bus factor (×2)         | 2             | 4               | 3       | 3               | 3          | 5             |
-| Performance (×2)                    | 3             | 5               | 4       | 4               | 2          | 5             |
-| Effort / time-to-value (×2)         | 4             | 1               | 1       | 5               | 5          | 4             |
-| Scala identity & ecosystem fit (×2) | 2             | 5               | 5       | 3               | 4          | 3             |
-| **Weighted total (max 70)**         | **46**        | **57**          | **48**  | **44**          | **46**     | **55**        |
+| Criterion (weight) | A: RN | B: native shims | C: Skia | D: JavaFX/Gluon | E: webview | F: logic only |
+|---|---|---|---|---|---|---|
+| Platform fidelity (×3) | 4 (desktop 2) | 5 | 3 | 2 | 2 | 5 |
+| Developer usability (×3) | 4 | 4* | 4 | 3 | 4 | 2 |
+| Stability / bus factor (×2) | 2 | 4 | 3 | 3 | 3 | 5 |
+| Performance (×2) | 3 | 5 | 4 | 4 | 2 | 5 |
+| **Binary size (×2)** † | **2** | **5** | 3 | **1** | 2 | 5 |
+| Effort / time-to-value (×2) | **2** ‡ | 1 | 1 | **2** ‡ | 5 | 4 |
+| Scala identity & ecosystem fit (×2) | 2 | 5 | 5 | 3 | 4 | 3 |
+| **Weighted total (max 80)** | **46** | **67** | **53** | **41** | **50** | **65** |
+
+† **Size row added after S6**, which measured it as the most discriminating property of the
+lot — 26.0 / 0.53 / 60.06 MB for the same hello app — while N-03 already makes size a
+requirement that the scoring did not reflect anywhere.
+
+‡ **Effort re-scored after S6**, in both directions and for the same underlying reason: both
+options were originally graded on their desktop/JVM experience rather than their mobile one.
+A's 4 assumed Scala 3 React Native facades exist (they do not); D's 5 assumed the iOS path
+resembles the desktop one (it does not).
 
 \* conditional on solving the dev loop (D-01).
+
+### 6.1.1 Calibration (S6, 2026-09-20)
+
+Options A, B and D were built as the same hello app — a label, a button, a counter — and
+measured on one rig, iOS 27 simulator on Apple Silicon:
+
+| | A — RN/Expo | **B — native shims** | D — JavaFX/Gluon |
+|---|---|---|---|
+| App bundle (simulator) | 26.0 MB | **0.53 MB** | *cannot build on Apple Silicon* |
+| Stripped binary, device arm64 | not built | **0.53 MB** | **60.06 MB** |
+| Cold start → first render | 702 ms | **425 ms** | *not measurable* |
+| RSS after launch | 203.2 MB | **152.4 MB** | *not measurable* |
+| Toolchain steps from a working Mac | 7 (two undocumented) | **3** | 6 (five version-pinned) |
+| Extra disk | 301 MB `node_modules` + CocoaPods | **none** | 966 MB GraalVM + 2 Mavens |
+| Scala 3 usable today? | **No** | **Yes** | Yes, with a bytecode-target fix |
+
+Read the RSS row carefully: ~139 MB of every figure is UIKit itself (S1's UI-less harness sat
+at 13.5 MB), so **A's real overhead is the +51 MB**, not the whole 203 MB.
+
+The recommendation survives its own calibration: Option B is the smallest by two orders of
+magnitude, the fastest to start, the lightest in memory, has the fewest toolchain steps, and
+was the only one whose iOS story worked on the available hardware without fighting version
+skew. Full detail: [`spikes/s6-calibration/REPORT.md`](../spikes/s6-calibration/REPORT.md).
 
 ## 6.2 Recommendation
 
