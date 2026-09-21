@@ -147,11 +147,24 @@ The `insertAfter`-by-sibling decision (from S7, because GTK has no index) turned
 Android nothing: `indexOfChild(after) + 1` recovers the index. Had the contract been written
 against Android first, it would have specified an index and GTK would have had to emulate it.
 
-**It also cost something.** Android cold start for the todo app is **549 ms median**
-(8 runs, emulator), against S2's 457 ms for a bare Scala activity and an N-01 budget of
-**500 ms**. So the framework adds roughly **90 ms** and the app is now *over* budget. That is
-an emulator figure and the app does more than S2's did, but it is a real regression against a
-real requirement and it should be attacked before the catalogue grows — most likely by
-deferring work out of `onCreate` and by measuring what mounting actually costs.
+**What it cost: nothing measurable at startup, and 9–22 ms of real work.** An earlier draft
+of this section claimed the framework added ~90 ms and had pushed the app over N-01. That was
+wrong: it compared figures from two different emulator sessions. Measured properly — all three
+APKs installed together, launched round-robin, 10 rounds each — the bare Kotlin activity, the
+bare Scala activity and the full scala-ui todo app are **418 / 386 / 388 ms**, i.e.
+indistinguishable, with Kotlin nominally slowest.
+
+Instrumenting `onCreate` shows where the framework's time actually goes:
+
+| phase | ms |
+|---|---|
+| process start → `onCreate` (class loading, ART) | 18–38 |
+| build the element tree | 0–2 |
+| **`Reconciler.mount`** | **9–20** |
+| `setContentView` (Android's own measure/layout) | 11–38 |
+
+So mounting a ~15-widget tree costs **9–20 ms**, and that is the number that will scale with
+the catalogue. It is worth watching, but it is not a startup regression — the ~350 ms floor is
+Android's process creation and first frame, which every app pays.
 
 Release APK: **136 KB**, framework and app together.

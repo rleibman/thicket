@@ -170,3 +170,35 @@ the build shape is workable, and every problem found has a known, mechanical fix
 framework's own tooling can apply. The residual risks are cold-start ratio (measurable, likely
 improvable) and the fact that a naive setup fails loudly in three different ways — which is a
 documentation and tooling burden, not a technical blocker.
+
+
+---
+
+## Correction (2026-09-21): the cold-start ratio was measurement noise
+
+This report concluded that Scala's cold start is **1.40× the Kotlin twin** (457 ms vs 327 ms)
+and flagged it as a risk. **That conclusion does not hold.** Re-measured with both APKs plus
+the scala-ui todo app installed together and launched **round-robin in a single emulator
+session**, 10 rounds each:
+
+| app | median | mean | min | max |
+|---|---|---|---|---|
+| S2 Kotlin (bare) | 418 ms | 417.7 | 355 | 462 |
+| S2 Scala (bare) | **386 ms** | 383.4 | 368 | 396 |
+| scala-ui todo (framework + list + conditional) | 388 ms | 390.1 | 358 | 411 |
+
+Kotlin came out **slowest**. The spread within a single app (355–462 ms for Kotlin) is wider
+than the gap this report attributed to Scala, so the original 327-vs-457 figure was
+**between-session emulator variance**, not a language cost. Re-running after
+`cmd package compile --reset`, i.e. in the fresh-install `verify` state, changed nothing —
+so it is not an ART dexopt warm-up effect either.
+
+**Methodology lesson, which is the durable part:** cold-start numbers from an Android emulator
+are only comparable when the variants are **installed together and launched interleaved in one
+session**. Measuring app A, then rebuilding, then measuring app B — which is what this report
+did — compares two emulator states, not two apps. Any future N-01 claim must be interleaved,
+and ideally taken on a physical device.
+
+What survives: the *absolute* figure is comfortably inside N-01's 500 ms, and every other
+measurement in this report (APK size, dex counts, the three mandatory build settings, the
+runtime-correctness findings) was a single-session or build-time measurement and is unaffected.

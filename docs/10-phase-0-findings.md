@@ -47,7 +47,7 @@ requirement and the most discriminating property measured. B now leads 67/80 to 
 | iOS binary, bare runtime (N-03) | ≤ 6 MB | **1.90 MB** | 3.2× |
 | iOS binary, + shim + ZIO + java-time | ≤ 6 MB | **5.75 MB** (releaseFast + LTO.full) | 1.04× |
 | Android APK delta (N-03) | ≤ 4 MB | **74 KB** | 53× |
-| Android cold start (N-01) | ≤ 500 ms | **457 ms** | 1.09× |
+| Android cold start (N-01) | ≤ 500 ms | **386 ms** ‡ | 1.30× |
 | Yoga, 1 000 nodes | < 2 ms | **0.344 ms** | 5.8× |
 | Signals, per node update | ≤ 1 µs | **77 ns** JVM / **219 ns** Native | 13× / 4.6× |
 | ZIO RSS overhead | ≤ 10 MB | **+3.25 MB** | 3× |
@@ -56,9 +56,16 @@ requirement and the most discriminating property measured. B now leads 67/80 to 
 | Android edit → device | ≤ 30 s | **17.2 s** | 1.7× |
 | iOS RSS, 779 M allocations | no drift | **flat at 13.53 MB** | — |
 
-Two budgets are *close* rather than comfortable: the iOS binary at 5.75/6 MB, and Android
-cold start at 457/500 ms. Both are floor measurements on trivial apps, so both will move the
-wrong way as the framework grows. They are the two numbers to instrument from M0 onward.
+‡ **Corrected 2026-09-21.** S2 originally reported 457 ms and a 1.40× ratio against a Kotlin
+twin. Re-measured with all variants installed together and launched round-robin in one
+emulator session, Scala is 386 ms and *Kotlin is slower* at 418 ms; the within-app spread
+exceeds the gap. The original figure compared two emulator sessions, which is not a valid
+comparison. See the correction appended to `spikes/s2-android/REPORT.md`.
+
+One budget is *close* rather than comfortable: the iOS binary at 5.75/6 MB, and only with
+`releaseFast` + `LTO.full`. It is a floor measurement on a trivial app and will move the wrong
+way as the framework grows, so it is the number to instrument from M0 onward. Android cold
+start, once measured properly, has ample headroom.
 
 ## 10.3 What turned out easier than the plan assumed
 
