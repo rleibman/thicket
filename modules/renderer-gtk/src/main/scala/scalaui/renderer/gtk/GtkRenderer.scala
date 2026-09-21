@@ -99,7 +99,10 @@ final class GtkRenderer extends Renderer:
   def destroy(handle: Handle): Unit =
     tapIds.remove(handle).foreach(Handles.release)
     kinds.remove(handle)
-    g_object_unref(handle.asInstanceOf[gpointer])
+    // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
+    // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox
+    // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
+    if gtk_widget_get_parent(handle) != null then gtk_widget_unparent(handle)
 
   def measure(handle: Handle, constraints: Constraints): Measurement =
     val minW = stackalloc[CInt]()

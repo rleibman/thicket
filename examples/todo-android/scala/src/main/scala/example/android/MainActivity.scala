@@ -1,66 +1,89 @@
 package example.android
 
 import android.app.Activity
-import android.os.{Bundle, Process, SystemClock}
-import android.util.Log
+import android.os.{Build, Bundle}
+import android.view.MenuItem
+import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
+import scala.annotation.nowarn
 import android.widget.ScrollView
-import example.TodoUi
+import example.TodoApp
 import scalaui.core.Reconciler
 import scalaui.renderer.android.AndroidRenderer
-import scalaui.signals.{Owner, ThreadGuard}
+import scalaui.signals.{Owner, Signal, ThreadGuard}
 
-/** The Android host for [[TodoUi]] — the same element tree the GTK app mounts.
+/** The Android host for [[TodoApp]] — the same app the GTK host mounts.
   *
-  * The Activity owns the tree's lifetime: `onDestroy` disposes the `Owner`, which stops
-  * every effect the tree created. No cleanup callbacks, no leak.
+  * Chrome comes from `AppRoot`, applied natively: the action bar title follows the top
+  * screen, Up appears when the stack is deep, and the system Back button pops. When the
+  * stack is at its root `back()` returns false and the Activity finishes, which is the
+  * behaviour Android users expect.
   */
 class MainActivity extends Activity:
 
   private val owner = Owner()
-  private val model = TodoUi.Model()
+  private val model = TodoApp.Model()
+  private val app   = TodoApp(model)
 
   override def onCreate(saved: Bundle): Unit =
-    val tEnter = SystemClock.uptimeMillis()
     super.onCreate(saved)
-    val tSuper = SystemClock.uptimeMillis()
 
     // Android's main thread owns the signal graph; a stray write from elsewhere should
     // fail loudly rather than corrupt it (docs/05 A-06).
     ThreadGuard.install(ThreadGuard.owningThread)
-    val tGuard = SystemClock.uptimeMillis()
 
     val renderer = AndroidRenderer(this)
-    val tRenderer = SystemClock.uptimeMillis()
+    given Owner  = owner
 
-    given Owner = owner
-    val tree    = TodoUi(model)
-    val tTree   = SystemClock.uptimeMillis()
+    // Restore the back stack across process death. It is a List of a route ADT, so this is
+    // ordinary serialisation rather than a framework-specific save/restore protocol.
+    Option(saved).map(_.getStringArray(StackKey)).foreach: saved =>
+      app.navigator.restore(saved.toList.flatMap(TodoApp.parseRoute))
 
-    val mounted = Reconciler.mount(renderer, tree)
-    val tMount  = SystemClock.uptimeMillis()
-
-    val scroll = ScrollView(this)
+    val mounted = Reconciler.mount(renderer, app.element)
+    val scroll  = ScrollView(this)
     scroll.addView(mounted.handle)
     setContentView(scroll)
-    val tDone = SystemClock.uptimeMillis()
 
-    // Where the cold-start budget actually goes. `Process.getStartUptimeMillis` is the
-    // zygote fork, so "before onCreate" covers class loading and ART's own work.
-    val start = Process.getStartUptimeMillis
-    Log.i(
-      "scalaui",
-      f"[startup] process->onCreate ${tEnter - start}%4d ms | super ${tSuper - tEnter}%3d" +
-        f" | guard ${tGuard - tSuper}%3d | renderer ${tRenderer - tGuard}%3d" +
-        f" | buildTree ${tTree - tRenderer}%3d | mount ${tMount - tTree}%3d" +
-        f" | setContentView ${tDone - tMount}%3d | onCreate total ${tDone - tEnter}%3d"
-    )
+    Signal.effect(setTitle(app.title()))
+    Signal.effect:
+      val up = app.canGoBack()
+      Option(getActionBar).foreach(_.setDisplayHomeAsUpEnabled(up))
 
-    // An Intent extra rather than an env var: a process launched by `am start` inherits
-    // zygote's environment, so sys.env is not a usable channel on Android.
-    //   adb shell am start -n <pkg>/<activity> --ez selftest true
+    registerBackHandler()
+
     if getIntent != null && getIntent.getBooleanExtra("selftest", false) then
-      SelfTest.run(model, mounted.handle)
+      SelfTest.run(model, app, mounted.handle)
+
+  /** Android 13+ replaced `onBackPressed` with a dispatcher that also drives the predictive
+    * back gesture — the animated peek at the previous screen. Registering here is what makes
+    * the app behave like a platform app rather than one that merely intercepts a key.
+    */
+  private def registerBackHandler(): Unit =
+    if Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU then
+      getOnBackInvokedDispatcher.registerOnBackInvokedCallback(
+        OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+        new OnBackInvokedCallback:
+          def onBackInvoked(): Unit = if !app.back() then finish()
+      )
+
+  override def onSaveInstanceState(out: Bundle): Unit =
+    super.onSaveInstanceState(out)
+    out.putStringArray(StackKey, app.navigator.routes.now.map(TodoApp.showRoute).toArray)
+
+  /** Pre-Android-13 fallback; the dispatcher above supersedes it where available. */
+  @nowarn("cat=deprecation")
+  override def onBackPressed(): Unit =
+    if !app.back() then super.onBackPressed()
+
+  /** The action bar's Up arrow. */
+  override def onOptionsItemSelected(item: MenuItem): Boolean =
+    if item.getItemId == android.R.id.home then
+      val _ = app.back()
+      true
+    else super.onOptionsItemSelected(item)
 
   override def onDestroy(): Unit =
     owner.dispose()
     super.onDestroy()
+
+  private val StackKey = "scalaui.backstack"

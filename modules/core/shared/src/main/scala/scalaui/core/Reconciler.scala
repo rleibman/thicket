@@ -190,7 +190,7 @@ private[core] final class ForEachSource[A, K](f: Element.ForEach[A, K]) extends 
 /** One entry currently mounted inside a region. `value` is a `Var` so that an item which
   * keeps its key but changes its data updates in place instead of being rebuilt.
   */
-private final class Entry[H](
+private final class RegionEntry[H](
     val key: Any,
     val value: Var[Any],
     val owner: Owner,
@@ -206,7 +206,7 @@ private final class RegionSlot[H](
     source: RegionSource
 ) extends Slot[H]:
 
-  private var entries: Vector[Entry[H]] = Vector.empty
+  private var entries: Vector[RegionEntry[H]] = Vector.empty
 
   def handles: Vector[H] = entries.flatMap(_.slot.handles)
 
@@ -214,8 +214,11 @@ private final class RegionSlot[H](
     entries.foreach(disposeEntry)
     entries = Vector.empty
 
-  private def disposeEntry(e: Entry[H]): Unit =
-    e.slot.handles.foreach(h => renderer.removeChild(parent, h))
+  private def disposeEntry(e: RegionEntry[H]): Unit =
+    // `Slot.dispose` destroys depth-first, and `Renderer.destroy` detaches. Removing the
+    // entry's top handles here first would free their subtrees on toolkits where a
+    // container owns its children, and the depth-first destroy would then touch freed
+    // widgets — which is exactly what GTK reported.
     e.slot.dispose()
     e.owner.dispose() // stops every effect this entry's content created
 
@@ -257,7 +260,7 @@ private final class RegionSlot[H](
           val slot = Signal.untracked:
             given Owner = childOwner
             Slot.build(renderer, source.build(v), Some(parent), () => at)
-          Entry(key, v, childOwner, slot, after = at)
+          RegionEntry(key, v, childOwner, slot, after = at)
 
       entry.slot.lastHandle.foreach(h => previous = Some(h))
       entry

@@ -114,6 +114,13 @@ final class AndroidRenderer(context: Context) extends Renderer:
       case _               => ()
 
   def destroy(handle: Handle): Unit =
+    handle.getParent match
+      case vg: ViewGroup =>
+        vg.removeView(handle)
+        vg match
+          case l: LinearLayout => applySpacing(l)
+          case _               => ()
+      case _ => ()
     handle.setOnClickListener(null)
     val _ = kinds.remove(handle)
     handle match

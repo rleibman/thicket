@@ -92,6 +92,14 @@ trait Renderer:
   def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit =
     removeChild(parent, child)
     insertAfter(parent, child, after)
+  /** Detach `handle` from its parent, if attached, and release it.
+    *
+    * Detaching is part of destroying, not a separate step the caller performs first. GTK
+    * forced this: `gtk_box_remove` frees the removed widget's whole subtree, so a reconciler
+    * that removed a container and *then* destroyed its children would be destroying freed
+    * memory. The reconciler therefore destroys depth-first — children before parents — and
+    * each renderer detaches whatever it is given.
+    */
   def destroy(handle: Handle): Unit
 
   def measure(handle: Handle, constraints: Constraints): Measurement

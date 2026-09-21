@@ -69,13 +69,15 @@ The last column is the pitch. If it does not hold, there is no reason to build t
 
 ## 11.4 What exists today, honestly
 
-Of the mockup, roughly **20%** is real. Concretely, after M0 + structural reconciliation:
+Of the mockup, roughly **30%** is real. Concretely, after M0 + structural reconciliation:
 
 | Real now | Invented in the mockup |
 |---|---|
 | `Signal`, `Var`, `computed`, `effect`, `Owner` lifetimes | everything ZIO-facing (`asSignal`, `launch`, `Async`) |
 | `Element`, `Attr`, the reconciler, one effect per reactive attribute | `Screen`, `Nav`, `Route`, tabs, toolbars |
 | **`Show` and `ForEach` with keyed diffing and in-place moves** | virtualisation (`LazyColumn`) — `ForEach` mounts every row |
+| **`Route` ADT, `Nav` back stack, `Screen`, `NavHost`** | tabs, deep-link parsing (`derives Routable`) |
+| **Native chrome via `AppRoot`** — title, Up, predictive back | toolbar actions (the type exists; no renderer applies them yet) |
 | **`Fragment`** — several children in one slot | forms, refinements, `.platform`, swipe actions |
 | `Column`, `Row`, `Label`, `Button` | every other widget in the mockup |
 | The renderer contract + **GTK4 and Android renderers** + a `TestRenderer` | `TestApp`, `UiSpec` |
@@ -102,8 +104,7 @@ Each step is chosen to make the next one cheap, and to keep something runnable a
    nest and sit transparently between static siblings.
 2. ~~**A second renderer**~~ — **done.** Android, via S2's sbt→JAR→Gradle shape. The
    contract survived a structurally different toolkit unchanged; see §11.7.
-3. **`Screen` and `Nav`** — the route ADT, a native navigation container per platform. This is
-   what turns "widgets" into "an app".
+3. ~~**`Screen` and `Nav`**~~ — **done**, except for native navigation *containers*: see §11.8.
 4. **The ZIO bridge** — `asSignal`, `Async`, `launch`, component scopes. S8 proved the runtime
    works; this is the ergonomics layer over it.
 5. **Widen the catalogue** — text input, scroll, images, lists. Mechanical, and the right
@@ -168,3 +169,48 @@ the catalogue. It is worth watching, but it is not a startup regression — the 
 Android's process creation and first frame, which every app pays.
 
 Release APK: **136 KB**, framework and app together.
+
+## 11.8 Navigation: what landed, and the one thing that did not
+
+Two of the mockup's seven ideas are now real:
+
+**Navigation is a value.** `Route` is an app-defined ADT; the back stack is `List[Entry[R]]`;
+`nav.routes.now` is what a test asserts on and what a host persists. The Android example
+round-trips its stack through `onSaveInstanceState` as plain strings — no framework save/restore
+protocol, because there is nothing framework-specific to save.
+
+**The app is a total function `Route => Screen`.** `NavHost(nav) { case … }` takes a plain
+function over the ADT, so adding a route breaks the match at compile time. There is no route
+registry to forget to update.
+
+Chrome travels beside the tree in `AppRoot`, never inside it, so each host applies it natively:
+GTK sets the window title and packs a back arrow into the header bar; Android sets the action bar
+title, shows Up, and registers an `OnBackInvokedCallback` so the **predictive back gesture** works.
+`back()` returning `false` at the root is what lets the Activity finish normally — verified with a
+real `KEYCODE_BACK`.
+
+**What did not land: native navigation containers.** `NavHost` mounts only the top screen, so
+pushing unmounts the screen beneath and popping rebuilds it. A `UINavigationController`, a
+fragment back stack or a `GtkStack` keeps the whole stack alive, which is what preserves scroll
+position and in-flight state across a push — and what provides the slide transition. That is a
+renderer change behind the same API; the app-facing shape does not move. Until then, back
+navigation is correct but forgetful.
+
+### A renderer bug this exposed
+
+Navigation was the first thing to unmount a whole subtree, and GTK objected immediately:
+
+```
+GtkButton 0x… has a parent GtkBox 0x… during dispose. Parents hold a reference,
+so this should not happen. Did you call g_object_unref() instead of gtk_widget_unparent()?
+```
+
+The reconciler was detaching a region's top handles and *then* destroying the subtree
+depth-first. On GTK, `gtk_box_remove` frees the removed widget's entire subtree, so the
+depth-first destroy was touching freed memory. The contract now states that **`destroy`
+detaches as well as releases**, and disposal is depth-first with no separate removal step. All
+three renderers implement it; the `TestRenderer` models it too, or it would stop being a
+reference implementation.
+
+Worth noting what caught this: not the 32 unit tests, which passed throughout, but running the
+app against a real toolkit that checks its own invariants.

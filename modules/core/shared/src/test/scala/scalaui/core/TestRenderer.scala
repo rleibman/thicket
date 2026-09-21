@@ -63,9 +63,11 @@ final class TestRenderer extends Renderer:
     opCount += 1
     val _ = nodes(parent).children.subtractOne(child)
 
+  /** Detaches as well as releases, per the contract. */
   def destroy(handle: Handle): Unit =
     opCount += 1
     destroyed = handle :: destroyed
+    nodes.valuesIterator.foreach(n => n.children.subtractOne(handle))
     val _ = nodes.remove(handle)
 
   def measure(handle: Handle, c: Constraints): Measurement =

@@ -3,59 +3,61 @@ package example.android
 import android.util.Log
 import android.view.{View, ViewGroup}
 import android.widget.TextView
-import example.TodoUi
+import example.TodoApp
+import scalaui.core.NavHost
 
-/** Drives the app and reads the view tree back out of Android, so the demo proves the
-  * renderer really reorders rather than merely not crashing — the same check the GTK
-  * host performs, against a structurally different toolkit.
+/** Drives navigation and reads the view tree back out of Android — the same checks the GTK
+  * host runs, against a structurally different toolkit.
   */
 object SelfTest:
 
-  private val Tag = "scalaui"
+  private val Tag      = "scalaui"
   private var failures = 0
 
-  private def labels(v: View): List[String] = v match
+  /** Every piece of text in the subtree, in tree order. */
+  private def allTexts(v: View): List[String] = v match
     case g: ViewGroup =>
-      (0 until g.getChildCount).toList.flatMap: i =>
-        g.getChildAt(i) match
-          case t: TextView => Some(t.getText.toString)
-          case _           => None
-    case _ => Nil
-
-  private def allLabels(v: View): List[String] = v match
-    case g: ViewGroup =>
-      (0 until g.getChildCount).toList.flatMap(i => allLabels(g.getChildAt(i)))
+      (0 until g.getChildCount).toList.flatMap(i => allTexts(g.getChildAt(i)))
     case t: TextView => List(t.getText.toString)
     case _           => Nil
 
-  def run(model: TodoUi.Model, root: View): Unit =
-    def listView: View = root.asInstanceOf[ViewGroup].getChildAt(1)
-    def expected: List[String] = model.items.now.map(TodoUi.bullet).toList
+  private def check(name: String, cond: Boolean, detail: => String = ""): Unit =
+    if !cond then failures += 1
+    Log.i(Tag, s"[selftest] ${if cond then "ok  " else "FAIL"} $name")
+    if !cond && detail.nonEmpty then Log.i(Tag, s"[selftest]      $detail")
 
-    def check(name: String, want: List[String]): Unit =
-      val got = labels(listView)
-      val ok  = got == want
-      if !ok then failures += 1
-      Log.i(Tag, s"[selftest] ${if ok then "ok  " else "FAIL"} $name")
-      if !ok then Log.i(Tag, s"[selftest]      expected=$want actual=$got")
+  def run(model: TodoApp.Model, app: NavHost[TodoApp.Route], root: View): Unit =
+    Log.i(Tag, "[selftest] driving navigation and reading back out of Android")
 
-    Log.i(Tag, "[selftest] driving the app and reading the tree back out of Android")
-    check("initial", expected)
-    model.add(); check("after add", expected)
-    model.rotate(); check("after rotate (views moved, not rebuilt)", expected)
-    model.toggleFirst(); check("after toggling the first item", expected)
-    model.dropLast(); check("after dropping the last item", expected)
+    check("starts on the items screen", app.title.now == "Todo")
+    val onItems = allTexts(root)
+    check("item rows are rendered", onItems.exists(_.contains("Navigation")), onItems.toString)
 
-    while model.items.now.nonEmpty do model.dropLast()
-    check("emptied", Nil)
-    val shown = allLabels(root).contains("Nothing left to do.")
-    if !shown then failures += 1
-    Log.i(Tag, s"[selftest] ${if shown then "ok  " else "FAIL"} Show appeared when emptied")
+    app.push(TodoApp.Route.Detail(3))
+    check("pushed: title follows the top screen", app.title.now == "Item")
+    val onDetail = allTexts(root)
+    check("detail content is mounted", onDetail.contains("Navigation"), onDetail.toString)
+    check("items screen is gone", !onDetail.contains("Add"), onDetail.toString)
+    check("back is available", app.canGoBack.now)
 
-    model.add(); check("re-populated after being empty", expected)
-    val hidden = !allLabels(root).contains("Nothing left to do.")
-    if !hidden then failures += 1
-    Log.i(Tag, s"[selftest] ${if hidden then "ok  " else "FAIL"} Show disappeared again")
+    model.toggle(3)
+    check("toggling from the detail screen updates it", allTexts(root).contains("Done"),
+      allTexts(root).toString)
+
+    check("back() pops", app.back())
+    check("title restored", app.title.now == "Todo")
+    check("items screen is back", allTexts(root).exists(_.contains("Navigation")))
+    check("back is no longer available at the root", !app.canGoBack.now)
+    check("back() at the root defers to the platform", !app.back())
+
+    // The back stack is a List of a route ADT, so round-tripping it is plain data.
+    app.push(TodoApp.Route.Detail(2))
+    app.push(TodoApp.Route.About)
+    val saved = app.navigator.routes.now.map(TodoApp.showRoute)
+    val parsed = saved.flatMap(TodoApp.parseRoute)
+    check("the back stack round-trips through strings", parsed == app.navigator.routes.now,
+      s"saved=$saved parsed=$parsed")
+    val _ = app.navigator.reset(TodoApp.Route.Items)
 
     Log.i(
       Tag,
