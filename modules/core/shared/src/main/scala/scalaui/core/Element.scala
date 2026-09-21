@@ -90,6 +90,41 @@ object dsl {
       Nil
     )
 
+  /** A single-line text field bound to a signal.
+    *
+    * Two-way: the field shows `value`, and edits are reported through `onChange`. Nothing
+    * here closes the loop for you — the app decides whether to write the edit back, which
+    * is what makes validation, rejection and transformation possible.
+    */
+  def TextField(
+      value: String | Signal[String],
+      placeholder: String = ""
+  )(onChange: String => Unit): Element =
+    Widget(
+      WidgetKind.TextField,
+      Seq(text(value), Static(Prop.Placeholder(placeholder)), Static(Prop.OnTextChange(onChange))),
+      Nil
+    )
+
+  def Checkbox(
+      checked: Boolean | Signal[Boolean],
+      label: String = ""
+  )(onChange: Boolean => Unit): Element = {
+    val checkedAttr = checked match {
+      case b: Boolean                    => Static(Prop.Checked(b))
+      case s: Signal[Boolean] @unchecked  => Reactive(s, Prop.Checked(_))
+    }
+    Widget(
+      WidgetKind.Checkbox,
+      Seq(checkedAttr, Static(Prop.Text(label)), Static(Prop.OnCheckedChange(onChange))),
+      Nil
+    )
+  }
+
+  /** A scrolling viewport around one child. */
+  def Scroll(padding: Int = 0)(child: Element): Element =
+    Widget(WidgetKind.Scroll, Seq(Static(Prop.Padding(padding))), Seq(child))
+
   def Column(spacing: Int = 0, padding: Int = 0)(children: Element*): Element =
     Widget(
       WidgetKind.Column,

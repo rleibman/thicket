@@ -53,6 +53,17 @@ object Constraints {
   */
 enum WidgetKind {
   case Column, Row, Label, Button
+
+  /** Single-line text input. The first widget whose data flows *back* to the app. */
+  case TextField
+
+  /** A boolean toggle. */
+  case Checkbox
+
+  /** A scrolling viewport around exactly one child. Unlike Column/Row it does not hold a
+    * list, which the reconciler has to respect: inserting a second child replaces the first.
+    */
+  case Scroll
 }
 
 /** A property change. An enum rather than `Map[String, Any]` so the compiler checks that
@@ -64,6 +75,17 @@ enum Prop {
   case Spacing(dp: Int)
   case Padding(dp: Int)
   case Enabled(value: Boolean)
+
+  /** Greyed-out hint shown while a text field is empty. */
+  case Placeholder(value: String)
+
+  /** Fired as the user edits. The renderer must *not* fire this when the app pushes a new
+    * value in — that would be an echo, and with a signal bound to it, a loop.
+    */
+  case OnTextChange(handler: String => Unit)
+
+  case Checked(value: Boolean)
+  case OnCheckedChange(handler: Boolean => Unit)
 }
 
 trait Renderer {
@@ -76,6 +98,16 @@ trait Renderer {
   def layoutMode(kind: WidgetKind): LayoutMode
 
   def create(kind: WidgetKind, props: Seq[Prop]): Handle
+  /** Apply properties to an existing widget.
+    *
+    * **A renderer must not disturb a widget when written a value it already shows.** The
+    * reconciler cannot enforce this: after a user edits a text field, the app writes the
+    * new value back through a signal, and from the reconciler's side that is a genuine
+    * change it has never applied. Only the renderer can compare against what the widget
+    * actually holds. Skipping the write is what stops the caret jumping to the end on every
+    * keystroke, and — for renderers whose widgets emit a change event when set
+    * programmatically — what stops a bound field looping.
+    */
   def update(handle: Handle, patch: Seq[Prop]): Unit
 
   /** Insert `child` into `parent` directly after `after`, or first when `after` is `None`.

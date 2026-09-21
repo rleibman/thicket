@@ -3,7 +3,8 @@ package scalaui.renderer.android
 import android.content.Context
 import android.os.{Handler, Looper}
 import android.view.{View, ViewGroup}
-import android.widget.{Button, LinearLayout, TextView}
+import android.text.{Editable, TextWatcher}
+import android.widget.{Button, CheckBox, CompoundButton, EditText, LinearLayout, ScrollView, TextView}
 import scala.collection.mutable
 import scalaui.renderer.*
 
@@ -17,6 +18,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
   type Handle = View
 
   private val kinds  = mutable.Map.empty[View, WidgetKind]
+
+  /** True while the renderer writes a value in, so the widget's own change listener can
+    * tell an app-driven update from a user edit. Without it, a signal bound to a text
+    * field loops: write -> listener -> signal -> write.
+    */
+  private val suppress = mutable.Set.empty[View]
   private val mainHandler = Handler(Looper.getMainLooper)
 
   private def dp(v: Int): Int =
@@ -40,8 +47,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
         val l = LinearLayout(context)
         l.setOrientation(LinearLayout.HORIZONTAL)
         l
-      case WidgetKind.Label  => TextView(context)
-      case WidgetKind.Button => Button(context)
+      case WidgetKind.Label     => TextView(context)
+      case WidgetKind.Button    => Button(context)
+      case WidgetKind.TextField => EditText(context)
+      case WidgetKind.Checkbox  => CheckBox(context)
+      case WidgetKind.Scroll    => ScrollView(context)
     }
     kinds(view) = kind
     update(view, props)
@@ -52,8 +62,55 @@ final class AndroidRenderer(context: Context) extends Renderer {
     patch.foreach {
       case Prop.Text(v) =>
         handle match {
+          case e: EditText =>
+            // Only write when it differs, or the caret jumps to the end on every keystroke
+            // as the app writes back what the user just typed.
+            if e.getText.toString != v then {
+              suppress += handle
+              e.setText(v)
+              e.setSelection(v.length)
+              suppress -= handle
+            }
           case t: TextView => t.setText(v)
           case _           => ()
+        }
+
+      case Prop.Placeholder(v) =>
+        handle match {
+          case e: EditText => e.setHint(v)
+          case _           => ()
+        }
+
+      case Prop.OnTextChange(f) =>
+        handle match {
+          case e: EditText =>
+            e.addTextChangedListener(new TextWatcher {
+              def beforeTextChanged(s: CharSequence, a: Int, b: Int, c: Int): Unit = ()
+              def onTextChanged(s: CharSequence, a: Int, b: Int, c: Int): Unit     = ()
+              def afterTextChanged(s: Editable): Unit =
+                if !suppress.contains(handle) then f(s.toString)
+            })
+          case _ => ()
+        }
+
+      case Prop.Checked(v) =>
+        handle match {
+          case c: CompoundButton =>
+            if c.isChecked != v then {
+              suppress += handle
+              c.setChecked(v)
+              suppress -= handle
+            }
+          case _ => ()
+        }
+
+      case Prop.OnCheckedChange(f) =>
+        handle match {
+          case c: CompoundButton =>
+            c.setOnCheckedChangeListener { (_: CompoundButton, checked: Boolean) =>
+              if !suppress.contains(handle) then f(checked)
+            }
+          case _ => ()
         }
 
       case Prop.OnTap(f) =>
@@ -105,6 +162,13 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    if kinds.get(parent).contains(WidgetKind.Scroll) then {
+      // A ScrollView holds one child, so "insert" is "set".
+      val sv = parent.asInstanceOf[ScrollView]
+      sv.removeAllViews()
+      sv.addView(child)
+      return
+    }
     val vg = parent.asInstanceOf[ViewGroup]
     val index = after match {
       case None    => 0
@@ -137,6 +201,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case _ => ()
     }
     handle.setOnClickListener(null)
+    suppress -= handle
     val _ = kinds.remove(handle)
     handle match {
       case l: LinearLayout => val _ = spacing.remove(l)

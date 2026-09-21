@@ -15,7 +15,9 @@ final class TestRenderer extends Renderer {
       props: mutable.Map[String, String] = mutable.Map.empty,
       children: mutable.ArrayBuffer[Int] = mutable.ArrayBuffer.empty,
       var taps: Int = 0,
-      var onTap: Option[() => Unit] = None
+      var onTap: Option[() => Unit] = None,
+      var onTextChange: Option[String => Unit] = None,
+      var onCheckedChange: Option[Boolean => Unit] = None
   )
 
   type Handle = Int
@@ -30,6 +32,12 @@ final class TestRenderer extends Renderer {
     */
   var createCount: Int = 0
   var opCount: Int     = 0
+
+  /** Writes that actually changed a widget. The contract says a renderer must not disturb a
+    * widget written a value it already shows, so this stays flat when the app echoes a
+    * user's edit back through a signal.
+    */
+  var textWrites: Int = 0
 
   def platform: String                         = "test"
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
@@ -47,11 +55,20 @@ final class TestRenderer extends Renderer {
     opCount += 1
     val n = nodes(handle)
     patch.foreach {
-      case Prop.Text(v)    => n.props("text") = v
+      case Prop.Text(v) =>
+        if n.props.get("text").contains(v) then ()
+        else {
+          textWrites += 1
+          n.props("text") = v
+        }
       case Prop.Spacing(v) => n.props("spacing") = v.toString
       case Prop.Padding(v) => n.props("padding") = v.toString
       case Prop.Enabled(v) => n.props("enabled") = v.toString
-      case Prop.OnTap(f)   => n.onTap = Some(f)
+      case Prop.OnTap(f)          => n.onTap = Some(f)
+      case Prop.Placeholder(v)    => n.props("placeholder") = v
+      case Prop.Checked(v)        => n.props("checked") = v.toString
+      case Prop.OnTextChange(f)   => n.onTextChange = Some(f)
+      case Prop.OnCheckedChange(f) => n.onCheckedChange = Some(f)
     }
   }
 
@@ -89,6 +106,22 @@ final class TestRenderer extends Renderer {
   def text(handle: Handle): String       = nodes(handle).props.getOrElse("text", "")
   def kind(handle: Handle): WidgetKind   = nodes(handle).kind
   def childrenOf(handle: Handle): Seq[Int] = nodes(handle).children.toSeq
+  /** Simulate the user typing. Mirrors a real renderer: the app is told, and the widget
+    * shows what was typed — the app is *not* obliged to write it back.
+    */
+  def typeText(handle: Handle, value: String): Unit = {
+    val n = nodes(handle)
+    n.props("text") = value
+    n.onTextChange.foreach(_(value))
+  }
+
+  def toggle(handle: Handle): Unit = {
+    val n   = nodes(handle)
+    val now = !n.props.getOrElse("checked", "false").toBoolean
+    n.props("checked") = now.toString
+    n.onCheckedChange.foreach(_(now))
+  }
+
   def tap(handle: Handle): Unit = {
     val n = nodes(handle)
     n.taps += 1

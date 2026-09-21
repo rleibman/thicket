@@ -5,7 +5,6 @@ import android.os.{Build, Bundle}
 import android.view.MenuItem
 import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
 import scala.annotation.nowarn
-import android.widget.ScrollView
 import example.TodoApp
 import scalaui.core.Reconciler
 import scalaui.renderer.android.AndroidRenderer
@@ -40,10 +39,9 @@ class MainActivity extends Activity {
       app.navigator.restore(saved.toList.flatMap(TodoApp.parseRoute))
 
     }
+    // No hand-rolled ScrollView any more: the app declares its own `Scroll`.
     val mounted = Reconciler.mount(renderer, app.element)
-    val scroll  = ScrollView(this)
-    scroll.addView(mounted.handle)
-    setContentView(scroll)
+    setContentView(mounted.handle)
 
     Signal.effect(setTitle(app.title()))
     Signal.effect {

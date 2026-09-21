@@ -69,7 +69,7 @@ The last column is the pitch. If it does not hold, there is no reason to build t
 
 ## 11.4 What exists today, honestly
 
-Of the mockup, roughly **30%** is real. Concretely, after M0 + structural reconciliation:
+Of the mockup, roughly **40%** is real. Concretely, after M0 + structural reconciliation:
 
 | Real now | Invented in the mockup |
 |---|---|
@@ -79,7 +79,8 @@ Of the mockup, roughly **30%** is real. Concretely, after M0 + structural reconc
 | **`Route` ADT, `Nav` back stack, `Screen`, `NavHost`** | tabs, deep-link parsing (`derives Routable`) |
 | **Native chrome via `AppRoot`** — title, Up, predictive back | toolbar actions (the type exists; no renderer applies them yet) |
 | **`Fragment`** — several children in one slot | forms, refinements, `.platform`, swipe actions |
-| `Column`, `Row`, `Label`, `Button` | every other widget in the mockup |
+| `Column`, `Row`, `Label`, `Button`, **`TextField`, `Checkbox`, `Scroll`** | images, `Markdown`, `Thumbnail`, `Stepper`, `SearchField`, `Skeleton` |
+| **`RemoteData` as an exhaustive match, and the ZIO bridge behind it** | `Form.Schema`, refinement types, lens-based `Field` |
 | The renderer contract + **GTK4 and Android renderers** + a `TestRenderer` | `TestApp`, `UiSpec` |
 | **One shared UI mounting on Linux and Android unchanged** | `Async` as an exhaustive match |
 | Owner never appears in app code | |
@@ -107,8 +108,9 @@ Each step is chosen to make the next one cheap, and to keep something runnable a
 3. ~~**`Screen` and `Nav`**~~ — **done**, except for native navigation *containers*: see §11.8.
 4. **The ZIO bridge** — `asSignal`, `Async`, `launch`, component scopes. S8 proved the runtime
    works; this is the ergonomics layer over it.
-5. **Widen the catalogue** — text input, scroll, images, lists. Mechanical, and the right
-   moment to start generating the Apple shim rather than hand-writing it (S3).
+5. **Widen the catalogue** — *in progress.* `TextField`, `Checkbox` and `Scroll` landed;
+   images are next and are the first one that is not mechanical (see §11.9). This is also
+   the right moment to start generating the Apple shim rather than hand-writing it (S3).
 6. **The Apple renderer** — last among the four, because by then the contract is settled and
    the shim can be generated. S1/S3/S8 already de-risked it.
 
@@ -214,3 +216,33 @@ reference implementation.
 
 Worth noting what caught this: not the 32 unit tests, which passed throughout, but running the
 app against a real toolkit that checks its own invariants.
+
+## 11.9 Input widgets, and the rule they forced
+
+`TextField`, `Checkbox` and `Scroll` are the first widgets where data flows *back* from the
+toolkit, and they turned up a contract rule that the four read-only widgets never could:
+
+> **A renderer must not disturb a widget when written a value it already shows.**
+
+The reconciler cannot enforce this. After a user types, the app writes the new value back
+through a signal, and from the reconciler's side that is a genuine change it has never
+applied — it has no idea the widget already shows it. Only the renderer can compare against
+what the widget actually holds. Skipping the write is what stops the caret jumping to the end
+on every keystroke, and on toolkits whose widgets emit a change event when set
+programmatically, it is what stops a bound field looping forever.
+
+All three renderers implement it, and `TestRenderer` counts *writes that landed* so a test can
+assert the echo was swallowed rather than merely that the value was right.
+
+Note what is deliberately **not** automatic: nothing closes the loop for you. `TextField`
+shows a signal and reports edits; whether the edit is written back is the app's decision.
+That is what makes validation, rejection and transformation possible — a field that
+upper-cases as you type is four lines, not a fight with the framework.
+
+### Images are the next one, and they are not mechanical
+
+Every widget so far is a synchronous call to a toolkit. An image is not: it needs a source
+(asset, file, URL), asynchronous decoding, a cache with an eviction policy, a placeholder
+while loading, and a failure state. That is a subsystem, not a `WidgetKind`, and it touches
+the resource pipeline (A-09) which does not exist yet. Doing it badly is worse than not doing
+it, so it waits for a design rather than being bolted onto the enum.

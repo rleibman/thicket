@@ -44,6 +44,11 @@ object TodoApp {
   }
 
   final class Model {
+    /** The "add item" form's live state. */
+    val draft: Var[String]     = Var("")
+    val draftDone: Var[Boolean] = Var(false)
+    val draftValid: Signal[Boolean] = draft.map(_.trim.nonEmpty)
+
     val items: Var[Seq[Item]] = Var(
       Seq(
         Item(1, "Structural reconciliation", true),
@@ -57,6 +62,15 @@ object TodoApp {
       items.update(_ :+ Item(nextId, s"New item $nextId", false))
       nextId += 1
     }
+
+    /** Commits the form, if it is valid, and clears it. */
+    def addDraft(): Unit =
+      if draftValid.now then {
+        items.update(_ :+ Item(nextId, draft.now.trim, draftDone.now))
+        nextId += 1
+        draft.set("")
+        draftDone.set(false)
+      }
 
     def rotate(): Unit = items.update {
       case head +: rest => rest :+ head
@@ -88,7 +102,15 @@ object TodoApp {
   private def itemsScreen(model: Model, nav: Nav[Route]): Screen =
     Screen(
       title = "Todo",
-      content = Column(spacing = 12, padding = 20)(
+      content = Scroll()(Column(spacing = 12, padding = 20)(
+        // A small form: a bound text field, a bound checkbox, and a button whose enabled
+        // state is derived from the model rather than remembered.
+        Row(spacing = 8)(
+          TextField(model.draft, placeholder = "What needs doing?")(model.draft.set),
+          Checkbox(model.draftDone, "Done")(model.draftDone.set)
+        ),
+        Button("Add item")(model.addDraft()),
+
         Column(spacing = 4)(
           ForEach(model.items, key = (i: Item) => i.id) { item =>
             // Tapping a row navigates; the route carries the id, so the detail screen
@@ -104,7 +126,7 @@ object TodoApp {
           Button("About")(nav.push(Route.About))
         ),
         Label(model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"))
-      )
+      ))
     )
 
   private def detailScreen(model: Model, nav: Nav[Route], id: Int): Screen = {

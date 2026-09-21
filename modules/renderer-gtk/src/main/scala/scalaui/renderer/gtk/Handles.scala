@@ -29,6 +29,9 @@ private[gtk] object Handles {
 
   def release(id: Long): Unit = synchronized {
     val _ = callbacks.remove(id)
+    val _ = valued.remove(id)
+    val _ = readers.remove(id)
+    val _ = muted.remove(id)
   }
 
   private def invoke(id: Long): Unit = {
@@ -49,6 +52,46 @@ private[gtk] object Handles {
     }
 
   def clickedPtr: CVoidPtr = CFuncPtr.toPtr(clicked)
+
+  // -- value-carrying callbacks (text fields, checkboxes) -------------------
+  //
+  // GTK's "changed"/"toggled" signals carry no value: the handler is expected to read the
+  // widget. So each registration stores three things — what to call, how to read the
+  // current value, and whether this change came from the app rather than the user. The
+  // last one is what stops a signal-bound field from looping: renderer writes value ->
+  // GTK emits "changed" -> handler writes the signal -> renderer writes value...
+
+  private val valued: mutable.LongMap[String => Unit]  = mutable.LongMap.empty
+  private val readers: mutable.LongMap[() => Any]      = mutable.LongMap.empty
+  private val muted: mutable.LongMap[() => Boolean]    = mutable.LongMap.empty
+
+  def registerValued(f: String => Unit): Long = synchronized {
+    val id = nextId
+    nextId += 1
+    valued(id) = f
+    id
+  }
+
+  def replaceValued(id: Long, f: String => Unit): Unit = synchronized { valued(id) = f }
+
+  def bindTextSource(id: Long, read: () => Any, isMuted: () => Boolean): Unit = synchronized {
+    readers(id) = read
+    muted(id) = isMuted
+  }
+
+  private def invokeValued(id: Long): Unit = {
+    val (f, read, isMuted) = synchronized((valued.get(id), readers.get(id), muted.get(id)))
+    if !isMuted.exists(_()) then
+      for { fn <- f; r <- read } fn(r().toString)
+  }
+
+  /** GTK "changed"/"toggled": (GtkWidget*, gpointer) -> void */
+  private val changed: CFuncPtr2[Ptr[Byte], gpointer, Unit] =
+    CFuncPtr2.fromScalaFunction { (_: Ptr[Byte], data: gpointer) =>
+      GcState.guarded(invokeValued(pointerToId(data)))
+    }
+
+  def changedPtr: CVoidPtr = CFuncPtr.toPtr(changed)
 
   /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not
     * shed entries at UI rates is a leak with a clock on it (S8).

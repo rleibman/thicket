@@ -2,7 +2,7 @@ package example.android
 
 import android.util.Log
 import android.view.{View, ViewGroup}
-import android.widget.TextView
+import android.widget.{EditText, TextView}
 import example.TodoApp
 import scalaui.core.NavHost
 
@@ -15,7 +15,9 @@ object SelfTest {
   private var failures = 0
 
   /** Every piece of text in the subtree, in tree order. */
+  /** EditText is a TextView, so it must be matched first or its value is read as a label. */
   private def allTexts(v: View): List[String] = v match {
+    case e: EditText => List(e.getText.toString)
     case g: ViewGroup =>
       (0 until g.getChildCount).toList.flatMap(i => allTexts(g.getChildAt(i)))
     case t: TextView => List(t.getText.toString)
@@ -60,6 +62,25 @@ object SelfTest {
     check("the back stack round-trips through strings", parsed == app.navigator.routes.now,
       s"saved=$saved parsed=$parsed")
     val _ = app.navigator.reset(TodoApp.Route.Items)
+
+    // --- the form: text field and checkbox bound both ways ---
+    check("the draft starts empty", model.draft.now.isEmpty)
+    check("an empty draft is not valid", !model.draftValid.now)
+
+    model.draft.set("Write the catalogue")
+    check("writing the signal reaches the widget",
+      allTexts(root).contains("Write the catalogue"), allTexts(root).toString)
+    check("a non-empty draft is valid", model.draftValid.now)
+
+    model.draftDone.set(true)
+    val sizeBefore = model.items.now.size
+    model.addDraft()
+    check("adding appends the drafted item",
+      model.items.now.size == sizeBefore + 1 &&
+        model.items.now.last.title == "Write the catalogue",
+      model.items.now.map(_.title).toString)
+    check("the committed item kept its done flag", model.items.now.last.done)
+    check("the form cleared", model.draft.now.isEmpty && !model.draftDone.now)
 
     Log.i(
       Tag,

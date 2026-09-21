@@ -57,6 +57,29 @@ object Todo {
     check("back is no longer available at the root", !app.canGoBack.now)
     check("back() at the root defers to the platform", !app.back())
 
+    // --- the form: text field and checkbox bound both ways ---
+    check("the draft starts empty", model.draft.now.isEmpty)
+    check("an empty draft is not valid", !model.draftValid.now)
+
+    model.draft.set("Write the catalogue")
+    check("writing the signal reaches the widget",
+      screenTexts.contains("Write the catalogue"),
+      s"screen texts were: $screenTexts")
+    check("a non-empty draft is valid", model.draftValid.now)
+
+    model.draftDone.set(true)
+    val sizeBefore = model.items.now.size
+    model.addDraft()
+    check("adding appends the drafted item",
+      model.items.now.size == sizeBefore + 1 && model.items.now.last.title == "Write the catalogue",
+      model.items.now.map(_.title).toString)
+    check("the committed item kept its done flag", model.items.now.last.done)
+    check("the form cleared", model.draft.now.isEmpty && !model.draftDone.now)
+    check("the cleared field is empty in the widget",
+      !screenTexts.contains("Write the catalogue") ||
+        screenTexts.count(_ == "Write the catalogue") == 1,
+      screenTexts.toString)
+
     println(
       if failures == 0 then "[selftest] ALL CHECKS PASSED"
       else s"[selftest] $failures CHECK(S) FAILED"
