@@ -104,6 +104,15 @@ object dsl {
       children
     )
 
+  /** Re-render `view` whenever `signal` changes.
+    *
+    * `Show` keys on a boolean, so it mounts and unmounts. This keys on the value itself,
+    * which is what an `RemoteData` match needs: Loading -> Done is a different subtree, not a
+    * visibility change.
+    */
+  def Switch[A](signal: Signal[A])(view: A => Element): Element =
+    Element.ForEach[A, A](signal.map(Seq(_)), identity, s => view(s.now))
+
   /** Show `body` only while `when` is true. */
   def Show(when: Signal[Boolean])(body: => Element): Element =
     Element.Show(when, () => body)

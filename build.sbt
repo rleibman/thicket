@@ -9,6 +9,7 @@ ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / licenses     := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 
 val munitV      = "1.3.6"
+val zioV        = "2.1.26"
 val munitCheckV = "1.3.1"
 
 lazy val commonSettings = Seq(
@@ -89,6 +90,30 @@ lazy val rendererGtk = project
   )
   .settings(gtkNativeSettings)
 
+/** The ZIO bridge: effects at the edges of an otherwise effect-free core (docs/07 §7.13).
+  *
+  * Native needs `scala-java-time`, because `zio.Duration` *is* `java.time.Duration` and
+  * Scala Native's javalib has no `java.time` — ZIO does not link at all without it (S8).
+  */
+lazy val effectZio = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/effect-zio"))
+  .dependsOn(core % "compile->compile;test->test")
+  .settings(commonSettings, name := "scala-ui-effect-zio")
+  .jvmSettings(
+    libraryDependencies ++= munitJvm ++ Seq(
+      "dev.zio" %% "zio"         % zioV,
+      "dev.zio" %% "zio-streams" % zioV
+    )
+  )
+  .nativeSettings(
+    libraryDependencies ++= munitNative ++ Seq(
+      "dev.zio"           % s"zio_native0.5_3"            % zioV,
+      "dev.zio"           % s"zio-streams_native0.5_3"    % zioV,
+      "io.github.cquiroz" % "scala-java-time_native0.5_3" % "2.7.0"
+    )
+  )
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot
@@ -145,5 +170,6 @@ lazy val root = project
   .in(file("."))
   .aggregate(signals.jvm, signals.js, signals.native,
              rendererApi.jvm, rendererApi.js, rendererApi.native,
-             core.jvm, core.js, core.native)
+             core.jvm, core.js, core.native,
+             effectZio.jvm, effectZio.native)
   .settings(publish / skip := true, name := "scala-ui")
