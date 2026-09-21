@@ -9,29 +9,35 @@ import scala.collection.immutable.TreeMap
 import scala.concurrent.{Future, ExecutionContext}
 import scala.util.{Failure, Success, Try}
 
-/** Deliberately exercises the Scala 3 runtime features most likely to break on ART:
+/** Deliberately exercises the Scala 3 runtime features most likely to break on ART {
   * `lazy val` (scala.runtime.LazyVals uses Unsafe/VarHandle depending on version),
   * `enum`, `opaque type`, `given`, `LazyList`, `TreeMap`, `Future` on the global
   * ExecutionContext, `Ordering`, `Try`, and string interpolation. No reflection.
   */
-object Counter:
+}
+object Counter {
   opaque type Count = Int
-  object Count:
+  object Count {
     def zero: Count = 0
-    extension (c: Count)
+    extension (c: Count) {
       def inc: Count      = c + 1
       def value: Int      = c
+    }
+  }
+}
 
-enum Mood:
+enum Mood {
   case Calm, Curious, Excited
+}
 
-object Mood:
+object Mood {
   def forCount(n: Int): Mood =
     if n < 3 then Calm else if n < 7 then Curious else Excited
+}
 
 given Ordering[Mood] = Ordering.by(_.ordinal)
 
-class MainActivity extends Activity:
+class MainActivity extends Activity {
   import Counter.*
 
   private var count: Count = Count.zero
@@ -45,7 +51,7 @@ class MainActivity extends Activity:
 
   private var label: TextView = scala.compiletime.uninitialized
 
-  override def onCreate(saved: Bundle): Unit =
+  override def onCreate(saved: Bundle): Unit = {
     super.onCreate(saved)
 
     val root = new LinearLayout(this)
@@ -70,19 +76,23 @@ class MainActivity extends Activity:
     setContentView(root)
     render()
     runAsyncProbe()
+  }
 
-  private def render(): Unit =
+  private def render(): Unit = {
     val n    = count.value
     val mood = Mood.forCount(n)
     val fib  = Try(fibs(n).toString).getOrElse("?")
     label.setText(
       s"count=$n mood=${moodNames(mood)} fib=$fib sorted=${Mood.values.sorted.mkString(",")}"
     )
+  }
 
   /** Does a Future on the global EC actually run under ART? */
-  private def runAsyncProbe(): Unit =
+  private def runAsyncProbe(): Unit = {
     given ExecutionContext = ExecutionContext.global
     Future((1 to 1000).map(BigInt(_)).sum).onComplete {
       case Success(v) => android.util.Log.i("S2", s"Future completed: $v")
       case Failure(e) => android.util.Log.e("S2", "Future failed", e)
     }
+  }
+}

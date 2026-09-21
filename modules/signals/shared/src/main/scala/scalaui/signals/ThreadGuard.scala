@@ -6,11 +6,12 @@ package scalaui.signals
   * The framework installs [[owningThread]] (or its own UI-thread guard) during start-up,
   * once, on the thread that owns the graph.
   */
-trait ThreadGuard:
+trait ThreadGuard {
   /** Throws `IllegalStateException` if `op` is being performed on the wrong thread. */
   def check(op: String): Unit
+}
 
-object ThreadGuard:
+object ThreadGuard {
   /** Allows everything. The default, and the only sensible guard on Scala.js. */
   val off: ThreadGuard = _ => ()
 
@@ -24,3 +25,4 @@ object ThreadGuard:
   def install(g: ThreadGuard): Unit = current = g
   def installed: ThreadGuard        = current
   def check(op: String): Unit       = current.check(op)
+}

@@ -12,21 +12,24 @@ import scala.scalanative.unsafe.*
   * background thread does, it would abort. So the rule is applied here from the start.
   */
 @extern
-private[gtk] object GcExtern:
+private[gtk] object GcExtern {
   def scalanative_GC_set_mutator_thread_state(state: CInt): Unit = extern
+}
 
-private[gtk] object GcState:
+private[gtk] object GcState {
   private inline val Managed   = 0
   private inline val Unmanaged = 1
 
   /** Wrap every host → Scala entry point. Scala is Managed inside `body` and Unmanaged
     * once control returns to the event loop.
     */
-  inline def guarded[A](inline body: A): A =
+  inline def guarded[A](inline body: A): A = {
     GcExtern.scalanative_GC_set_mutator_thread_state(Managed)
     try body
     finally GcExtern.scalanative_GC_set_mutator_thread_state(Unmanaged)
+  }
 
   /** Called once, just before handing the main thread to the GTK main loop. */
   def releaseMainThread(): Unit =
     GcExtern.scalanative_GC_set_mutator_thread_state(Unmanaged)
+}

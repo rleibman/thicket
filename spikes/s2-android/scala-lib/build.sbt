@@ -14,7 +14,9 @@ lazy val scalaLib = project
     name := "s2-scala-lib",
     // S2 finding: Scala 3.9.0 rejects -release 8, 9, 11 and 16. Minimum is **17**, so
     // an Android app built with Scala 3.9 needs AGP Java-17 desugaring. See REPORT.md.
-    scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-release", "17"),
+    scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked",
+    "-no-indent",
+    "-rewrite", "-release", "17"),
     // sbt 2 finding: Classpath entries are `HashedVirtualFileRef`, not `File`, so
     // neither `Attributed.blank(file(...))` nor `fileConverter.toVirtualFile` can be
     // appended to `unmanagedJars` any more. Falling back to sbt's `lib/` convention:

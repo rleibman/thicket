@@ -9,11 +9,11 @@ import scalaui.signals.Var
   * This same value is mounted by the GTK renderer on Linux and by the Android renderer on
   * a phone. If the abstraction is worth anything, this file never has to know which.
   */
-object TodoUi:
+object TodoUi {
 
   final case class Item(id: Int, title: String, done: Boolean)
 
-  final class Model:
+  final class Model {
     val items: Var[Seq[Item]] = Var(
       Seq(
         Item(1, "Structural reconciliation", true),
@@ -23,19 +23,23 @@ object TodoUi:
     )
     private var nextId = 4
 
-    def add(): Unit =
+    def add(): Unit = {
       items.update(_ :+ Item(nextId, s"New item $nextId", false))
       nextId += 1
+    }
 
-    def rotate(): Unit = items.update:
+    def rotate(): Unit = items.update {
       case head +: rest => rest :+ head
       case empty        => empty
+    }
 
-    def toggleFirst(): Unit = items.update:
+    def toggleFirst(): Unit = items.update {
       case head +: rest => head.copy(done = !head.done) +: rest
       case empty        => empty
+    }
 
     def dropLast(): Unit = items.update(_.dropRight(1))
+  }
 
   def bullet(i: Item): String =
     (if i.done then "✓" else "•") + "  " + i.title
@@ -62,3 +66,4 @@ object TodoUi:
 
       Label(model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"))
     )
+}

@@ -30,7 +30,7 @@ final case class Action(label: String, onTap: () => Unit, enabled: Boolean = tru
   * testable (assert on `routes.now`), restorable (serialise a list) and impossible to get
   * wrong (a route cannot be constructed without its arguments).
   */
-final class Nav[R] private (home: R):
+final class Nav[R] private (home: R) {
   // Head is the top of the stack. Never empty: the root cannot be popped.
   private val entries: Var[List[Entry[R]]] = Var(List(Entry(0L, home)))
   private var nextId: Long                 = 1L
@@ -45,49 +45,59 @@ final class Nav[R] private (home: R):
   val depth: Signal[Int]           = entries.map(_.size)
   val canGoBack: Signal[Boolean]   = entries.map(_.sizeIs > 1)
 
-  def push(route: R): Unit =
+  def push(route: R): Unit = {
     val id = nextId
     nextId += 1
     entries.update(Entry(id, route) :: _)
+  }
 
   /** Pops the top screen. Returns false at the root, which is what a platform Back handler
     * needs in order to fall through to the system (finish the Activity, close the window).
     */
   def pop(): Boolean =
-    entries.now match
+    entries.now match {
       case _ :: rest if rest.nonEmpty =>
         entries.set(rest)
         true
       case _ => false
+    }
 
   /** Replaces the top screen without growing the stack. */
-  def replace(route: R): Unit =
+  def replace(route: R): Unit = {
     val id = nextId
     nextId += 1
     entries.update(es => Entry(id, route) :: es.tail)
+  }
 
   /** Clears the stack down to a single screen. */
-  def reset(route: R): Unit =
+  def reset(route: R): Unit = {
     val id = nextId
     nextId += 1
     entries.set(List(Entry(id, route)))
+  }
 
   /** Pops until `route` is on top, if it is on the stack at all. */
-  def popTo(route: R): Boolean =
+  def popTo(route: R): Boolean = {
     val target = entries.now.dropWhile(_.route != route)
     if target.isEmpty then false
-    else
+    else {
       entries.set(target)
       true
+    }
+  }
 
   /** Restores a previously captured stack, e.g. after process death. */
   def restore(rs: List[R]): Unit =
-    if rs.nonEmpty then
-      val restored = rs.map: r =>
+    if rs.nonEmpty then {
+      val restored = rs.map { r =>
         val id = nextId
         nextId += 1
         Entry(id, r)
+      }
       entries.set(restored)
+    }
+}
 
-object Nav:
+object Nav {
   def apply[R](home: R): Nav[R] = new Nav(home)
+}

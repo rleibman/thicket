@@ -1,9 +1,9 @@
 package scalaui.signals
 
-private[signals] object ThreadGuardPlatform:
-  def owningThread: ThreadGuard = new ThreadGuard:
+private[signals] object ThreadGuardPlatform {
+  def owningThread: ThreadGuard = new ThreadGuard {
     private var owner: Thread | Null = null
-    def check(op: String): Unit =
+    def check(op: String): Unit = {
       val current = Thread.currentThread()
       val o       = owner
       if o == null then owner = current
@@ -13,3 +13,6 @@ private[signals] object ThreadGuardPlatform:
             s"'${o.nn.getName}'. Signals are single-threaded; marshal onto the UI thread " +
             "(see docs/07 §7.7)."
         )
+    }
+  }
+}

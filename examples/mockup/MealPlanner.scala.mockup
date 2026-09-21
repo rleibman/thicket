@@ -25,12 +25,13 @@ import mealorama.domain.{Ingredient, Recipe, RecipeId, Week, Meal}
 // serialising a list, and a test can assert on it directly.
 // `derives Routable` generates deep-link parsing: mealorama://recipe/42.
 
-enum Route derives Routable:
+enum Route derives Routable {
   case Plan(week: Week)
   case Recipe(id: RecipeId)
   case EditRecipe(id: Option[RecipeId])
   case Pantry
   case Settings
+}
 
 // -----------------------------------------------------------------------------
 // 2. The app is a total function from Route to Screen
@@ -38,17 +39,18 @@ enum Route derives Routable:
 // Add a case to Route and this match fails to compile. There is no router
 // registry to forget to update, and no runtime "unknown route" branch.
 
-object MealPlanner extends ScalaUiApp[AppEnv]:
+object MealPlanner extends ScalaUiApp[AppEnv] {
 
   val environment: ZLayer[Any, Nothing, AppEnv] = AppLayer.live
   val home: Route                               = Route.Plan(Week.current)
 
-  def screen(route: Route): Screen = route match
+  def screen(route: Route): Screen = route match {
     case Route.Plan(week)     => PlanScreen(week)
     case Route.Recipe(id)     => RecipeScreen(id)
     case Route.EditRecipe(id) => EditRecipeScreen(id)
     case Route.Pantry         => PantryScreen()
     case Route.Settings       => SettingsScreen()
+  }
 
   // Tabs are native: UITabBar, BottomNavigationView, a GtkStackSwitcher,
   // and an NSToolbar segmented control on macOS.
@@ -57,6 +59,7 @@ object MealPlanner extends ScalaUiApp[AppEnv]:
     Tab("Pantry", Icon.Basket, Route.Pantry),
     Tab("Settings", Icon.Gear, Route.Settings)
   )
+}
 
 // -----------------------------------------------------------------------------
 // 3. Capabilities are declared, and the compiler enforces them
@@ -71,14 +74,14 @@ def PlanScreen(week: Week)(using Nav, Planner, Recipes): Screen =
     actions = Seq(
       Action.Add(onTap = Nav.push(Route.EditRecipe(None)))
     )
-  ):
+  ) {
     // A ZIO becomes a Signal of an explicit three-state value. The fiber is
     // forked into this screen's Scope, so leaving the screen interrupts it.
     val plan: Signal[Async[PlanError, Seq[Day]]] = Planner.forWeek(week).asSignal
 
     // 4. Async is an exhaustive match, so "forgot to handle loading" and
     //    "forgot to handle the error" are compile errors, not blank screens.
-    Async(plan):
+    Async(plan) {
       case Async.Loading =>
         Skeleton.list(rows = 7) // shimmer placeholders, platform-styled
 
@@ -88,10 +91,15 @@ def PlanScreen(week: Week)(using Nav, Planner, Recipes): Screen =
       case Async.Done(days) =>
         // Virtualised: backed by UITableView / RecyclerView / GtkListView, so a
         // year of meals costs the same as a week.
-        LazyColumn(days, key = _.date):  day =>
-          Section(header = day.date.dayName):
-            ForEach(day.meals, key = _.id): meal =>
+        LazyColumn(days, key = _.date) { day =>
+          Section(header = day.date.dayName) {
+            ForEach(day.meals, key = _.id) { meal =>
               MealRow(meal)
+            }
+          }
+        }
+    }
+  }
 
 def MealRow(meal: Meal)(using Nav, Planner): Element =
   Row(gap = 12.dp, align = Align.Center)(
@@ -118,12 +126,12 @@ def MealRow(meal: Meal)(using Nav, Planner): Element =
 // something extra on one platform — and it is local, not a forked codebase.
 
 def RecipeScreen(id: RecipeId)(using Nav, Recipes): Screen =
-  Screen(title = "Recipe"):
-    Async(Recipes.byId(id).asSignal):
+  Screen(title = "Recipe") {
+    Async(Recipes.byId(id).asSignal) {
       case Async.Loading     => Skeleton.detail()
       case Async.Failed(e)   => ErrorState(e.userMessage, retry = Recipes.refresh(id))
       case Async.Done(recipe) =>
-        Scroll:
+        Scroll {
           Column(gap = 16.dp, padding = 16.dp)(
             Hero(recipe.image, ratio = 16 / 9f),
             Text(recipe.name, style = Text.Title),
@@ -141,6 +149,9 @@ def RecipeScreen(id: RecipeId)(using Nav, Recipes): Screen =
                 ios     = _.hapticOnConfirm(Haptic.Warning)
               )
           )
+        }
+    }
+  }
 
 // -----------------------------------------------------------------------------
 // 6. Forms: validation lives in the type, and the toolbar knows about it
@@ -172,7 +183,7 @@ def EditRecipeScreen(id: Option[RecipeId])(using Nav, Recipes): Screen =
         yield ()
       )
     )
-  ):
+  ) {
     // `Field(_.name)` is a lens: the compiler knows the field's type, so it
     // rejects a Stepper bound to a String, and the error text comes from the
     // refinement rather than from a hand-written validator.
@@ -182,6 +193,7 @@ def EditRecipeScreen(id: Option[RecipeId])(using Nav, Recipes): Screen =
       Field(_.ingredients)(IngredientEditor()),
       Field(_.notes)(TextArea(lines = 4))
     )
+  }
 
 // -----------------------------------------------------------------------------
 // 7. Long-running work is owned by the component
@@ -191,28 +203,32 @@ def EditRecipeScreen(id: Option[RecipeId])(using Nav, Recipes): Screen =
 // to write, but because the scope closed.
 
 def PantryScreen()(using Nav, Pantry): Screen =
-  Screen(title = "Pantry"):
+  Screen(title = "Pantry") {
     val items = Pantry.items.asSignal // a ZStream, live-updating
     val query = Var("")
 
     Column(gap = 8.dp)(
       SearchField(query, placeholder = "Filter"),
 
-      Async(items):
+      Async(items) {
         case Async.Loading   => Skeleton.list(rows = 10)
         case Async.Failed(e) => ErrorState(e.userMessage, retry = Pantry.resync)
         case Async.Done(all) =>
-          val shown = (all, query.debounced(300.millis)).mapN: (xs, q) =>
+          val shown = (all, query.debounced(300.millis)).mapN { (xs, q) =>
             xs.filter(_.name.toLowerCase.contains(q.toLowerCase))
+          }
 
-          LazyColumn(shown, key = _.id): item =>
+          LazyColumn(shown, key = _.id) { item =>
             Row(gap = 12.dp)(
               Checkbox(item.inStock, onChange = Pantry.setStock(item.id, _)),
               Text(item.name),
               Spacer(),
               Text(item.quantity.show, style = Text.Caption.secondary)
             )
+          }
+      }
     ).launch(Pantry.subscribeToChanges) // interrupted on unmount
+  }
 
 // -----------------------------------------------------------------------------
 // 8. Tests drive the real tree through a headless renderer
@@ -220,9 +236,9 @@ def PantryScreen()(using Nav, Pantry): Screen =
 // No emulator, no simulator, no screenshots. The same reconciler, a renderer
 // that records instead of drawing, and ZIO's TestClock so debounces are exact.
 
-class PlanScreenSpec extends UiSpec:
+class PlanScreenSpec extends UiSpec {
 
-  test("removing a meal takes it off the plan"):
+  test("removing a meal takes it off the plan") {
     val app = TestApp(MealPlanner, environment = AppLayer.test)
     app.navigate(Route.Plan(Week.of(2026, 38)))
 
@@ -230,8 +246,9 @@ class PlanScreenSpec extends UiSpec:
 
     assert(app.findAll[Text]("Chicken tagine").isEmpty)
     assertEquals(app.backStack, List(Route.Plan(Week.of(2026, 38))))
+  }
 
-  test("the save button stays disabled until the draft is valid"):
+  test("the save button stays disabled until the draft is valid") {
     val app = TestApp(MealPlanner, environment = AppLayer.test)
     app.navigate(Route.EditRecipe(None))
 
@@ -239,3 +256,5 @@ class PlanScreenSpec extends UiSpec:
     app.node[TextField]("Name").type("Tagine")
     app.node[IngredientEditor].add("Chicken", 500.g)
     assert(app.action("Done").enabled)
+  }
+}

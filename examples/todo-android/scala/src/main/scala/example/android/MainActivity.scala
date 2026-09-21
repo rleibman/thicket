@@ -18,13 +18,13 @@ import scalaui.signals.{Owner, Signal, ThreadGuard}
   * stack is at its root `back()` returns false and the Activity finishes, which is the
   * behaviour Android users expect.
   */
-class MainActivity extends Activity:
+class MainActivity extends Activity {
 
   private val owner = Owner()
   private val model = TodoApp.Model()
   private val app   = TodoApp(model)
 
-  override def onCreate(saved: Bundle): Unit =
+  override def onCreate(saved: Bundle): Unit = {
     super.onCreate(saved)
 
     // Android's main thread owns the signal graph; a stray write from elsewhere should
@@ -36,23 +36,26 @@ class MainActivity extends Activity:
 
     // Restore the back stack across process death. It is a List of a route ADT, so this is
     // ordinary serialisation rather than a framework-specific save/restore protocol.
-    Option(saved).map(_.getStringArray(StackKey)).foreach: saved =>
+    Option(saved).map(_.getStringArray(StackKey)).foreach { saved =>
       app.navigator.restore(saved.toList.flatMap(TodoApp.parseRoute))
 
+    }
     val mounted = Reconciler.mount(renderer, app.element)
     val scroll  = ScrollView(this)
     scroll.addView(mounted.handle)
     setContentView(scroll)
 
     Signal.effect(setTitle(app.title()))
-    Signal.effect:
+    Signal.effect {
       val up = app.canGoBack()
       Option(getActionBar).foreach(_.setDisplayHomeAsUpEnabled(up))
+    }
 
     registerBackHandler()
 
     if getIntent != null && getIntent.getBooleanExtra("selftest", false) then
       SelfTest.run(model, app, mounted.handle)
+  }
 
   /** Android 13+ replaced `onBackPressed` with a dispatcher that also drives the predictive
     * back gesture — the animated peek at the previous screen. Registering here is what makes
@@ -62,13 +65,15 @@ class MainActivity extends Activity:
     if Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU then
       getOnBackInvokedDispatcher.registerOnBackInvokedCallback(
         OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-        new OnBackInvokedCallback:
+        new OnBackInvokedCallback {
           def onBackInvoked(): Unit = if !app.back() then finish()
+        }
       )
 
-  override def onSaveInstanceState(out: Bundle): Unit =
+  override def onSaveInstanceState(out: Bundle): Unit = {
     super.onSaveInstanceState(out)
     out.putStringArray(StackKey, app.navigator.routes.now.map(TodoApp.showRoute).toArray)
+  }
 
   /** Pre-Android-13 fallback; the dispatcher above supersedes it where available. */
   @nowarn("cat=deprecation")
@@ -77,13 +82,16 @@ class MainActivity extends Activity:
 
   /** The action bar's Up arrow. */
   override def onOptionsItemSelected(item: MenuItem): Boolean =
-    if item.getItemId == android.R.id.home then
+    if item.getItemId == android.R.id.home then {
       val _ = app.back()
       true
+    }
     else super.onOptionsItemSelected(item)
 
-  override def onDestroy(): Unit =
+  override def onDestroy(): Unit = {
     owner.dispose()
     super.onDestroy()
+  }
 
   private val StackKey = "scalaui.backstack"
+}

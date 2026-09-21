@@ -10,8 +10,9 @@ import scalaui.yoga.generated.enumerations.YGMeasureMode
   * See the C file for why this exists.
   */
 @extern
-object MeasureShim:
+object MeasureShim {
   type ScalaMeasureFn =
     CFuncPtr6[YGNodeConstRef, Float, YGMeasureMode, Float, YGMeasureMode, Ptr[YGSize], Unit]
 
   def sui_set_measure_func(node: YGNodeRef, fn: ScalaMeasureFn): Unit = extern
+}

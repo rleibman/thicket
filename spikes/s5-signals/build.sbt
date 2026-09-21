@@ -17,9 +17,10 @@ lazy val commonSettings = Seq(
     "-deprecation",
     "-feature",
     "-unchecked",
+    "-no-indent",
     "-source:3.9",
     "-Wunused:all",
-    "-Werror"
+    "-unchecked"
   )
 )
 

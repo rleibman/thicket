@@ -10,7 +10,9 @@ val yogaBuild   = settingKey[File]("CMake build dir containing libyogacore.a")
 
 lazy val commonSettings = Seq(
   Test / parallelExecution := false,
-  scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-source:3.9")
+  scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked",
+    "-no-indent",
+    "-rewrite", "-source:3.9")
 )
 
 lazy val native = project

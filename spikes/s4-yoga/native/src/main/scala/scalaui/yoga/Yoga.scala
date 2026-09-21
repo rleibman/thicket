@@ -12,7 +12,7 @@ import scalaui.yoga.generated.enumerations.*
   * layout API. Nodes are manually freed — Yoga owns C memory that the Scala Native GC
   * knows nothing about, which is itself a finding for the renderer design.
   */
-final class YogaNode private (private[yoga] val ref: YGNodeRef):
+final class YogaNode private (private[yoga] val ref: YGNodeRef) {
 
   /** sn-bindgen maps `YGNode*` and `const YGNode*` to two *distinct* opaque types,
     * both `Ptr[YGNode]` underneath, with no conversion between them. Every read-only
@@ -57,6 +57,8 @@ final class YogaNode private (private[yoga] val ref: YGNodeRef):
   def layoutHeight: Float = YGNodeLayoutGetHeight(constRef)
 
   def frame: (Float, Float, Float, Float) = (left, top, layoutWidth, layoutHeight)
+}
 
-object YogaNode:
+object YogaNode {
   def apply(): YogaNode = new YogaNode(YGNodeNew())
+}

@@ -11,7 +11,7 @@ import scalaui.signals.Signal
   * in-flight state across a push. Moving to those containers is a renderer change behind
   * this same API — the app-facing shape does not move.
   */
-final class NavHost[R] private (nav: Nav[R], screenFor: R => Screen) extends AppRoot:
+final class NavHost[R] private (nav: Nav[R], screenFor: R => Screen) extends AppRoot {
 
   /** The element to mount. Contains the current screen's content and nothing else: title
     * and actions are platform chrome, applied by the host from [[screen]].
@@ -20,10 +20,11 @@ final class NavHost[R] private (nav: Nav[R], screenFor: R => Screen) extends App
     // Keyed on the entry id, so a push always mounts a fresh screen and a pop cannot
     // resurrect the outgoing one.
     Column()(
-      ForEach(nav.stack.map(_.take(1)), key = (e: Entry[R]) => e.id): entry =>
+      ForEach(nav.stack.map(_.take(1)), key = (e: Entry[R]) => e.id) { entry =>
         // Safe untracked read: the route is fixed for the lifetime of an entry id, so the
         // content never needs to react to it.
         screenFor(entry.now.route).content
+      }
     )
 
   /** The current screen, for the host to apply chrome from. */
@@ -40,10 +41,12 @@ final class NavHost[R] private (nav: Nav[R], screenFor: R => Screen) extends App
   def navigator: Nav[R] = nav
 
   def push(route: R): Unit = nav.push(route)
+}
 
-object NavHost:
+object NavHost {
   /** `screenFor` is a plain function from the route ADT, so the compiler checks that every
     * route has a screen. There is no route registry to forget to update.
     */
   def apply[R](nav: Nav[R])(screenFor: R => Screen): NavHost[R] =
     new NavHost(nav, screenFor)
+}

@@ -9,7 +9,7 @@ import scalaui.signals.{Owner, Var}
   * show the right text by rebuilding it; the point of keying is that surviving items keep
   * their widgets, because that is what preserves focus, scroll position and animations.
   */
-class StructuralSuite extends munit.FunSuite:
+class StructuralSuite extends munit.FunSuite {
 
   /** Text of a container's children, in render order. */
   private def texts(r: TestRenderer, root: Int): Seq[String] =
@@ -17,7 +17,7 @@ class StructuralSuite extends munit.FunSuite:
 
   // -- Show -----------------------------------------------------------------
 
-  test("Show mounts and unmounts its body"):
+  test("Show mounts and unmounts its body") {
     val o = Owner(); given Owner = o
     val r       = TestRenderer()
     val visible = Var(false)
@@ -29,8 +29,9 @@ class StructuralSuite extends munit.FunSuite:
     visible.set(false)
     assertEquals(texts(r, m.handle), Seq("always"))
     o.dispose()
+  }
 
-  test("hiding a Show destroys its widgets and stops its effects"):
+  test("hiding a Show destroys its widgets and stops its effects") {
     val o = Owner(); given Owner = o
     val r       = TestRenderer()
     val visible = Var(true)
@@ -48,8 +49,9 @@ class StructuralSuite extends munit.FunSuite:
     count.set(2) // the effect that fed the hidden label must be gone
     assertEquals(r.destroyed.length, destroyedSoFar, "no further renderer work after unmount")
     o.dispose()
+  }
 
-  test("Show re-mounts fresh content, and re-renders its body each time"):
+  test("Show re-mounts fresh content, and re-renders its body each time") {
     val o = Owner(); given Owner = o
     val r       = TestRenderer()
     val visible = Var(true)
@@ -62,8 +64,9 @@ class StructuralSuite extends munit.FunSuite:
     assertEquals(builds, 2, "the body is re-evaluated on remount")
     assertEquals(texts(r, m.handle), Seq("hi"))
     o.dispose()
+  }
 
-  test("two adjacent Shows keep their order regardless of which is visible"):
+  test("two adjacent Shows keep their order regardless of which is visible") {
     // An empty region must be transparent when the next sibling computes its anchor.
     val o = Owner(); given Owner = o
     val r = TestRenderer()
@@ -82,18 +85,20 @@ class StructuralSuite extends munit.FunSuite:
     b.set(false)
     assertEquals(texts(r, m.handle), Seq("first", "A", "last"))
     o.dispose()
+  }
 
   // -- ForEach --------------------------------------------------------------
 
-  test("ForEach renders one child per item, in order"):
+  test("ForEach renders one child per item, in order") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val items = Var(Seq("a", "b", "c"))
     val m     = Reconciler.mount(r, Column()(ForEach(items, key = identity)(Label(_))))
     assertEquals(texts(r, m.handle), Seq("a", "b", "c"))
     o.dispose()
+  }
 
-  test("appending and removing items touches only those items"):
+  test("appending and removing items touches only those items") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val items = Var(Seq("a", "b"))
@@ -109,8 +114,9 @@ class StructuralSuite extends munit.FunSuite:
     assertEquals(texts(r, m.handle), Seq("a", "c"))
     assertEquals(r.childrenOf(m.handle).head, before.head, "'a' is still the same widget")
     o.dispose()
+  }
 
-  test("reordering moves existing widgets instead of rebuilding them"):
+  test("reordering moves existing widgets instead of rebuilding them") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val items = Var(Seq("a", "b", "c"))
@@ -130,8 +136,9 @@ class StructuralSuite extends munit.FunSuite:
       "each label is still the widget it was"
     )
     o.dispose()
+  }
 
-  test("a stable list does no renderer work at all"):
+  test("a stable list does no renderer work at all") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val items = Var(Seq("a", "b", "c"))
@@ -141,8 +148,9 @@ class StructuralSuite extends munit.FunSuite:
     items.set(Seq("a", "b", "c")) // equal value: the signal should not even propagate
     assertEquals(r.opCount, ops)
     o.dispose()
+  }
 
-  test("items are keyed, not positional"):
+  test("items are keyed, not positional") {
     // Same texts, different identities: keying by index would reuse; keying by value
     // must rebuild. This is the test that catches a positional 'optimisation'.
     val o = Owner(); given Owner = o
@@ -155,10 +163,11 @@ class StructuralSuite extends munit.FunSuite:
     assertEquals(texts(r, m.handle), Seq("#9", "#2", "#3"))
     assert(!r.childrenOf(m.handle).contains(first), "key 1 was removed, not relabelled")
     o.dispose()
+  }
 
   // -- Nesting and interaction ----------------------------------------------
 
-  test("a ForEach nested inside a Show"):
+  test("a ForEach nested inside a Show") {
     val o = Owner(); given Owner = o
     val r       = TestRenderer()
     val visible = Var(true)
@@ -182,8 +191,9 @@ class StructuralSuite extends munit.FunSuite:
     val inner2 = r.childrenOf(m.handle).head
     assertEquals(texts(r, inner2), Seq("q"), "remount reflects the current items")
     o.dispose()
+  }
 
-  test("a region sits correctly between static siblings"):
+  test("a region sits correctly between static siblings") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val items = Var(Seq.empty[String])
@@ -198,8 +208,9 @@ class StructuralSuite extends munit.FunSuite:
     items.set(Seq("2"))
     assertEquals(texts(r, m.handle), Seq("head", "2", "tail"))
     o.dispose()
+  }
 
-  test("a Fragment contributes several children to one slot"):
+  test("a Fragment contributes several children to one slot") {
     val o = Owner(); given Owner = o
     val r = TestRenderer()
     val m = Reconciler.mount(
@@ -208,8 +219,9 @@ class StructuralSuite extends munit.FunSuite:
     )
     assertEquals(texts(r, m.handle), Seq("a", "b", "c", "d"))
     o.dispose()
+  }
 
-  test("removing a list item disposes the effects its row created"):
+  test("removing a list item disposes the effects its row created") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val items = Var(Seq("a", "b"))
@@ -230,8 +242,9 @@ class StructuralSuite extends munit.FunSuite:
     // Exactly one update, for the surviving row: the removed row's effect is gone.
     assertEquals(r.opCount - opsAfterRemoval, 1)
     o.dispose()
+  }
 
-  test("an item that keeps its key but changes its data updates in place"):
+  test("an item that keeps its key but changes its data updates in place") {
     // The failure this guards against: keyed reuse showing stale content. A row bound to
     // a plain value would be a snapshot taken at mount time.
     final case class Todo(id: Int, title: String, done: Boolean)
@@ -257,8 +270,9 @@ class StructuralSuite extends munit.FunSuite:
     assertEquals(r.createCount, createdBefore, "no widget was created")
     assert(r.destroyed.isEmpty, "no widget was destroyed")
     o.dispose()
+  }
 
-  test("a changed item patches only its own row"):
+  test("a changed item patches only its own row") {
     final case class Todo(id: Int, title: String)
     val o = Owner(); given Owner = o
     val r = TestRenderer()
@@ -272,3 +286,5 @@ class StructuralSuite extends munit.FunSuite:
     todos.set(Seq(Todo(1, "a"), Todo(2, "B"), Todo(3, "c")))
     assertEquals(r.opCount - ops, 1, "exactly one widget update for one changed item")
     o.dispose()
+  }
+}

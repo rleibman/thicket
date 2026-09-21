@@ -13,7 +13,7 @@ import sn.gnome.glib.internal.{gpointer, gboolean, gint}
   *
   * Confirms independently that the design is forced, not a preference.
   */
-object Handles:
+object Handles {
   private val callbacks: mutable.LongMap[() => Unit]        = mutable.LongMap.empty
   private var nextId: Long                                  = 1L
   val kindOf: mutable.Map[Ptr[GtkWidget], WidgetKind]        = mutable.Map.empty
@@ -31,11 +31,12 @@ object Handles:
   def pointerToId(p: gpointer): Long =
     Intrinsics.castRawPtrToLong(toRawPtr(p.asInstanceOf[Ptr[Byte]]))
 
-  def registerCallback(f: () => Unit): Long =
+  def registerCallback(f: () => Unit): Long = {
     val id = nextId
     nextId += 1
     callbacks(id) = f
     id
+  }
 
   private def invoke(id: Long): Unit =
     callbacks.get(id).foreach(_())
@@ -59,3 +60,4 @@ object Handles:
       invoke(pointerToId(data))
       0.asInstanceOf[gint] // G_SOURCE_REMOVE: run once
     }
+}

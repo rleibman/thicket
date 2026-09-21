@@ -6,10 +6,10 @@ import scalaui.renderer.gtk.GtkApp
 import scalaui.signals.Var
 
 /** The smallest complete scala-ui app. */
-object Counter:
+object Counter {
 
-  def main(args: Array[String]): Unit =
-    val _ = GtkApp.run("dev.scalaui.counter", 380, 220):
+  def main(args: Array[String]): Unit = {
+    val _ = GtkApp.run("dev.scalaui.counter", 380, 220) {
       val count = Var(0)
 
       AppRoot(
@@ -23,3 +23,6 @@ object Counter:
           )
         )
       )
+    }
+  }
+}

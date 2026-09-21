@@ -4,9 +4,9 @@ import scalaui.core.dsl.*
 import scalaui.renderer.WidgetKind
 import scalaui.signals.{Owner, Var}
 
-class ReconcilerSuite extends munit.FunSuite:
+class ReconcilerSuite extends munit.FunSuite {
 
-  test("mounts the tree in declaration order"):
+  test("mounts the tree in declaration order") {
     val o = Owner(); given Owner = o
     val r = TestRenderer()
     val m = Reconciler.mount(r, Column(spacing = 4)(Label("a"), Label("b"), Label("c")))
@@ -17,8 +17,9 @@ class ReconcilerSuite extends munit.FunSuite:
     assertEquals(kids.map(r.text), Seq("a", "b", "c"), "insertAfter preserved order")
     assertEquals(r.nodes(m.handle).props("spacing"), "4")
     o.dispose()
+  }
 
-  test("a reactive label follows its signal"):
+  test("a reactive label follows its signal") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val count = Var(0)
@@ -29,8 +30,9 @@ class ReconcilerSuite extends munit.FunSuite:
     count.set(7)
     assertEquals(r.text(label), "Count: 7", "signal update reached the widget")
     o.dispose()
+  }
 
-  test("tapping a button runs the handler and updates the bound label"):
+  test("tapping a button runs the handler and updates the bound label") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val count = Var(0)
@@ -51,8 +53,9 @@ class ReconcilerSuite extends munit.FunSuite:
     r.tap(reset)
     assertEquals(r.text(label), "Count: 0")
     o.dispose()
+  }
 
-  test("disposing the owner stops updates; destroy tears the tree down"):
+  test("disposing the owner stops updates; destroy tears the tree down") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()
     val count = Var(0)
@@ -67,8 +70,9 @@ class ReconcilerSuite extends munit.FunSuite:
 
     m.dispose()
     assertEquals(r.destroyed.toSet, Set(m.handle, label))
+  }
 
-  test("static props are applied at create time, not via an effect"):
+  test("static props are applied at create time, not via an effect") {
     val o = Owner(); given Owner = o
     val r = TestRenderer()
     val m = Reconciler.mount(r, Column(padding = 12)(Button("go", enabled = false)(())))
@@ -77,3 +81,5 @@ class ReconcilerSuite extends munit.FunSuite:
     assertEquals(r.nodes(b).props("enabled"), "false")
     assertEquals(r.text(b), "go")
     o.dispose()
+  }
+}

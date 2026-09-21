@@ -6,7 +6,7 @@ import scala.collection.mutable
   * which is how a UI component unsubscribes everything it created when it unmounts
   * (docs/07 §7.2). Disposal is explicit: no weak references, no GC dependence.
   */
-final class Owner private[signals] (parent: Owner | Null) extends Disposable:
+final class Owner private[signals] (parent: Owner | Null) extends Disposable {
   private val children: mutable.ArrayBuffer[Disposable] = mutable.ArrayBuffer.empty
   private var isDisposed                                = false
 
@@ -20,15 +20,18 @@ final class Owner private[signals] (parent: Owner | Null) extends Disposable:
 
   /** Disposes children in reverse creation order, then itself. Idempotent. */
   def dispose(): Unit =
-    if !isDisposed then
+    if !isDisposed then {
       isDisposed = true
       var i = children.length - 1
-      while i >= 0 do
+      while i >= 0 do {
         children(i).dispose()
         i -= 1
+      }
       children.clear()
+    }
+}
 
-object Owner:
+object Owner {
   /** A new detached lifetime; caller is responsible for disposing it. */
   def apply(): Owner = new Owner(null)
 
@@ -38,12 +41,15 @@ object Owner:
   /** Runs `body` under a *child* of the current owner and returns that child, so
     * nested lifetimes do not need a second named `given` in the same scope.
     */
-  def scoped[A](body: Owner ?=> A)(using parent: Owner): Owner =
+  def scoped[A](body: Owner ?=> A)(using parent: Owner): Owner = {
     val o = new Owner(parent)
     body(using o)
     o
+  }
 
   /** Runs `body` under a fresh owner and hands both back. */
-  def root[A](body: Owner ?=> A): (A, Owner) =
+  def root[A](body: Owner ?=> A): (A, Owner) = {
     val o = Owner()
     (body(using o), o)
+  }
+}

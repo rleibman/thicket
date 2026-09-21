@@ -12,7 +12,7 @@ import sn.gnome.glib.internal.{gchar, gpointer}
   *
   * This is the whole app entry point for a GTK target: `GtkApp.run("id", "Title")(ui)`.
   */
-object GtkApp:
+object GtkApp {
 
   // A CFuncPtr cannot close over local state, so the mount parameters live here.
   private var appId: String                   = "dev.scalaui.app"
@@ -30,16 +30,17 @@ object GtkApp:
   var rootHandle: Ptr[GtkWidget] = null
 
   /** Runs `f` on the GTK main loop. Safe from any thread. */
-  def postToUi(f: () => Unit): Unit =
+  def postToUi(f: () => Unit): Unit = {
     val id = Handles.register(f)
     val _  = sn.gnome.glib.internal.g_idle_add(
       sn.gnome.glib.internal.GSourceFunc(Handles.idle),
       Handles.idToPointer(id)
     )
+  }
 
   private val onActivate: CFuncPtr2[Ptr[Byte], Ptr[Byte], Unit] =
     CFuncPtr2.fromScalaFunction { (app: Ptr[Byte], _: Ptr[Byte]) =>
-      GcState.guarded:
+      GcState.guarded {
         val window = gtk_application_window_new(app.asInstanceOf[Ptr[GtkApplication]])
         val w      = window.asInstanceOf[Ptr[GtkWindow]]
         gtk_window_set_default_size(w, windowSize._1, windowSize._2)
@@ -54,7 +55,7 @@ object GtkApp:
         // Native chrome, applied from AppRoot rather than drawn into the element tree.
         val back = gtk_button_new_from_icon_name(Zone(toCString("go-previous-symbolic")))
         gtk_header_bar_pack_start(header.asInstanceOf[Ptr[GtkHeaderBar]], back)
-        Zone:
+        Zone {
           val _ = g_signal_connect_data(
             back.asInstanceOf[gpointer],
             toCString("clicked").asInstanceOf[Ptr[gchar]],
@@ -63,6 +64,7 @@ object GtkApp:
             null.asInstanceOf[GClosureNotify],
             GConnectFlags.define(0)
           )
+        }
         Signal.effect(gtk_widget_set_visible(back, gboolTrue(root.canGoBack())))
         Signal.effect(Zone(gtk_window_set_title(w, toCString(root.title()))))
 
@@ -70,6 +72,7 @@ object GtkApp:
         rootHandle = mounted.handle
         gtk_window_set_child(w, mounted.handle)
         gtk_window_present(w)
+      }
     }
 
   private val onBack: CFuncPtr2[Ptr[Byte], Ptr[Byte], Unit] =
@@ -83,7 +86,7 @@ object GtkApp:
   /** The window title comes from `AppRoot.title`, so it follows the top screen. */
   def run(id: String, width: Int = 420, height: Int = 260)(
       ui: Owner ?=> AppRoot
-  ): Int =
+  ): Int = {
     // The signal graph belongs to whichever thread reaches it first; on GTK that is the
     // main loop's thread. Installing the guard makes a stray cross-thread write fail loudly
     // instead of corrupting the graph (docs/05 A-06).
@@ -96,7 +99,7 @@ object GtkApp:
     val app = Zone(
       gtk_application_new(toCString(appId), GApplicationFlags.G_APPLICATION_DEFAULT_FLAGS)
     )
-    Zone:
+    Zone {
       val _ = g_signal_connect_data(
         app.asInstanceOf[gpointer],
         toCString("activate").asInstanceOf[Ptr[gchar]],
@@ -105,8 +108,11 @@ object GtkApp:
         null.asInstanceOf[GClosureNotify],
         GConnectFlags.define(0)
       )
+    }
 
     // From here the GTK main loop owns this thread, so Scala must not look Managed to the
     // GC while it is parked in poll() (S3).
     GcState.releaseMainThread()
     g_application_run(app.asInstanceOf[Ptr[GApplication]], 0, null)
+  }
+}

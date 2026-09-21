@@ -7,16 +7,18 @@ import scalaui.renderer.gtk.{GtkApp, GtkInspect}
   * With `SCALAUI_SELFTEST=1` it drives the app and reads the result back out of GTK,
   * including navigation: push, pop, and the window title following the top screen.
   */
-object Todo:
+object Todo {
 
   private val model = TodoApp.Model()
   private var app: scalaui.core.NavHost[TodoApp.Route] = null
 
-  def main(args: Array[String]): Unit =
-    val _ = GtkApp.run("dev.scalaui.todo", 460, 440):
+  def main(args: Array[String]): Unit = {
+    val _ = GtkApp.run("dev.scalaui.todo", 460, 440) {
       if sys.env.contains("SCALAUI_SELFTEST") then GtkApp.postToUi(() => selfTest())
       app = TodoApp(model)
       app
+    }
+  }
 
   /** Every piece of text in the mounted screen, in tree order. */
   private def screenTexts: List[String] =
@@ -24,12 +26,13 @@ object Todo:
 
   private var failures = 0
 
-  private def check(name: String, cond: Boolean, detail: => String = ""): Unit =
+  private def check(name: String, cond: Boolean, detail: => String = ""): Unit = {
     if !cond then failures += 1
     println(s"[selftest] ${if cond then "ok  " else "FAIL"} $name")
     if !cond && detail.nonEmpty then println(s"             $detail")
+  }
 
-  private def selfTest(): Unit =
+  private def selfTest(): Unit = {
     println("[selftest] driving navigation and reading back out of GTK")
 
     check("starts on the items screen", app.title.now == "Todo")
@@ -58,3 +61,5 @@ object Todo:
       if failures == 0 then "[selftest] ALL CHECKS PASSED"
       else s"[selftest] $failures CHECK(S) FAILED"
     )
+  }
+}

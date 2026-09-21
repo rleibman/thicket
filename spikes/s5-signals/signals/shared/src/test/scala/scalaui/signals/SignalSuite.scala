@@ -1,8 +1,8 @@
 package scalaui.signals
 
-class SignalSuite extends munit.FunSuite:
+class SignalSuite extends munit.FunSuite {
 
-  test("var: read, set, equality cutoff"):
+  test("var: read, set, equality cutoff") {
     val o = Owner()
     given Owner = o
     val a       = Var(1)
@@ -14,8 +14,9 @@ class SignalSuite extends munit.FunSuite:
     a.set(2)
     assertEquals(runs, 2)
     o.dispose()
+  }
 
-  test("diamond: each computed evaluates at most once per change"):
+  test("diamond: each computed evaluates at most once per change") {
     val o = Owner()
     given Owner = o
     val a       = Var(1)
@@ -33,8 +34,9 @@ class SignalSuite extends munit.FunSuite:
     assertEquals((bE, cE, dE), (2, 2, 2), "no node re-evaluated twice for one write")
     assertEquals(seen, List(4 + 12, 2 + 11))
     o.dispose()
+  }
 
-  test("equality cutoff stops propagation at an unchanged computed"):
+  test("equality cutoff stops propagation at an unchanged computed") {
     val o = Owner()
     given Owner = o
     val a       = Var(1)
@@ -47,8 +49,9 @@ class SignalSuite extends munit.FunSuite:
     a.set(2) // parity changes to 0
     assertEquals(runs, 2)
     o.dispose()
+  }
 
-  test("dynamic dependencies: unread branch is unsubscribed"):
+  test("dynamic dependencies: unread branch is unsubscribed") {
     val o = Owner()
     given Owner = o
     val useA    = Var(true)
@@ -74,8 +77,9 @@ class SignalSuite extends munit.FunSuite:
     b.set(300)
     assertEquals(c.now, 300)
     o.dispose()
+  }
 
-  test("batch coalesces writes into one propagation"):
+  test("batch coalesces writes into one propagation") {
     val o = Owner()
     given Owner = o
     val a, b    = Var(0)
@@ -85,33 +89,37 @@ class SignalSuite extends munit.FunSuite:
     Signal.effect { seen = sum() :: seen; runs += 1 }
     assertEquals(runs, 1)
 
-    Signal.batch:
+    Signal.batch {
       a.set(1)
       b.set(2)
       assertEquals(runs, 1, "effects must not run inside the batch")
+    }
 
     assertEquals(runs, 2, "one propagation for two writes")
     assertEquals(seen.head, 3)
     assertEquals(seen.length, 2, "no intermediate value (1,0) was ever observed")
     o.dispose()
+  }
 
-  test("untracked reads do not subscribe"):
+  test("untracked reads do not subscribe") {
     val o = Owner()
     given Owner = o
     val a, b    = Var(0)
     var runs    = 0
-    Signal.effect:
+    Signal.effect {
       a()
       Signal.untracked(b())
       runs += 1
+    }
     assertEquals(runs, 1)
     b.set(5)
     assertEquals(runs, 1)
     a.set(1)
     assertEquals(runs, 2)
     o.dispose()
+  }
 
-  test("disposal: effect stops firing and graph is unlinked"):
+  test("disposal: effect stops firing and graph is unlinked") {
     val o = Owner()
     given Owner = o
     val a       = Var(0)
@@ -127,19 +135,22 @@ class SignalSuite extends munit.FunSuite:
     assertEquals(runs, 2, "disposed effect must not run")
     assertEquals(a.observers.length, 0, "var must hold no observers after disposal")
     assertEquals(c.asInstanceOf[Computation].deps.length, 0)
+  }
 
-  test("nested owners: disposing the parent disposes children"):
+  test("nested owners: disposing the parent disposes children") {
     val parent = Owner()
     val a      = Var(0)
     var outer, inner = 0
 
-    def underParent(using Owner): Owner =
+    def underParent(using Owner): Owner = {
       Signal.effect { a(); outer += 1 }
       Owner.scoped { Signal.effect { a(); inner += 1 } }
+    }
 
-    val child =
+    val child = {
       given Owner = parent
       underParent
+    }
 
     a.set(1)
     assertEquals((outer, inner), (2, 2))
@@ -150,8 +161,9 @@ class SignalSuite extends munit.FunSuite:
     a.set(3)
     assertEquals((outer, inner), (3, 2))
     assertEquals(a.observers.length, 0)
+  }
 
-  test("owning after disposal disposes immediately"):
+  test("owning after disposal disposes immediately") {
     val o = Owner()
     o.dispose()
     given Owner = o
@@ -162,8 +174,9 @@ class SignalSuite extends munit.FunSuite:
     a.set(1)
     assertEquals(runs, 0)
     assertEquals(a.observers.length, 0)
+  }
 
-  test("exception in computed propagates to the writer and the graph recovers"):
+  test("exception in computed propagates to the writer and the graph recovers") {
     val o = Owner()
     given Owner = o
     val a       = Var(1)
@@ -179,8 +192,9 @@ class SignalSuite extends munit.FunSuite:
     assertEquals(seen.head, 30, "graph still works after a failed propagation")
     assertEquals(c.now, 30)
     o.dispose()
+  }
 
-  test("exception in one effect does not stop the others"):
+  test("exception in one effect does not stop the others") {
     val o = Owner()
     given Owner = o
     val a       = Var(0)
@@ -191,8 +205,9 @@ class SignalSuite extends munit.FunSuite:
     intercept[RuntimeException](a.set(1))
     assertEquals(good, 2, "the second effect still ran")
     o.dispose()
+  }
 
-  test("map and zip"):
+  test("map and zip") {
     val o = Owner()
     given Owner = o
     val a       = Var(2)
@@ -205,8 +220,9 @@ class SignalSuite extends munit.FunSuite:
     assertEquals(doubled.now, 6)
     assertEquals(both.now, (3, "x"))
     o.dispose()
+  }
 
-  test("const does not participate in the graph"):
+  test("const does not participate in the graph") {
     val o = Owner()
     given Owner = o
     val k       = Signal.const(7)
@@ -216,8 +232,9 @@ class SignalSuite extends munit.FunSuite:
     assertEquals(k.now, 7)
     assertEquals(k.map(_ + 1).now, 8)
     o.dispose()
+  }
 
-  test("lazy: an unobserved computed is not evaluated until read"):
+  test("lazy: an unobserved computed is not evaluated until read") {
     val o = Owner()
     given Owner = o
     val a       = Var(1)
@@ -231,8 +248,9 @@ class SignalSuite extends munit.FunSuite:
     assertEquals(c.now, 2)
     assertEquals(evals, 2)
     o.dispose()
+  }
 
-  test("deep chain propagates correctly"):
+  test("deep chain propagates correctly") {
     val o = Owner()
     given Owner = o
     val a       = Var(0)
@@ -241,3 +259,5 @@ class SignalSuite extends munit.FunSuite:
     a.set(5)
     assertEquals(last.now, 105)
     o.dispose()
+  }
+}

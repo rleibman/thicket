@@ -17,6 +17,9 @@ lazy val commonSettings = Seq(
     "-feature",
     "-unchecked",
     "-source:3.9",
+    // Braces, not significant indentation. `-no-indent` makes the compiler reject
+    // indentation syntax outright rather than merely allowing braces.
+    "-no-indent",
     "-Wunused:all",
     "-Werror"
   ),

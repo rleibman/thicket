@@ -6,7 +6,7 @@ import scalaui.signals.Signal
 /** A property of a widget, static or signal-driven. */
 sealed trait Attr
 
-object Attr:
+object Attr {
   final case class Static(prop: Prop) extends Attr
 
   /** A property driven by a signal.
@@ -17,6 +17,7 @@ object Attr:
     * time, so app code never mentions `Owner`.
     */
   final case class Reactive[A](signal: Signal[A], toProp: A => Prop) extends Attr
+}
 
 /** The declarative description of a UI.
   *
@@ -28,7 +29,7 @@ object Attr:
   */
 sealed trait Element
 
-object Element:
+object Element {
   final case class Widget(
       kind: WidgetKind,
       attrs: Seq[Attr],
@@ -61,19 +62,21 @@ object Element:
     * produce more than one child.
     */
   final case class Fragment(children: Seq[Element]) extends Element
+}
 
 /** The widget constructors.
   *
   * Plain functions with varargs children rather than the context-function builder sketched
   * in §7.3 — that syntax can be layered on later without changing any of this.
   */
-object dsl:
+object dsl {
   import Attr.*
   import Element.*
 
-  private def text(v: String | Signal[String]): Attr = v match
+  private def text(v: String | Signal[String]): Attr = v match {
     case s: String                    => Static(Prop.Text(s))
     case s: Signal[String] @unchecked => Reactive(s, Prop.Text(_))
+  }
 
   def Label(value: String | Signal[String]): Element =
     Widget(WidgetKind.Label, Seq(text(value)), Nil)
@@ -118,3 +121,4 @@ object dsl:
 
   /** Nothing. Useful as the `else` of a `Show`-like conditional. */
   val Empty: Element = Element.Fragment(Nil)
+}

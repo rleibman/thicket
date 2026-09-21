@@ -10,7 +10,7 @@ import sn.gnome.glib.internal.gchar
 /** S7: a counter built *through the draft renderer contract*, not against GTK directly.
   * The point is to find out where the contract chafes against a real toolkit.
   */
-object Main:
+object Main {
 
   private val renderer  = GtkRenderer()
   private val processT0 = System.nanoTime()
@@ -86,9 +86,9 @@ object Main:
       println(f"[S7] process start -> window presented: ${(System.nanoTime() - processT0) / 1e6}%.1f ms")
     }
 
-  def main(args: Array[String]): Unit =
+  def main(args: Array[String]): Unit = {
     val app = Zone(gtk_application_new(toCString("dev.scalaui.s7"), GApplicationFlags.G_APPLICATION_DEFAULT_FLAGS))
-    Zone:
+    Zone {
       g_signal_connect_data(
         app.asInstanceOf[sn.gnome.glib.internal.gpointer],
         toCString("activate").asInstanceOf[Ptr[gchar]],
@@ -97,6 +97,9 @@ object Main:
         null.asInstanceOf[GClosureNotify],
         GConnectFlags.define(0)
       )
+    }
     println(f"[S7] gtk_application_new + connect: ${(System.nanoTime() - processT0) / 1e6}%.1f ms")
     val status = g_application_run(app.asInstanceOf[Ptr[GApplication]], 0, null)
     println(s"[S7] exited with $status")
+  }
+}

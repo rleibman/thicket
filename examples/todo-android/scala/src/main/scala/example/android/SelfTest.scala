@@ -9,24 +9,26 @@ import scalaui.core.NavHost
 /** Drives navigation and reads the view tree back out of Android — the same checks the GTK
   * host runs, against a structurally different toolkit.
   */
-object SelfTest:
+object SelfTest {
 
   private val Tag      = "scalaui"
   private var failures = 0
 
   /** Every piece of text in the subtree, in tree order. */
-  private def allTexts(v: View): List[String] = v match
+  private def allTexts(v: View): List[String] = v match {
     case g: ViewGroup =>
       (0 until g.getChildCount).toList.flatMap(i => allTexts(g.getChildAt(i)))
     case t: TextView => List(t.getText.toString)
     case _           => Nil
+  }
 
-  private def check(name: String, cond: Boolean, detail: => String = ""): Unit =
+  private def check(name: String, cond: Boolean, detail: => String = ""): Unit = {
     if !cond then failures += 1
     Log.i(Tag, s"[selftest] ${if cond then "ok  " else "FAIL"} $name")
     if !cond && detail.nonEmpty then Log.i(Tag, s"[selftest]      $detail")
+  }
 
-  def run(model: TodoApp.Model, app: NavHost[TodoApp.Route], root: View): Unit =
+  def run(model: TodoApp.Model, app: NavHost[TodoApp.Route], root: View): Unit = {
     Log.i(Tag, "[selftest] driving navigation and reading back out of Android")
 
     check("starts on the items screen", app.title.now == "Todo")
@@ -64,3 +66,5 @@ object SelfTest:
       if failures == 0 then "[selftest] ALL CHECKS PASSED"
       else s"[selftest] $failures CHECK(S) FAILED"
     )
+  }
+}

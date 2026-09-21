@@ -9,7 +9,9 @@ lazy val gtk4 = project
   .enablePlugins(ScalaNativePlugin)
   .settings(
     name := "s7-gtk4",
-    scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-source:3.9"),
+    scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked",
+    "-no-indent",
+    "-rewrite", "-source:3.9"),
     libraryDependencies += "com.indoorvivants.gnome" % "gtk4_native0.5_3" % "0.2.6",
     nativeConfig ~= { c =>
       val cflags = "pkg-config --cflags gtk4".!!.trim.split(" ").filter(_.nonEmpty).toSeq

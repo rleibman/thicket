@@ -15,7 +15,7 @@ package scalaui.renderer
   * mean `GtkFixed` everywhere, discarding GTK's sizing, RTL handling and baseline alignment.
   * So the renderer *declares* which model each container uses and the reconciler adapts.
   */
-enum LayoutMode:
+enum LayoutMode {
   /** The framework computes rectangles (Yoga) and calls `setFrame` on every child.
     * e.g. a plain `UIView`, a `GtkFixed`, an Android `FrameLayout` used as a canvas.
     */
@@ -26,6 +26,7 @@ enum LayoutMode:
     * e.g. `GtkBox`, `UIStackView`, Android `LinearLayout`.
     */
   case ToolkitManaged
+}
 
 /** A widget's minimum and natural size along both axes.
   *
@@ -34,34 +35,38 @@ enum LayoutMode:
   */
 final case class Measurement(minW: Float, minH: Float, natW: Float, natH: Float)
 
-object Measurement:
+object Measurement {
   def exact(w: Float, h: Float): Measurement = Measurement(w, h, w, h)
+}
 
 final case class Frame(x: Float, y: Float, w: Float, h: Float)
 
 /** `NaN` on an axis means "unconstrained". */
 final case class Constraints(maxW: Float, maxH: Float)
 
-object Constraints:
+object Constraints {
   val unbounded: Constraints = Constraints(Float.NaN, Float.NaN)
+}
 
 /** The widget vocabulary a renderer must understand. Deliberately small for v0; every
   * addition costs work in every renderer, so the list grows only with evidence.
   */
-enum WidgetKind:
+enum WidgetKind {
   case Column, Row, Label, Button
+}
 
 /** A property change. An enum rather than `Map[String, Any]` so the compiler checks that
   * each renderer handles every case — one of the reasons for doing this in Scala at all.
   */
-enum Prop:
+enum Prop {
   case Text(value: String)
   case OnTap(handler: () => Unit)
   case Spacing(dp: Int)
   case Padding(dp: Int)
   case Enabled(value: Boolean)
+}
 
-trait Renderer:
+trait Renderer {
   /** An opaque per-renderer widget reference. */
   type Handle
 
@@ -89,9 +94,10 @@ trait Renderer:
     * toolkits. The default is still remove+insert so a renderer need not implement it;
     * anything with a native reorder should override.
     */
-  def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit =
+  def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
     removeChild(parent, child)
     insertAfter(parent, child, after)
+  }
   /** Detach `handle` from its parent, if attached, and release it.
     *
     * Detaching is part of destroying, not a separate step the caller performs first. GTK
@@ -115,3 +121,4 @@ trait Renderer:
     * never a GCD queue, which segfaults in the GC allocator (S1).
     */
   def runOnUiThread(f: () => Unit): Unit
+}

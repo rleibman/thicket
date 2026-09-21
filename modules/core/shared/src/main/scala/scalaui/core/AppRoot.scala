@@ -10,7 +10,7 @@ import scalaui.signals.Signal
   * project exists to avoid. So they travel beside the tree and each host applies them
   * natively.
   */
-trait AppRoot:
+trait AppRoot {
   def element: Element
   def title: Signal[String]
   def canGoBack: Signal[Boolean]
@@ -21,12 +21,15 @@ trait AppRoot:
     * platform (finish the activity, close the window).
     */
   def back(): Boolean
+}
 
-object AppRoot:
+object AppRoot {
   /** A single-screen app, with no navigation. */
-  def apply(title0: String, content: Element): AppRoot = new AppRoot:
+  def apply(title0: String, content: Element): AppRoot = new AppRoot {
     val element                      = content
     val title: Signal[String]        = Signal.const(title0)
     val canGoBack: Signal[Boolean]   = Signal.const(false)
     val actions: Signal[Seq[Action]] = Signal.const(Nil)
     def back(): Boolean              = false
+  }
+}
