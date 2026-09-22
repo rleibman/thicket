@@ -80,6 +80,7 @@ Of the mockup, roughly **40%** is real. Concretely, after M0 + structural reconc
 | **Native chrome via `AppRoot`** — title, Up, predictive back | toolbar actions (the type exists; no renderer applies them yet) |
 | **`Fragment`** — several children in one slot | forms, refinements, `.platform`, swipe actions |
 | `Column`, `Row`, `Label`, `Button`, **`TextField`, `Checkbox`, `Scroll`** | images, `Markdown`, `Thumbnail`, `Stepper`, `SearchField`, `Skeleton` |
+| **`.onTap` / `.grow` modifiers, `TextRole`, `Alignment`** | `Theme`, colour roles, dark mode, press feedback, `.platform` refinement |
 | **`RemoteData` as an exhaustive match, and the ZIO bridge behind it** | `Form.Schema`, refinement types, lens-based `Field` |
 | The renderer contract + **GTK4 and Android renderers** + a `TestRenderer` | `TestApp`, `UiSpec` |
 | **One shared UI mounting on Linux and Android unchanged** | `Async` as an exhaustive match |
@@ -216,6 +217,28 @@ reference implementation.
 
 Worth noting what caught this: not the 32 unit tests, which passed throughout, but running the
 app against a real toolkit that checks its own invariants.
+
+## 11.8a What it actually looks like
+
+![The list screen on Android](screenshots/android-todo.png)
+
+`docs/screenshots/` holds a current shot per platform. They are worth looking at because
+they say things the tests cannot.
+
+The first Android screenshot caught a bug no test could: `targetSdk` 35+ forces edge-to-edge,
+so the app was drawing *under* the status and action bars and the entire form row was
+invisible. Fixed by padding with the system-bar insets — but that belongs in the framework,
+not in every app, and there is no `SafeArea` element yet (F-02).
+
+The second thing it showed was that the list rows were `Button`s, because a tappable
+container did not exist. That is now fixed (§11.9), and a real touch on a row navigates,
+with the action bar title following the stack and the Up arrow appearing on its own.
+
+The third thing is still true: **nothing is themed.** Every colour and font is the platform
+default. `Prop.Style` maps a `TextRole` to each platform's own type scale — GTK style classes,
+Android sp sizes — which is the right shape, but there is no `Theme`, no colour roles, no
+dark-mode handling, and no press feedback or separators on rows. That is the gap between
+"the plumbing works" and "this looks like an app", and it is the most visible thing left.
 
 ## 11.9 Input widgets, and the rule they forced
 

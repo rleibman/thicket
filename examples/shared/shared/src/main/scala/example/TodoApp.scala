@@ -2,6 +2,7 @@ package example
 
 import scalaui.core.*
 import scalaui.core.dsl.*
+import scalaui.renderer.{Alignment, TextRole}
 import scalaui.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -102,7 +103,10 @@ object TodoApp {
   private def itemsScreen(model: Model, nav: Nav[Route]): Screen =
     Screen(
       title = "Todo",
-      content = Scroll()(Column(spacing = 12, padding = 20)(
+      // No title label in the content: `Screen.title` already drives the platform's own
+      // chrome (action bar, header bar), and repeating it is how cross-platform apps end
+      // up looking like neither platform.
+      content = Scroll()(Column(spacing = 16, padding = 16)(
         // A small form: a bound text field, a bound checkbox, and a button whose enabled
         // state is derived from the model rather than remembered.
         Row(spacing = 8)(
@@ -111,11 +115,18 @@ object TodoApp {
         ),
         Button("Add item")(model.addDraft()),
 
-        Column(spacing = 4)(
+        // A real list row: a tappable *container*, not a button pretending to be one.
+        // The title grows to fill the row and the status sits at the trailing edge.
+        Column(spacing = 2)(
           ForEach(model.items, key = (i: Item) => i.id) { item =>
-            // Tapping a row navigates; the route carries the id, so the detail screen
-            // cannot be built without one.
-            Button(item.map(bullet))(nav.push(Route.Detail(item.now.id)))
+            Row(spacing = 12, padding = 12)(
+              Label(item.map(_.title)).grow,
+              Label(
+                item.map(i => if i.done then "\u2713" else ""),
+                style = TextRole.Caption,
+                align = Alignment.End
+              )
+            ).onTap(nav.push(Route.Detail(item.now.id)))
           }
         ),
         Show(model.items.map(_.isEmpty))(Label("Nothing left to do.")),
@@ -125,7 +136,8 @@ object TodoApp {
           Button("Drop")(model.dropLast()),
           Button("About")(nav.push(Route.About))
         ),
-        Label(model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"))
+        Label(model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"),
+              style = TextRole.Caption)
       ))
     )
 
@@ -133,9 +145,10 @@ object TodoApp {
     val item = model.itemSignal(id)
     Screen(
       title = "Item",
-      content = Column(spacing = 12, padding = 20)(
-        Label(item.map(_.fold("(deleted)")(_.title))),
-        Label(item.map(_.fold("")(i => if i.done then "Done" else "Not done"))),
+      content = Column(spacing = 12, padding = 16)(
+        Label(item.map(_.fold("(deleted)")(_.title)), style = TextRole.Title),
+        Label(item.map(_.fold("")(i => if i.done then "Done" else "Not done")),
+              style = TextRole.Caption),
         Row(spacing = 8)(
           Button("Toggle")(model.toggle(id)),
           Button("Back")(nav.pop())
@@ -147,8 +160,8 @@ object TodoApp {
   private def aboutScreen(): Screen =
     Screen(
       title = "About",
-      content = Column(spacing = 12, padding = 20)(
-        Label("scala-ui"),
+      content = Column(spacing = 12, padding = 16)(
+        Label("scala-ui", style = TextRole.Title),
         Label("One element tree, rendered by GTK4 on Linux and android.view on Android.")
       )
     )

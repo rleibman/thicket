@@ -93,6 +93,17 @@ private[gtk] object Handles {
 
   def changedPtr: CVoidPtr = CFuncPtr.toPtr(changed)
 
+  /** `GtkGestureClick::released` is `(gesture, n_press, x, y, user_data)`, so a tap on a
+    * plain container needs its own arity rather than reusing the button trampoline.
+    */
+  private val released: CFuncPtr5[Ptr[Byte], CInt, Double, Double, gpointer, Unit] =
+    CFuncPtr5.fromScalaFunction {
+      (_: Ptr[Byte], _: CInt, _: Double, _: Double, data: gpointer) =>
+        GcState.guarded(invoke(pointerToId(data)))
+    }
+
+  def releasedPtr: CVoidPtr = CFuncPtr.toPtr(released)
+
   /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not
     * shed entries at UI rates is a leak with a clock on it (S8).
     */

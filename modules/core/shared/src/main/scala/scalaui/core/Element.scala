@@ -1,6 +1,6 @@
 package scalaui.core
 
-import scalaui.renderer.{Prop, WidgetKind}
+import scalaui.renderer.{Alignment, Prop, TextRole, WidgetKind}
 import scalaui.signals.Signal
 
 /** A property of a widget, static or signal-driven. */
@@ -78,8 +78,16 @@ object dsl {
     case s: Signal[String] @unchecked => Reactive(s, Prop.Text(_))
   }
 
-  def Label(value: String | Signal[String]): Element =
-    Widget(WidgetKind.Label, Seq(text(value)), Nil)
+  def Label(
+      value: String | Signal[String],
+      style: TextRole = TextRole.Body,
+      align: Alignment = Alignment.Start
+  ): Element =
+    Widget(
+      WidgetKind.Label,
+      Seq(text(value), Static(Prop.Style(style)), Static(Prop.Align(align))),
+      Nil
+    )
 
   def Button(value: String | Signal[String], enabled: Boolean = true)(
       onTap: => Unit
@@ -165,4 +173,33 @@ object dsl {
 
   /** Nothing. Useful as the `else` of a `Show`-like conditional. */
   val Empty: Element = Element.Fragment(Nil)
+
+  /** Modifiers.
+    *
+    * Extension methods that add a property to an already-built element, so a row can be
+    * made tappable or made to grow without every constructor growing another parameter.
+    * `§7.3` left the choice between modifiers and named parameters open; both are here —
+    * named parameters for what a widget always has, modifiers for what any widget might.
+    */
+  extension (element: Element) {
+
+    /** Make any element respond to a tap, not just a `Button`.
+      *
+      * This is what a list row needs: a tappable container, with the platform's own press
+      * feedback, rather than a button pretending to be a row.
+      */
+    def onTap(handler: => Unit): Element = withAttr(Static(Prop.OnTap(() => handler)))
+
+    /** Absorb spare space along the parent's main axis. */
+    def grow: Element = withAttr(Static(Prop.Grow(true)))
+
+    def padding(dp: Int): Element = withAttr(Static(Prop.Padding(dp)))
+
+    private def withAttr(attr: Attr): Element = element match {
+      case w: Widget => w.copy(attrs = w.attrs :+ attr)
+      case other     =>
+        // Regions and fragments have no widget of their own to carry a property.
+        other
+    }
+  }
 }

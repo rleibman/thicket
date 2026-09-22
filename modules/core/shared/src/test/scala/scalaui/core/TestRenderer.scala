@@ -69,6 +69,9 @@ final class TestRenderer extends Renderer {
       case Prop.Checked(v)        => n.props("checked") = v.toString
       case Prop.OnTextChange(f)   => n.onTextChange = Some(f)
       case Prop.OnCheckedChange(f) => n.onCheckedChange = Some(f)
+      case Prop.Style(role)       => n.props("style") = role.toString
+      case Prop.Grow(v)           => n.props("grow") = v.toString
+      case Prop.Align(a)          => n.props("align") = a.toString
     }
   }
 

@@ -140,16 +140,61 @@ final class GtkRenderer extends Renderer {
           case None =>
             val id = Handles.register(f)
             tapIds(handle) = id
-            Zone {
-              val _ = g_signal_connect_data(
-                handle.asInstanceOf[gpointer],
-                toCString("clicked").asInstanceOf[Ptr[gchar]],
-                GCallback.fromPtr(Handles.clickedPtr),
-                Handles.idToPointer(id),
-                null.asInstanceOf[GClosureNotify],
-                GConnectFlags.define(0)
-              )
+            if kinds.get(handle).contains(WidgetKind.Button) then
+              Zone {
+                val _ = g_signal_connect_data(
+                  handle.asInstanceOf[gpointer],
+                  toCString("clicked").asInstanceOf[Ptr[gchar]],
+                  GCallback.fromPtr(Handles.clickedPtr),
+                  Handles.idToPointer(id),
+                  null.asInstanceOf[GClosureNotify],
+                  GConnectFlags.define(0)
+                )
+              }
+            else {
+              // A GtkBox emits no "clicked": taps on plain containers come from an event
+              // controller, which is how GTK4 does input on arbitrary widgets.
+              val gesture = gtk_gesture_click_new()
+              Zone {
+                val _ = g_signal_connect_data(
+                  gesture.asInstanceOf[gpointer],
+                  toCString("released").asInstanceOf[Ptr[gchar]],
+                  GCallback.fromPtr(Handles.releasedPtr),
+                  Handles.idToPointer(id),
+                  null.asInstanceOf[GClosureNotify],
+                  GConnectFlags.define(0)
+                )
+              }
+              gtk_widget_add_controller(handle, gesture.asInstanceOf[Ptr[GtkEventController]])
             }
+        }
+
+      case Prop.Style(role) =>
+        // GTK's own type scale, via the style classes Adwaita defines, rather than a pixel
+        // size chosen by us.
+        Zone {
+          List("title-1", "body", "caption").foreach(c =>
+            gtk_widget_remove_css_class(handle, toCString(c))
+          )
+          val cls = role match {
+            case TextRole.Title   => "title-1"
+            case TextRole.Body    => "body"
+            case TextRole.Caption => "caption"
+          }
+          gtk_widget_add_css_class(handle, toCString(cls))
+        }
+
+      case Prop.Grow(v) =>
+        gtk_widget_set_hexpand(handle, gbool(v))
+
+      case Prop.Align(a) =>
+        if kinds.get(handle).contains(WidgetKind.Label) then {
+          val x = a match {
+            case Alignment.Start  => 0.0f
+            case Alignment.Center => 0.5f
+            case Alignment.End    => 1.0f
+          }
+          gtk_label_set_xalign(handle.asInstanceOf[Ptr[GtkLabel]], x)
         }
 
       case Prop.Spacing(dp) =>

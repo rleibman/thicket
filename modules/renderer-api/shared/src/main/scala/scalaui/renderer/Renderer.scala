@@ -86,6 +86,26 @@ enum Prop {
 
   case Checked(value: Boolean)
   case OnCheckedChange(handler: Boolean => Unit)
+
+  /** Type role, mapped to each platform's own type scale rather than to a pixel size.
+    * Asking for "17pt semibold" would be exactly the cross-platform lowest-common-
+    * denominator this project exists to avoid.
+    */
+  case Style(role: TextRole)
+
+  /** Whether this child should absorb spare space along its parent's main axis. */
+  case Grow(value: Boolean)
+
+  /** Horizontal alignment of a widget's own content. */
+  case Align(value: Alignment)
+}
+
+enum TextRole {
+  case Title, Body, Caption
+}
+
+enum Alignment {
+  case Start, Center, End
 }
 
 trait Renderer {

@@ -37,7 +37,7 @@ object Todo {
 
     check("starts on the items screen", app.title.now == "Todo")
     val onItems = screenTexts
-    check("item rows are rendered", onItems.exists(_.contains("Navigation")), onItems.toString)
+    check("item rows are rendered", onItems.contains("Navigation"), onItems.toString)
 
     app.push(TodoApp.Route.Detail(3))
     check("pushed: title follows the top screen", app.title.now == "Item")
@@ -53,7 +53,7 @@ object Todo {
 
     check("back() pops", app.back())
     check("title restored", app.title.now == "Todo")
-    check("items screen is back", screenTexts.exists(_.contains("Navigation")))
+    check("items screen is back", screenTexts.contains("Navigation"))
     check("back is no longer available at the root", !app.canGoBack.now)
     check("back() at the root defers to the platform", !app.back())
 

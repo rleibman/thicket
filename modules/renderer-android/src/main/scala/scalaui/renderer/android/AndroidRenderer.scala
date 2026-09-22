@@ -2,7 +2,9 @@ package scalaui.renderer.android
 
 import android.content.Context
 import android.os.{Handler, Looper}
-import android.view.{View, ViewGroup}
+import android.graphics.Typeface
+import android.util.TypedValue
+import android.view.{Gravity, View, ViewGroup}
 import android.text.{Editable, TextWatcher}
 import android.widget.{Button, CheckBox, CompoundButton, EditText, LinearLayout, ScrollView, TextView}
 import scala.collection.mutable
@@ -110,6 +112,43 @@ final class AndroidRenderer(context: Context) extends Renderer {
             c.setOnCheckedChangeListener { (_: CompoundButton, checked: Boolean) =>
               if !suppress.contains(handle) then f(checked)
             }
+          case _ => ()
+        }
+
+      case Prop.Style(role) =>
+        handle match {
+          case t: TextView =>
+            val (sp, bold) = role match {
+              case TextRole.Title   => (24f, true)
+              case TextRole.Body    => (16f, false)
+              case TextRole.Caption => (13f, false)
+            }
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            t.setTypeface(null, if bold then Typeface.BOLD else Typeface.NORMAL)
+          case _ => ()
+        }
+
+      case Prop.Grow(v) =>
+        val lp = handle.getLayoutParams match {
+          case p: LinearLayout.LayoutParams => p
+          case _ =>
+            LinearLayout.LayoutParams(
+              ViewGroup.LayoutParams.WRAP_CONTENT,
+              ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        lp.weight = if v then 1f else 0f
+        if v then lp.width = 0
+        handle.setLayoutParams(lp)
+
+      case Prop.Align(a) =>
+        handle match {
+          case t: TextView =>
+            t.setGravity(a match {
+              case Alignment.Start  => Gravity.START
+              case Alignment.Center => Gravity.CENTER_HORIZONTAL
+              case Alignment.End    => Gravity.END
+            })
           case _ => ()
         }
 
