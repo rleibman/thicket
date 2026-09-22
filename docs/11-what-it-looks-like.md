@@ -279,3 +279,39 @@ Every widget so far is a synchronous call to a toolkit. An image is not: it need
 while loading, and a failure state. That is a subsystem, not a `WidgetKind`, and it touches
 the resource pipeline (A-09) which does not exist yet. Doing it badly is worse than not doing
 it, so it waits for a design rather than being bolted onto the enum.
+
+## 11.10 How it scales, measured
+
+N-02 asks for a 10 000-row list at 60 fps. `ForEach` mounts every row, so that is where the
+reconciler was most likely to fall over. Measured against the in-memory `TestRenderer`, which
+does no layout or drawing — so these are *framework* costs, not toolkit costs
+(`ScaleSuite`, 10 000 rows = 30 001 widgets):
+
+| operation | before | after | note |
+|---|---|---|---|
+| mount 10 000 rows | 340 ms | **64 ms** | one-off; still the case for virtualisation |
+| change one row (warm median) | — | **0.83 ms** | 1 renderer op; 20× inside a frame |
+| append to 10 000 rows | 20 ms | **1.0 ms** | |
+| prepend to 10 000 rows | ~6 ms | ~23 ms | the honest worst case: every entry shifts |
+
+Three things came out of measuring rather than guessing:
+
+**The update path was O(n), not O(1).** Changing one row of 10 000 did exactly one renderer
+write — the op count was right all along — but took **19 ms**, a dropped frame, because
+`reconcile` rebuilt a key map, a key set, a filtered list and a fresh vector on every change.
+A fast path for "same keys, same order" — which is what every data-only change looks like —
+removes all four allocations. A second fast path for "existing entries are a prefix of what
+is wanted" does the same for appends.
+
+**Mounting was accidentally quadratic, and the cause was in the renderers.** `insertAfter`
+takes a *preceding sibling*, so a renderer must locate it — and `indexOf` / `indexOfChild` is
+a linear scan, which makes mounting a list of n items O(n²). Checking the tail first, since
+mounting a list is n appends, took 10 000 rows from 304 ms to 74 ms. That was a real bug in
+the **Android** renderer, not just the test one.
+
+**Virtualisation is still needed, but for a narrower reason than assumed.** The update path
+is now comfortably inside frame budget at 10 000 rows. What remains is the one-off mount cost
+and, more importantly, *memory*: 10 000 rows really are 30 001 live widgets. That is what
+`LazyColumn` in the mockup means, and it is a renderer-level concern —
+`RecyclerView`, `GtkListView`, `UITableView` — rather than a reconciler one, because those
+containers invert control and ask the framework for a row on demand.

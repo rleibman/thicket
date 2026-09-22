@@ -245,12 +245,82 @@ private final class RegionSlot[H](
     e.owner.dispose() // stops every effect this entry's content created
   }
 
+  /** Mount one entry at `at`.
+    *
+    * Untracked: the body's own signals belong to the body's effects, not to the region's,
+    * or every region would re-run for any change anywhere beneath it.
+    */
+  private def mountEntry(key: Any, value: Any, at: Option[H])(using
+      parentOwner: Owner
+  ): RegionEntry[H] = {
+    val childOwner = Owner.child(using parentOwner)
+    val v          = Var[Any](value)
+    val slot = Signal.untracked {
+      given Owner = childOwner
+      Slot.build(renderer, source.build(v), Some(parent), () => at)
+    }
+    RegionEntry(key, v, childOwner, slot, after = at)
+  }
+
   /** Diff the current entries against `next`, reusing anything whose key survived.
     *
     * Position is assigned in the same pass that mounts, so a new entry is inserted once,
     * at its final place — inserting during `Slot.build` and again here would duplicate it.
     */
   def reconcile(next: Vector[(Any, Any)])(using parentOwner: Owner): Unit = {
+    // Fast path: the same keys in the same order, which is what every data-only change
+    // looks like — an item edited, a checkbox toggled, a field typed into. The general
+    // path below builds a key map, a key set, a filtered list and a fresh vector, which
+    // for a 10 000-row list costs ~19 ms: a dropped frame on every keystroke. Here there
+    // is nothing to allocate and nothing to move; `Var.set` no-ops on an unchanged value,
+    // so untouched rows cost one comparison each.
+    if next.length == entries.length then {
+      var i    = 0
+      var same = true
+      while (i < entries.length && same) {
+        if entries(i).key != next(i)._1 then same = false
+        i += 1
+      }
+      if same then {
+        i = 0
+        while (i < entries.length) {
+          entries(i).value.set(next(i)._2)
+          i += 1
+        }
+        return
+      }
+    }
+
+    // Fast path 2: everything currently mounted is a prefix of what is wanted — an append.
+    // Chat messages, log lines, an infinite scroll. The general path below is O(existing)
+    // with a large constant; this is O(added).
+    if next.length > entries.length then {
+      var i    = 0
+      var same = true
+      while (i < entries.length && same) {
+        if entries(i).key != next(i)._1 then same = false
+        i += 1
+      }
+      if same then {
+        i = 0
+        while (i < entries.length) {
+          entries(i).value.set(next(i)._2)
+          i += 1
+        }
+        var previous = entries.lastOption.flatMap(_.slot.lastHandle).orElse(anchor())
+        val added = Vector.newBuilder[RegionEntry[H]]
+        i = entries.length
+        while (i < next.length) {
+          val e = mountEntry(next(i)._1, next(i)._2, previous)
+          e.slot.lastHandle.foreach(h => previous = Some(h))
+          added += e
+          i += 1
+        }
+        entries = entries ++ added.result()
+        return
+      }
+    }
+
     val byKey  = entries.iterator.map(e => e.key -> e).toMap
     val wanted = next.iterator.map(_._1).toSet
 
@@ -276,17 +346,7 @@ private final class RegionSlot[H](
           existing.after = previous
           existing
 
-        case None =>
-          val childOwner = Owner.child(using parentOwner)
-          val v          = Var[Any](value)
-          val at         = previous
-          // Untracked: the body's own signals belong to the body's effects, not to the
-          // region's, or every region would re-run for any change anywhere beneath it.
-          val slot = Signal.untracked {
-            given Owner = childOwner
-            Slot.build(renderer, source.build(v), Some(parent), () => at)
-          }
-          RegionEntry(key, v, childOwner, slot, after = at)
+        case None => mountEntry(key, value, previous)
       }
 
       entry.slot.lastHandle.foreach(h => previous = Some(h))

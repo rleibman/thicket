@@ -248,9 +248,13 @@ final class AndroidRenderer(context: Context) extends Renderer {
       return
     }
     val vg = parent.asInstanceOf[ViewGroup]
+    // `indexOfChild` is a linear scan, and mounting a list is n appends, so checking the
+    // tail first is the difference between O(n) and O(n^2).
+    val count = vg.getChildCount
     val index = after match {
-      case None    => 0
-      case Some(a) => vg.indexOfChild(a) + 1
+      case None                                            => 0
+      case Some(a) if count > 0 && vg.getChildAt(count - 1) == a => count
+      case Some(a)                                         => vg.indexOfChild(a) + 1
     }
     vg.addView(child, index)
     vg match {

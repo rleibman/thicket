@@ -80,8 +80,12 @@ final class TestRenderer extends Renderer {
     opCount += 1
     val kids = nodes(parent).children
     after match {
-      case None    => kids.prepend(child)
-      case Some(a) => kids.insert(kids.indexOf(a) + 1, child)
+      case None => kids.prepend(child)
+      case Some(a) =>
+        // Appending is the overwhelmingly common case — mounting a list is n appends —
+        // and `indexOf` would make that O(n^2). Check the tail first.
+        if kids.nonEmpty && kids.last == a then kids.append(child)
+        else kids.insert(kids.indexOf(a) + 1, child)
     }
   }
 
