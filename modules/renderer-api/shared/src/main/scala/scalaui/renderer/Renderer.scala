@@ -64,6 +64,11 @@ enum WidgetKind {
     * list, which the reconciler has to respect: inserting a second child replaces the first.
     */
   case Scroll
+
+  /** A hairline rule between items, drawn by the platform at the platform's own weight
+    * and colour.
+    */
+  case Divider
 }
 
 /** A property change. An enum rather than `Map[String, Any]` so the compiler checks that
@@ -98,6 +103,19 @@ enum Prop {
 
   /** Horizontal alignment of a widget's own content. */
   case Align(value: Alignment)
+
+  /** How prominent text should be, relative to the platform's own foreground colours.
+    *
+    * Not a colour. There is deliberately no way to say "grey #767676": a theme that pushes
+    * its own palette at every platform is how cross-platform apps come to look like none
+    * of them, and it breaks dark mode and accessibility contrast settings that the platform
+    * would otherwise handle. Roles map onto each platform's own tokens.
+    */
+  case TextEmphasis(value: Emphasis)
+}
+
+enum Emphasis {
+  case Normal, Secondary
 }
 
 enum TextRole {

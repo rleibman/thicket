@@ -13,6 +13,6 @@ Regenerate while the demo is running (`examples/todo-android/build.sh`):
 adb exec-out screencap -p > docs/screenshots/android-todo.png
 ```
 
-**Read them critically.** What is still missing is as visible as what works: there is no
-theming (everything is the platform default), no press feedback or separators on rows, and
-no images. Tracked in `docs/11`.
+**Read them critically.** What is still missing is as visible as what works: no images, no
+branding (roles map to platform tokens, but an app cannot override them yet), and the buttons
+are still the platform default rather than anything designed. Tracked in `docs/11`.

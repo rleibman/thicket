@@ -12,6 +12,9 @@ import scalaui.renderer.*
 
 /** Android implementation of [[Renderer]], over `android.view.*`.
   *
+  * Note the `_root_.android.R` references: this package is `scalaui.renderer.android`, which
+  * shadows the platform's own `android` package — the same trap `scalaui.zio` has with `zio`.
+  *
   * Runs on the JVM: Scala compiles to bytecode, R8 dexes it, ART runs it (S2). Nothing
   * here is Android-specific beyond the widget calls — the reconciler above is the same
   * code the GTK renderer drives.
@@ -27,6 +30,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
     */
   private val suppress = mutable.Set.empty[View]
   private val mainHandler = Handler(Looper.getMainLooper)
+
+  /** Resolve a theme attribute, so colours and backgrounds come from the user's theme
+    * rather than from values we invent. This is what makes dark mode work for free.
+    */
+  private def themeAttr(attr: Int): TypedValue = {
+    val tv = TypedValue()
+    context.getTheme.resolveAttribute(attr, tv, true)
+    tv
+  }
 
   private def dp(v: Int): Int =
     (v * context.getResources.getDisplayMetrics.density).toInt
@@ -54,6 +66,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case WidgetKind.TextField => EditText(context)
       case WidgetKind.Checkbox  => CheckBox(context)
       case WidgetKind.Scroll    => ScrollView(context)
+      case WidgetKind.Divider =>
+        val v  = View(context)
+        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)))
+        v.setLayoutParams(lp)
+        // `listDivider` is a *drawable* attribute, not a colour: reading `TypedValue.data`
+        // as a colour silently yields an invisible line.
+        v.setBackgroundResource(themeAttr(_root_.android.R.attr.listDivider).resourceId)
+        v
     }
     kinds(view) = kind
     update(view, props)
@@ -141,6 +161,18 @@ final class AndroidRenderer(context: Context) extends Renderer {
         if v then lp.width = 0
         handle.setLayoutParams(lp)
 
+      case Prop.TextEmphasis(level) =>
+        handle match {
+          case t: TextView =>
+            val attr = level match {
+              case Emphasis.Secondary => _root_.android.R.attr.textColorSecondary
+              case Emphasis.Normal    => _root_.android.R.attr.textColorPrimary
+            }
+            val tv = themeAttr(attr)
+            t.setTextColor(context.getResources.getColor(tv.resourceId, context.getTheme))
+          case _ => ()
+        }
+
       case Prop.Align(a) =>
         handle match {
           case t: TextView =>
@@ -157,6 +189,13 @@ final class AndroidRenderer(context: Context) extends Renderer {
         // stack handlers — the same property the GTK renderer gets by swapping the
         // closure behind a single connected signal.
         handle.setOnClickListener((_: View) => f())
+        // Something tappable should look tappable: a container picks up the platform's
+        // own ripple. Buttons already have theirs.
+        handle match {
+          case _: Button => ()
+          case v =>
+            v.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackground).resourceId)
+        }
 
       case Prop.Enabled(v) =>
         handle.setEnabled(v)

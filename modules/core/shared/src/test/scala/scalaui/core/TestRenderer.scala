@@ -72,6 +72,7 @@ final class TestRenderer extends Renderer {
       case Prop.Style(role)       => n.props("style") = role.toString
       case Prop.Grow(v)           => n.props("grow") = v.toString
       case Prop.Align(a)          => n.props("align") = a.toString
+      case Prop.TextEmphasis(e)   => n.props("emphasis") = e.toString
     }
   }
 

@@ -234,11 +234,21 @@ The second thing it showed was that the list rows were `Button`s, because a tapp
 container did not exist. That is now fixed (§11.9), and a real touch on a row navigates,
 with the action bar title following the stack and the Up arrow appearing on its own.
 
-The third thing is still true: **nothing is themed.** Every colour and font is the platform
-default. `Prop.Style` maps a `TextRole` to each platform's own type scale — GTK style classes,
-Android sp sizes — which is the right shape, but there is no `Theme`, no colour roles, no
-dark-mode handling, and no press feedback or separators on rows. That is the gap between
-"the plumbing works" and "this looks like an app", and it is the most visible thing left.
+The third was that nothing was themed. That is now partly addressed — and the approach is
+worth stating, because it is the opposite of what most cross-platform frameworks do.
+
+**There is no palette.** `scala-ui` has no colour constants, no design tokens, no default
+theme. A widget asks for a *role* — `TextRole.Caption`, `Emphasis.Secondary`, "this row is
+tappable" — and each renderer maps it onto the platform's own token: a GTK style class
+(`title-1`, `dim-label`, `activatable`), an Android theme attribute
+(`?textColorSecondary`, `?selectableItemBackground`, `?listDivider`). Nothing is ever
+specified in pixels or hex.
+
+That buys three things for free: dark mode, the user's font-size and contrast settings, and
+the platform's own press feedback — none of which a framework-owned palette can give you,
+and all of which F-02 requires. The cost is that you cannot brand the app from shared code
+yet; a `Theme` for apps that *want* to override roles is still missing, and so is `.platform`
+refinement.
 
 ## 11.9 Input widgets, and the rule they forced
 

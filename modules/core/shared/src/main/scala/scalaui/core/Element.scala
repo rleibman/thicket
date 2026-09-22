@@ -1,6 +1,6 @@
 package scalaui.core
 
-import scalaui.renderer.{Alignment, Prop, TextRole, WidgetKind}
+import scalaui.renderer.{Alignment, Emphasis, Prop, TextRole, WidgetKind}
 import scalaui.signals.Signal
 
 /** A property of a widget, static or signal-driven. */
@@ -81,13 +81,22 @@ object dsl {
   def Label(
       value: String | Signal[String],
       style: TextRole = TextRole.Body,
-      align: Alignment = Alignment.Start
+      align: Alignment = Alignment.Start,
+      emphasis: Emphasis = Emphasis.Normal
   ): Element =
     Widget(
       WidgetKind.Label,
-      Seq(text(value), Static(Prop.Style(style)), Static(Prop.Align(align))),
+      Seq(
+        text(value),
+        Static(Prop.Style(style)),
+        Static(Prop.Align(align)),
+        Static(Prop.TextEmphasis(emphasis))
+      ),
       Nil
     )
+
+  /** A hairline rule, drawn at the platform's own weight and colour. */
+  def Divider(): Element = Widget(WidgetKind.Divider, Nil, Nil)
 
   def Button(value: String | Signal[String], enabled: Boolean = true)(
       onTap: => Unit

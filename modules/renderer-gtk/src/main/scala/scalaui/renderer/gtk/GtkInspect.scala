@@ -21,6 +21,13 @@ object GtkInspect {
       g_type_check_instance_is_a(widget.asInstanceOf[Ptr[GTypeInstance]], tpe)
         .asInstanceOf[CInt] != 0
 
+  /** Whether the pointer still refers to a live `GtkWidget`.
+    *
+    * On a toolkit where a container owns its children, freeing a container frees its
+    * descendants, so a renderer can be handed a pointer the toolkit has already reclaimed.
+    */
+  def isWidget(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_widget_get_type())
+
   def isLabel(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_label_get_type())
   def isEntry(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_entry_get_type())
 

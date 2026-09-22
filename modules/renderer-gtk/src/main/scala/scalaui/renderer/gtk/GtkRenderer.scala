@@ -23,6 +23,18 @@ final class GtkRenderer extends Renderer {
     * Without this, binding a signal to a text field is an infinite loop.
     */
   private val suppress = mutable.Set.empty[Ptr[GtkWidget]]
+  /** Children attached through a *setter* rather than through a container's child list.
+    *
+    * `gtk_scrolled_window_set_child` wraps its child in an internal `GtkViewport`, and the
+    * scrolled window keeps its own pointer to it. Detaching that child with the generic
+    * `gtk_widget_unparent` — which is what its *actual* parent, the viewport, would want —
+    * leaves the scrolled window's pointer dangling, and disposing it then unparents freed
+    * memory: `gtk_widget_unparent: assertion 'GTK_IS_WIDGET (widget)' failed`.
+    *
+    * The rule this encodes: **a widget attached through a setter must be detached through
+    * that setter.**
+    */
+  private val setterParent = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
 
   def platform: String = "gtk4"
 
@@ -41,6 +53,8 @@ final class GtkRenderer extends Renderer {
         case WidgetKind.TextField => gtk_entry_new()
         case WidgetKind.Checkbox  => gtk_check_button_new()
         case WidgetKind.Scroll    => gtk_scrolled_window_new()
+        case WidgetKind.Divider =>
+          gtk_separator_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL)
       }
     }
     kinds(w) = kind
@@ -152,6 +166,12 @@ final class GtkRenderer extends Renderer {
                 )
               }
             else {
+              // Something tappable should look tappable, so the row picks up the platform's
+              // own activatable styling and pointer cursor rather than us drawing anything.
+              Zone {
+                gtk_widget_add_css_class(handle, toCString("activatable"))
+                gtk_widget_set_cursor_from_name(handle, toCString("pointer"))
+              }
               // A GtkBox emits no "clicked": taps on plain containers come from an event
               // controller, which is how GTK4 does input on arbitrary widgets.
               val gesture = gtk_gesture_click_new()
@@ -182,6 +202,16 @@ final class GtkRenderer extends Renderer {
             case TextRole.Caption => "caption"
           }
           gtk_widget_add_css_class(handle, toCString(cls))
+        }
+
+      case Prop.TextEmphasis(level) =>
+        // "dim-label" is GTK's own secondary-foreground class, so it follows the user's
+        // theme and contrast settings instead of a colour we picked.
+        Zone {
+          level match {
+            case Emphasis.Secondary => gtk_widget_add_css_class(handle, toCString("dim-label"))
+            case Emphasis.Normal    => gtk_widget_remove_css_class(handle, toCString("dim-label"))
+          }
         }
 
       case Prop.Grow(v) =>
@@ -215,6 +245,7 @@ final class GtkRenderer extends Renderer {
     if kinds.get(parent).contains(WidgetKind.Scroll) then {
       // A scrolled window holds one child, so "insert" is "set".
       gtk_scrolled_window_set_child(parent.asInstanceOf[Ptr[GtkScrolledWindow]], child)
+      setterParent(child) = parent
       return
     }
     val box = parent.asInstanceOf[Ptr[GtkBox]]
@@ -225,9 +256,10 @@ final class GtkRenderer extends Renderer {
   }
 
   def removeChild(parent: Handle, child: Handle): Unit =
-    if kinds.get(parent).contains(WidgetKind.Scroll) then
+    if kinds.get(parent).contains(WidgetKind.Scroll) then {
       gtk_scrolled_window_set_child(parent.asInstanceOf[Ptr[GtkScrolledWindow]], null)
-    else gtk_box_remove(parent.asInstanceOf[Ptr[GtkBox]], child)
+      val _ = setterParent.remove(child)
+    } else gtk_box_remove(parent.asInstanceOf[Ptr[GtkBox]], child)
 
   /** GTK can reorder in place, so override the contract's remove+insert default: a
     * detach/attach cycle would drop focus and restart any running animation.
@@ -257,7 +289,12 @@ final class GtkRenderer extends Renderer {
     // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
     // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox
     // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
-    if gtk_widget_get_parent(handle) != null then gtk_widget_unparent(handle)
+    setterParent.remove(handle) match {
+      case Some(scroll) =>
+        gtk_scrolled_window_set_child(scroll.asInstanceOf[Ptr[GtkScrolledWindow]], null)
+      case None =>
+        if gtk_widget_get_parent(handle) != null then gtk_widget_unparent(handle)
+    }
   }
 
   def measure(handle: Handle, constraints: Constraints): Measurement = {

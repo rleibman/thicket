@@ -2,7 +2,7 @@ package example
 
 import scalaui.core.*
 import scalaui.core.dsl.*
-import scalaui.renderer.{Alignment, TextRole}
+import scalaui.renderer.{Alignment, Emphasis, TextRole}
 import scalaui.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -117,16 +117,20 @@ object TodoApp {
 
         // A real list row: a tappable *container*, not a button pretending to be one.
         // The title grows to fill the row and the status sits at the trailing edge.
-        Column(spacing = 2)(
+        Column(spacing = 0)(
           ForEach(model.items, key = (i: Item) => i.id) { item =>
-            Row(spacing = 12, padding = 12)(
-              Label(item.map(_.title)).grow,
-              Label(
-                item.map(i => if i.done then "\u2713" else ""),
-                style = TextRole.Caption,
-                align = Alignment.End
-              )
-            ).onTap(nav.push(Route.Detail(item.now.id)))
+            Fragment(
+              Row(spacing = 12, padding = 12)(
+                Label(item.map(_.title)).grow,
+                Label(
+                  item.map(i => if i.done then "\u2713" else ""),
+                  style = TextRole.Caption,
+                  align = Alignment.End,
+                  emphasis = Emphasis.Secondary
+                )
+              ).onTap(nav.push(Route.Detail(item.now.id))),
+              Divider()
+            )
           }
         ),
         Show(model.items.map(_.isEmpty))(Label("Nothing left to do.")),
@@ -136,8 +140,11 @@ object TodoApp {
           Button("Drop")(model.dropLast()),
           Button("About")(nav.push(Route.About))
         ),
-        Label(model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"),
-              style = TextRole.Caption)
+        Label(
+          model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"),
+          style = TextRole.Caption,
+          emphasis = Emphasis.Secondary
+        )
       ))
     )
 
@@ -147,8 +154,11 @@ object TodoApp {
       title = "Item",
       content = Column(spacing = 12, padding = 16)(
         Label(item.map(_.fold("(deleted)")(_.title)), style = TextRole.Title),
-        Label(item.map(_.fold("")(i => if i.done then "Done" else "Not done")),
-              style = TextRole.Caption),
+        Label(
+          item.map(_.fold("")(i => if i.done then "Done" else "Not done")),
+          style = TextRole.Caption,
+          emphasis = Emphasis.Secondary
+        ),
         Row(spacing = 8)(
           Button("Toggle")(model.toggle(id)),
           Button("Back")(nav.pop())
