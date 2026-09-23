@@ -90,6 +90,45 @@ lazy val rendererGtk = project
   )
   .settings(gtkNativeSettings)
 
+/** AppKit's Swift shim is a separate static library, because Scala Native's own clang
+  * invocation knows nothing about Swift. `modules/renderer-appkit/shim/build-shim.sh`
+  * builds it; these flags link it and AppKit itself.
+  *
+  * Computed inside `nativeConfig ~=` rather than at build-load time, so nothing here runs
+  * on a machine that is not a Mac — the same reason `gtkNativeSettings` shells out to
+  * pkg-config lazily.
+  */
+lazy val appkitNativeSettings = Seq(
+  nativeConfig ~= { c =>
+    val shim = (file("modules") / "renderer-appkit" / "shim" / "build").getAbsolutePath
+    c.withLTO(scala.scalanative.build.LTO.none)
+      .withMode(scala.scalanative.build.Mode.debug)
+      .withCompileOptions(c.compileOptions ++ Seq("-I" + (file("modules") / "renderer-appkit" / "shim" / "include").getAbsolutePath))
+      .withLinkingOptions(
+        c.linkingOptions ++ Seq(
+          "-L" + shim,
+          "-lscalauiappkit",
+          "-framework", "AppKit",
+          "-framework", "Foundation",
+          // Swift's own runtime, which the shim's objects need at link time.
+          "-L/usr/lib/swift",
+          "-Xlinker", "-rpath", "-Xlinker", "/usr/lib/swift"
+        )
+      )
+  }
+)
+
+/** AppKit renderer (macOS). Scala Native only, and never aggregated: it links a Swift
+  * static library and AppKit, so it can only build on a Mac.
+  */
+lazy val rendererAppkit = project
+  .in(file("modules/renderer-appkit"))
+  .enablePlugins(ScalaNativePlugin)
+  .dependsOn(core.native)
+  .settings(commonSettings)
+  .settings(name := "scala-ui-renderer-appkit")
+  .settings(appkitNativeSettings)
+
 /** The ZIO bridge: effects at the edges of an otherwise effect-free core (docs/07 §7.13).
   *
   * Native needs `scala-java-time`, because `zio.Duration` *is* `java.time.Duration` and
@@ -149,6 +188,19 @@ lazy val counterGtk = project
     publish / skip := true,
     // Two demos in one project; pick with `counterGtk/runMain`.
     Compile / mainClass := Some("example.Todo")
+  )
+
+/** The macOS example. Not aggregated, for the same reason the renderer is not. */
+lazy val todoMacos = project
+  .in(file("examples/todo-macos"))
+  .enablePlugins(ScalaNativePlugin)
+  .dependsOn(rendererAppkit, examplesShared.native)
+  .settings(commonSettings)
+  .settings(appkitNativeSettings)
+  .settings(
+    name := "todo-macos",
+    publish / skip := true,
+    Compile / mainClass := Some("example.TodoMac")
   )
 
 /** The Android example's Scala half: compiled to a plain JAR that the Gradle project in
