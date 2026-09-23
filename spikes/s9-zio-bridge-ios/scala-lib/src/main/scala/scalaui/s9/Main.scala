@@ -1,6 +1,7 @@
 package scalaui.s9
 
 import _root_.zio.*
+import _root_.zio.stream.{SubscriptionRef, ZStream}
 import scala.collection.mutable
 import scala.scalanative.runtime.{Intrinsics, toRawPtr}
 import scala.scalanative.unsafe.*
@@ -14,44 +15,53 @@ import scalaui.zio.*
 
 /** Issue #2: does `modules/effect-zio` behave on a real UIKit run loop?
   *
-  * The JVM suites install `UiThread` as "run it here", so every post is synchronous. That is exactly what this cannot
-  * do: the question is what happens when posts are genuinely asynchronous and land on a thread that spends its life
-  * parked in CFRunLoop.
+  * The JVM suites install `UiThread` as "run it here", so every post is synchronous and every wait is a
+  * `while (!cond) sleep` on the test thread. Neither survives here, and the first version of this spike died of the
+  * second one before testing anything.
   *
-  * What follows is **a bisection, not a test suite**. Probes 1–5 pass; probe 6 does not, and 1–5 exist to rule out the
-  * obvious explanations for 6. Keeping them all in the binary is the point — each one is a control for the one that
-  * fails.
+  * **The rule this spike establishes: never post to the main queue from inside a main-queue callback.** Measured below,
+  * both ways in the same run — a self-reposting chain consumes ~415 bytes of main-thread stack per hop and never
+  * unwinds, while the identical posts issued from another thread cost **zero**. iOS gives the main thread 1 MB, so a
+  * polling loop written the obvious way exhausts it in a couple of thousand turns and dies with "Thread stack size
+  * exceeded".
+  *
+  * So the battery is driven by a **Scala-created driver thread**: it sleeps, posts one check to the main queue, sleeps
+  * again. Every post originates off the main thread — which is also how the bridge itself behaves, since ZIO completes
+  * on its own scheduler thread and posts the signal write from there. That is why S8 could deliver 37 504 posts without
+  * trouble.
   */
 object Main {
 
   private var label: sui_handle = null.asInstanceOf[sui_handle]
   private val report = mutable.ArrayBuffer.empty[String]
+  private val reportLock = new Object
 
   private def say(line: String): Unit = {
     println(s"[S9] $line")
-    report += line
-    Zone(sui_label_set_text(label, toCString(report.takeRight(14).mkString("\n"))))
+    reportLock.synchronized(report += line)
   }
 
-  /** Approximate stack pointer of the current frame, for measuring whether main-queue callbacks unwind. Taking the
-    * address of a stack local is the cheapest probe there is.
-    */
-  private def stackMark(): Long = {
-    val p = stackalloc[Byte]()
-    Intrinsics.castRawPtrToLong(toRawPtr(p))
+  /** Only ever called on the main thread. */
+  private def render(): Unit = {
+    val text = reportLock.synchronized(report.takeRight(14).mkString("\n"))
+    Zone(sui_label_set_text(label, toCString(text)))
   }
 
-  private var firstMark = 0L
+  private def check(
+    name:   String,
+    ok:     Boolean,
+    detail: String
+  ): Unit = say(s"${if ok then "PASS" else "FAIL"} $name${if detail.isEmpty then "" else s" — $detail"}")
 
   private def postToMain(f: () => Unit): Unit = {
     val id = Handles.registerOneShot(f)
     sui_run_on_main(sui_main_cb(Handles.mainTrampoline), id)
   }
 
-  /** The same post without `GcState.guarded`, used to show the guard is not what fails. */
-  private def postUnguarded(f: () => Unit): Unit = {
-    val id = Handles.registerOneShot(f)
-    sui_run_on_main(sui_main_cb(Handles.unguardedTrampoline), id)
+  /** Address of a stack local, for measuring whether main-queue callbacks unwind. */
+  private def stackMark(): Long = {
+    val p = stackalloc[Byte]()
+    Intrinsics.castRawPtrToLong(toRawPtr(p))
   }
 
   @exported("scalaui_s9_start")
@@ -65,187 +75,213 @@ object Main {
 
     AppleUiThread.install()
     say("--- ZIO bridge on iOS (issue #2) ---")
-    probe1RepostLoop()
+    render()
+    startDriver()
   }
 
-  // ------------------------------------------------------------------ 1. the run loop
+  // ----------------------------------------------------------- the stack measurement
 
-  private var loopN = 0
+  private var chainMark = 0L
+  private var chainHops = 0
+  private var threadMark = 0L
+  private var threadHops = 0
 
-  /** Control: a self-reposting main-queue chain, so the harness is cleared before anything else is blamed.
+  /** Posts to itself from inside the callback: the shape that fails. */
+  private def measureChainHop(): Unit = {
+    chainHops += 1
+    val m = stackMark()
+    if chainMark == 0L then chainMark = m
+    if chainHops < 200 then postToMain(() => measureChainHop())
+    else say(s"MEASURED reposting from inside a callback: ${chainMark - m} bytes over $chainHops hops")
+  }
+
+  /** Posted by the driver thread each time: the shape that works. */
+  private def measureThreadHop(): Unit = {
+    threadHops += 1
+    val m = stackMark()
+    if threadMark == 0L then threadMark = m
+    if threadHops == 200 then
+      say(s"MEASURED posting from another thread:     ${threadMark - m} bytes over $threadHops hops")
+  }
+
+  // ------------------------------------------------------------------- the driver
+
+  final private case class Step(
+    name:   String,
+    start:  () => Unit,
+    done:   () => Boolean,
+    detail: () => String
+  )
+
+  private val steps = mutable.Queue.empty[Step]
+
+  private def addStep(name: String)(start: => Unit)(done: => Boolean)(detail: => String): Unit =
+    steps.enqueue(Step(name, () => start, () => done, () => detail))
+
+  @volatile private var stepSettled = false
+  @volatile private var stepDetail: String = ""
+
+  /** Each step gets an epoch, and `evaluate` ignores posts from an older one.
+    *
+    * Without this the harness produces false passes: the driver posts an `evaluate` every 25 ms, so when a step
+    * finishes several of its posts are still queued, and they land after the next step has started and settle it
+    * instantly — with the previous step's detail string attached, which is how it was spotted.
     */
-  private def probe1RepostLoop(): Unit =
-    if loopN < 600 then {
-      loopN += 1
-      val m = stackMark()
-      if firstMark == 0L then firstMark = m
-      if loopN % 150 == 0 then say(s"  callback $loopN: stack used since first = ${firstMark - m} bytes")
-      postToMain(() => probe1RepostLoop())
-    } else {
-      say(s"PASS 1 run-loop repost chain ($loopN)")
-      probe1bPostsFromThread()
+  @volatile private var epoch = 0
+
+  /** Runs on the main thread, one post per call, always issued by the driver thread.
+    *
+    * The detail is captured here rather than by the driver, because the step's own `var`s are written on this thread
+    * and a plain read from the driver can see a stale null.
+    */
+  private def evaluate(
+    s:        Step,
+    forEpoch: Int
+  ): Unit =
+    if forEpoch == epoch then {
+      // Condition first, detail second: capturing the detail before re-reading the
+      // condition lets a step report "Loading" beside its own PASS, because the value
+      // changed in between.
+      val ok = s.done()
+      stepDetail = s.detail()
+      if ok then stepSettled = true
+      render()
     }
 
-  // ------------------------------------------- 1b. posts issued from another thread
-
-  private var fromThreadN = 0
-  private var fromThreadBase = 0L
-
-  /** Same 600 posts as probe 1, but enqueued by a Scala-created thread rather than from inside the callback. S8 posted
-    * this way — from ZIO threads — 37 504 times without exhausting anything, which is the fact that makes probe 1's
-    * growth suspicious.
-    */
-  private def probe1bPostsFromThread(): Unit = {
+  private def startDriver(): Unit = {
     val t = new Thread(() => {
       var i = 0
-      while i < 600 do {
-        postToMain(() => markFromThread())
+      while i < 200 do {
+        postToMain(() => measureThreadHop())
         i += 1
         Thread.sleep(1)
       }
+      Thread.sleep(400)
+      postToMain(() => measureChainHop())
+      Thread.sleep(1500)
+
+      buildSteps()
+      while steps.nonEmpty do {
+        val s = steps.head
+        epoch += 1
+        val myEpoch = epoch
+        stepSettled = false
+        stepDetail = ""
+        postToMain(() => s.start())
+        val deadline = java.lang.System.currentTimeMillis() + 8000
+        while !stepSettled && java.lang.System.currentTimeMillis() < deadline do {
+          Thread.sleep(25)
+          postToMain(() => evaluate(s, myEpoch))
+        }
+        if stepSettled then check(s.name, ok = true, stepDetail)
+        else check(s.name, ok = false, s"timed out after 8 s; $stepDetail")
+        val _ = steps.dequeue()
+        postToMain(() => render())
+      }
+
+      val failures = reportLock.synchronized(report.count(_.startsWith("FAIL")))
+      say(if failures == 0 then "ALL S9 BRIDGE CHECKS PASSED" else s"$failures CHECK(S) FAILED")
+      postToMain(() => render())
     })
-    t.setName("s9-poster")
+    t.setName("s9-driver")
     t.start()
   }
 
-  private def markFromThread(): Unit = {
-    fromThreadN += 1
-    val m = stackMark()
-    if fromThreadBase == 0L then fromThreadBase = m
-    if fromThreadN % 150 == 0 then say(s"  posted-from-thread $fromThreadN: stack used = ${fromThreadBase - m} bytes")
-    if fromThreadN == 600 then {
-      say(s"PASS 1b posts issued from another thread ($fromThreadN)")
-      probe2Signals()
-    }
-  }
+  // ------------------------------------------------------------------- the battery
 
-  // --------------------------------------------------------------------- 2. signals
-
-  /** Control: the reactive core on the main thread, with no effect system involved. */
-  private def probe2Signals(): Unit = {
-    val v = Var(0)
-    v.set(5)
-    say(s"PASS 2 signals Var set/read on the main thread (${v.now})")
-    probe3Contention()
-  }
-
-  // --------------------------------------------------- 3. monitors under contention
-
-  private val contended = new Object
-  private var mainRounds = 0
-  private var workerRounds = 0
-  // The contender must stop before the next probe, or it competes for CPU and the later
-  // probes stop being clean measurements. Found the hard way: probe 4 failed only when
-  // probe 3's worker was still spinning.
-  @volatile private var contendUntilStopped = true
-
-  /** Control: a monitor genuinely contended between the UIKit main thread and a Scala-created thread. A plausible
-    * suspect, because Scala Native identifies a thread by its registered stack bounds and the main thread's were
-    * recorded at `ScalaNativeInit`, deep inside scene setup. It is not the cause.
-    */
-  private def probe3Contention(): Unit = {
-    val t = new Thread(() => while contendUntilStopped do contended.synchronized(workerRounds += 1))
-    t.setName("s9-contender")
-    t.start()
-    postToMain(() => contendOnMain())
-  }
-
-  private def contendOnMain(): Unit = {
-    var i = 0
-    while i < 2000 do {
-      contended.synchronized(mainRounds += 1)
-      i += 1
-    }
-    if mainRounds < 100000 then postToMain(() => contendOnMain())
-    else {
-      contendUntilStopped = false
-      say(s"PASS 3 contended monitor main=$mainRounds worker=$workerRounds")
-      probe4BareZio()
-    }
-  }
-
-  // -------------------------------------------------------------------- 4. bare ZIO
-
-  private var echoes = 0
-
-  /** Control: S8's exact arrangement — fork from the host's initial entry point and post results back through the same
-    * trampoline, with no module code involved.
-    */
-  private def probe4BareZio(): Unit = {
-    val _ = Unsafe.unsafe { implicit u =>
-      Runtime.default.unsafe.fork(
-        ZIO.foreachDiscard(1 to 200)(_ => ZIO.succeed(postToMain(() => bumpEcho())) *> ZIO.sleep(2.millis))
-      )
-    }
-  }
-
-  private def bumpEcho(): Unit = {
-    echoes += 1
-    if echoes == 200 then {
-      say(s"PASS 4 bare ZIO fibre posted $echoes times")
-      probe5BridgeFromEntry()
-    }
-  }
-
-  // --------------------------------------------- 5. the bridge, from the entry point
-
-  private var pollsA = 0
-
-  /** The bridge itself, started from the host's initial entry point. **It works here.** */
-  private def probe5BridgeFromEntry(): Unit = {
+  private def buildSteps(): Unit = {
     given UiRuntime[Any] = UiRuntime.default
-    given Owner = Owner()
-    val sig = ZIO.succeed(42).asSignal
-    postToMain(() => pollA(sig))
-  }
 
-  private def pollA(sig: Signal[RemoteData[Nothing, Int]]): Unit = {
-    pollsA += 1
-    if sig.now == RemoteData.Done(42) then {
-      say(s"PASS 5 bridge asSignal from the entry point (poll $pollsA)")
-      probe6BridgeFromCallback()
-    } else if pollsA < 2000 then postToMain(() => pollA(sig))
-    else say(s"FAIL 5 bridge from the entry point stayed ${sig.now}")
-  }
+    val ownerA = Owner()
+    var sigA: Signal[RemoteData[Nothing, Int]] = null
+    addStep("effect.asSignal reaches Done across a real thread hop") {
+      given Owner = ownerA
+      sigA = ZIO.succeed(41).map(_ + 1).asSignal
+    }(sigA != null && sigA.now == RemoteData.Done(42))(s"state=${if sigA == null then "-" else sigA.now}")
 
-  // ----------------------------------------- 6. the bridge, from a run-loop callback
+    val ownerB = Owner()
+    var sigB: Signal[RemoteData[String, Int]] = null
+    addStep("effect.asSignal carries a typed failure") {
+      given Owner = ownerB
+      sigB = ZIO.fail("nope").asSignal
+    }(sigB != null && sigB.now == RemoteData.Failed("nope"))(s"state=${if sigB == null then "-" else sigB.now}")
 
-  private var pollsB = 0
-  private var deadlineB = 0L
+    val ownerC = Owner()
+    val presented = Var[Option[String]](None)
+    addStep("launch routes a failure through ErrorPresenter") {
+      given Owner = ownerC
+      given ErrorPresenter[String] = ErrorPresenter.into(presented)
+      ZIO.fail("boom").launch
+    }(presented.now.contains("boom"))(s"presented=${presented.now}")
 
-  /** THE FAILING CASE. Identical to probe 5 except the effect is started from inside a `sui_run_on_main` callback
-    * rather than the host's initial entry.
-    *
-    * That is not an exotic position — it is what every user interaction is. A tap arrives through the run loop and the
-    * handler calls `launch` or `asSignal`.
-    *
-    * Observed: the signal never leaves `Loading`, and the process then dies with `EXC_BAD_ACCESS` / **"Thread stack
-    * size exceeded"** on the main thread. Earlier runs reported the same fault as "Could not determine thread index for
-    * stack guard region", which is the same overflow seen by a handler that could not attribute it. iOS gives the main
-    * thread 1 MB; Scala-created threads get far more, which is why probes 3 and 4 — both of which do their real work on
-    * other threads — are unaffected.
-    *
-    * Ruled out: `GcState` (this posts unguarded and behaves identically) and where `Runtime.default` is first
-    * constructed (probe 5 warms it; nothing changes).
-    */
-  private def probe6BridgeFromCallback(): Unit = {
-    say("running 6: starting an effect from inside a run-loop callback")
-    postUnguarded(() => forkInsideCallback())
-  }
+    val ownerD = Owner()
+    var sigD: Signal[Int] = null
+    addStep("stream.asSignal mirrors 20 values") {
+      given Owner = ownerD
+      sigD = ZStream.fromIterable(1 to 20).asSignal(0)
+    }(sigD != null && sigD.now == 20)(s"value=${if sigD == null then "-" else sigD.now}")
 
-  private def forkInsideCallback(): Unit = {
-    given UiRuntime[Any] = UiRuntime.default
-    given Owner = Owner()
-    val sig = ZIO.succeed(42).asSignal
-    deadlineB = java.lang.System.currentTimeMillis() + 8000
-    postToMain(() => pollB(sig))
-  }
+    // The structural risk: `SubscriptionRef.asSignal` calls `runtime.unsafe.run` for its
+    // initial value, which BLOCKS the caller. This `start` runs on the main thread, in
+    // GC-Managed state — the exact shape of the S3 deadlock.
+    val ownerE = Owner()
+    var sigE: Signal[Int] = null
+    addStep("SubscriptionRef.asSignal — blocking unsafe.run on the main thread") {
+      given Owner = ownerE
+      val ref = Unsafe.unsafe { implicit u =>
+        Runtime.default.unsafe.run(SubscriptionRef.make(7)).getOrThrow()
+      }
+      sigE = ref.asSignal
+    }(sigE != null && sigE.now == 7)(s"value=${if sigE == null then "-" else sigE.now}")
 
-  private def pollB(sig: Signal[RemoteData[Nothing, Int]]): Unit = {
-    pollsB += 1
-    if sig.now == RemoteData.Done(42) then say(s"PASS 6 bridge asSignal from a run-loop callback (poll $pollsB)")
-    else if java.lang.System.currentTimeMillis() < deadlineB then postToMain(() => pollB(sig))
-    else say(s"FAIL 6 stayed ${sig.now} after $pollsB polls / 8 s")
+    val ownerF = Owner()
+    var sigF: Signal[Int] = null
+    addStep("a streaming fibre keeps producing while its Owner lives") {
+      given Owner = ownerF
+      sigF = ZStream.iterate(1)(_ + 1).mapZIO(i => ZIO.sleep(5.millis).as(i)).asSignal(0)
+    }(sigF != null && sigF.now > 3)(s"value=${if sigF == null then "-" else sigF.now}")
+
+    var frozenAt = -1
+    addStep("disposing the Owner interrupts it") {
+      ownerF.dispose()
+      frozenAt = sigF.now
+    } {
+      // A fibre that was merely detached rather than interrupted would keep posting, so
+      // the check is that it has not moved after several driver ticks.
+      Thread.sleep(400)
+      sigF.now == frozenAt
+    }(s"froze at $frozenAt, now ${if sigF == null then -1 else sigF.now}")
+
+    val ownerG = Owner()
+    var sigG: Signal[RemoteData[Throwable, String]] = null
+    addStep("ZIO.attemptBlocking runs on a ZIO pool thread, not a GCD queue") {
+      given Owner = ownerG
+      // Print the thread name from inside the effect. The question issue #2 asks is
+      // *which* thread the blocking pool uses, and reading it out of a signal afterwards
+      // only tells us the effect completed.
+      sigG = ZIO.attemptBlocking {
+        val n = Thread.currentThread().getName
+        println(s"[S9]   attemptBlocking ran on thread '$n'")
+        n
+      }.asSignal
+    } {
+      sigG != null && (sigG.now match {
+        case RemoteData.Done(_) => true
+        case _                  => false
+      })
+    }(s"got=${if sigG == null then "-" else sigG.now}")
+
+    val ownerH = Owner()
+    var sigH: Signal[RemoteData[Nothing, Int]] = null
+    addStep("the GC survives fibre churn while the main thread is in CFRunLoop") {
+      given Owner = ownerH
+      sigH = ZIO
+        .foreachPar(1 to 200)(i => ZIO.succeed((1 to 500).map(j => s"g$i-$j").count(_.nonEmpty)))
+        .map(_.sum)
+        .asSignal
+    }(sigH != null && sigH.now == RemoteData.Done(100000))(
+      f"sum=${if sigH == null then "-" else sigH.now}, RSS ${sui_rss_mb()}%.1f MB"
+    )
   }
 
 }

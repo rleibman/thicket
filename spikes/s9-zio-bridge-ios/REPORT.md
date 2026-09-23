@@ -9,87 +9,99 @@ compiled from `modules/`, not copies.
 
 ---
 
-## Result: FAIL — the bridge does not yet work on iOS
+## Result: PASS
 
-The bridge works when an effect is started from the host's initial entry point, and does
-not work when one is started from inside a run-loop callback. The second case is the one
-that matters: it is what every user interaction is. A tap arrives through the run loop and
-the handler calls `launch` or `asSignal`.
+`modules/effect-zio` works on a real UIKit run loop. Every check passes:
 
-The cause is **not** in `effect-zio`. The process dies of main-thread stack exhaustion —
-`EXC_BAD_ACCESS` / `"Thread stack size exceeded"` — and a **self-reposting main-queue chain
-consumes ~415 bytes per hop and never unwinds**, which at iOS's 1 MB main stack is fatal
-after a couple of thousand hops.
+```
+PASS effect.asSignal reaches Done across a real thread hop — state=Done(42)
+PASS effect.asSignal carries a typed failure — state=Failed(nope)
+PASS launch routes a failure through ErrorPresenter — presented=Some(boom)
+PASS stream.asSignal mirrors 20 values — value=20
+PASS SubscriptionRef.asSignal — blocking unsafe.run on the main thread — value=7
+PASS a streaming fibre keeps producing while its Owner lives — value=7
+PASS disposing the Owner interrupts it — froze at 12, now 12
+     attemptBlocking ran on thread 'zio-default-blocking-1'
+PASS ZIO.attemptBlocking runs on a ZIO pool thread, not a GCD queue
+PASS the GC survives fibre churn while the main thread is in CFRunLoop — sum=Done(100000)
+ALL S9 BRIDGE CHECKS PASSED
+```
 
-**What is not yet established is why, and one piece of evidence cuts against the obvious
-reading.** S8 delivered **37 504** main-queue callbacks through this identical
-`registerOneShot` + `sui_run_on_main` + `mainTrampoline` path and did not die. At 415 bytes
-a hop that would have needed 15 MB. So "every callback leaks stack" cannot be the whole
-story, and this report deliberately stops short of claiming it.
-
-The live hypothesis is that the growth is specific to **posting from inside a callback**
-(what the probes here do) as against **posting from another thread** (what S8's UiExecutor
-did, from ZIO's scheduler threads). A control for exactly that was written — probe 1b — and
-did not complete, so the hypothesis is untested. Resolving it is the first task in the
-recommendations.
+**The bridge needed no changes.** One thing outside it did, and that is the finding.
 
 ---
 
-## The bisection
+## The finding: a handle table must not use `synchronized` on Scala Native
 
-Every probe below lives in the same binary and runs in order, so each is a control for the
-next. `spikes/s9-zio-bridge-ios/scala-lib/.../Main.scala`.
+S3 introduced the handle table as a `mutable.LongMap` guarded by a monitor. That is the
+obvious design, it is correct on the JVM, and S8 and the first version of this spike
+inherited it. Under this spike's load — registrations arriving from ZIO scheduler threads
+and a driver thread while the main thread invokes from run-loop callbacks — it fails two
+ways:
 
-| # | Probe | Result |
+```
+java.lang.IllegalMonitorStateException: Thread is not an owner of this object
+  at scala.scalanative.runtime.monitor.ObjectMonitor.exit
+  at scalaui.s9.Handles$.registerOneShot
+```
+
+thrown on *exit* from a monitor the thread had just entered; and, before that surfaced,
+**~400 bytes of main-thread stack consumed per main-queue callback and never released**,
+which on iOS's 1 MB main stack kills the process with `EXC_BAD_ACCESS` /
+`"Thread stack size exceeded"` after a couple of thousand hops.
+
+Replacing the monitor with `ConcurrentHashMap` + `AtomicLong` — no object monitors at all —
+fixes both. The measurement, taken both ways in the same binary, before and after:
+
+| posting style | with `synchronized` | with `ConcurrentHashMap` |
 |---|---|---|
-| 1 | Self-reposting main-queue chain, 600 deep | **PASS** (600/600), but consumes 249 KB of stack |
-| 1b | The same 600 posts issued from a Scala thread | **inconclusive** — did not complete |
-| 2 | `signals` `Var` set/read on the main thread | **PASS** |
-| 3 | Monitor contended between the main thread and a Scala thread | **PASS** (main 100 000, worker ~95 000) |
-| 4 | Bare ZIO fibre forked from the entry point, posting back 200× | **PASS** in isolation |
-| 5 | `ZIO.succeed(42).asSignal` from the entry point | **PASS** — `Done(42)` on the first poll |
-| 6 | The same `asSignal` from inside a run-loop callback | **FAIL** — stays `Loading`, then the process dies |
+| issued from another thread | 0 bytes / 200 hops | **0 bytes / 200 hops** |
+| reposted from inside the callback | 79 600 bytes / 200 hops | **0 bytes / 200 hops** |
 
-Probe 5 passing is the important one: **the bridge itself is correct.** `asSignal` forks,
-the fibre completes on a ZIO thread, the write is posted through `UiThread`, and the signal
-reaches `Done` — across a genuine thread boundary, with `GcState` guarding the re-entry.
+That is why S8 never saw it: its 37 504 posts all originated on ZIO threads, which is the
+column that was fine either way. Exposing it took posting *from inside a callback* — not an
+exotic pattern, but what any poll-driven or self-scheduling UI work does.
 
-### What was ruled out, and how
+**Recommendation: the Apple renderer's handle table (issue #3) must be lock-free from the
+first line**, and `spikes/s3-swift-shim` should carry a pointer here. S3's own report is not
+edited — it records what was measured then.
 
-- **`GcState`** is not the cause. Probe 6 posts through a deliberately *unguarded*
-  trampoline (`Handles.unguardedTrampoline`) and behaves identically.
-- **Monitor contention** is not the cause, though it was the first suspect: Scala Native
-  identifies a thread by its registered stack bounds, and the main thread's were recorded at
-  `ScalaNativeInit`, deep inside scene setup. Probe 3 contends that monitor 100 000 times
-  from the main thread against a Scala thread without a fault.
-- **Where `Runtime.default` is first constructed** is not the cause. Warming it in the
-  initial block and forking later changes nothing.
-- **The harness** is not the cause. Probe 1 is the harness with nothing else in it.
-- **`modules/effect-zio` itself** is not the cause — see probe 5.
+### A second-order lesson about `EXC_BAD_ACCESS` on iOS
 
-### The measurement
+Earlier runs of this same overflow were reported by the crash log as
+`"Could not determine thread index for stack guard region"`, and once as a fault inside
+`BasicMonitor.tryLock`. Both read like threading bugs. Both were stack exhaustion, seen by a
+guard handler that could not attribute it to a thread. Worth recognising on sight.
 
-Probe 1 records the address of a stack local on each callback:
+---
 
-| callbacks | 150 | 300 | 450 | 600 |
-|---|---|---|---|---|
-| stack consumed since the first | 61 984 B | 124 384 B | 186 784 B | 249 184 B |
+## What was verified, against the issue's list
 
-**~415 bytes per hop, linear, never released** — for a chain that reposts *itself* from
-inside each callback. At 1 MB that is roughly 2 500 hops.
+1. **`UiThread.install` wired to `sui_run_on_main`** — done, in `AppleUiThread`, and all nine
+   checks exercise it. The bridge's design choice — post *only* signal writes and let ZIO
+   schedule everything else — holds up: fibres run on ZIO's threads, every UI touch arrives
+   on the main thread.
+2. **The S1 constraint still holds.** `ZIO.attemptBlocking` ran on `zio-default-blocking-1`,
+   a real ZIO pool thread. Nothing in the bridge puts Scala on a GCD worker queue.
+3. **The S3 constraint still holds.** `GcState.guarded` is on every host→Scala entry the
+   bridge creates. The GC-churn check — 200 parallel fibres allocating ~100 000 strings
+   while the main thread sits in CFRunLoop — completes with `Done(100000)` and no safepoint
+   warning.
+4. **Interruption works.** A streaming fibre advances while its `Owner` lives and stops dead
+   when the `Owner` is disposed: frozen at 12, still 12 after several driver ticks. It is
+   interrupted, not merely detached.
+5. **`scala-java-time` 2.7.0 is still required**, for the same reason as S8: `zio.Duration`
+   *is* `java.time.Duration` and Scala Native has no `java.time`.
 
-Two independent pieces of evidence agree that the stack is being exhausted: the address
-arithmetic above, and the crash report's own `"Thread stack size exceeded"`. Earlier runs
-reported the same fault as `"Could not determine thread index for stack guard region"`,
-which is the same overflow seen by a guard handler that could not attribute it to a thread —
-worth recognising, because it reads like a threading bug and is not one.
+Also worth recording: **`SubscriptionRef.asSignal` is safe**, which was not obvious. It calls
+`runtime.unsafe.run` for its initial value, which blocks the calling thread — and here that
+caller is the main thread in GC-Managed state, the exact shape of the S3 deadlock. It
+completes correctly (`value=7`).
 
-Two caveats, both material:
-
-- `stackalloc` in Scala Native allocates in the enclosing function's frame, so the
-  per-hop figure is approximate. The fact of exhaustion does not rest on it.
-- **S8 contradicts the simple reading**, as above. Until probe 1b (posts issued from a
-  separate thread) runs, "self-reposting chains nest" is a hypothesis, not a finding.
+And: **the modules compile clean for Native under the repo's full flags** — `-no-indent`,
+`-Wunused:all`, `-Werror`. The only warnings in the whole build come from sn-bindgen's
+generated bindings, silenced by file. Nothing in `signals`, `core`, `renderer-api` or
+`effect-zio` is accidentally JVM-only.
 
 ---
 
@@ -100,100 +112,50 @@ spikes/s9-zio-bridge-ios/
   build.sbt                     compiles the REAL module sources (not copies) for iOS
   shim/                         copied from S8 (spikes never depend on each other)
   scala-lib/src/main/scala/scalaui/s9/
-    AppleUiThread.scala         the deliverable: UiThread wired to sui_run_on_main
-    Main.scala                  the six-probe bisection
-    Handles.scala               + unguardedTrampoline, for isolating GcState
+    AppleUiThread.scala         UiThread wired to sui_run_on_main
+    Handles.scala               lock-free handle table — the fix
+    Main.scala                  the measurement + the nine-check battery
     GcState.scala, generated.scala
   ios-app/                      UIScene-based host
 ```
 
-`build.sbt` points `unmanagedSourceDirectories` at `modules/{signals,renderer-api,core,effect-zio}`
-so this tests the shipped code. It is a standalone build rather than a project in the root
-`build.sbt` because every iOS target needs `xcrun` at build-load time, which would break the
-Linux box's build for everyone else.
+`build.sbt` points `unmanagedSourceDirectories` at the module sources, so this tests shipped
+code. It is a standalone build rather than a project in the root `build.sbt` because every
+iOS target needs `xcrun` at build-load time, which would break the Linux box's build.
 
-**The modules compile clean for Native under the repo's full flags** — `-no-indent`,
-`-Wunused:all`, `-Werror`. The only warnings in the whole build come from sn-bindgen's
-generated bindings, which are silenced by file. That is worth knowing on its own: nothing in
-`signals`, `core`, `renderer-api` or `effect-zio` is JVM-only by accident.
+### How the battery is driven, and why that matters
 
-### `AppleUiThread`, the thing issue #2 asked for
+A **Scala-created driver thread** runs the battery: it sleeps, posts one check to the main
+queue, sleeps again. Never the other way round. The JVM suites' `while (!cond) sleep` idiom
+cannot be used here — on the main thread it deadlocks by construction, because the posts it
+waits for can only be delivered by the run loop it is refusing to return to.
 
-Four lines, each of which is a spike finding:
+Three harness bugs were found and fixed on the way, each of which produced plausible-looking
+wrong answers:
 
-```scala
-def install(): Unit = UiThread.install { f =>
-  val id = Handles.registerOneShot(() => f())
-  sui_run_on_main(sui_main_cb(Handles.mainTrampoline), id)
-}
-```
+- **Stale evaluations settling the next step.** The driver posts a check every 25 ms, so
+  when a step finished several of its posts were still queued; they landed after the next
+  step started and settled it instantly — carrying the previous step's detail string, which
+  is how it was caught. Fixed with an epoch tag. Before the fix, three steps "passed"
+  without running.
+- **Details read from the wrong thread.** Step results are written on the main thread;
+  reading them from the driver showed stale nulls beside genuine passes.
+- **Condition and detail evaluated in the wrong order**, so a step could report `Loading`
+  next to its own `PASS`.
 
-- `sui_run_on_main` targets the **main queue specifically**, never a worker queue — Scala on
-  a GCD worker segfaults in `Allocator_Alloc` (S1).
-- The task travels as an `int64_t` handle-table id: a C function pointer cannot carry a
-  closure (S4), and an `int64_t` context avoids the `Long`⇄`Ptr` laundering (S7).
-- `mainTrampoline` wraps the call in `GcState.guarded` (S3).
-- `registerOneShot`, not `register`, or the table leaks at the rate of UI activity (S8).
-
-This is correct as far as it goes, and probe 5 shows it works. It is the *accumulation* over
-many posts that fails.
-
----
-
-## Answers to the issue's specific questions
-
-1. **`UiThread.install` wired to `sui_run_on_main`** — done, above, and it works for the
-   posts it delivers. The bridge's choice to post *only* signal writes and let ZIO schedule
-   everything else is sound: probe 5 confirms it end to end.
-2. **The S1 constraint still holds** — unverified. Probe 8 (`ZIO.attemptBlocking`) never ran,
-   because the battery cannot get past probe 6. Nothing observed contradicts S8, which
-   showed the blocking pool is real ZIO threads named `zio-default-blocking-N`.
-3. **The S3 constraint still holds** — confirmed as far as tested. `GcState.guarded` is on
-   every host→Scala entry the bridge creates, and removing it does not change probe 6's
-   outcome, so the guard is neither the problem nor currently load-bearing in this path.
-4. **Interruption** — **not verified.** Blocked behind probe 6.
-5. **`scala-java-time` 2.7.0 is still required** — confirmed. It is in `build.sbt` for the
-   same reason as S8: `zio.Duration` *is* `java.time.Duration`, and Scala Native has no
-   `java.time`.
+None of these turned a real failure into a real pass, but two turned *nothing* into a pass,
+which is worse. Recorded because the same shapes will recur in any device test.
 
 ---
 
 ## Recommendations
 
-0. **Run probe 1b first — it decides what this report means.** It is already written
-   (`probe1bPostsFromThread`): the same 600 posts, issued by a Scala-created thread instead
-   of from inside the callback. If it is flat, the rule is "never repost to the main queue
-   from inside a main-queue callback", the bridge is fine because it posts from ZIO threads,
-   and probe 6's failure is an artifact of this harness's polling loop rather than a bridge
-   defect. If it also grows, then S8 got lucky and the posting path needs real work. Until
-   this runs, **do not treat "the bridge fails on iOS" as settled** — treat it as "the
-   bridge could not be verified, and here is exactly where it stopped".
-
-1. **Fix the leak before anything else in the Apple line.** Nothing above `sui_run_on_main`
-   can be trusted until a main-queue callback costs nothing. The next step is to find where
-   the 415 bytes go — the candidates, in order of suspicion, are Scala Native's `CFuncPtr`
-   entry path, the `Zone` in the shim's string handling, and `dispatch_async` block capture.
-   A pure-Swift control — the same repost chain with no Scala in it — was attempted here
-   and did not run past its first callback, so it settled nothing and was removed rather
-   than shipped as a broken diagnostic. Getting that control working is the single most
-   useful next step: if a Swift-only chain also grows, the leak is GCD or the simulator and
-   nothing in this repo can fix it; if it is flat, the leak is on the Scala side of the
-   `@_cdecl` boundary. It belongs in `spikes/s3-swift-shim/`, where the mechanism lives.
-
-2. **`docs/07` §7.13 — record that the run-loop *position* of an effect matters on Apple,**
-   at least until (1) is fixed. "Start effects from the host entry point" is not a design a
-   UI framework can live with, but it is the current state and should be written down rather
-   than rediscovered.
-
-3. **Re-run this spike after the fix.** Probes 1–6 are ordered and cheap; probes for
-   `attemptBlocking`, interruption on `Owner.dispose`, `SubscriptionRef.asSignal` and GC
-   churn were written and are in the file's history but could not be reached. In particular
-   `SubscriptionRef.asSignal` calls `runtime.unsafe.run` for its initial value, which
-   **blocks the calling thread** — on iOS that is the main thread, in GC-Managed state, which
-   is the exact shape of the S3 deadlock. That one should be tested first once probe 6 passes.
-
-4. **Do not read this as "ZIO does not work on iOS".** S8 stands: the runtime starts in
-   1.2 ms, delivers 37 500/37 500 ticks, and interrupts promptly. What is broken is the
-   shim's posting path under sustained use, and it would break a GTK or Android renderer
-   posting at the same rate too if they shared the mechanism — they do not, which is why this
-   has not been seen before.
+1. **`docs/07` §7.6 / §7.13 — specify the handle table as lock-free.** `ConcurrentHashMap` +
+   `AtomicLong`, never `synchronized`. This is the one change the framework needs from this
+   spike, and issue #3 should start from it rather than copying S3's version.
+2. **`spikes/s3-swift-shim` — add a pointer to this report** beside its `Handles.scala`, so
+   the next person copying it knows. S3's measurements stand as recorded.
+3. **The bridge itself needs no changes.** `modules/effect-zio` is verified on the simulator;
+   device verification moves to M1 with everything else.
+4. **Port these checks to a device test at M1.** They are ordinary bridge semantics rather
+   than iOS trivia, and the driver-thread shape is the reusable part.

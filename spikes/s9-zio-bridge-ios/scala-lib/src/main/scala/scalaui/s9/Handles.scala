@@ -1,79 +1,78 @@
 package scalaui.s9
 
-import scala.collection.mutable
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import scala.scalanative.unsafe.*
 
-/** S4 found that Scala Native rejects a `CFuncPtr` that closes over local state — it is a compile error, not a runtime
-  * surprise. So every C callback must be a *static* function plus an explicit context, and the context has to index
-  * something. This is that index: the handle table `docs/07` §7.6 proposes, implemented for UIKit.
+/** The handle table: `Long` id -> closure, because a C function pointer cannot carry one (S4), and an `int64_t` context
+  * avoids the `Long` <-> `Ptr` laundering a `void*` forces (S7).
   *
-  * S7 implemented the same table against GTK and had to launder the id through `Intrinsics.castLongToRawPtr`, because
-  * GObject types `user_data` as `gpointer` and `id.asInstanceOf[Ptr[Byte]]` compiles but throws at runtime. Here the
-  * shim's own header types the context as `int64_t`, so the id travels as a number and that entire class of bug is
-  * designed out rather than worked around. That is the one real advantage of controlling both sides of the ABI, and it
-  * is worth spending on every shim we write.
+  * **No `synchronized` here, deliberately.** S3's version guarded a `mutable.LongMap` with a monitor, which is correct
+  * on the JVM and fails on Scala Native under this spike's load — registrations arriving from ZIO threads and the
+  * driver thread while the main thread invokes from run-loop callbacks produced:
+  *
+  * {{{
+  * java.lang.IllegalMonitorStateException: Thread is not an owner of this object
+  *   at scala.scalanative.runtime.monitor.ObjectMonitor.exit
+  *   at scalaui.s9.Handles$.registerOneShot
+  * }}}
+  *
+  * thrown on *exit* from a monitor the thread had just entered. `ConcurrentHashMap` plus an `AtomicLong` does the same
+  * job without object monitors, and is what any handle table in the framework should use.
   */
 object Handles {
 
-  private val callbacks: mutable.LongMap[() => Unit] = mutable.LongMap.empty
-  private var nextId:    Long = 1L
+  private val callbacks = new ConcurrentHashMap[java.lang.Long, () => Unit]()
+  private val nextId = new AtomicLong(1L)
 
-  /** The table is written from whichever thread registers a callback and read from the thread the host calls back on —
-    * for `sui_run_on_main` those are different threads by construction. An unsynchronised `LongMap` here does not
-    * throw; the background thread simply dies mid-resize and its work silently stops, which cost real time to find. Any
-    * handle table in the framework has to be concurrent from the start.
-    */
-  private val lock = new Object
-
-  /** The closure is reachable from this table for as long as C can call back, which is what keeps the GC from
-    * collecting it. Dropping the table entry is the only thing that makes a callback collectable, so `release` is the
+  /** The closure stays reachable from this table for as long as C can call back, which is what keeps the GC from
+    * collecting it. Dropping the entry is the only thing that makes a callback collectable, so `release` is the
     * counterpart to `sui_destroy`.
     */
-  def register(f: () => Unit): Long =
-    lock.synchronized {
-      val id = nextId
-      nextId += 1
-      callbacks(id) = f
-      id
-    }
+  def register(f: () => Unit): Long = {
+    val id = nextId.getAndIncrement()
+    callbacks.put(id, f)
+    id
+  }
 
-  def release(id: Long): Unit = lock.synchronized(callbacks -= id)
-
-  /** Registers a callback that removes itself once it has run. The ZIO executor posts one of these per task, so without
-    * self-removal the table would grow at tick rate forever.
+  /** Registers a callback that removes itself once it has run. Every UI post uses one of these: at 60 Hz a table that
+    * never sheds entries is a leak with a clock on it (S8).
     */
-  def registerOneShot(f: () => Unit): Long =
-    lock.synchronized {
-      val id = nextId
-      nextId += 1
-      callbacks(id) = () =>
+  def registerOneShot(f: () => Unit): Long = {
+    val id = nextId.getAndIncrement()
+    callbacks.put(
+      id,
+      () => {
         release(id)
         f()
-      id
-    }
+      }
+    )
+    id
+  }
 
-  def count: Int = lock.synchronized(callbacks.size)
+  def release(id: Long): Unit = { val _ = callbacks.remove(id) }
 
-  // The lookup is synchronised but the call is not: running user code under the lock would
-  // deadlock the moment a callback registers another callback.
-  private def invoke(id: Long): Unit = lock.synchronized(callbacks.get(id)).foreach(_())
+  def count: Int = callbacks.size
 
-  /** The single static trampoline every tap comes through. One C function, N closures, discriminated by the id — as
-    * opposed to one C function per callback, which is what you would need without the table.
+  private def invoke(id: Long): Unit = {
+    val f = callbacks.get(id)
+    if f != null then f()
+  }
+
+  /** The single static trampoline every tap comes through: one C function, N closures, discriminated by the id.
     */
   val tapTrampoline: CFuncPtr1[Long, Unit] =
     CFuncPtr1.fromScalaFunction((id: Long) => GcState.guarded(invoke(id)))
 
-  /** Same trampoline shape for main-thread posts; kept separate so the two can diverge (e.g. draining a queue) without
-    * touching the tap path.
+  /** Same shape for main-thread posts, kept separate so the two can diverge without touching the tap path.
     */
-  /** Diagnostic only (issue #2): identical to `mainTrampoline` but WITHOUT the Managed/Unmanaged guard, to isolate
-    * whether GcState is what stops a fibre forked from inside a main-queue callback from ever running.
+  val mainTrampoline: CFuncPtr1[Long, Unit] =
+    CFuncPtr1.fromScalaFunction((id: Long) => GcState.guarded(invoke(id)))
+
+  /** Diagnostic only: identical to `mainTrampoline` without the Managed/Unmanaged guard, used to show that `GcState` is
+    * not implicated in a failure.
     */
   val unguardedTrampoline: CFuncPtr1[Long, Unit] =
     CFuncPtr1.fromScalaFunction((id: Long) => invoke(id))
-
-  val mainTrampoline: CFuncPtr1[Long, Unit] =
-    CFuncPtr1.fromScalaFunction((id: Long) => GcState.guarded(invoke(id)))
 
 }

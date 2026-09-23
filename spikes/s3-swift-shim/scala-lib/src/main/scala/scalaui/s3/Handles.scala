@@ -18,7 +18,13 @@ object Handles {
   private val callbacks: mutable.LongMap[() => Unit] = mutable.LongMap.empty
   private var nextId:    Long = 1L
 
-  /** The table is written from whichever thread registers a callback and read from the thread the host calls back on —
+  /** LATER FINDING (S9, issue #2): **this monitor is wrong on Scala Native.** Under load — registrations from ZIO
+    * threads while the main thread invokes from run-loop callbacks — it throws
+    * `IllegalMonitorStateException: Thread is not an owner of this object` on monitor *exit*, and consumes ~400 bytes
+    * of main-thread stack per callback until iOS's 1 MB main stack is gone. `ConcurrentHashMap` + `AtomicLong` fixes
+    * both. See `spikes/s9-zio-bridge-ios/REPORT.md`; S3's own measurements below stand as recorded.
+    *
+    * The table is written from whichever thread registers a callback and read from the thread the host calls back on —
     * for `sui_run_on_main` those are different threads by construction. An unsynchronised `LongMap` here does not
     * throw; the background thread simply dies mid-resize and its work silently stops, which cost real time to find. Any
     * handle table in the framework has to be concurrent from the start.
