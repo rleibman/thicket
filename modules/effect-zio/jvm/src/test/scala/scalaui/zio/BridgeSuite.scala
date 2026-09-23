@@ -4,7 +4,7 @@ import _root_.zio.*
 import _root_.zio.stream.{SubscriptionRef, ZStream}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import scalaui.core.{RemoteData, UiThread}
-import scalaui.signals.{Owner, Var}
+import scalaui.signals.{Owner, ThreadGuard, Var}
 
 /** The bridge's contract, exercised without a device.
   *
@@ -15,8 +15,13 @@ class BridgeSuite extends munit.FunSuite {
 
   given UiRuntime[Any] = UiRuntime.default
 
-  override def beforeEach(context: BeforeEach): Unit =
+  override def beforeEach(context: BeforeEach): Unit = {
     UiThread.install(f => f())
+    // `ThreadGuard` is process-global, and sbt runs several projects' suites in one JVM, so
+    // a guard another module's tests installed would reject the bridge's signal writes from
+    // a ZIO fibre. A suite has to establish the global state it depends on, not assume it.
+    ThreadGuard.install(ThreadGuard.off)
+  }
 
   /** Waits for a condition the bridge will satisfy from another fibre.
     *

@@ -3,7 +3,7 @@ package scalaui.zio
 import _root_.zio.*
 import scalaui.core.*
 import scalaui.core.dsl.*
-import scalaui.signals.Owner
+import scalaui.signals.{Owner, ThreadGuard}
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** What the bridge is actually for: a screen whose content is an exhaustive match on the
@@ -13,8 +13,13 @@ class RemoteScreenSuite extends munit.FunSuite {
 
   given UiRuntime[Any] = UiRuntime.default
 
-  override def beforeEach(context: BeforeEach): Unit =
+  override def beforeEach(context: BeforeEach): Unit = {
     UiThread.install(f => f())
+    // `ThreadGuard` is process-global, and sbt runs several projects' suites in one JVM, so
+    // a guard another module's tests installed would reject the bridge's signal writes from
+    // a ZIO fibre. A suite has to establish the global state it depends on, not assume it.
+    ThreadGuard.install(ThreadGuard.off)
+  }
 
   final case class Recipe(id: Int, name: String)
   final case class LoadFailed(message: String)

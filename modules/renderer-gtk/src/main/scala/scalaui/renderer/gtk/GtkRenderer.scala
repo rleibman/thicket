@@ -354,6 +354,16 @@ final class GtkRenderer extends Renderer {
     if t == null then "" else fromCString(t)
   }
 
+  /** glib's `guint` and `gboolean` are *opaque* aliases of unsigned/CInt, so
+    * `asInstanceOf[CInt]` on one compiles and then throws `ClassCastException` at runtime.
+    * Going through the unsigned type is the only safe route.
+    */
+  private def toInt(u: sn.gnome.glib.internal.guint): Int =
+    u.asInstanceOf[scala.scalanative.unsigned.UInt].toInt
+
+  private def toGuint(i: Int): sn.gnome.glib.internal.guint =
+    i.toUInt.asInstanceOf[sn.gnome.glib.internal.guint]
+
   private def hex(c: scalaui.renderer.Rgb): String = f"#${c.r}%02x${c.g}%02x${c.b}%02x"
 
   private def gbool(b: Boolean): sn.gnome.glib.internal.gboolean =
@@ -392,6 +402,86 @@ final class GtkRenderer extends Renderer {
 
   /** No-op: every v0 container is ToolkitManaged, so GTK positions its own children. */
   def setFrame(handle: Handle, frame: Frame): Unit = ()
+
+  /** GTK4's `GtkListView` materialises only the rows on screen, the same as Android's
+    * `ListView`. This is `RowSource`'s second implementation, and the contract needed no
+    * changes to accommodate it — which is the first evidence it is an abstraction rather
+    * than a description of Android.
+    */
+  override def supportsVirtualRows: Boolean = true
+
+  override def createVirtualList(source: RowSource[Ptr[GtkWidget]]): Ptr[GtkWidget] = {
+    // GtkListView wants a GListModel. A GtkStringList of placeholders is the cheapest one
+    // available from these bindings: it gives the view a row count, and the strings are
+    // never displayed — the factory below supplies the actual widgets.
+    val model = gtk_string_list_new(null)
+
+    val factory = gtk_signal_list_item_factory_new()
+    val binderId = Handles.registerListBinder { item =>
+      val listItem = item.asInstanceOf[Ptr[GtkListItem]]
+      val position = toInt(gtk_list_item_get_position(listItem))
+      if position >= 0 && position < source.count then {
+        // Whatever this list item last held is the recycled handle.
+        val recycled = Option(gtk_list_item_get_child(listItem)).filter(_ != null)
+        val child    = source.bind(position, recycled)
+        gtk_list_item_set_child(listItem, child)
+      }
+    }
+    Zone {
+      val _ = g_signal_connect_data(
+        factory.asInstanceOf[gpointer],
+        toCString("bind").asInstanceOf[Ptr[gchar]],
+        GCallback.fromPtr(Handles.listBindPtr),
+        Handles.idToPointer(binderId),
+        null.asInstanceOf[GClosureNotify],
+        GConnectFlags.define(0)
+      )
+    }
+
+    val selection = gtk_no_selection_new(model.asInstanceOf[Ptr[sn.gnome.gio.internal.GListModel]])
+    val view = gtk_list_view_new(selection.asInstanceOf[Ptr[GtkSelectionModel]], factory)
+    gtk_list_view_set_show_separators(view.asInstanceOf[Ptr[GtkListView]], gbool(true))
+
+    // A list only virtualises inside something that scrolls.
+    val scroller = gtk_scrolled_window_new()
+    gtk_scrolled_window_set_policy(
+      scroller.asInstanceOf[Ptr[GtkScrolledWindow]],
+      GtkPolicyType.GTK_POLICY_NEVER,
+      GtkPolicyType.GTK_POLICY_AUTOMATIC
+    )
+    gtk_scrolled_window_set_child(scroller.asInstanceOf[Ptr[GtkScrolledWindow]], view)
+    gtk_widget_set_vexpand(scroller, gbool(true))
+    kinds(scroller) = WidgetKind.Scroll
+    setterParent(view) = scroller
+
+    virtualModels(scroller) = model
+    syncModel(model, source.count)
+    source.onInvalidate(() => syncModel(model, source.count))
+    scroller
+  }
+
+  private val virtualModels = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkStringList]]
+
+  /** Make the model's length match the data. The strings are placeholders; only the count
+    * matters, because the factory supplies every widget.
+    */
+  private def syncModel(model: Ptr[GtkStringList], count: Int): Unit = {
+    val current = toInt(
+      sn.gnome.gio.internal.g_list_model_get_n_items(
+        model.asInstanceOf[Ptr[sn.gnome.gio.internal.GListModel]]
+      )
+    )
+    if count > current then
+      Zone {
+        val additions = alloc[CString](count - current + 1)
+        var i         = 0
+        while (i < count - current) { additions(i) = toCString(""); i += 1 }
+        additions(count - current) = null
+        gtk_string_list_splice(model, toGuint(current), toGuint(0), additions)
+      }
+    else if count < current then
+      gtk_string_list_splice(model, toGuint(count), toGuint(current - count), null)
+  }
 
   def runOnUiThread(f: () => Unit): Unit = {
     val id = Handles.register(f)

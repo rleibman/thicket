@@ -30,6 +30,7 @@ private[gtk] object Handles {
   def release(id: Long): Unit = synchronized {
     val _ = callbacks.remove(id)
     val _ = valued.remove(id)
+    val _ = listBinders.remove(id)
     val _ = readers.remove(id)
     val _ = muted.remove(id)
   }
@@ -103,6 +104,31 @@ private[gtk] object Handles {
     }
 
   def releasedPtr: CVoidPtr = CFuncPtr.toPtr(released)
+
+  // -- GtkListView factory callbacks ---------------------------------------
+  //
+  // `GtkSignalListItemFactory::bind` is (factory, listitem, user_data). The list item is
+  // the recycling unit: it carries the row position and whatever child it last held, which
+  // is exactly what `RowSource.bind` wants.
+
+  private val listBinders: mutable.LongMap[Ptr[Byte] => Unit] = mutable.LongMap.empty
+
+  def registerListBinder(f: Ptr[Byte] => Unit): Long = synchronized {
+    val id = nextId
+    nextId += 1
+    listBinders(id) = f
+    id
+  }
+
+  private val listBind: CFuncPtr3[Ptr[Byte], Ptr[Byte], gpointer, Unit] =
+    CFuncPtr3.fromScalaFunction { (_: Ptr[Byte], item: Ptr[Byte], data: gpointer) =>
+      GcState.guarded {
+        val id = pointerToId(data)
+        synchronized(listBinders.get(id)).foreach(_(item))
+      }
+    }
+
+  def listBindPtr: CVoidPtr = CFuncPtr.toPtr(listBind)
 
   /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not
     * shed entries at UI rates is a leak with a clock on it (S8).

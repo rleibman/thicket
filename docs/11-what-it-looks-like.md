@@ -382,9 +382,19 @@ idea.
 
 **A renderer without a virtualising container is not deficient.** `supportsVirtualRows`
 defaults to false and the framework falls back to mounting every row — correct, just heavier.
-GTK does that today. The fallback wraps itself in a container so that a `LazyColumn` is one
-widget on every renderer; otherwise the same element would produce a different tree shape
-depending on who was drawing it.
+The fallback wraps itself in a container so that a `LazyColumn` is one widget on every
+renderer; otherwise the same element would produce a different tree shape depending on who
+was drawing it.
+
+**Both renderers now virtualise**, and this is where the contract earned some confidence:
+GTK4's `GtkListView` needed **no changes to `RowSource`**. Its shape is quite different from
+Android's — a `GListModel` supplies the row count, a `GtkSignalListItemFactory` emits `bind`
+for each list item, and the recycled child comes from `gtk_list_item_get_child` rather than
+being handed in — yet `count` / `bind(index, recycled)` / `onInvalidate` covered it exactly.
+A contract with one implementation is a guess; this is its second.
+
+The two differ in how much they over-provision: for the same 10 000-row list Android keeps
+about **66** views alive, GTK about **205**. Both are bounded, which is the point.
 
 **Designed by implementing, not by sketching.** `docs/07` §7.4's renderer contract was written
 in the abstract and S7 found four defects the moment a real toolkit met it. This one was built

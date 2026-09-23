@@ -83,6 +83,26 @@ object Todo {
         screenTexts.count(_ == "Write the catalogue") == 1,
       screenTexts.toString)
 
+    // --- LazyColumn: 10 000 rows through GtkListView ---
+    app.push(TodoApp.Route.Big)
+    check("pushed the 10 000-row screen", app.title.now == "10 000 rows")
+    // Let GTK lay out and materialise its viewport before counting.
+    GtkApp.postToUi(() => countRows())
+  }
+
+  private def countRows(): Unit = {
+    val texts = screenTexts.filter(_.startsWith("Row "))
+    // GtkListView keeps a larger recycling buffer than Android's ListView does — a few
+    // hundred rather than a few dozen — so the bound is generous. What matters is that it
+    // is bounded at all: the same list through ForEach would be 10 000.
+    check(
+      s"only a bounded set of rows exists (${texts.size} materialised of 10 000)",
+      texts.nonEmpty && texts.size < 1000,
+      texts.take(3).toString
+    )
+    check("the first rows are the ones on screen", texts.headOption.contains("Row 1"),
+      texts.take(3).toString)
+
     println(
       if failures == 0 then "[selftest] ALL CHECKS PASSED"
       else s"[selftest] $failures CHECK(S) FAILED"
