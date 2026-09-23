@@ -51,4 +51,11 @@ DYLD_FALLBACK_LIBRARY_PATH="$XCODE_CLANG_LIB" "$BINDGEN" \
 # What *is* required is GcState: marking the thread Unmanaged when Scala returns to the
 # host run loop. Without that the app reliably aborts. See REPORT.md.
 
+# sn-bindgen emits Scala 3 *indentation* syntax, which every build rejects via -no-indent
+# (docs/decisions.md). After regenerating, convert it back to braces by temporarily adding
+# "-rewrite" alongside "-no-indent" in build.sbt, compiling once, then removing "-rewrite".
+# The compiler handles all of it here; there are no "fewer braces" colon-form sites in
+# sn-bindgen's output. Then run scalafmt against the repo-root .scalafmt.conf, or the
+# checked-in copy will differ from a freshly generated one on every unrelated diff.
+
 echo "regenerated $(wc -l < "$OUT" | tr -d ' ') lines into $OUT"

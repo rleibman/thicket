@@ -21,7 +21,7 @@ lazy val scalaLib = Project("scalaLib", file("target-builds/simArm64"))
   .settings(
     name                  := "s6-optionb",
     Compile / scalaSource := (ThisBuild / baseDirectory).value / "scala-lib" / "src" / "main" / "scala",
-    scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-source:3.9"),
+    scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-source:3.9", "-no-indent"),
     nativeConfig := {
       val c     = nativeConfig.value
       val flags = Seq("-target", triple, "-isysroot", simSdk)

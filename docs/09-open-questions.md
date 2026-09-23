@@ -322,6 +322,38 @@ Suggested edit to §6.1: **add a binary-size row** — it is the most discrimina
 measured (0.53 / 26.0 / 60.06 MB), and N-03 makes size a requirement even though the scoring
 table never mentions it.
 
+### 9.3i — Two hand-written shims are the real cost of Apple (issue #3, 2026-09-23)
+
+Issue #3 asked whether `modules/renderer-api` survives a third toolkit family. It does, on
+both AppKit and UIKit, unchanged — that question is closed.
+
+The question it opens is **maintenance of the shim, not the contract**. `Shim+AppKit.swift`
+(385 lines) and `Shim+UIKit.swift` (388 lines) implement the same 35 functions, and nothing
+keeps them in step except one C header and one self-test. They diverge for good structural
+reasons — UIKit has no checkbox, `UIControl` takes an event mask, fonts come from the Dynamic
+Type scale — so `#if os()` inside function bodies would be worse, not better. At the ~240
+functions §7.6 projects for v1, hand-writing both is roughly 5 200 lines of Swift maintained
+in duplicate.
+
+This makes S3's "generate the shim, header and bindings from one widget description" a
+**prerequisite for the widget catalogue** rather than an optimisation. Proposed edit to
+§7.6: say so, and note that the generator's input must be able to express per-platform
+widget *choice* (checkbox vs. switch), not only per-platform naming.
+
+Two smaller things worth recording:
+
+- **`fittingSize` / `systemLayoutSizeFitting` return zero for a container already sized by
+  its parent** — on both platforms, independently found. Measurement falls back to the
+  view's frame. Any future Apple layout work should expect this.
+- **A simulator app's `stdout` never reaches `os_log`**, so `log show` cannot see `println`.
+  Only `simctl launch --console-pty` captures it, and that never returns on its own. Every
+  automated iOS check has to launch detached against a pty and poll the file; recorded
+  because it looks like a crash when the app is in fact running fine.
+
+Still open, deliberately: **iOS is verified on the simulator only.** Nothing in the renderer
+is simulator-specific, but a device triple and a signing identity are untested and the claim
+should not be made until M1.
+
 ## 9.4 Not yet researched (deliberately deferred)
 
 - Push notifications, deep links, background tasks, app extensions.

@@ -6,36 +6,36 @@ import scalaui.s3.generated.aliases.*
 import scalaui.s3.generated.functions.*
 import scalaui.s3.generated.structs.*
 
-/** The Scala half of S3: builds real UIKit widgets through the Swift shim, wires taps back into
-  * Scala closures, and measures the round trip.
+/** The Scala half of S3: builds real UIKit widgets through the Swift shim, wires taps back into Scala closures, and
+  * measures the round trip.
   */
-object Main:
+object Main {
 
-  private var label: sui_handle = null.asInstanceOf[sui_handle]
+  private var label:    sui_handle = null.asInstanceOf[sui_handle]
   private var tapCount: Int = 0
   private val report = scala.collection.mutable.ArrayBuffer.empty[String]
 
-  private def setLabel(text: String): Unit =
-    Zone(sui_label_set_text(label, toCString(text)))
+  private def setLabel(text: String): Unit = Zone(sui_label_set_text(label, toCString(text)))
 
   // A rolling window sized to what the label's fixed frame can actually show. Too large a
   // window is indistinguishable from a hang: UILabel truncates at the bottom, so new lines
   // are appended off-screen and the display stops changing.
   private def render(): Unit = setLabel(report.takeRight(13).mkString("\n"))
 
-  private def say(line: String): Unit =
+  private def say(line: String): Unit = {
     // Also to stdout: the label is the demo, but a screenshot is a poor way to read
     // numbers back, and simctl --console-pty gives the exact text.
     println(s"[S3] $line")
     report += line
     render()
+  }
 
   // ---------------------------------------------------------------- UI construction
 
   @exported("scalaui_main")
   def scalaui_main(rootPtr: Ptr[Byte]): Unit = GcState.guarded(buildUi(rootPtr))
 
-  private def buildUi(rootPtr: Ptr[Byte]): Unit =
+  private def buildUi(rootPtr: Ptr[Byte]): Unit = {
     val root = rootPtr.asInstanceOf[sui_handle]
 
     label = sui_label_new()
@@ -77,41 +77,42 @@ object Main:
     // And the reverse direction, auto-started for the same reason.
     startBackgroundUpdate()
     startSoak()
+  }
 
   // ------------------------------------------------------- reverse direction: threads
 
-  /** The brief's reverse test, and the one place S1's threading rule really bites: the work happens
-    * on a Scala-created thread (never a GCD queue, which would segfault in the GC allocator), and
-    * the UI touch is posted back to the main thread through the shim.
+  /** The brief's reverse test, and the one place S1's threading rule really bites: the work happens on a Scala-created
+    * thread (never a GCD queue, which would segfault in the GC allocator), and the UI touch is posted back to the main
+    * thread through the shim.
     */
-  private def startBackgroundUpdate(): Unit =
-    val t = new Thread(() =>
+  private def startBackgroundUpdate(): Unit = {
+    val t = new Thread(() => {
       val computed = (1 to 200000).map(i => i % 7).sum
       val postId = Handles.register { () =>
         say(s"background thread → main thread OK (sum=$computed)")
       }
       sui_run_on_main(sui_main_cb(Handles.mainTrampoline), postId)
-    )
+    })
     t.setName("s3-background")
     t.start()
     say("background Scala thread started…")
+  }
 
-  /** The stop-the-world deadlock only shows up when a background Scala thread triggers a collection
-    * while the main thread is parked in CFRunLoop, so one successful post proves nothing. This
-    * forces many collections from a background thread across a period where the main thread is
-    * mostly idle, and reports progress through the shim so a stall is visible on screen rather than
-    * merely absent from a log.
+  /** The stop-the-world deadlock only shows up when a background Scala thread triggers a collection while the main
+    * thread is parked in CFRunLoop, so one successful post proves nothing. This forces many collections from a
+    * background thread across a period where the main thread is mostly idle, and reports progress through the shim so a
+    * stall is visible on screen rather than merely absent from a log.
     */
-  private def startSoak(): Unit =
+  private def startSoak(): Unit = {
     val rounds = 400
-    val t = new Thread(() =>
+    val t = new Thread(() => {
       var delivered = 0
       var round = 0
-      while round < rounds do
+      while round < rounds do {
         // Enough churn per round to force the GC to run repeatedly.
         val garbage = (1 to 20000).map(i => s"g$i").filter(_.length > 3).size
         round += 1
-        if round % 50 == 0 then
+        if round % 50 == 0 then {
           val r = round
           val postId = Handles.register { () =>
             delivered += 1
@@ -120,19 +121,22 @@ object Main:
             )
           }
           sui_run_on_main(sui_main_cb(Handles.mainTrampoline), postId)
+        }
+      }
       val donePost = Handles.register(() => say(s"SOAK COMPLETE: $rounds rounds, no GC stall"))
       sui_run_on_main(sui_main_cb(Handles.mainTrampoline), donePost)
-    )
+    })
     t.setName("s3-soak")
     t.start()
+  }
 
   // ------------------------------------------------------------- the S4 struct probe
 
-  /** S4 measured this on x86-64 SysV and found the fields came back shifted. arm64 AAPCS64 returns
-    * a two-double struct in v0/v1 rather than packed, so it has to be re-measured here before the
-    * shim's "no structs by value" rule can be called justified or paranoid.
+  /** S4 measured this on x86-64 SysV and found the fields came back shifted. arm64 AAPCS64 returns a two-double struct
+    * in v0/v1 rather than packed, so it has to be re-measured here before the shim's "no structs by value" rule can be
+    * called justified or paranoid.
     */
-  private def probeStructReturn(): Unit =
+  private def probeStructReturn(): Unit = {
     val byValue: CFuncPtr1[Long, sui_size] = CFuncPtr1.fromScalaFunction { (_: Long) =>
       val s = stackalloc[sui_size]()
       (!s).width = 111.0
@@ -140,51 +144,57 @@ object Main:
       !s
     }
     val outParam: CFuncPtr2[Long, Ptr[sui_size], Unit] =
-      CFuncPtr2.fromScalaFunction { (_: Long, out: Ptr[sui_size]) =>
-        (!out).width = 111.0
-        (!out).height = 222.0
+      CFuncPtr2.fromScalaFunction {
+        (
+          _:   Long,
+          out: Ptr[sui_size]
+        ) =>
+          (!out).width = 111.0
+          (!out).height = 222.0
       }
 
-    Zone:
+    Zone {
       val r1 = sui_size()
       sui_probe_struct_byvalue(sui_measure_byvalue_cb(byValue), 0L, r1)
       val ok1 = (!r1).width == 111.0 && (!r1).height == 222.0
-      say(f"struct by value : ${(!r1).width}%.1f x ${(!r1).height}%.1f ${
-          if ok1 then "OK" else "WRONG (S4 bug)"
-        }")
+      say(f"struct by value : ${(!r1).width}%.1f x ${(!r1).height}%.1f ${if ok1 then "OK" else "WRONG (S4 bug)"}")
 
       val r2 = sui_size()
       sui_probe_struct_outparam(sui_measure_outparam_cb(outParam), 0L, r2)
       val ok2 = (!r2).width == 111.0 && (!r2).height == 222.0
-      say(f"struct out-param: ${(!r2).width}%.1f x ${(!r2).height}%.1f ${
-          if ok2 then "OK" else "WRONG"
-        }")
+      say(f"struct out-param: ${(!r2).width}%.1f x ${(!r2).height}%.1f ${if ok2 then "OK" else "WRONG"}")
+    }
+  }
 
   // ------------------------------------------------------------------- benchmarks
 
-  private def runBenchmarks(button: sui_handle): Unit =
+  private def runBenchmarks(button: sui_handle): Unit = {
     val n = 100000
 
     // Two variants, because the difference is the actionable number: the first is the raw
     // C-ABI + UIKit cost, the second adds the Scala String -> CString encoding a real
     // framework would pay on every set.
-    val pre = Zone:
+    val pre = Zone {
       val cs = toCString("benchmark")
       val t0 = System.nanoTime()
       var i = 0
-      while i < n do
+      while i < n do {
         sui_label_set_text(label, cs)
         i += 1
+      }
       System.nanoTime() - t0
+    }
     say(f"set_text x$n (pre-encoded): ${pre.toDouble / n}%.0f ns/call")
 
-    val encoded =
+    val encoded = {
       val t0 = System.nanoTime()
       var i = 0
-      while i < n do
+      while i < n do {
         Zone(sui_label_set_text(label, toCString(s"row $i")))
         i += 1
+      }
       System.nanoTime() - t0
+    }
     say(f"set_text x$n (+Zone encode): ${encoded.toDouble / n}%.0f ns/call")
 
     // Round trip: Swift invokes the stored callback, which lands in the trampoline, which
@@ -210,3 +220,6 @@ object Main:
     }
     sui_button_on_tap(button, sui_tap_cb(Handles.tapTrampoline), countId)
     say(s"handle table entries: ${Handles.count}")
+  }
+
+}
