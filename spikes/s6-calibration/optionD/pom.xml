@@ -45,6 +45,9 @@
         </executions>
         <configuration>
           <scalaVersion>${scala.version}</scalaVersion>
+          <args>
+            <arg>-no-indent</arg>
+          </args>
         </configuration>
       </plugin>
       <plugin>

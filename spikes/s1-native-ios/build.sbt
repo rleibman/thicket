@@ -46,7 +46,7 @@ lazy val appleOsOverride = Map("scala.scalanative.meta.linktimeinfo.target.os" -
 
 lazy val commonSettings = Seq(
   Compile / scalaSource := (ThisBuild / baseDirectory).value / "scala-lib" / "src" / "main" / "scala",
-  scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-source:3.9"),
+  scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-source:3.9", "-no-indent"),
   nativeConfig ~= {
     _.withBuildTarget(BuildTarget.libraryStatic).withGC(gc).withMode(buildMode).withLTO(LTO.none)
   }

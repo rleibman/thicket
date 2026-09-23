@@ -30,7 +30,7 @@ lazy val scalaLib = Project("scalaLib", file("target-builds/simArm64"))
   .settings(
     name                  := "s8-scala-lib",
     Compile / scalaSource := (ThisBuild / baseDirectory).value / "scala-lib" / "src" / "main" / "scala",
-    scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-source:3.9"),
+    scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-source:3.9", "-no-indent"),
     libraryDependencies ++= Seq(
       "dev.zio" % s"zio_native0.5_3"         % zioVersion,
       "dev.zio" % s"zio-streams_native0.5_3" % zioVersion,
