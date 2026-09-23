@@ -246,9 +246,26 @@ specified in pixels or hex.
 
 That buys three things for free: dark mode, the user's font-size and contrast settings, and
 the platform's own press feedback — none of which a framework-owned palette can give you,
-and all of which F-02 requires. The cost is that you cannot brand the app from shared code
-yet; a `Theme` for apps that *want* to override roles is still missing, and so is `.platform`
-refinement.
+and all of which F-02 requires.
+
+An app that *wants* to brand itself overrides individual roles:
+
+```scala
+Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2E, 0x6F, 0x40)))
+```
+
+One line, and buttons carry the brand while text, dividers, the check box, the text field and
+the action bar all still follow the user's platform theme. **An empty theme is the correct
+theme** for an app that wants to look native, and it is the default.
+
+Overriding does hand the app a responsibility the platform was carrying, and the first
+screenshot of a branded build showed exactly that: dark text on a dark green button, because
+the app had set a background and the platform's text colour had been chosen for the
+platform's background. So `ColorRole.OnAccent` is **derived from the accent's WCAG relative
+luminance** when the app does not supply it. Branding cannot silently produce unreadable
+text; an app that wants a specific foreground still sets one.
+
+Still missing: per-subtree overrides (`Provide`), and `.platform` refinement.
 
 ## 11.9 Input widgets, and the rule they forced
 

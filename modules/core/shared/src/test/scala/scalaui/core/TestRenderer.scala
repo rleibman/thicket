@@ -73,6 +73,8 @@ final class TestRenderer extends Renderer {
       case Prop.Grow(v)           => n.props("grow") = v.toString
       case Prop.Align(a)          => n.props("align") = a.toString
       case Prop.TextEmphasis(e)   => n.props("emphasis") = e.toString
+      case Prop.Tint(c)           => c.foreach(v => n.props("tint") = s"${v.r},${v.g},${v.b}")
+      case Prop.Fill(c)           => c.foreach(v => n.props("fill") = s"${v.r},${v.g},${v.b}")
     }
   }
 

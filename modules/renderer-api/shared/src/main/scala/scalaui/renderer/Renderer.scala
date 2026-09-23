@@ -104,6 +104,14 @@ enum Prop {
   /** Horizontal alignment of a widget's own content. */
   case Align(value: Alignment)
 
+  /** An explicit colour override for this widget's foreground, or `None` for the
+    * platform's own token.
+    */
+  case Tint(color: Option[Rgb])
+
+  /** An explicit colour override for this widget's background, or `None`. */
+  case Fill(color: Option[Rgb])
+
   /** How prominent text should be, relative to the platform's own foreground colours.
     *
     * Not a colour. There is deliberately no way to say "grey #767676": a theme that pushes
@@ -117,6 +125,15 @@ enum Prop {
 enum Emphasis {
   case Normal, Secondary
 }
+
+/** An app-supplied colour for a role, resolved by the framework and handed to the renderer.
+  *
+  * `None` means "the platform's own token", which is the default and the native-looking
+  * choice. A renderer must treat `None` as "do not set a colour at all" rather than as a
+  * colour of its own — that is the difference between following the user's theme and
+  * ignoring it.
+  */
+final case class Rgb(r: Int, g: Int, b: Int)
 
 enum TextRole {
   case Title, Body, Caption

@@ -1,6 +1,6 @@
 package scalaui.core
 
-import scalaui.renderer.{Alignment, Emphasis, Prop, TextRole, WidgetKind}
+import scalaui.renderer.{Alignment, Emphasis, Prop, Rgb as RRgb, TextRole, WidgetKind}
 import scalaui.signals.Signal
 
 /** A property of a widget, static or signal-driven. */
@@ -70,6 +70,13 @@ object Element {
   * in §7.3 — that syntax can be layered on later without changing any of this.
   */
 object dsl {
+
+  /** Resolve a role against the app's theme. `None` means "leave it to the platform",
+    * which is both the default and the native-looking answer.
+    */
+  private def tintOf(role: ColorRole): Option[RRgb] =
+    Theme.active.get(role).map(c => RRgb(c.r, c.g, c.b))
+
   import Attr.*
   import Element.*
 
@@ -90,7 +97,11 @@ object dsl {
         text(value),
         Static(Prop.Style(style)),
         Static(Prop.Align(align)),
-        Static(Prop.TextEmphasis(emphasis))
+        Static(Prop.TextEmphasis(emphasis)),
+        Static(Prop.Tint(tintOf(emphasis match {
+          case Emphasis.Secondary => ColorRole.OnSurfaceSecondary
+          case Emphasis.Normal    => ColorRole.OnSurface
+        })))
       ),
       Nil
     )
@@ -98,12 +109,21 @@ object dsl {
   /** A hairline rule, drawn at the platform's own weight and colour. */
   def Divider(): Element = Widget(WidgetKind.Divider, Nil, Nil)
 
-  def Button(value: String | Signal[String], enabled: Boolean = true)(
-      onTap: => Unit
-  ): Element =
+  def Button(
+      value: String | Signal[String],
+      enabled: Boolean = true,
+      role: ColorRole = ColorRole.Accent
+  )(onTap: => Unit): Element =
     Widget(
       WidgetKind.Button,
-      Seq(text(value), Static(Prop.OnTap(() => onTap)), Static(Prop.Enabled(enabled))),
+      Seq(
+        text(value),
+        Static(Prop.OnTap(() => onTap)),
+        Static(Prop.Enabled(enabled)),
+        Static(Prop.Fill(tintOf(role))),
+        // A branded background carries its own foreground, derived if not given.
+        Static(Prop.Tint(if role == ColorRole.Accent then tintOf(ColorRole.OnAccent) else None))
+      ),
       Nil
     )
 

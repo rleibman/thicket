@@ -6,7 +6,7 @@ import android.view.{MenuItem, View, WindowInsets}
 import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
 import scala.annotation.nowarn
 import example.TodoApp
-import scalaui.core.Reconciler
+import scalaui.core.{ColorRole, Reconciler, Rgb, Theme}
 import scalaui.renderer.android.AndroidRenderer
 import scalaui.signals.{Owner, Signal, ThreadGuard}
 
@@ -29,6 +29,11 @@ class MainActivity extends Activity {
     // Android's main thread owns the signal graph; a stray write from elsewhere should
     // fail loudly rather than corrupt it (docs/05 A-06).
     ThreadGuard.install(ThreadGuard.owningThread)
+
+    // Brand exactly one role and leave the rest to the platform. Buttons pick up the
+    // accent; text, dividers, the check box and the action bar keep following the user's
+    // Android theme, including dark mode.
+    Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2E, 0x6F, 0x40)))
 
     val renderer = AndroidRenderer(this)
     given Owner  = owner

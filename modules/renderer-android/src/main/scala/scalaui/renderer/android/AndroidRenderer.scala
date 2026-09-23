@@ -40,6 +40,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
     tv
   }
 
+  private def argb(c: scalaui.renderer.Rgb): Int =
+    (0xff << 24) | (c.r << 16) | (c.g << 8) | c.b
+
   private def dp(v: Int): Int =
     (v * context.getResources.getDisplayMetrics.density).toInt
 
@@ -160,6 +163,19 @@ final class AndroidRenderer(context: Context) extends Renderer {
         lp.weight = if v then 1f else 0f
         if v then lp.width = 0
         handle.setLayoutParams(lp)
+
+      case Prop.Tint(color) =>
+        // `None` means "leave it to the platform", so the emphasis handling below keeps
+        // using the theme attribute. Only an explicit override sets a literal colour.
+        color.foreach { c =>
+          handle match {
+            case t: TextView => t.setTextColor(argb(c))
+            case _           => ()
+          }
+        }
+
+      case Prop.Fill(color) =>
+        color.foreach(c => handle.setBackgroundColor(argb(c)))
 
       case Prop.TextEmphasis(level) =>
         handle match {

@@ -1,5 +1,6 @@
 package example
 
+import scalaui.core.{ColorRole, Rgb, Theme}
 import scalaui.renderer.gtk.{GtkApp, GtkInspect}
 
 /** The GTK host for [[TodoApp]] — which knows nothing about GTK.
@@ -13,6 +14,8 @@ object Todo {
   private var app: scalaui.core.NavHost[TodoApp.Route] = null
 
   def main(args: Array[String]): Unit = {
+    // Same single-role branding as the Android host; everything else stays GTK's.
+    Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2E, 0x6F, 0x40)))
     val _ = GtkApp.run("dev.scalaui.todo", 460, 440) {
       if sys.env.contains("SCALAUI_SELFTEST") then GtkApp.postToUi(() => selfTest())
       app = TodoApp(model)

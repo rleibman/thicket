@@ -36,6 +36,38 @@ final class GtkRenderer extends Renderer {
     */
   private val setterParent = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
 
+  /** One CSS provider per themed widget.
+    *
+    * GTK has no per-widget colour setter, so an override becomes a tiny stylesheet scoped
+    * to that widget by a generated class. Widgets the app did not override get no provider
+    * at all — which is the point: they keep following the user's GTK theme.
+    */
+  private val cssProviders = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkCssProvider]]
+  private var nextCssClass = 0
+
+  private def applyCss(handle: Ptr[GtkWidget], declaration: String): Unit = {
+    val cls = cssProviders.get(handle) match {
+      case Some(_) => cssClassOf(handle)
+      case None =>
+        nextCssClass += 1
+        val c = s"sui-$nextCssClass"
+        cssClasses(handle) = c
+        Zone(gtk_widget_add_css_class(handle, toCString(c)))
+        c
+    }
+    val provider = cssProviders.getOrElseUpdate(handle, gtk_css_provider_new())
+    Zone(gtk_css_provider_load_from_string(provider, toCString(s".$cls { $declaration }")))
+    val display = gtk_widget_get_display(handle)
+    gtk_style_context_add_provider_for_display(
+      display,
+      provider.asInstanceOf[Ptr[GtkStyleProvider]],
+      600.toUInt.asInstanceOf[sn.gnome.glib.internal.guint] // above the theme, below user CSS
+    )
+  }
+
+  private val cssClasses = mutable.Map.empty[Ptr[GtkWidget], String]
+  private def cssClassOf(h: Ptr[GtkWidget]): String = cssClasses(h)
+
   def platform: String = "gtk4"
 
   /** Every GTK container in the v0 vocabulary lays out its own children. Nothing here is
@@ -204,6 +236,14 @@ final class GtkRenderer extends Renderer {
           gtk_widget_add_css_class(handle, toCString(cls))
         }
 
+      case Prop.Tint(color) =>
+        // `None` means "leave it to the platform" — deliberately not "use black".
+        // `> *` so a button's internal GtkLabel inherits it too.
+        color.foreach(c => applyCss(handle, s"color: ${hex(c)}; & > * { color: ${hex(c)}; }"))
+
+      case Prop.Fill(color) =>
+        color.foreach(c => applyCss(handle, s"background-image: none; background-color: ${hex(c)};"))
+
       case Prop.TextEmphasis(level) =>
         // "dim-label" is GTK's own secondary-foreground class, so it follows the user's
         // theme and contrast settings instead of a colour we picked.
@@ -277,6 +317,8 @@ final class GtkRenderer extends Renderer {
     if t == null then "" else fromCString(t)
   }
 
+  private def hex(c: scalaui.renderer.Rgb): String = f"#${c.r}%02x${c.g}%02x${c.b}%02x"
+
   private def gbool(b: Boolean): sn.gnome.glib.internal.gboolean =
     (if b then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean]
 
@@ -289,6 +331,8 @@ final class GtkRenderer extends Renderer {
     // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
     // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox
     // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
+    val _ = cssProviders.remove(handle)
+    val _ = cssClasses.remove(handle)
     setterParent.remove(handle) match {
       case Some(scroll) =>
         gtk_scrolled_window_set_child(scroll.asInstanceOf[Ptr[GtkScrolledWindow]], null)
