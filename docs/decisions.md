@@ -69,6 +69,34 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-23 — **Issue #3 done: the Apple renderer covers macOS and iOS from one Scala
+  module and two Swift shims.** `modules/renderer-apple` (was `renderer-appkit`) with
+  `Shim+AppKit.swift` and `Shim+UIKit.swift` against one `scalaui_apple.h`; both hosts run
+  the same `TodoApp` from `examples/todo-apple/shared` and pass the same 23 checks — macOS
+  measuring 480x460, iOS simulator 365x724. Consequences:
+  (a) **`modules/renderer-api` needed no changes for either platform.** The contract was
+  written against GTK, checked against `android.view`, and absorbed AppKit and UIKit without
+  a line moving. `insertAfter`-by-preceding-sibling, `destroy`-detaches, and the remove+insert
+  `moveAfter` default all earned their place; `NSStackView`/`UIStackView` have no reorder
+  primitive, so unlike GTK neither renderer overrides `moveAfter`.
+  (b) **The Scala side is genuinely platform-neutral across Apple.** `AppleRenderer`,
+  `AppleApp`, `AppleInspect`, `Handles` and `GcState` are shared byte-for-byte; the whole iOS
+  delta is one Swift file plus a 4-line entry point. S3's per-*file* shim separation was the
+  right call and is now the rule: no `#if os()` inside shim function bodies.
+  (c) **One asymmetry is real and must stay in the design: who owns `main`.** On macOS
+  `sui_app_start` enters `NSApp.run()` and never returns; on iOS the Swift host owns `@main`
+  because iOS 27 requires UIScene adoption and a scene delegate cannot live in the static
+  archive, so `sui_app_start` schedules `ready` and returns. `AppleApp` cannot tell the
+  difference. Any future Apple entry-point API must not assume the macOS shape.
+  (d) **Shim cost measured: 11.0 non-comment Swift lines per exported function**, against
+  S3's 5.8 estimate from a 21-function spike — and now doubled, because there are two shims
+  with nothing but a header and a self-test keeping them in step. §7.6's
+  generate-shim+header+bindings-from-one-description recommendation is upgraded from
+  desirable to necessary before the catalogue grows.
+  (e) **iOS build settings are non-negotiable and now encoded** in `iosNativeSettings`:
+  `BuildTarget.libraryStatic`, `GC.immix`, and the linktime property `target.os -> "darwin"`
+  (S1). Simulator only; a device build is M1's.
+
 - 2026-09-20 — **S6 done (partial, as its brief allows): calibration baselines measured.**
   Three hello apps, one harness, same machine. Option B (the recommendation) 0.53 MB / 425 ms /
   152.4 MB RSS; Option A (React Native/Expo) 26.0 MB / 702 ms / 203.2 MB; Option D (JavaFX +

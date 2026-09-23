@@ -91,23 +91,23 @@ lazy val rendererGtk = project
   .settings(gtkNativeSettings)
 
 /** AppKit's Swift shim is a separate static library, because Scala Native's own clang
-  * invocation knows nothing about Swift. `modules/renderer-appkit/shim/build-shim.sh`
+  * invocation knows nothing about Swift. `modules/renderer-apple/shim/build-shim.sh`
   * builds it; these flags link it and AppKit itself.
   *
   * Computed inside `nativeConfig ~=` rather than at build-load time, so nothing here runs
   * on a machine that is not a Mac — the same reason `gtkNativeSettings` shells out to
   * pkg-config lazily.
   */
-lazy val appkitNativeSettings = Seq(
+lazy val appleNativeSettings = Seq(
   nativeConfig ~= { c =>
-    val shim = (file("modules") / "renderer-appkit" / "shim" / "build").getAbsolutePath
+    val shim = (file("modules") / "renderer-apple" / "shim" / "build").getAbsolutePath
     c.withLTO(scala.scalanative.build.LTO.none)
       .withMode(scala.scalanative.build.Mode.debug)
-      .withCompileOptions(c.compileOptions ++ Seq("-I" + (file("modules") / "renderer-appkit" / "shim" / "include").getAbsolutePath))
+      .withCompileOptions(c.compileOptions ++ Seq("-I" + (file("modules") / "renderer-apple" / "shim" / "include").getAbsolutePath))
       .withLinkingOptions(
         c.linkingOptions ++ Seq(
           "-L" + shim,
-          "-lscalauiappkit",
+          "-lscalauiapple",
           "-framework", "AppKit",
           "-framework", "Foundation",
           // Swift's own runtime, which the shim's objects need at link time.
@@ -118,16 +118,55 @@ lazy val appkitNativeSettings = Seq(
   }
 )
 
+/** The iOS simulator variant. Three differences from the macOS one, each forced:
+  *
+  *   - `libraryStatic`, because the host owns `@main` (see `todoIos`);
+  *   - `GC.immix`, the only GC that builds for iOS (S1);
+  *   - `target.os -> "darwin"`. An iOS triple makes `target.os == "ios"`, javalib's
+  *     `LinktimeInfo.isMac` accepts only "darwin"/"macosx", and `PosixThread` then calls
+  *     `pthread_condattr_setclock`, which no Apple platform has (S1). Mandatory on every
+  *     iOS target; without it the link fails.
+  *
+  * No linking options for the shim: a static archive is not linked, so the `sui_*` symbols
+  * stay undefined until `ios-app/build-app.sh` resolves them against the UIKit shim.
+  * `xcrun` runs inside `nativeConfig`, not at build-load time, so the Linux box is
+  * unaffected.
+  */
+lazy val iosNativeSettings = Seq(
+  nativeConfig := {
+    val c      = nativeConfig.value
+    val triple = "arm64-apple-ios17.0-simulator"
+    val sdk    = scala.sys.process.Process(Seq("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")).!!.trim
+    val flags  = Seq("-target", triple, "-isysroot", sdk)
+    c.withBuildTarget(scala.scalanative.build.BuildTarget.libraryStatic)
+      .withGC(scala.scalanative.build.GC.immix)
+      .withMode(scala.scalanative.build.Mode.debug)
+      .withLTO(scala.scalanative.build.LTO.none)
+      .withTargetTriple(triple)
+      .withCompileOptions(c.compileOptions ++ flags)
+      .withLinkingOptions(c.linkingOptions ++ flags)
+      .withLinktimeProperties(
+        c.linktimeProperties + ("scala.scalanative.meta.linktimeinfo.target.os" -> "darwin")
+      )
+  }
+)
+
+/** Both Apple example hosts compile the same `examples/todo-apple/shared` sources. */
+lazy val appleSharedExampleSources = Seq(
+  Compile / unmanagedSourceDirectories +=
+    (ThisBuild / baseDirectory).value / "examples" / "todo-apple" / "shared" / "src" / "main" / "scala"
+)
+
 /** AppKit renderer (macOS). Scala Native only, and never aggregated: it links a Swift
   * static library and AppKit, so it can only build on a Mac.
   */
-lazy val rendererAppkit = project
-  .in(file("modules/renderer-appkit"))
+lazy val rendererApple = project
+  .in(file("modules/renderer-apple"))
   .enablePlugins(ScalaNativePlugin)
   .dependsOn(core.native)
   .settings(commonSettings)
-  .settings(name := "scala-ui-renderer-appkit")
-  .settings(appkitNativeSettings)
+  .settings(name := "scala-ui-renderer-apple")
+  .settings(appleNativeSettings)
 
 /** The ZIO bridge: effects at the edges of an otherwise effect-free core (docs/07 §7.13).
   *
@@ -192,15 +231,36 @@ lazy val counterGtk = project
 
 /** The macOS example. Not aggregated, for the same reason the renderer is not. */
 lazy val todoMacos = project
-  .in(file("examples/todo-macos"))
+  .in(file("examples/todo-apple/macos"))
   .enablePlugins(ScalaNativePlugin)
-  .dependsOn(rendererAppkit, examplesShared.native)
+  .dependsOn(rendererApple, examplesShared.native)
   .settings(commonSettings)
-  .settings(appkitNativeSettings)
+  .settings(appleNativeSettings)
+  .settings(appleSharedExampleSources)
   .settings(
     name := "todo-macos",
     publish / skip := true,
     Compile / mainClass := Some("example.TodoMac")
+  )
+
+/** The iOS example: the same `TodoApp`, the same `rendererApple`, the same self-test —
+  * only the entry point differs. That is the claim issue #3 makes, so it is worth the two
+  * hosts sharing `examples/todo-apple/shared` literally rather than by copy.
+  *
+  * Links to a static archive rather than an executable: `@main` belongs to the Swift host
+  * in `ios/ios-app/`, because iOS 27 requires UIScene adoption and a scene delegate cannot
+  * live in the archive (S3). `ios-app/build-app.sh` does the final link and runs it.
+  */
+lazy val todoIos = project
+  .in(file("examples/todo-apple/ios"))
+  .enablePlugins(ScalaNativePlugin)
+  .dependsOn(rendererApple, examplesShared.native)
+  .settings(commonSettings)
+  .settings(iosNativeSettings)
+  .settings(appleSharedExampleSources)
+  .settings(
+    name := "todo-ios",
+    publish / skip := true
   )
 
 /** The Android example's Scala half: compiled to a plain JAR that the Gradle project in
