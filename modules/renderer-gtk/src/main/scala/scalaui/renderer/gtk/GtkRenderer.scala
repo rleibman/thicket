@@ -87,6 +87,7 @@ final class GtkRenderer extends Renderer {
         case WidgetKind.Scroll    => gtk_scrolled_window_new()
         case WidgetKind.Divider =>
           gtk_separator_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL)
+        case WidgetKind.Image => gtk_picture_new()
       }
     }
     kinds(w) = kind
@@ -243,6 +244,42 @@ final class GtkRenderer extends Renderer {
 
       case Prop.Fill(color) =>
         color.foreach(c => applyCss(handle, s"background-image: none; background-color: ${hex(c)};"))
+
+      case Prop.Picture(source) =>
+        val picture = handle.asInstanceOf[Ptr[GtkPicture]]
+        source match {
+          case None => gtk_picture_set_paintable(picture, null)
+          case Some(ImageSource.FromFile(path)) =>
+            Zone(gtk_picture_set_filename(picture, toCString(path)))
+          case Some(ImageSource.FromBytes(data)) =>
+            Zone {
+              // Decoding happens here, on the UI thread. For anything large an app should
+              // decode off-thread and hand over a file; see the note in the DSL.
+              val buf = alloc[Byte](data.length)
+              var i   = 0
+              while (i < data.length) { buf(i) = data(i); i += 1 }
+              val bytes = sn.gnome.glib.internal.g_bytes_new(
+                buf.asInstanceOf[sn.gnome.glib.internal.gconstpointer],
+                data.length.toULong.asInstanceOf[sn.gnome.glib.internal.gsize]
+              )
+              val texture = sn.gnome.gdk4.internal.gdk_texture_new_from_bytes(bytes, null)
+              if texture != null then
+                gtk_picture_set_paintable(
+                  picture,
+                  texture.asInstanceOf[Ptr[sn.gnome.gdk4.internal.GdkPaintable]]
+                )
+            }
+        }
+
+      case Prop.Fit(fit) =>
+        gtk_picture_set_content_fit(
+          handle.asInstanceOf[Ptr[GtkPicture]],
+          fit match {
+            case ContentFit.Contain => GtkContentFit.GTK_CONTENT_FIT_CONTAIN
+            case ContentFit.Cover   => GtkContentFit.GTK_CONTENT_FIT_COVER
+            case ContentFit.Fill    => GtkContentFit.GTK_CONTENT_FIT_FILL
+          }
+        )
 
       case Prop.TextEmphasis(level) =>
         // "dim-label" is GTK's own secondary-foreground class, so it follows the user's

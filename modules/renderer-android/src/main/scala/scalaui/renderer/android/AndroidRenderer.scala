@@ -2,11 +2,11 @@ package scalaui.renderer.android
 
 import android.content.Context
 import android.os.{Handler, Looper}
-import android.graphics.Typeface
+import android.graphics.{BitmapFactory, Typeface}
 import android.util.TypedValue
 import android.view.{Gravity, View, ViewGroup}
 import android.text.{Editable, TextWatcher}
-import android.widget.{Button, CheckBox, CompoundButton, EditText, LinearLayout, ScrollView, TextView}
+import android.widget.{Button, CheckBox, CompoundButton, EditText, ImageView, LinearLayout, ScrollView, TextView}
 import scala.collection.mutable
 import scalaui.renderer.*
 
@@ -69,6 +69,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case WidgetKind.TextField => EditText(context)
       case WidgetKind.Checkbox  => CheckBox(context)
       case WidgetKind.Scroll    => ScrollView(context)
+      case WidgetKind.Image => ImageView(context)
       case WidgetKind.Divider =>
         val v  = View(context)
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)))
@@ -176,6 +177,30 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.Fill(color) =>
         color.foreach(c => handle.setBackgroundColor(argb(c)))
+
+      case Prop.Picture(source) =>
+        handle match {
+          case iv: ImageView =>
+            source match {
+              case None => iv.setImageDrawable(null)
+              case Some(ImageSource.FromFile(path)) =>
+                iv.setImageBitmap(BitmapFactory.decodeFile(path))
+              case Some(ImageSource.FromBytes(data)) =>
+                iv.setImageBitmap(BitmapFactory.decodeByteArray(data, 0, data.length))
+            }
+          case _ => ()
+        }
+
+      case Prop.Fit(fit) =>
+        handle match {
+          case iv: ImageView =>
+            iv.setScaleType(fit match {
+              case ContentFit.Contain => ImageView.ScaleType.FIT_CENTER
+              case ContentFit.Cover   => ImageView.ScaleType.CENTER_CROP
+              case ContentFit.Fill    => ImageView.ScaleType.FIT_XY
+            })
+          case _ => ()
+        }
 
       case Prop.TextEmphasis(level) =>
         handle match {

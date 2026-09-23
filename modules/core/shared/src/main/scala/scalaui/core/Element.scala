@@ -1,6 +1,6 @@
 package scalaui.core
 
-import scalaui.renderer.{Alignment, Emphasis, Prop, Rgb as RRgb, TextRole, WidgetKind}
+import scalaui.renderer.{Alignment, ContentFit, Emphasis, ImageSource, Prop, Rgb as RRgb, TextRole, WidgetKind}
 import scalaui.signals.Signal
 
 /** A property of a widget, static or signal-driven. */
@@ -108,6 +108,24 @@ object dsl {
 
   /** A hairline rule, drawn at the platform's own weight and colour. */
   def Divider(): Element = Widget(WidgetKind.Divider, Nil, Nil)
+
+  /** A picture from local data.
+    *
+    * There is no URL overload on purpose. Fetch with the app's effect system and render the
+    * result — `RemoteData(imageBytes) { case Loading => …; case Done(src) => Image(src) }` —
+    * so loading and failure are handled the same way as every other async value, and the
+    * framework stays out of HTTP, caching and retry policy.
+    */
+  def Image(
+      source: ImageSource | Signal[ImageSource],
+      fit: ContentFit = ContentFit.Contain
+  ): Element = {
+    val attr = source match {
+      case s: ImageSource                    => Static(Prop.Picture(Some(s)))
+      case s: Signal[ImageSource] @unchecked => Reactive(s, v => Prop.Picture(Some(v)))
+    }
+    Widget(WidgetKind.Image, Seq(attr, Static(Prop.Fit(fit))), Nil)
+  }
 
   def Button(
       value: String | Signal[String],

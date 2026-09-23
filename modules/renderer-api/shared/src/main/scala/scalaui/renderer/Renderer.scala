@@ -69,6 +69,28 @@ enum WidgetKind {
     * and colour.
     */
   case Divider
+
+  /** A picture. */
+  case Image
+}
+
+/** Where a picture's data comes from.
+  *
+  * Deliberately only *local* data. The framework does not fetch, cache or retry: an app
+  * that needs an image over the network already has an effect system for that, and
+  * `RemoteData[E, ImageSource]` composes with everything else — loading and failure states
+  * become the same exhaustive match as any other async value. Building an HTTP client and
+  * a cache eviction policy into a UI framework would duplicate what the app already has,
+  * and do it worse.
+  */
+enum ImageSource {
+  case FromFile(path: String)
+  case FromBytes(data: Array[Byte])
+}
+
+/** How a picture fills the space it is given. */
+enum ContentFit {
+  case Contain, Cover, Fill
 }
 
 /** A property change. An enum rather than `Map[String, Any]` so the compiler checks that
@@ -111,6 +133,9 @@ enum Prop {
 
   /** An explicit colour override for this widget's background, or `None`. */
   case Fill(color: Option[Rgb])
+
+  case Picture(source: Option[ImageSource])
+  case Fit(value: ContentFit)
 
   /** How prominent text should be, relative to the platform's own foreground colours.
     *

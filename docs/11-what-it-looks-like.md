@@ -289,13 +289,34 @@ shows a signal and reports edits; whether the edit is written back is the app's 
 That is what makes validation, rejection and transformation possible — a field that
 upper-cases as you type is four lines, not a fight with the framework.
 
-### Images are the next one, and they are not mechanical
+### Images: the framework renders bytes, it does not fetch
 
-Every widget so far is a synchronous call to a toolkit. An image is not: it needs a source
-(asset, file, URL), asynchronous decoding, a cache with an eviction policy, a placeholder
-while loading, and a failure state. That is a subsystem, not a `WidgetKind`, and it touches
-the resource pipeline (A-09) which does not exist yet. Doing it badly is worse than not doing
-it, so it waits for a design rather than being bolted onto the enum.
+An earlier draft of this section said images were a subsystem — source abstraction, async
+decoding, a cache with an eviction policy, placeholder and failure states — and therefore
+needed a design rather than an enum case. Half of that was right. The design turned out to
+be a *subtraction*.
+
+`Image` takes local data only: `ImageSource.FromFile` or `FromBytes`. There is deliberately
+no URL overload. An app that needs an image over the network already has an effect system,
+and the result composes with everything else:
+
+```scala
+RemoteData(imageBytes) {
+  case RemoteData.Loading   => Skeleton()
+  case RemoteData.Failed(e) => Label(s"No image: ${e.message}")
+  case RemoteData.Done(src) => Image(src, fit = ContentFit.Cover)
+}
+```
+
+Loading and failure are the same exhaustive match as any other async value, and the retry
+policy, the cache and the HTTP client stay in the app, where they already exist and where
+they can be tested without a UI. A framework-owned fetcher would duplicate all of it and do
+it worse — and it is exactly the kind of thing that is impossible to remove later.
+
+**The one real limitation:** decoding happens on the UI thread. For a thumbnail that is
+fine; for anything large an app should decode off-thread and hand over a file path. Making
+the renderer decode asynchronously is worth doing, and is a renderer change rather than an
+API one.
 
 ## 11.10 How it scales, measured
 

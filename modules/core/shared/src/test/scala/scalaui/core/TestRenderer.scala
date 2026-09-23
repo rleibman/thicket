@@ -75,6 +75,13 @@ final class TestRenderer extends Renderer {
       case Prop.TextEmphasis(e)   => n.props("emphasis") = e.toString
       case Prop.Tint(c)           => c.foreach(v => n.props("tint") = s"${v.r},${v.g},${v.b}")
       case Prop.Fill(c)           => c.foreach(v => n.props("fill") = s"${v.r},${v.g},${v.b}")
+      case Prop.Picture(src) =>
+        n.props("picture") = src match {
+          case Some(scalaui.renderer.ImageSource.FromFile(p))  => s"file:$p"
+          case Some(scalaui.renderer.ImageSource.FromBytes(b)) => s"bytes:${b.length}"
+          case None                                            => "none"
+        }
+      case Prop.Fit(f)            => n.props("fit") = f.toString
     }
   }
 
