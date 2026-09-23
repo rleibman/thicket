@@ -347,9 +347,56 @@ a linear scan, which makes mounting a list of n items O(n²). Checking the tail 
 mounting a list is n appends, took 10 000 rows from 304 ms to 74 ms. That was a real bug in
 the **Android** renderer, not just the test one.
 
-**Virtualisation is still needed, but for a narrower reason than assumed.** The update path
-is now comfortably inside frame budget at 10 000 rows. What remains is the one-off mount cost
-and, more importantly, *memory*: 10 000 rows really are 30 001 live widgets. That is what
-`LazyColumn` in the mockup means, and it is a renderer-level concern —
-`RecyclerView`, `GtkListView`, `UITableView` — rather than a reconciler one, because those
-containers invert control and ask the framework for a row on demand.
+**Virtualisation was still needed, but for a narrower reason than assumed** — and it now
+exists. The update path was already inside frame budget at 10 000 rows; what remained was the
+one-off mount cost and, more importantly, *memory*: 10 000 rows really were 30 001 live
+widgets. See §11.11.
+
+## 11.11 `LazyColumn`, and the one place the framework hands over control
+
+![10 000 rows on Android](screenshots/android-lazy.png)
+
+Measured on the emulator with 10 000 rows, scrolled to row 1 081: **66 views**, ~28 MB PSS.
+The equivalent `ForEach` would be 30 001 views.
+
+Everywhere else in the framework the reconciler builds a tree and the renderer obeys. A
+recycling container inverts that: it asks for the row it is about to show and hands back the
+ones it is not. So `RowSource` is the one interface the *framework* implements and the
+*renderer* calls:
+
+```scala
+trait RowSource[H] {
+  def count: Int
+  def bind(index: Int, recycled: Option[H]): H
+  def discard(handle: H): Unit
+  def onInvalidate(callback: () => Unit): Unit
+}
+```
+
+The interesting part is `recycled`. When Android's `ListView` hands back a `convertView`, the
+framework does not rebuild that row — it writes the new item into the row's own `Var`, and
+the row's signals update exactly the widgets bound to changed fields. Scrolling a long list
+therefore costs a few property writes per row, which is the same mechanism that makes a
+single-row edit cheap. The fine-grained reactivity and the recycling turn out to be the same
+idea.
+
+**A renderer without a virtualising container is not deficient.** `supportsVirtualRows`
+defaults to false and the framework falls back to mounting every row — correct, just heavier.
+GTK does that today. The fallback wraps itself in a container so that a `LazyColumn` is one
+widget on every renderer; otherwise the same element would produce a different tree shape
+depending on who was drawing it.
+
+**Designed by implementing, not by sketching.** `docs/07` §7.4's renderer contract was written
+in the abstract and S7 found four defects the moment a real toolkit met it. This one was built
+against `ListView` first, and two things only showed up there: that a late data change must
+not resurrect rows into a destroyed container (the list's effect outlives the slot, so the
+source reports an empty list once disposed), and that `notifyDataSetChanged` re-binds *visible*
+rows rather than only newly-scrolled ones — which is what makes a live row follow its data.
+
+### Two gaps this exposed
+
+- **`Row` does not handle overflow.** A fifth button on one line was silently clipped off the
+  right edge. There is no wrapping, no scrolling, no ellipsis.
+- **Rows must have a single root widget**, the same constraint every recycling container
+  imposes. A `Fragment` row is rejected with a message saying so, rather than mounting
+  something the container cannot place.

@@ -39,7 +39,77 @@ final class TestRenderer extends Renderer {
     */
   var textWrites: Int = 0
 
-  def platform: String                         = "test"
+  def platform: String = "test"
+
+  // -- virtualisation -------------------------------------------------------
+  //
+  // Models a recycling container: a viewport of `windowSize` rows, and a small pool of
+  // recycled handles. Scrolling is explicit so a test can assert exactly which rows exist.
+
+  var virtualising: Boolean = false
+  override def supportsVirtualRows: Boolean = virtualising
+
+  private var rowSource: Option[RowSource[Int]] = None
+  private var shown: Map[Int, Int]              = Map.empty // index -> handle
+  private var spare: List[Int]                  = Nil
+  var windowSize: Int                           = 5
+  var bindCount: Int                            = 0
+
+  override def createVirtualList(source: RowSource[Int]): Handle = {
+    val h = create(WidgetKind.Column, Nil)
+    rowSource = Some(source)
+    // `notifyDataSetChanged` makes the container ask for its visible rows again, so the
+    // model here does the same: re-bind what is on screen, then re-window.
+    source.onInvalidate { () =>
+      rebindVisible()
+      scrollTo(firstVisible)
+    }
+    h
+  }
+
+  private var firstVisible = 0
+
+  /** Show the window starting at `from`, recycling whatever scrolls out of it. */
+  def scrollTo(from: Int): Unit = rowSource.foreach { source =>
+    firstVisible = from
+    val wanted = (from until Math.min(from + windowSize, source.count)).toSet
+    // Recycle rows that left the viewport.
+    shown.filterNot { case (i, _) => wanted.contains(i) }.foreach { case (i, h) =>
+      shown -= i
+      spare = h :: spare
+    }
+    wanted.toList.sorted.foreach { i =>
+      if !shown.contains(i) then {
+        val recycled = spare.headOption
+        spare = spare.drop(1)
+        bindCount += 1
+        shown += i -> source.bind(i, recycled)
+      }
+    }
+  }
+
+  /** Re-bind every row currently on screen, as a recycling container does when told the
+    * data changed.
+    */
+  private def rebindVisible(): Unit = rowSource.foreach { source =>
+    shown.toSeq.sortBy(_._1).foreach { case (i, h) =>
+      if i < source.count then {
+        bindCount += 1
+        val rebound = source.bind(i, Some(h))
+        shown += i -> rebound
+      }
+    }
+    // Drop anything now past the end of the data.
+    shown.filter(_._1 >= source.count).foreach { case (i, h) =>
+      shown -= i
+      spare = h :: spare
+    }
+  }
+
+  /** Handles currently materialised, in row order. */
+  def visibleRows: Seq[Int] = shown.toSeq.sortBy(_._1).map(_._2)
+
+  def liveRowCount: Int = shown.size + spare.size
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
 
   def create(kind: WidgetKind, props: Seq[Prop]): Handle = {

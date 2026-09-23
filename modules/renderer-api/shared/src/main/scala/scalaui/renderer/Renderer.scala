@@ -168,6 +168,34 @@ enum Alignment {
   case Start, Center, End
 }
 
+/** Rows for a virtualising container to pull from.
+  *
+  * This is the one place the framework hands control *to* the renderer. Everywhere else the
+  * reconciler builds a tree and the renderer obeys; a `ListView`, `RecyclerView`,
+  * `GtkListView` or `UITableView` instead asks for the row it is about to show, and recycles
+  * the ones it is not. Implemented by the framework, called by the renderer.
+  */
+trait RowSource[H] {
+
+  /** How many rows exist right now. */
+  def count: Int
+
+  /** Produce the handle for row `index`.
+    *
+    * `recycled` is a handle the renderer previously got from this source and is no longer
+    * showing. Returning it re-bound — rather than a fresh one — is what makes scrolling a
+    * long list cheap, and the framework does that by writing the new item into the row's
+    * own signal, so only the widgets bound to changed fields are touched.
+    */
+  def bind(index: Int, recycled: Option[H]): H
+
+  /** The renderer will never show this handle again; the framework may dispose it. */
+  def discard(handle: H): Unit
+
+  /** The renderer registers here to be told when the data changed. */
+  def onInvalidate(callback: () => Unit): Unit
+}
+
 trait Renderer {
   /** An opaque per-renderer widget reference. */
   type Handle
@@ -226,6 +254,20 @@ trait Renderer {
     * renderers may ignore it otherwise.
     */
   def setFrame(handle: Handle, frame: Frame): Unit
+
+  /** Whether this renderer has a container that materialises only visible rows.
+    *
+    * Default `false`, and a renderer that says so is not deficient — the framework falls
+    * back to mounting every row, which is correct, just heavier. That fallback is what lets
+    * a renderer be written without a virtualising container on day one.
+    */
+  def supportsVirtualRows: Boolean = false
+
+  /** Create a container that pulls rows from `source`. Only called when
+    * [[supportsVirtualRows]] is true.
+    */
+  def createVirtualList(source: RowSource[Handle]): Handle =
+    throw new UnsupportedOperationException(s"$platform cannot virtualise rows")
 
   /** Run `f` on the UI thread. Safe to call from any thread the platform permits.
     *

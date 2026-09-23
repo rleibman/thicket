@@ -62,6 +62,20 @@ object Element {
     * produce more than one child.
     */
   final case class Fragment(children: Seq[Element]) extends Element
+
+  /** A long list, where only the visible rows need to exist.
+    *
+    * Semantically identical to [[ForEach]] — same keying, same `Signal[A]` per row — but it
+    * asks the renderer for a virtualising container. Renderers that have one materialise
+    * only what is on screen; the rest fall back to mounting every row, which is correct and
+    * simply heavier. A row must have a single root widget, the same constraint every
+    * recycling container imposes.
+    */
+  final case class LazyColumn[A, K](
+      items: Signal[Seq[A]],
+      key: A => K,
+      body: Signal[A] => Element
+  ) extends Element
 }
 
 /** The widget constructors.
@@ -214,6 +228,15 @@ object dsl {
   def ForEach[A, K](items: Signal[Seq[A]], key: A => K)(
       body: Signal[A] => Element
   ): Element = Element.ForEach(items, key, body)
+
+  /** As [[ForEach]], but asks the renderer to materialise only the visible rows.
+    *
+    * Use it when the list can be long. On a renderer without a virtualising container it
+    * behaves exactly like `ForEach`.
+    */
+  def LazyColumn[A, K](items: Signal[Seq[A]], key: A => K)(
+      body: Signal[A] => Element
+  ): Element = Element.LazyColumn(items, key, body)
 
   /** Group elements without introducing a widget. */
   def Fragment(children: Element*): Element = Element.Fragment(children)

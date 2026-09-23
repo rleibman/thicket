@@ -22,6 +22,9 @@ object TodoApp {
     case Items
     case Detail(id: Int)
     case About
+
+    /** A deliberately huge list, to show `LazyColumn` materialising only what is visible. */
+    case Big
   }
 
   /** A route is a value, so persisting the back stack is ordinary serialisation.
@@ -29,6 +32,7 @@ object TodoApp {
     * Hand-written here; `derives Routable` in the mockup is what this should become.
     */
   def showRoute(r: Route): String = r match {
+    case Route.Big       => "big"
     case Route.Items     => "items"
     case Route.Detail(i) => s"detail/$i"
     case Route.About     => "about"
@@ -36,6 +40,7 @@ object TodoApp {
 
   def parseRoute(s: String): Option[Route] = s match {
     case "items" => Some(Route.Items)
+    case "big"   => Some(Route.Big)
     case "about" => Some(Route.About)
     case other   =>
       other.split("/") match {
@@ -97,6 +102,7 @@ object TodoApp {
       case Route.Items     => itemsScreen(model, nav)
       case Route.Detail(i) => detailScreen(model, nav, i)
       case Route.About     => aboutScreen()
+      case Route.Big       => bigScreen(nav)
     }
   }
 
@@ -140,6 +146,9 @@ object TodoApp {
           Button("Drop")(model.dropLast()),
           Button("About")(nav.push(Route.About))
         ),
+        // On its own line: a Row does not wrap or scroll, so a fifth button here was
+        // silently clipped off the right edge. Overflow handling is a gap worth recording.
+        Button("10 000 rows")(nav.push(Route.Big)),
         Label(
           model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"),
           style = TextRole.Caption,
@@ -163,6 +172,32 @@ object TodoApp {
           Button("Toggle")(model.toggle(id)),
           Button("Back")(nav.pop())
         )
+      )
+    )
+  }
+
+  /** 10 000 rows through `LazyColumn`. On Android that is a `ListView`, so only the rows on
+    * screen exist; on a renderer without a virtualising container every row is mounted and
+    * the screen still works, just heavier.
+    */
+  private def bigScreen(nav: Nav[Route]): Screen = {
+    val many = Signal.const((1 to 10000).map(i => Item(i, s"Row $i", i % 7 == 0)))
+    Screen(
+      title = "10 000 rows",
+      content = Column(spacing = 8, padding = 8)(
+        Label("LazyColumn: only the visible rows exist", emphasis = Emphasis.Secondary),
+        LazyColumn(many, key = (i: Item) => i.id) { item =>
+          Row(spacing = 12, padding = 12)(
+            Label(item.map(_.title)).grow,
+            Label(
+              item.map(i => if i.done then "\u2713" else ""),
+              style = TextRole.Caption,
+              align = Alignment.End,
+              emphasis = Emphasis.Secondary
+            )
+          )
+        }.grow,
+        Button("Back")(nav.pop())
       )
     )
   }

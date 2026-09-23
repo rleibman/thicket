@@ -1,7 +1,7 @@
 package scalaui.core
 
 import scala.collection.mutable
-import scalaui.renderer.Renderer
+import scalaui.renderer.{Renderer, RowSource}
 import scalaui.signals.{Owner, Signal, Var}
 
 /** Mounts an [[Element]] tree onto a [[Renderer]] and keeps it in step with its signals.
@@ -73,7 +73,23 @@ private[core] object Slot {
       case w: Element.Widget         => widget(renderer, w, parent, anchor)
       case s: Element.Show           => region(renderer, parent, anchor, ShowSource(s))
       case f: Element.ForEach[?, ?]  => region(renderer, parent, anchor, ForEachSource(f))
-      case Element.Fragment(kids)    => fragment(renderer, kids, parent, anchor)
+      case Element.Fragment(kids) => fragment(renderer, kids, parent, anchor)
+      case l: Element.LazyColumn[?, ?] =>
+        if renderer.supportsVirtualRows then virtualList(renderer, l, parent, anchor)
+        else
+          // Correct, just heavier: every row is mounted. Wrapped in a container so that a
+          // `LazyColumn` is one widget on every renderer — otherwise the same element would
+          // produce a different tree shape depending on who is drawing it.
+          build(
+            renderer,
+            Element.Widget(
+              scalaui.renderer.WidgetKind.Column,
+              Nil,
+              Seq(Element.ForEach(l.items, l.key, l.body))
+            ),
+            parent,
+            anchor
+          )
     }
 
   private def widget[H](
@@ -145,6 +161,26 @@ private[core] object Slot {
     slots.toVector
   }
 
+  /** Back a virtualising container with rows mounted on demand. */
+  private def virtualList[H, A, K](
+      renderer: Renderer { type Handle = H },
+      spec: Element.LazyColumn[A, K],
+      parent: Option[H],
+      anchor: () => Option[H]
+  )(using owner: Owner): Slot[H] = {
+    val source = new VirtualRows[H, A, K](renderer, spec, owner)
+    val handle = renderer.createVirtualList(source)
+    parent.foreach(p => renderer.insertAfter(p, handle, anchor()))
+    // One effect for the whole list: the renderer is told the data changed and re-pulls
+    // whatever it is showing. Individual rows still update through their own signals.
+    val _ = Signal.effect {
+      val n = spec.items().length
+      source.setCount(n)
+      source.invalidate()
+    }
+    VirtualListSlot(renderer, handle, source)
+  }
+
   private def region[H](
       renderer: Renderer { type Handle = H },
       parent: Option[H],
@@ -176,6 +212,93 @@ private final class WidgetSlot[H](
   def dispose(): Unit = {
     children.foreach(_.dispose())
     renderer.destroy(handle)
+  }
+}
+
+/** A virtualising container. Its rows are owned by the [[VirtualRows]] source, not by the
+  * slot tree, because the renderer decides which of them exist.
+  */
+private final class VirtualListSlot[H](
+    renderer: Renderer { type Handle = H },
+    val handle: H,
+    source: VirtualRows[H, ?, ?]
+) extends Slot[H] {
+  def handles: Vector[H] = Vector(handle)
+  def dispose(): Unit = {
+    source.disposeAll()
+    renderer.destroy(handle)
+  }
+}
+
+/** Mounts rows on demand for a virtualising container, and re-binds recycled ones by
+  * writing the new item into the row's own signal — so a scroll costs one property update
+  * per changed field rather than a rebuild.
+  */
+private final class VirtualRows[H, A, K](
+    renderer: Renderer { type Handle = H },
+    spec: Element.LazyColumn[A, K],
+    owner: Owner
+) extends RowSource[H] {
+
+  private final class Row(val value: Var[A], val rowOwner: Owner, val slot: Slot[H])
+
+  private val rows      = scala.collection.mutable.Map.empty[H, Row]
+  private var listeners = () => ()
+  private var total     = 0
+  private var disposed  = false
+
+  // After the container is gone the source reports an empty list and stops notifying, so a
+  // late data change cannot mount rows into a destroyed container. The list's *effect* is
+  // owned by the enclosing `Owner`, which may outlive the slot — disposing the widgets and
+  // disposing the effects are separate acts.
+  def count: Int = if disposed then 0 else total
+  private[core] def setCount(n: Int): Unit = total = n
+  def onInvalidate(callback: () => Unit): Unit = listeners = callback
+  private[core] def invalidate(): Unit = if !disposed then listeners()
+
+  def bind(index: Int, recycled: Option[H]): H = {
+    if disposed then
+      throw new IllegalStateException("bind on a disposed LazyColumn")
+    val items = Signal.untracked(spec.items())
+    if index < 0 || index >= items.length then
+      throw new IndexOutOfBoundsException(s"row $index of ${items.length}")
+    val item = items(index)
+
+    recycled.flatMap(h => rows.get(h).map(h -> _)) match {
+      case Some((handle, row)) =>
+        row.value.set(item) // the row's own signals do the rest
+        handle
+      case None =>
+        val rowOwner = Owner.child(using owner)
+        val v        = Var(item)
+        val slot = Signal.untracked {
+          given Owner = rowOwner
+          // No parent: the container places the row itself.
+          Slot.build(renderer, spec.body(v), None, () => None)
+        }
+        val handle = slot.handles.headOption.getOrElse(
+          throw new IllegalArgumentException(
+            "a LazyColumn row must have a single root widget (a Fragment has none)"
+          )
+        )
+        rows(handle) = new Row(v, rowOwner, slot)
+        handle
+    }
+  }
+
+  def discard(handle: H): Unit =
+    rows.remove(handle).foreach { row =>
+      row.slot.dispose()
+      row.rowOwner.dispose()
+    }
+
+  private[core] def disposeAll(): Unit = {
+    disposed = true
+    rows.values.foreach { row =>
+      row.slot.dispose()
+      row.rowOwner.dispose()
+    }
+    rows.clear()
   }
 }
 

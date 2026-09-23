@@ -6,7 +6,7 @@ import android.graphics.{BitmapFactory, Typeface}
 import android.util.TypedValue
 import android.view.{Gravity, View, ViewGroup}
 import android.text.{Editable, TextWatcher}
-import android.widget.{Button, CheckBox, CompoundButton, EditText, ImageView, LinearLayout, ScrollView, TextView}
+import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, ImageView, LinearLayout, ListView, ScrollView, TextView}
 import scala.collection.mutable
 import scalaui.renderer.*
 
@@ -347,6 +347,31 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   /** No-op while every container is toolkit-managed. */
   def setFrame(handle: Handle, frame: Frame): Unit = ()
+
+  /** `ListView` materialises only the rows on screen and recycles the rest, which is the
+    * whole point of `LazyColumn`. It is the platform's own widget — no AndroidX dependency.
+    */
+  override def supportsVirtualRows: Boolean = true
+
+  override def createVirtualList(source: RowSource[View]): View = {
+    val list = ListView(context)
+
+    val adapter = new BaseAdapter {
+      def getCount: Int            = source.count
+      def getItem(i: Int): Object  = Integer.valueOf(i)
+      def getItemId(i: Int): Long  = i.toLong
+
+      override def getView(position: Int, convertView: View, parent: ViewGroup): View =
+        // Handing `convertView` back to the framework is what turns a scroll into a few
+        // property writes: it re-binds that row's signal rather than building widgets.
+        source.bind(position, Option(convertView))
+    }
+
+    list.setAdapter(adapter)
+    // The platform draws its own dividers here, so rows need not supply them.
+    source.onInvalidate(() => adapter.notifyDataSetChanged())
+    list
+  }
 
   def runOnUiThread(f: () => Unit): Unit =
     if Looper.myLooper eq Looper.getMainLooper then f()
