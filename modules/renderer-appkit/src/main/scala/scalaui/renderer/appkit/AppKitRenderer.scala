@@ -38,6 +38,7 @@ final class AppKitRenderer extends Renderer {
       case WidgetKind.Checkbox  => 5
       case WidgetKind.Scroll    => 6
       case WidgetKind.Divider   => 7
+      case WidgetKind.Image     => 8
     }
 
   def create(
@@ -105,6 +106,45 @@ final class AppKitRenderer extends Renderer {
             case Alignment.Start  => 0
             case Alignment.Center => 1
             case Alignment.End    => 2
+          }
+        )
+
+      case Prop.Tint(color) =>
+        // `None` means "leave it to the platform", deliberately not "use black".
+        color match {
+          case Some(c) => Shim.sui_set_tint(handle, 1, c.r, c.g, c.b)
+          case None    => ()
+        }
+
+      case Prop.Fill(color) =>
+        color match {
+          case Some(c) => Shim.sui_set_fill(handle, 1, c.r, c.g, c.b)
+          case None    => ()
+        }
+
+      case Prop.Picture(source) =>
+        source match {
+          case None                             => Shim.sui_clear_image(handle)
+          case Some(ImageSource.FromFile(path)) => Zone(Shim.sui_set_image_file(handle, toCString(path)))
+          case Some(ImageSource.FromBytes(data)) =>
+            Zone {
+              val buf = alloc[Byte](data.length)
+              var i = 0
+              while i < data.length do {
+                buf(i) = data(i)
+                i += 1
+              }
+              Shim.sui_set_image_bytes(handle, buf, data.length)
+            }
+        }
+
+      case Prop.Fit(fit) =>
+        Shim.sui_set_content_fit(
+          handle,
+          fit match {
+            case ContentFit.Contain => 0
+            case ContentFit.Cover   => 1
+            case ContentFit.Fill    => 2
           }
         )
 

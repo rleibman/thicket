@@ -20,7 +20,8 @@ sui_handle sui_root_view(void);
 void sui_window_set_title(const char *title);
 
 /* --- widget construction ------------------------------------------------------- */
-/* kind: 0 Column, 1 Row, 2 Label, 3 Button, 4 TextField, 5 Checkbox, 6 Scroll, 7 Divider */
+/* kind: 0 Column, 1 Row, 2 Label, 3 Button, 4 TextField, 5 Checkbox, 6 Scroll, 7 Divider,
+         8 Image */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -39,6 +40,16 @@ void sui_set_text_emphasis(sui_handle h, int32_t emphasis);
 void sui_set_grow(sui_handle h, int32_t on);
 /* align: 0 Start, 1 Center, 2 End */
 void sui_set_align(sui_handle h, int32_t align);
+
+/* Colour is passed as three components plus a "set" flag rather than a struct: `None`
+   means "leave it to the platform", which is not the same as black. */
+void sui_set_tint(sui_handle h, int32_t has, int32_t r, int32_t g, int32_t b);
+void sui_set_fill(sui_handle h, int32_t has, int32_t r, int32_t g, int32_t b);
+void sui_set_image_file(sui_handle h, const char *path);
+void sui_set_image_bytes(sui_handle h, const uint8_t *data, int32_t length);
+void sui_clear_image(sui_handle h);
+/* fit: 0 Contain, 1 Cover, 2 Fill */
+void sui_set_content_fit(sui_handle h, int32_t fit);
 
 /* --- events -------------------------------------------------------------------- */
 void sui_on_tap(sui_handle h, sui_void_cb cb, int64_t ctx);

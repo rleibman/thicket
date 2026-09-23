@@ -174,10 +174,76 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.drawsBackground = false
     return retained(s)
 
+  case 8:
+    let iv = NSImageView()
+    iv.imageScaling = .scaleProportionallyUpOrDown
+    return retained(iv)
+
   default:
     let box = NSBox()
     box.boxType = .separator
     return retained(box)
+  }
+}
+
+// MARK: - colour and images
+
+private func colour(_ has: Int32, _ r: Int32, _ g: Int32, _ b: Int32) -> NSColor? {
+  guard has != 0 else { return nil }
+  return NSColor(
+    srgbRed: CGFloat(r) / 255.0, green: CGFloat(g) / 255.0, blue: CGFloat(b) / 255.0, alpha: 1.0
+  )
+}
+
+@_cdecl("sui_set_tint")
+public func sui_set_tint(_ h: UnsafeMutableRawPointer, _ has: Int32, _ r: Int32, _ g: Int32, _ b: Int32) {
+  // nil means "leave it to the platform", deliberately not "use black" — the same rule the
+  // GTK renderer follows by only applying CSS when a colour is given.
+  guard let c = colour(has, r, g, b) else { return }
+  switch view(h) {
+  case let f as NSTextField: f.textColor = c
+  case let b as NSButton: b.contentTintColor = c
+  case let i as NSImageView: i.contentTintColor = c
+  default: break
+  }
+}
+
+@_cdecl("sui_set_fill")
+public func sui_set_fill(_ h: UnsafeMutableRawPointer, _ has: Int32, _ r: Int32, _ g: Int32, _ b: Int32) {
+  guard let c = colour(has, r, g, b) else { return }
+  let v = view(h)
+  v.wantsLayer = true
+  v.layer?.backgroundColor = c.cgColor
+}
+
+@_cdecl("sui_set_image_file")
+public func sui_set_image_file(_ h: UnsafeMutableRawPointer, _ path: UnsafePointer<CChar>) {
+  (view(h) as? NSImageView)?.image = NSImage(contentsOfFile: String(cString: path))
+}
+
+@_cdecl("sui_set_image_bytes")
+public func sui_set_image_bytes(_ h: UnsafeMutableRawPointer, _ data: UnsafePointer<UInt8>, _ length: Int32) {
+  // Decoding happens here, on the main thread. For anything large an app should decode off
+  // the UI thread and hand over a file instead.
+  let d = Data(bytes: data, count: Int(length))
+  (view(h) as? NSImageView)?.image = NSImage(data: d)
+}
+
+@_cdecl("sui_clear_image")
+public func sui_clear_image(_ h: UnsafeMutableRawPointer) {
+  (view(h) as? NSImageView)?.image = nil
+}
+
+@_cdecl("sui_set_content_fit")
+public func sui_set_content_fit(_ h: UnsafeMutableRawPointer, _ fit: Int32) {
+  guard let iv = view(h) as? NSImageView else { return }
+  switch fit {
+  // NSImageView has no "cover" that crops, so Cover maps to the closest AppKit offers:
+  // fill the frame, accepting distortion rather than cropping. Worth revisiting if it
+  // shows; a layer-backed contentsGravity would crop properly.
+  case 1: iv.imageScaling = .scaleAxesIndependently
+  case 2: iv.imageScaling = .scaleAxesIndependently
+  default: iv.imageScaling = .scaleProportionallyUpOrDown
   }
 }
 

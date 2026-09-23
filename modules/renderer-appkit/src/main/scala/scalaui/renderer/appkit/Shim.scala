@@ -74,6 +74,35 @@ object Shim {
     align: CInt
   ): Unit = extern
 
+  def sui_set_tint(
+    h:   Handle,
+    has: CInt,
+    r:   CInt,
+    g:   CInt,
+    b:   CInt
+  ): Unit = extern
+  def sui_set_fill(
+    h:   Handle,
+    has: CInt,
+    r:   CInt,
+    g:   CInt,
+    b:   CInt
+  ): Unit = extern
+  def sui_set_image_file(
+    h:    Handle,
+    path: CString
+  ): Unit = extern
+  def sui_set_image_bytes(
+    h:      Handle,
+    data:   Ptr[Byte],
+    length: CInt
+  ): Unit = extern
+  def sui_clear_image(h: Handle): Unit = extern
+  def sui_set_content_fit(
+    h:   Handle,
+    fit: CInt
+  ): Unit = extern
+
   def sui_on_tap(
     h:   Handle,
     cb:  VoidCb,
