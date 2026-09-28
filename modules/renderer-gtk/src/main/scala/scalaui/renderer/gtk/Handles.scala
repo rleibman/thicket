@@ -1,8 +1,9 @@
 package scalaui.renderer.gtk
 
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import scala.scalanative.unsafe.*
 import scala.scalanative.runtime.{Intrinsics, fromRawPtr, toRawPtr}
-import scala.collection.mutable
 import sn.gnome.glib.internal.{gpointer, gboolean, gint}
 
 /** Callbacks cannot close over local state in Scala Native (compile error), so every C
@@ -11,23 +12,38 @@ import sn.gnome.glib.internal.{gpointer, gboolean, gint}
   *
   * `Long` ⇄ `Ptr` must go through the intrinsics: `id.asInstanceOf[Ptr[Byte]]` compiles and
   * then throws `ClassCastException` at runtime (S7).
+  *
+  * **Lock-free, deliberately.** This table was a `mutable.LongMap` behind a monitor — the
+  * obvious design, and correct on the JVM. S9 measured that shape on iOS and found it
+  * throws `IllegalMonitorStateException` on Scala Native under real load, and leaks
+  * ~400 bytes of main-thread stack per callback that reposts from inside itself, until the
+  * process dies. GTK has the same shape of traffic — `g_idle_add` callbacks that register
+  * further callbacks — and Linux's larger main-thread stack only postpones it. See
+  * `spikes/s9-zio-bridge-ios/REPORT.md`.
   */
 private[gtk] object Handles {
-  private val callbacks: mutable.LongMap[() => Unit] = mutable.LongMap.empty
-  private var nextId: Long                           = 1L
 
-  def register(f: () => Unit): Long = synchronized {
-    val id = nextId
-    nextId += 1
-    callbacks(id) = f
+  private val callbacks  = new ConcurrentHashMap[java.lang.Long, () => Unit]()
+  private val valued     = new ConcurrentHashMap[java.lang.Long, String => Unit]()
+  private val readers    = new ConcurrentHashMap[java.lang.Long, () => Any]()
+  private val muted      = new ConcurrentHashMap[java.lang.Long, () => Boolean]()
+  private val listBinders = new ConcurrentHashMap[java.lang.Long, Ptr[Byte] => Unit]()
+  private val nextId     = new AtomicLong(1L)
+
+  def register(f: () => Unit): Long = {
+    val id = nextId.getAndIncrement()
+    callbacks.put(id, f)
     id
   }
 
-  def replace(id: Long, f: () => Unit): Unit = synchronized {
-    callbacks(id) = f
+  /** Swapping the closure behind an existing id, rather than connecting a second signal, is
+    * what stops repeated property updates stacking handlers.
+    */
+  def replace(id: Long, f: () => Unit): Unit = {
+    val _ = callbacks.put(id, f)
   }
 
-  def release(id: Long): Unit = synchronized {
+  def release(id: Long): Unit = {
     val _ = callbacks.remove(id)
     val _ = valued.remove(id)
     val _ = listBinders.remove(id)
@@ -36,8 +52,8 @@ private[gtk] object Handles {
   }
 
   private def invoke(id: Long): Unit = {
-    val f = synchronized(callbacks.get(id))
-    f.foreach(_())
+    val f = callbacks.get(id)
+    if f != null then f()
   }
 
   def idToPointer(id: Long): gpointer =
@@ -62,28 +78,28 @@ private[gtk] object Handles {
   // last one is what stops a signal-bound field from looping: renderer writes value ->
   // GTK emits "changed" -> handler writes the signal -> renderer writes value...
 
-  private val valued: mutable.LongMap[String => Unit]  = mutable.LongMap.empty
-  private val readers: mutable.LongMap[() => Any]      = mutable.LongMap.empty
-  private val muted: mutable.LongMap[() => Boolean]    = mutable.LongMap.empty
-
-  def registerValued(f: String => Unit): Long = synchronized {
-    val id = nextId
-    nextId += 1
-    valued(id) = f
+  def registerValued(f: String => Unit): Long = {
+    val id = nextId.getAndIncrement()
+    valued.put(id, f)
     id
   }
 
-  def replaceValued(id: Long, f: String => Unit): Unit = synchronized { valued(id) = f }
+  def replaceValued(id: Long, f: String => Unit): Unit = {
+    val _ = valued.put(id, f)
+  }
 
-  def bindTextSource(id: Long, read: () => Any, isMuted: () => Boolean): Unit = synchronized {
-    readers(id) = read
-    muted(id) = isMuted
+  def bindTextSource(id: Long, read: () => Any, isMuted: () => Boolean): Unit = {
+    val _ = readers.put(id, read)
+    val _ = muted.put(id, isMuted)
   }
 
   private def invokeValued(id: Long): Unit = {
-    val (f, read, isMuted) = synchronized((valued.get(id), readers.get(id), muted.get(id)))
-    if !isMuted.exists(_()) then
-      for { fn <- f; r <- read } fn(r().toString)
+    val isMuted = muted.get(id)
+    if isMuted == null || !isMuted() then {
+      val f    = valued.get(id)
+      val read = readers.get(id)
+      if f != null && read != null then f(read().toString)
+    }
   }
 
   /** GTK "changed"/"toggled": (GtkWidget*, gpointer) -> void */
@@ -111,20 +127,17 @@ private[gtk] object Handles {
   // the recycling unit: it carries the row position and whatever child it last held, which
   // is exactly what `RowSource.bind` wants.
 
-  private val listBinders: mutable.LongMap[Ptr[Byte] => Unit] = mutable.LongMap.empty
-
-  def registerListBinder(f: Ptr[Byte] => Unit): Long = synchronized {
-    val id = nextId
-    nextId += 1
-    listBinders(id) = f
+  def registerListBinder(f: Ptr[Byte] => Unit): Long = {
+    val id = nextId.getAndIncrement()
+    listBinders.put(id, f)
     id
   }
 
   private val listBind: CFuncPtr3[Ptr[Byte], Ptr[Byte], gpointer, Unit] =
     CFuncPtr3.fromScalaFunction { (_: Ptr[Byte], item: Ptr[Byte], data: gpointer) =>
       GcState.guarded {
-        val id = pointerToId(data)
-        synchronized(listBinders.get(id)).foreach(_(item))
+        val binder = listBinders.get(pointerToId(data))
+        if binder != null then binder(item)
       }
     }
 
