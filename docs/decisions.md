@@ -69,6 +69,15 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-28 — **Phase 0 declared closed; work is now explicitly MVP work.** The GO gate was
+  met on 2026-09-19 (`docs/10`); everything built since has been MVP work under a phase-0
+  label. MVP (0.1) is defined in `docs/12` §12.7 as *an outside developer can build and ship
+  a real app for Android, iOS and one desktop without reading the framework's source*, with
+  shim generation first because it is what makes the remaining widget breadth affordable.
+  Windows, Yoga layout, the dev canvas, the CLI and the cats-effect bridge are out of the
+  MVP. Also introduced `docs/12-component-status.md` as the living done/left list — there
+  was no such list before, and the gaps were scattered across commit messages.
+
 - 2026-09-28 — **`Row` overflow is answered by a horizontal `Scroll`, not by a wrapping
   `Row`.** New `Prop.Axis(Orientation)` on `WidgetKind.Scroll`, read at `create` and
   ignored at `update`: on Android the two directions are different widget classes, so no

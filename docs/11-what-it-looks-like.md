@@ -107,13 +107,18 @@ Each step is chosen to make the next one cheap, and to keep something runnable a
 2. ~~**A second renderer**~~ — **done.** Android, via S2's sbt→JAR→Gradle shape. The
    contract survived a structurally different toolkit unchanged; see §11.7.
 3. ~~**`Screen` and `Nav`**~~ — **done**, except for native navigation *containers*: see §11.8.
-4. **The ZIO bridge** — `asSignal`, `Async`, `launch`, component scopes. S8 proved the runtime
-   works; this is the ergonomics layer over it.
-5. **Widen the catalogue** — *in progress.* `TextField`, `Checkbox` and `Scroll` landed;
-   images are next and are the first one that is not mechanical (see §11.9). This is also
-   the right moment to start generating the Apple shim rather than hand-writing it (S3).
-6. **The Apple renderer** — last among the four, because by then the contract is settled and
-   the shim can be generated. S1/S3/S8 already de-risked it.
+4. ~~**The ZIO bridge**~~ — **done.** `asSignal`, `launch`, `RemoteData`, component scopes,
+   and S9 proved the whole of it under iOS.
+5. **Widen the catalogue** — *in progress, and the long pole.* `TextField`, `Checkbox`,
+   `Scroll` and `Image` landed; that is **9 of the 32** in `docs/07` §7.10. `docs/12` tracks
+   which. This is also the moment to start *generating* the Apple shim rather than
+   hand-writing it (S3).
+6. ~~**The Apple renderer**~~ — **done**, and it took two shims from one module. It was last
+   among the four on purpose: by then the contract was settled, and it needed no change to it.
+
+Five of the six are done; step 5 is a quarter done and is now the whole game. That is why
+`docs/12` §12.7 closes phase 0 and names the MVP — and why the next thing on the list is not
+a widget but the **generator**, which is what makes the remaining 23 affordable.
 
 Forms, refinements and `.platform` come after that. They are the most distinctive ideas and
 the least urgent: nothing else depends on them.
