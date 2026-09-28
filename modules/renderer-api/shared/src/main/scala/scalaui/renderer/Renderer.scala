@@ -62,6 +62,10 @@ enum WidgetKind {
 
   /** A scrolling viewport around exactly one child. Unlike Column/Row it does not hold a
     * list, which the reconciler has to respect: inserting a second child replaces the first.
+    *
+    * Scrolls vertically unless created with [[Prop.Axis]]. A horizontal one is the answer
+    * to `Row` overflow: `Row` itself clips, and every toolkit here has a scroller but only
+    * some have a wrapping box.
     */
   case Scroll
 
@@ -137,6 +141,15 @@ enum Prop {
   case Picture(source: Option[ImageSource])
   case Fit(value: ContentFit)
 
+  /** Which way a [[WidgetKind.Scroll]] scrolls. Default [[Orientation.Vertical]].
+    *
+    * **Read at `create`, not at `update`.** On Android the two directions are different
+    * widget classes (`ScrollView` and `HorizontalScrollView`), so a renderer cannot honour
+    * a later change without replacing the widget. A renderer may ignore this prop in
+    * `update`; the framework does not animate or toggle it.
+    */
+  case Axis(value: Orientation)
+
   /** How prominent text should be, relative to the platform's own foreground colours.
     *
     * Not a colour. There is deliberately no way to say "grey #767676": a theme that pushes
@@ -166,6 +179,10 @@ enum TextRole {
 
 enum Alignment {
   case Start, Center, End
+}
+
+enum Orientation {
+  case Vertical, Horizontal
 }
 
 /** Rows for a virtualising container to pull from.

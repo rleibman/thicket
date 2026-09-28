@@ -1,6 +1,6 @@
 package scalaui.core
 
-import scalaui.renderer.{Alignment, ContentFit, Emphasis, ImageSource, Prop, Rgb as RRgb, TextRole, WidgetKind}
+import scalaui.renderer.{Alignment, ContentFit, Emphasis, ImageSource, Orientation, Prop, Rgb as RRgb, TextRole, WidgetKind}
 import scalaui.signals.Signal
 
 /** A property of a widget, static or signal-driven. */
@@ -190,9 +190,20 @@ object dsl {
     )
   }
 
-  /** A scrolling viewport around one child. */
-  def Scroll(padding: Int = 0)(child: Element): Element =
-    Widget(WidgetKind.Scroll, Seq(Static(Prop.Padding(padding))), Seq(child))
+  /** A scrolling viewport around one child.
+    *
+    * `axis` is fixed for the widget's lifetime — see [[scalaui.renderer.Prop.Axis]]. A
+    * horizontal `Scroll` around a `Row` is how an app handles a row too wide for the
+    * screen; `Row` on its own clips.
+    */
+  def Scroll(padding: Int = 0, axis: Orientation = Orientation.Vertical)(
+    child:           Element
+  ): Element =
+    Widget(
+      WidgetKind.Scroll,
+      Seq(Static(Prop.Padding(padding)), Static(Prop.Axis(axis))),
+      Seq(child)
+    )
 
   def Column(spacing: Int = 0, padding: Int = 0)(children: Element*): Element =
     Widget(

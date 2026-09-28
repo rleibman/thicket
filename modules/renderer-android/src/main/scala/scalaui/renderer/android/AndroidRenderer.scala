@@ -6,7 +6,7 @@ import android.graphics.{BitmapFactory, Typeface}
 import android.util.TypedValue
 import android.view.{Gravity, View, ViewGroup}
 import android.text.{Editable, TextWatcher}
-import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, ImageView, LinearLayout, ListView, ScrollView, TextView}
+import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, ScrollView, TextView}
 import scala.collection.mutable
 import scalaui.renderer.*
 
@@ -68,7 +68,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case WidgetKind.Button    => Button(context)
       case WidgetKind.TextField => EditText(context)
       case WidgetKind.Checkbox  => CheckBox(context)
-      case WidgetKind.Scroll    => ScrollView(context)
+      case WidgetKind.Scroll =>
+        // The two directions are different classes on Android, which is why the contract
+        // says the axis is read at create and never at update.
+        val horizontal = props.exists {
+          case Prop.Axis(Orientation.Horizontal) => true
+          case _                                 => false
+        }
+        if horizontal then HorizontalScrollView(context) else ScrollView(context)
       case WidgetKind.Image => ImageView(context)
       case WidgetKind.Divider =>
         val v  = View(context)
@@ -241,6 +248,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.Enabled(v) =>
         handle.setEnabled(v)
 
+      // Create-only: honouring a change would mean swapping ScrollView for
+      // HorizontalScrollView under a live subtree. See Prop.Axis.
+      case Prop.Axis(_) => ()
+
       case Prop.Padding(v) =>
         val p = dp(v)
         handle.setPadding(p, p, p, p)
@@ -282,8 +293,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
     if kinds.get(parent).contains(WidgetKind.Scroll) then {
-      // A ScrollView holds one child, so "insert" is "set".
-      val sv = parent.asInstanceOf[ScrollView]
+      // A scroll view holds one child, so "insert" is "set". Typed as ViewGroup, not
+      // ScrollView: a horizontal Scroll is a HorizontalScrollView and the two share no
+      // subclass below FrameLayout.
+      val sv = parent.asInstanceOf[ViewGroup]
       sv.removeAllViews()
       sv.addView(child)
       return

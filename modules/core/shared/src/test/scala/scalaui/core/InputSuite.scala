@@ -98,6 +98,24 @@ class InputSuite extends munit.FunSuite {
     o.dispose()
   }
 
+  test("Scroll defaults to vertical and carries a horizontal axis when asked") {
+    val o = Owner(); given Owner = o
+    val r = TestRenderer()
+    // The overflow answer for Row: Row itself clips, so a row too wide for the screen
+    // goes inside a horizontal Scroll. See docs/11 "Two gaps this exposed".
+    val down   = Reconciler.mount(r, Scroll()(Label("a")))
+    val across = Reconciler.mount(
+      r,
+      Scroll(axis = scalaui.renderer.Orientation.Horizontal)(
+        Row()(Label("a"), Label("b"), Label("c"), Label("d"), Label("e"))
+      )
+    )
+    assertEquals(r.nodes(down.handle).props("axis"), "Vertical")
+    assertEquals(r.nodes(across.handle).props("axis"), "Horizontal")
+    assertEquals(r.childrenOf(r.childrenOf(across.handle).head).length, 5)
+    o.dispose()
+  }
+
   test("a form: two fields and a checkbox driving one model") {
     val o = Owner(); given Owner = o
     val r     = TestRenderer()

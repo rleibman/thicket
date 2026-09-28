@@ -176,6 +176,12 @@ final class AppleRenderer extends Renderer {
             boolIds(handle) = id
             Shim.sui_on_checked_change(handle, Handles.boolTrampoline, id)
         }
+
+      // Not yet honoured: both shims create a vertical scroller and the axis would have to
+      // travel to Swift as a new kind code. Ignored rather than faked — a scroller that
+      // says it is horizontal and is not would clip exactly the content it promised to
+      // reach. Tracked as the "horizontal Scroll on AppKit/UIKit" issue.
+      case Prop.Axis(_) => ()
     }
 
   def insertAfter(

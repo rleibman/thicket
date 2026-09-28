@@ -83,6 +83,35 @@ object Todo {
         screenTexts.count(_ == "Write the catalogue") == 1,
       screenTexts.toString)
 
+    // --- Row overflow: five buttons that do not fit, inside a horizontal Scroll ---
+    val texts = screenTexts
+    check("all five action buttons are mounted",
+      List("Add", "Rotate", "Drop", "About", "10 000 rows").forall(texts.contains),
+      texts.toString)
+    // The two Scrolls in this screen are the outer vertical one and the button row's
+    // horizontal one; the second in tree order is the horizontal one.
+    val row = GtkInspect
+      .findScroller(GtkApp.rootHandle)
+      .flatMap(outer => GtkInspect.children(outer).flatMap(GtkInspect.findScroller).headOption)
+    check("the button row has its own scroller", row.isDefined)
+    row.foreach { sw =>
+      val viewport = GtkInspect.naturalWidth(sw)
+      val content  = GtkInspect.children(sw).map(GtkInspect.naturalWidth).maxOption.getOrElse(0)
+      // The point of the axis. The row genuinely wants more width than the 460 px window
+      // has, and before this the surplus was simply clipped. With the scroller the
+      // *viewport* collapses to a fraction of it and the surplus becomes scrollable, so
+      // the fifth button is reachable instead of gone.
+      // Measured at 460x440: the row wants ~429px against a ~428px content area, so on the
+      // desktop it overflows by a hair and on a phone decisively. Asserting against the
+      // window width would be a 1px-margin test; the invariant worth pinning is that the
+      // viewport asks for a fraction of the content, which is what turns the surplus into
+      // something scrollable instead of something clipped.
+      println(s"[selftest] button row: content wants ${content}px, viewport asks ${viewport}px")
+      check("the horizontal scroller does not demand the full row width",
+        viewport * 4 < content,
+        s"viewport ${viewport}px vs content ${content}px")
+    }
+
     // --- LazyColumn: 10 000 rows through GtkListView ---
     app.push(TodoApp.Route.Big)
     check("pushed the 10 000-row screen", app.title.now == "10 000 rows")

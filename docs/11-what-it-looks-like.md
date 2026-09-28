@@ -405,8 +405,23 @@ rows rather than only newly-scrolled ones — which is what makes a live row fol
 
 ### Two gaps this exposed
 
-- **`Row` does not handle overflow.** A fifth button on one line was silently clipped off the
-  right edge. There is no wrapping, no scrolling, no ellipsis.
+- ~~**`Row` does not handle overflow.**~~ **Closed, 2026-09-28.** A fifth button on one line
+  was silently clipped off the right edge. The fix is not a wrapping `Row`: it is
+  `Prop.Axis`, which lets a `Scroll` be horizontal, so the app writes
+  `Scroll(axis = Orientation.Horizontal)(Row(...))` and the surplus becomes scrollable
+  instead of gone. Every toolkit here has a scroller; only some have a wrapping box, and a
+  `FlowBox`/`FlexboxLayout` would have been a different widget on two of the four.
+
+  The axis is read at `create` and ignored at `update`, because on Android the two
+  directions are different classes (`ScrollView`, `HorizontalScrollView`) and no renderer
+  can honour a later change without replacing the widget. Measured on GTK at 460x440: the
+  five-button row wants **429 px** of content while the scroller's own natural width is
+  **46 px** — it asks for a ninth of what it holds, which is precisely what stops it
+  forcing the window wider or clipping. GTK and Android done; AppKit/UIKit ignore the prop
+  for now and need a shim change (Forgejo #4).
+
+  There is still no wrapping and no ellipsis. Text that is too long for its line is a
+  separate gap.
 - **Rows must have a single root widget**, the same constraint every recycling container
   imposes. A `Fragment` row is rejected with a message saying so, rather than mounting
   something the container cannot place.

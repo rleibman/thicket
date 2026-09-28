@@ -84,7 +84,28 @@ final class GtkRenderer extends Renderer {
         case WidgetKind.Button    => gtk_button_new_with_label(toCString(""))
         case WidgetKind.TextField => gtk_entry_new()
         case WidgetKind.Checkbox  => gtk_check_button_new()
-        case WidgetKind.Scroll    => gtk_scrolled_window_new()
+        case WidgetKind.Scroll =>
+          val sw = gtk_scrolled_window_new()
+          // Policy is the whole of the axis on GTK: a scrolled window scrolls both ways
+          // by default, and NEVER on the cross axis is what makes it give its natural
+          // size there instead of shrinking to nothing.
+          val horizontal = props.exists {
+            case Prop.Axis(Orientation.Horizontal) => true
+            case _                                 => false
+          }
+          if horizontal then
+            gtk_scrolled_window_set_policy(
+              sw.asInstanceOf[Ptr[GtkScrolledWindow]],
+              GtkPolicyType.GTK_POLICY_AUTOMATIC,
+              GtkPolicyType.GTK_POLICY_NEVER
+            )
+          else
+            gtk_scrolled_window_set_policy(
+              sw.asInstanceOf[Ptr[GtkScrolledWindow]],
+              GtkPolicyType.GTK_POLICY_NEVER,
+              GtkPolicyType.GTK_POLICY_AUTOMATIC
+            )
+          sw
         case WidgetKind.Divider =>
           gtk_separator_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL)
         case WidgetKind.Image => gtk_picture_new()
@@ -316,6 +337,10 @@ final class GtkRenderer extends Renderer {
 
       case Prop.Enabled(v) =>
         gtk_widget_set_sensitive(handle, (if v then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean])
+
+      // Create-only: the contract says a renderer may ignore a later axis change, and
+      // re-policying a live scroller mid-scroll is worse than ignoring it.
+      case Prop.Axis(_) => ()
     }
 
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {

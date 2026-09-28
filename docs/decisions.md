@@ -69,6 +69,28 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-28 — **`Row` overflow is answered by a horizontal `Scroll`, not by a wrapping
+  `Row`.** New `Prop.Axis(Orientation)` on `WidgetKind.Scroll`, read at `create` and
+  ignored at `update`: on Android the two directions are different widget classes, so no
+  renderer can honour a later change without replacing the widget, and the contract now
+  says so explicitly. Chosen over a `FlowBox`/`FlexboxLayout` wrapping container because
+  all four toolkits have a scroller and only two have a wrapping box. Measured on GTK: the
+  five-button row wants 429 px, the scroller asks 46 px. GTK and Android implemented;
+  AppKit/UIKit no-op the prop pending a shim change (Forgejo #4). Wrapping and ellipsis
+  remain unsolved.
+
+- 2026-09-28 — **No handle table in any renderer may use `synchronized`; they use
+  `ConcurrentHashMap` + `AtomicLong`.** S9 found on iOS that a monitor-guarded
+  `mutable.LongMap` — the obvious design, and correct on the JVM — throws
+  `IllegalMonitorStateException` on Scala Native under real load and leaks ~400 bytes of
+  main-thread stack per callback that reposts from inside itself (measured 79 600 bytes vs
+  0), which kills iOS's 1 MB main thread. GTK's `Handles.scala` had the identical shape and
+  the identical traffic (`g_idle_add` callbacks registering further callbacks); Linux's
+  8 MB main thread only postpones the failure. Fixed in
+  `modules/renderer-gtk/.../Handles.scala`; GTK self-test and all 13 JVM suites still pass.
+  Consequence: this is a standing rule for the Android and Windows renderers too — a
+  Native-hosted callback table is lock-free or it is wrong.
+
 - 2026-09-23 — **Issue #3 done: the Apple renderer covers macOS and iOS from one Scala
   module and two Swift shims.** `modules/renderer-apple` (was `renderer-appkit`) with
   `Shim+AppKit.swift` and `Shim+UIKit.swift` against one `scalaui_apple.h`; both hosts run

@@ -42,6 +42,28 @@ object GtkInspect {
     out.toList
   }
 
+  /** The width GTK would give `widget` if nothing constrained it.
+    *
+    * A horizontal scroller is doing its job exactly when its own natural width is far
+    * below its content's: the content overflows, and the viewport asks for a fraction of
+    * it rather than forcing the window wider or clipping the surplus.
+    */
+  def naturalWidth(widget: Ptr[GtkWidget]): Int = {
+    val zone = scala.scalanative.unsafe.Zone.open()
+    try {
+      given Zone = zone
+      val min    = alloc[CInt](1)
+      val nat    = alloc[CInt](1)
+      gtk_widget_measure(widget, GtkOrientation.GTK_ORIENTATION_HORIZONTAL, -1, min, nat, null, null)
+      !nat
+    } finally zone.close()
+  }
+
+  /** The first descendant that is a `GtkScrolledWindow`, in tree order. */
+  def findScroller(widget: Ptr[GtkWidget]): Option[Ptr[GtkWidget]] =
+    if isA(widget, gtk_scrolled_window_get_type()) then Some(widget)
+    else children(widget).view.flatMap(findScroller).headOption
+
   /** Every piece of text in the subtree, in tree order: label text, the label of a button
     * (which GTK nests as a child `GtkLabel`), and the contents of a text entry.
     *

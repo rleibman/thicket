@@ -2,7 +2,7 @@ package example
 
 import scalaui.core.*
 import scalaui.core.dsl.*
-import scalaui.renderer.{Alignment, Emphasis, TextRole}
+import scalaui.renderer.{Alignment, Emphasis, Orientation, TextRole}
 import scalaui.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -140,15 +140,19 @@ object TodoApp {
           }
         ),
         Show(model.items.map(_.isEmpty))(Label("Nothing left to do.")),
-        Row(spacing = 8)(
-          Button("Add")(model.add()),
-          Button("Rotate")(model.rotate()),
-          Button("Drop")(model.dropLast()),
-          Button("About")(nav.push(Route.About))
+        // Five buttons do not fit one line on a phone, and a `Row` on its own clips
+        // them: there is no wrapping and no ellipsis. A horizontal `Scroll` is the
+        // framework's answer — every toolkit here has a scroller, only some have a
+        // wrapping box — and it costs the app one word.
+        Scroll(axis = Orientation.Horizontal)(
+          Row(spacing = 8)(
+            Button("Add")(model.add()),
+            Button("Rotate")(model.rotate()),
+            Button("Drop")(model.dropLast()),
+            Button("About")(nav.push(Route.About)),
+            Button("10 000 rows")(nav.push(Route.Big))
+          )
         ),
-        // On its own line: a Row does not wrap or scroll, so a fifth button here was
-        // silently clipped off the right edge. Overflow handling is a gap worth recording.
-        Button("10 000 rows")(nav.push(Route.Big)),
         Label(
           model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"),
           style = TextRole.Caption,

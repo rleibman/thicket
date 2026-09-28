@@ -152,6 +152,7 @@ final class TestRenderer extends Renderer {
           case None                                            => "none"
         }
       case Prop.Fit(f)            => n.props("fit") = f.toString
+      case Prop.Axis(a)           => n.props("axis") = a.toString
     }
   }
 
