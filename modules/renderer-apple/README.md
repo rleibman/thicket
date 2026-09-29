@@ -1,4 +1,4 @@
-# scala-ui-renderer-apple
+# thicket-renderer-apple
 
 The Apple renderer: **one Scala renderer, two Swift shims** — macOS and iOS (issue #3).
 `examples/todo-apple` runs the same `TodoApp` as the GTK and Android hosts, from the same
@@ -7,7 +7,7 @@ shared element tree, and passes the same 23-check self-test on both.
 ```
 $ modules/renderer-apple/shim/build-shim.sh macos
 $ sbt todoMacos/nativeLink
-$ SCALAUI_SELFTEST=1 ./target/out/native0.5/scala-3.9.0/todo-macos/todo-macos
+$ THICKET_SELFTEST=1 ./target/out/native0.5/scala-3.9.0/todo-macos/todo-macos
 [selftest] driving navigation and reading back out of the platform
 ... 23 checks ...
 [selftest]   root measured 480 x 460
@@ -107,7 +107,7 @@ S3 recommended per-*file* separation rather than `#if` inside function bodies, a
 that the Scala side would not move. Both held.
 
 **Nothing in Scala changed.** `AppleRenderer`, `AppleApp`, `AppleInspect`, `Handles`,
-`GcState` and `Shim` are byte-for-byte the macOS versions; `scalaui_apple.h` did not gain a
+`GcState` and `Shim` are byte-for-byte the macOS versions; `thicket_apple.h` did not gain a
 declaration. The example is shared literally rather than by copy: `todoMacos` and `todoIos`
 compile the same `examples/todo-apple/shared`, and the two entry points are 1 and 4 lines of
 actual code.

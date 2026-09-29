@@ -1,10 +1,10 @@
 import scala.sys.process.*
 
-// scala-ui — see docs/. Toolchain policy: latest stable Scala and sbt (docs/decisions.md).
+// Thicket — see docs/. Toolchain policy: latest stable Scala and sbt (docs/decisions.md).
 // sbt 2 has no `%%%`, so cross-platform test deps carry explicit artefact suffixes.
 
 ThisBuild / scalaVersion := "3.9.0"
-ThisBuild / organization := "dev.scalaui"
+ThisBuild / organization := "dev.thicket"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / licenses     := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 
@@ -48,7 +48,7 @@ lazy val zioTestNative = Seq("dev.zio" % "zio-test_native0.5_3"     % zioV % Tes
 lazy val signals = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/signals"))
-  .settings(commonSettings, zioTestFramework, name := "scala-ui-signals")
+  .settings(commonSettings, zioTestFramework, name := "thicket-signals")
   .jvmSettings(libraryDependencies ++= zioTestJvm)
   .jsSettings(libraryDependencies ++= zioTestJs)
   .nativeSettings(libraryDependencies ++= zioTestNative)
@@ -57,14 +57,14 @@ lazy val signals = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val rendererApi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/renderer-api"))
-  .settings(commonSettings, name := "scala-ui-renderer-api")
+  .settings(commonSettings, name := "thicket-renderer-api")
 
 /** Element tree, DSL and reconciler. */
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/core"))
   .dependsOn(signals % "compile->compile;test->test", rendererApi)
-  .settings(commonSettings, zioTestFramework, name := "scala-ui-core")
+  .settings(commonSettings, zioTestFramework, name := "thicket-core")
   .jvmSettings(libraryDependencies ++= zioTestJvm)
   .jsSettings(libraryDependencies ++= zioTestJs)
   .nativeSettings(libraryDependencies ++= zioTestNative)
@@ -91,7 +91,7 @@ lazy val rendererGtk = project
   .dependsOn(core.native)
   .settings(commonSettings)
   .settings(
-    name := "scala-ui-renderer-gtk",
+    name := "thicket-renderer-gtk",
     libraryDependencies += "com.indoorvivants.gnome" % "gtk4_native0.5_3" % "0.2.6"
   )
   .settings(gtkNativeSettings)
@@ -113,7 +113,7 @@ lazy val appleNativeSettings = Seq(
       .withLinkingOptions(
         c.linkingOptions ++ Seq(
           "-L" + shim,
-          "-lscalauiapple",
+          "-lthicketapple",
           "-framework", "AppKit",
           "-framework", "Foundation",
           // Swift's own runtime, which the shim's objects need at link time.
@@ -171,7 +171,7 @@ lazy val rendererApple = project
   .enablePlugins(ScalaNativePlugin)
   .dependsOn(core.native)
   .settings(commonSettings)
-  .settings(name := "scala-ui-renderer-apple")
+  .settings(name := "thicket-renderer-apple")
   .settings(appleNativeSettings)
 
 /** The ZIO bridge: effects at the edges of an otherwise effect-free core (docs/07 §7.13).
@@ -183,7 +183,7 @@ lazy val effectZio = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/effect-zio"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(commonSettings, zioTestFramework, name := "scala-ui-effect-zio")
+  .settings(commonSettings, zioTestFramework, name := "thicket-effect-zio")
   .jvmSettings(
     libraryDependencies ++= zioTestJvm ++ Seq(
       "dev.zio" %% "zio"         % zioV,
@@ -208,7 +208,7 @@ lazy val rendererAndroid = project
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
-    name := "scala-ui-renderer-android",
+    name := "thicket-renderer-android",
     // Android's runtime is not the JVM's: target the bytecode ART accepts. Scala 3.9
     // cannot emit lower than 17 (S2), which AGP handles with desugaring.
     scalacOptions ++= Seq("-release", "17")
@@ -219,7 +219,7 @@ lazy val examplesShared = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("examples/shared"))
   .dependsOn(core)
-  .settings(commonSettings, name := "scala-ui-examples-shared", publish / skip := true)
+  .settings(commonSettings, name := "thicket-examples-shared", publish / skip := true)
   .jvmSettings(scalacOptions ++= Seq("-release", "17"))
 
 lazy val counterGtk = project
@@ -296,12 +296,12 @@ lazy val shimGen = project
   .in(file("tools/shim-gen"))
   .settings(commonSettings, zioTestFramework)
   .settings(
-    name           := "scala-ui-shim-gen",
+    name           := "thicket-shim-gen",
     publish / skip := true,
     libraryDependencies ++= zioTestJvm,
     // The suite reads the checked-in shim artefacts, so it needs the repository root
     // rather than the subproject's base directory.
-    Test / javaOptions += s"-Dscalaui.root=${(ThisBuild / baseDirectory).value}",
+    Test / javaOptions += s"-Dthicket.root=${(ThisBuild / baseDirectory).value}",
     Test / fork := true
   )
 
@@ -312,4 +312,4 @@ lazy val root = project
              core.jvm, core.js, core.native,
              effectZio.jvm, effectZio.native,
              shimGen)
-  .settings(publish / skip := true, name := "scala-ui")
+  .settings(publish / skip := true, name := "thicket")

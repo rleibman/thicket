@@ -44,11 +44,11 @@ adding a dated entry to the Decision log at the bottom, not by editing the table
 
 | Topic               | Decision                                                                                                                                                                                                                                                     |
 |---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Working name        | `scala-ui` (repo), root package **`scalaui`**. Renaming is a product question (Q14) — do not bikeshed.                                                                                                                                                       |
+| Working name        | `thicket` (repo), root package **`thicket`**. Renaming is a product question (Q14) — do not bikeshed.                                                                                                                                                       |
 | Licence             | Apache-2.0. Add `LICENSE` at M0, not during spikes.                                                                                                                                                                                                          |
 | Repo layout         | `docs/` plan · `spikes/sN-<slug>/` one self-contained sbt (or Gradle/Xcode) project per spike, each with `BRIEF.md` and `REPORT.md` · `modules/` framework code, **empty until M0** · `shims/` Swift/C++ shims (M1+) · `tooling/` plugins/CLI (M5).          |
 | Spike independence  | Spikes never depend on each other's code. Copying a file between spikes is allowed; importing a spike as a dependency is not.                                                                                                                                |
-| Module naming (M0+) | `scala-ui-core`, `scala-ui-signals`, `scala-ui-renderer-api`, `scala-ui-effect-api`, `scala-ui-effect-zio`, `scala-ui-renderer-<platform>`, `scala-ui-layout-yoga`. Group id decided at M0.                                                                  |
+| Module naming (M0+) | `thicket-core`, `thicket-signals`, `thicket-renderer-api`, `thicket-effect-api`, `thicket-effect-zio`, `thicket-renderer-<platform>`, `thicket-layout-yoga`. Group id decided at M0.                                                                  |
 | Code style | Scala 3 syntax, **braces — not significant indentation, and not the "fewer braces" colon form**. Every build sets `-no-indent`, which makes the compiler reject both rather than merely permit braces. `given`/`using`, `enum`, no `implicit` keyword, no `null`, no exceptions for control flow in library code. One `.scalafmt.conf` at the repo root (`maxColumn = 120`), shared by every module and spike. |
 | Tests               | munit (cross-published for all three backends) + munit-scalacheck for property tests.                                                                                                                                                                        |
 
@@ -68,6 +68,29 @@ adding a dated entry to the Decision log at the bottom, not by editing the table
 Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
+
+- 2026-09-29 — **The project is `Thicket`, not `scala-ui`.** `scala-ui` was provisional and
+  became a liability ahead of going public: `<language>-<thing>` reads as *official*, so
+  `dev.scalaui` would invite the assumption of Scala Center or EPFL endorsement while
+  claiming "the" Scala UI namespace for a project that is 15 of 32 widgets in. It is also
+  unsearchable and unbrandable. **Thicket** comes from the gap the project exists to fill —
+  *thick client* — and a thicket is a dense growth of trees, which is what the framework
+  manages. A mothballed functional language shares the name; that is precedent, not an
+  obstacle (Google shipped Go over McCabe's Go!, and Rust is also a plant disease). The
+  collision is handled in handles and domains, not by deforming the name into `ThicketUI`,
+  which would keep the collision while looking like a component library.
+  Packages `thicket.*`, groupId `dev.thicket`, artefacts `thicket-*`, app ids
+  `dev.thicket.*`, env var `THICKET_SELFTEST`, system property `thicket.root`.
+- 2026-09-29 — **The Apple shim's `sui_` ABI prefix is deliberately left alone** in the
+  rename. Renaming 35 exported symbols across two Swift files, a C header and the Scala
+  externs is Apple work that cannot be compiled on Linux, and Swift never sees a Scala
+  package name, so leaving it costs nothing functionally. What *was* renamed there is the
+  part the Linux tooling verifies: the header filenames and include guards
+  (`thicket_apple.h`, `THICKET_APPLE_H`), the static library (`libthicketapple.a`), the
+  Swift module name and the iOS bridging header — plus `thicket_todo_start`, which is a
+  cross-boundary symbol the Scala side had already renamed and whose Swift caller would
+  otherwise have failed to link. `shimGen`'s ConsistencySuite proves the four artefacts
+  still agree.
 
 - 2026-09-29 — **A scroll view must pin its document view on the cross axis, on both Apple
   toolkits** (Forgejo #4). The vertical `Scroll` had been left on AppKit's defaults with the
@@ -211,7 +234,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 - 2026-09-23 — **Issue #3 done: the Apple renderer covers macOS and iOS from one Scala
   module and two Swift shims.** `modules/renderer-apple` (was `renderer-appkit`) with
-  `Shim+AppKit.swift` and `Shim+UIKit.swift` against one `scalaui_apple.h`; both hosts run
+  `Shim+AppKit.swift` and `Shim+UIKit.swift` against one `thicket_apple.h`; both hosts run
   the same `TodoApp` from `examples/todo-apple/shared` and pass the same 23 checks — macOS
   measuring 480x460, iOS simulator 365x724. Consequences:
   (a) **`modules/renderer-api` needed no changes for either platform.** The contract was
@@ -308,6 +331,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   deferred to M1. S1's brief updated accordingly.
 - 2026-09-18 — **Repo hosted on the user's Forgejo**
   (`ssh://forgejo@forgejo.leibmanland.com/rleibman/scala-ui.git`), matching meal-o-rama,
+  **superseded 2026-09-29: the project moved to `github.com/rleibman/thicket`**,
   rather than GitHub. Push-to-create is disabled server-side, so the repo must be created
   in the web UI before the first push.
 - 2026-09-18 — **Version policy set by the user: always target the latest stable Scala and sbt,

@@ -5,14 +5,14 @@ import android.view.{View, ViewGroup}
 import android.text.InputType
 import android.widget.{EditText, ProgressBar, SeekBar, Switch, TextView}
 import example.TodoApp
-import scalaui.core.NavHost
+import thicket.core.NavHost
 
 /** Drives navigation and reads the view tree back out of Android — the same checks the GTK
   * host runs, against a structurally different toolkit.
   */
 object SelfTest {
 
-  private val Tag      = "scalaui"
+  private val Tag      = "thicket"
   private var failures = 0
 
   /** Every piece of text in the subtree, in tree order. */

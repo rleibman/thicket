@@ -1,19 +1,19 @@
 package example
 
-import scalaui.core.AppRoot
-import scalaui.core.dsl.*
-import scalaui.renderer.gtk.GtkApp
-import scalaui.signals.Var
+import thicket.core.AppRoot
+import thicket.core.dsl.*
+import thicket.renderer.gtk.GtkApp
+import thicket.signals.Var
 
-/** The smallest complete scala-ui app. */
+/** The smallest complete Thicket app. */
 object Counter {
 
   def main(args: Array[String]): Unit = {
-    val _ = GtkApp.run("dev.scalaui.counter", 380, 220) {
+    val _ = GtkApp.run("dev.thicket.counter", 380, 220) {
       val count = Var(0)
 
       AppRoot(
-        "scala-ui counter",
+        "Thicket counter",
         Column(spacing = 16, padding = 24)(
           Label(count.map(n => s"Count: $n")),
           Row(spacing = 8)(

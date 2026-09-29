@@ -1,7 +1,7 @@
 package example
 
 import scala.scalanative.unsafe.exported
-import scalaui.renderer.apple.{AppleApp, GcState}
+import thicket.renderer.apple.{AppleApp, GcState}
 
 /** The iOS (UIKit) host for [[TodoApp]] — the same tree, the same renderer, a different
   * entry shape.
@@ -18,8 +18,8 @@ object TodoIos {
   /** Called by the Swift host. `guarded` because this is a host -> Scala entry and the
     * main thread is Unmanaged while the run loop owns it (S3).
     */
-  @exported("scalaui_todo_start")
-  def scalaui_todo_start(): Unit = GcState.guarded {
+  @exported("thicket_todo_start")
+  def thicket_todo_start(): Unit = GcState.guarded {
     // The root view is not a parameter: the host already gave it to the shim with
     // `sui_set_root_view`, and the renderer reads it back through `sui_root_view()`, the
     // same call the AppKit shim answers. Width and height are ignored on iOS — the window

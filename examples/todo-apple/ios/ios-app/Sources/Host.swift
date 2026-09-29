@@ -44,6 +44,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // Deferred a run-loop turn so mounting does not happen inside scene setup, where the
     // launch watchdog is counting. Still the main thread, which is the only non-Scala
     // thread allowed to enter Scala (S1).
-    DispatchQueue.main.async { scalaui_todo_start() }
+    DispatchQueue.main.async { thicket_todo_start() }
   }
 }

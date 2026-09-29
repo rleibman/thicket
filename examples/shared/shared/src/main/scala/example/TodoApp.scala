@@ -1,9 +1,9 @@
 package example
 
-import scalaui.core.*
-import scalaui.core.dsl.*
-import scalaui.renderer.{Alignment, Emphasis, Orientation, TextRole}
-import scalaui.signals.{Signal, Var}
+import thicket.core.*
+import thicket.core.dsl.*
+import thicket.renderer.{Alignment, Emphasis, Orientation, TextRole}
+import thicket.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
   *
@@ -262,7 +262,7 @@ object TodoApp {
     Screen(
       title = "About",
       content = Column(spacing = 12, padding = 16)(
-        Label("scala-ui", style = TextRole.Title),
+        Label("Thicket", style = TextRole.Title),
         Label("One element tree, rendered by GTK4 on Linux and android.view on Android.")
       )
     )
