@@ -20,6 +20,10 @@ spike**, named in the prompt that started you. Do that spike, write its report, 
   blocked, write what you found in `REPORT.md` and stop.
 - **Git.** Never `git commit`, `git push`, `git tag` unless the user asks in that
   message. Never commit to `main`. Check `git rev-parse --abbrev-ref HEAD` first.
+- **Never merge a PR. Ever.** Not via `gh`, not via the Forgejo API, not by
+  fast-forwarding the base branch locally, and not because the PR was approved or
+  you were asked to "finish" the work. Open it, say it is ready, stop. Merging is
+  the user's, with no exception.
 - **sbt.** Always `sbt --error ...`; drop `--error` only when you need the extra output.
 - **System changes.** Ask before installing system packages, SDKs (Android SDK,
   Xcode components), or anything outside the repo. Repo-local tooling

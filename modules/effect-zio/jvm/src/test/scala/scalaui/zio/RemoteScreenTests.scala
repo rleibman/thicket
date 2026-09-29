@@ -1,32 +1,40 @@
 package scalaui.zio
 
+import scalaui.signals.Checks
+
 import _root_.zio.*
+// `test` is ambiguous here: `import zio.*` brings in the *package* `zio.test`, and
+// `import zio.test.*` brings in the *method* of the same name. Scala 3 treats both
+// wildcards as equal precedence whichever order they appear in, so the call sites below
+// are qualified rather than the imports reshuffled.
+import zio.test.Spec
 import scalaui.core.*
 import scalaui.core.dsl.*
-import scalaui.signals.{Owner, ThreadGuard}
+import scalaui.signals.Owner
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** What the bridge is actually for: a screen whose content is an exhaustive match on the
   * state of an effect. The `RemoteData(...)` call below does not compile if a case is missing.
   */
-class RemoteScreenSuite extends munit.FunSuite {
+
+object RemoteScreenTests {
+
 
   given UiRuntime[Any] = UiRuntime.default
 
-  override def beforeEach(context: BeforeEach): Unit = {
-    UiThread.install(f => f())
-    // `ThreadGuard` is process-global, and sbt runs several projects' suites in one JVM, so
-    // a guard another module's tests installed would reject the bridge's signal writes from
-    // a ZIO fibre. A suite has to establish the global state it depends on, not assume it.
-    ThreadGuard.install(ThreadGuard.off)
-  }
+
+
 
   final case class Recipe(id: Int, name: String)
+
   final case class LoadFailed(message: String)
+
 
   /** A screen written the way an app would write it. */
   private def recipesScreen(
+
       load: IO[LoadFailed, List[Recipe]]
+
   )(using UiRuntime[Any], Owner): Element = {
     val recipes = load.asSignal
     Column(spacing = 8, padding = 16)(
@@ -44,19 +52,25 @@ class RemoteScreenSuite extends munit.FunSuite {
     )
   }
 
+
   private def eventually(what: String)(cond: => Boolean): Unit = {
     val deadline = java.lang.System.currentTimeMillis() + 3000
     while (!cond && java.lang.System.currentTimeMillis() < deadline) { Thread.sleep(2) }
-    assert(cond, s"timed out waiting for: $what")
+    if !cond then throw new AssertionError(s"timed out waiting for: $what")
   }
 
+
   private def texts(r: TestRenderer, root: Int): Seq[String] =
+
     r.childrenOf(root).flatMap { c =>
       val own = r.text(c)
       if own.nonEmpty then Seq(own) else r.childrenOf(c).map(r.text)
     }
 
-  test("the screen shows Loading, then the loaded rows") {
+  val suite: Spec[Any, Throwable] = zio.test.suite("RemoteScreen")(
+
+  zio.test.test("the screen shows Loading, then the loaded rows") {
+    val chk = Checks()
     val o = Owner(); given Owner = o
     val r    = TestRenderer()
     val gate = new AtomicBoolean(false)
@@ -66,22 +80,26 @@ class RemoteScreenSuite extends munit.FunSuite {
     }.orDie
 
     val m = Reconciler.mount(r, recipesScreen(load))
-    assertEquals(texts(r, m.handle), Seq("Recipes", "Loading…"))
+    chk.eq(texts(r, m.handle), Seq("Recipes", "Loading…"))
 
     gate.set(true)
     eventually("rows rendered")(texts(r, m.handle) == Seq("Recipes", "Tagine", "Dal"))
     o.dispose()
-  }
+    chk.result
+  },
 
-  test("a failure renders the error branch, with the typed error in hand") {
+  zio.test.test("a failure renders the error branch, with the typed error in hand") {
+    val chk = Checks()
     val o = Owner(); given Owner = o
     val r = TestRenderer()
     val m = Reconciler.mount(r, recipesScreen(ZIO.fail(LoadFailed("offline"))))
     eventually("error shown")(texts(r, m.handle).contains("Could not load: offline"))
     o.dispose()
-  }
+    chk.result
+  },
 
-  test("leaving the screen interrupts the load") {
+  zio.test.test("leaving the screen interrupts the load") {
+    val chk = Checks()
     val o = Owner(); given Owner = o
     val r         = TestRenderer()
     val completed = new AtomicBoolean(false)
@@ -89,12 +107,14 @@ class RemoteScreenSuite extends munit.FunSuite {
       .as(List.empty[Recipe])
 
     val m = Reconciler.mount(r, recipesScreen(load))
-    assertEquals(texts(r, m.handle), Seq("Recipes", "Loading…"))
+    chk.eq(texts(r, m.handle), Seq("Recipes", "Loading…"))
 
     // Unmounting is what a navigation push does.
     m.dispose()
     o.dispose()
     Thread.sleep(100)
-    assert(!completed.get(), "the in-flight load must be interrupted with the screen")
+    chk.yes(!completed.get(), "the in-flight load must be interrupted with the screen")
+    chk.result
   }
+  )
 }

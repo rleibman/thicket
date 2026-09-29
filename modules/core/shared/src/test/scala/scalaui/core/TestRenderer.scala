@@ -18,7 +18,11 @@ final class TestRenderer extends Renderer {
       var onTap: Option[() => Unit] = None,
       var onTextChange: Option[String => Unit] = None,
       var onCheckedChange: Option[Boolean => Unit] = None,
-      var onValueChange: Option[Double => Unit] = None
+      var onValueChange: Option[Double => Unit] = None,
+      // Numbers are kept as numbers, never stringified. Scala.js has no int/double
+      // distinction, so `7.0.toString` is "7" there and "7.0" on the JVM — a test that
+      // compares the rendered string passes on one backend and fails on the other.
+      nums: mutable.Map[String, Double] = mutable.Map.empty
   )
 
   type Handle = Int
@@ -163,9 +167,13 @@ final class TestRenderer extends Renderer {
         }
       case Prop.Fit(f)            => n.props("fit") = f.toString
       case Prop.Axis(a)           => n.props("axis") = a.toString
-      case Prop.Progress(v)       => n.props("progress") = v.fold("indeterminate")(_.toString)
-      case Prop.Value(v)          => n.props("value") = v.toString
-      case Prop.Range(lo, hi)     => n.props("range") = s"$lo..$hi"
+      case Prop.Progress(v) =>
+        n.props("progress") = v.fold("indeterminate")(_ => "determinate")
+        v.foreach(d => n.nums("progress") = d)
+      case Prop.Value(v)          => n.nums("value") = v
+      case Prop.Range(lo, hi) =>
+        n.nums("rangeMin") = lo
+        n.nums("rangeMax") = hi
       case Prop.OnValueChange(f)  => n.onValueChange = Some(f)
     }
   }

@@ -36,11 +36,25 @@ final class Checks {
     acc = acc && (if hint.isEmpty then step else step ?? hint)
   }
 
-  /** Assert a plain condition. Prefer [[eq]]: a bare boolean cannot say what it saw. */
-  def yes(cond: Boolean, hint: String): Unit =
-    acc = acc && (assertTrue(cond) ?? hint)
+  /** Assert `actual != expected`. */
+  def ne[A](actual: A, expected: A, hint: String = ""): Unit = {
+    val step = assert(actual)(Assertion.not(Assertion.equalTo(expected)))
+    acc = acc && (if hint.isEmpty then step else step ?? hint)
+  }
 
-  def no(cond: Boolean, hint: String): Unit = yes(!cond, hint)
+  /** Assert a plain condition.
+    *
+    * `hint` is optional because zio-test's `assertTrue` is a macro: it reports the source
+    * of the expression that failed, so a bare condition is not as mute here as munit's
+    * `assert` was. A hint is still worth adding when the expression alone does not say
+    * *why* it should hold.
+    */
+  def yes(cond: Boolean, hint: String = ""): Unit = {
+    val step = assertTrue(cond)
+    acc = acc && (if hint.isEmpty then step else step ?? hint)
+  }
+
+  def no(cond: Boolean, hint: String = ""): Unit = yes(!cond, hint)
 
   def result: TestResult = acc
 }

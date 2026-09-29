@@ -8,9 +8,7 @@ ThisBuild / organization := "dev.scalaui"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / licenses     := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 
-val munitV      = "1.3.6"
 val zioV        = "2.1.26"
-val munitCheckV = "1.3.1"
 
 lazy val commonSettings = Seq(
   scalacOptions ++= Seq(
@@ -27,13 +25,6 @@ lazy val commonSettings = Seq(
   // ThreadGuard.install is process-global, so suites must not overlap.
   Test / parallelExecution := false
 )
-
-lazy val munitJvm    = Seq("org.scalameta" %% "munit" % munitV % Test,
-                           "org.scalameta" %% "munit-scalacheck" % munitCheckV % Test)
-lazy val munitJs     = Seq("org.scalameta" % "munit_sjs1_3" % munitV % Test,
-                           "org.scalameta" % "munit-scalacheck_sjs1_3" % munitCheckV % Test)
-lazy val munitNative = Seq("org.scalameta" % "munit_native0.5_3" % munitV % Test,
-                           "org.scalameta" % "munit-scalacheck_native0.5_3" % munitCheckV % Test)
 
 // zio-test. Property testing comes with it (`check` + `Gen`), so there is no scalacheck
 // equivalent to add. sbt 2 has no `%%%`, hence the explicit artefact suffixes.
@@ -67,19 +58,16 @@ lazy val rendererApi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/renderer-api"))
   .settings(commonSettings, name := "scala-ui-renderer-api")
-  .jvmSettings(libraryDependencies ++= munitJvm)
-  .jsSettings(libraryDependencies ++= munitJs)
-  .nativeSettings(libraryDependencies ++= munitNative)
 
 /** Element tree, DSL and reconciler. */
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/core"))
   .dependsOn(signals % "compile->compile;test->test", rendererApi)
-  .settings(commonSettings, name := "scala-ui-core")
-  .jvmSettings(libraryDependencies ++= munitJvm)
-  .jsSettings(libraryDependencies ++= munitJs)
-  .nativeSettings(libraryDependencies ++= munitNative)
+  .settings(commonSettings, zioTestFramework, name := "scala-ui-core")
+  .jvmSettings(libraryDependencies ++= zioTestJvm)
+  .jsSettings(libraryDependencies ++= zioTestJs)
+  .nativeSettings(libraryDependencies ++= zioTestNative)
 
 /** GTK's C glue (and that of its transitive bindings, e.g. graphene) is compiled by Scala
   * Native in whichever project performs the link, so every downstream project needs these
@@ -195,15 +183,15 @@ lazy val effectZio = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/effect-zio"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(commonSettings, name := "scala-ui-effect-zio")
+  .settings(commonSettings, zioTestFramework, name := "scala-ui-effect-zio")
   .jvmSettings(
-    libraryDependencies ++= munitJvm ++ Seq(
+    libraryDependencies ++= zioTestJvm ++ Seq(
       "dev.zio" %% "zio"         % zioV,
       "dev.zio" %% "zio-streams" % zioV
     )
   )
   .nativeSettings(
-    libraryDependencies ++= munitNative ++ Seq(
+    libraryDependencies ++= zioTestNative ++ Seq(
       "dev.zio"           % s"zio_native0.5_3"            % zioV,
       "dev.zio"           % s"zio-streams_native0.5_3"    % zioV,
       "io.github.cquiroz" % "scala-java-time_native0.5_3" % "2.7.0"
@@ -306,11 +294,11 @@ lazy val todoAndroid = project
   */
 lazy val shimGen = project
   .in(file("tools/shim-gen"))
-  .settings(commonSettings)
+  .settings(commonSettings, zioTestFramework)
   .settings(
     name           := "scala-ui-shim-gen",
     publish / skip := true,
-    libraryDependencies ++= munitJvm,
+    libraryDependencies ++= zioTestJvm,
     // The suite reads the checked-in shim artefacts, so it needs the repository root
     // rather than the subproject's base directory.
     Test / javaOptions += s"-Dscalaui.root=${(ThisBuild / baseDirectory).value}",
