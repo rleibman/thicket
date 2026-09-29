@@ -219,3 +219,53 @@ Three rules the migration established, each paid for by a failure rather than gu
 
 And the process rule behind all three: **run the cross-built modules on all three
 backends.** Phase 2 shipped a test that only ever passed on the JVM.
+
+## 12.9 Coverage
+
+```bash
+./bin/coverage.sh
+```
+
+**91.10% statement, 87.64% branch**, 1596 of 1752 statements, measured 2026-09-29.
+
+| Package | Statement |
+|---|---|
+| `thicket.tools.shim` | 94.31% |
+| `thicket.signals` | 91.71% |
+| `thicket.core` | 89.94% |
+| `thicket.zio` | 69.44% |
+
+`build.sbt` sets a ratchet just under the measured figure — 87% statement, 83% branch,
+`coverageFailOnMinimum := true`. It exists to stop coverage sliding, not to be hit exactly.
+Raise it when the real number moves up.
+
+### What the number does *not* cover
+
+**The three renderers.** GTK, Android and Apple are Scala Native and ART code, exercised by
+self-tests that drive the real toolkit in a real process — 42 checks on GTK, 35 on Android,
+27 and 26 on macOS and iOS. scoverage instruments none of that, so those modules contribute
+nothing to the figure above and **their absence is not a gap in testing**. The number is
+coverage of the effect-free core, and quoting it as "the project's coverage" would be
+wrong in both directions at once.
+
+`renderer-api` is also excluded, for a mechanical reason: instrumented code writes its
+measurements into its *own* module's data directory, which only exists once that module's
+tests run, and `renderer-api` is pure types with no tests. Its default methods are reached
+through `core`'s tests either way.
+
+### Two traps, both of which hand you a wrong answer silently
+
+1. **sbt 2's disk cache restores compiled classes without running the compiler.**
+   `scoverage.coverage` — the metadata mapping a measurement back to a statement — is a
+   compile *side-effect*, not a tracked output, so a cache hit gives you instrumented
+   classes with no metadata, and that module **disappears from the aggregate with no
+   error**. This is how `signals` vanished while still producing measurement files.
+   `bin/coverage.sh` clears `~/.cache/sbt/v2` for this reason; a coverage run that skips
+   that step is not measuring what you think.
+2. **A report with no metadata at all reads `100% of 0 statements`** — and passes
+   `coverageFailOnMinimum` at any threshold. The script checks the statement count is
+   non-zero before printing the percentage, because a coverage gate that cannot fail is
+   worse than no gate.
+
+Related: the same disk cache does not notice a *deleted* source file (`decisions.md`,
+2026-09-29). It is worth suspecting early.
