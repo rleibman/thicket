@@ -191,3 +191,31 @@ above it.
 **The test for done** is the one `docs/08` M4 already proposed and this repo can now
 actually run: a real client app — the meal-planner against its Caliban server — built by
 someone who did not write the framework, running on all three targets.
+
+## 12.8 How the tests are run
+
+**zio-test, every module, every backend.** `sbt "<module><Platform>/testOnly *"` — and
+`testOnly *` rather than `test`, because sbt 2's `test` is incremental and will happily run
+**zero** tests and report success.
+
+| Target | Tests |
+|---|---|
+| `signalsJVM` / `signalsNative` | 21 |
+| `signalsJS` | 19 — no `ThreadGuardSpec`, JS has no threads |
+| `coreJVM` / `coreJS` / `coreNative` | 73 |
+| `effectZioJVM` | 13 |
+| `shimGen` | 10 |
+
+Three rules the migration established, each paid for by a failure rather than guessed at:
+
+1. **Anything touching the signal graph needs `@@ TestAspect.sequential`.** The
+   dependency-tracking context is two process-global `var`s, so parallel tests corrupt each
+   other. zio-test runs a suite's tests in parallel by default.
+2. **Suites sharing process-global state must be one spec.** `sequential` orders tests
+   within a spec and promises nothing between specs, which zio-test runs concurrently.
+   `EffectZioSpec` holds both the bridge and the remote-screen suites for this reason.
+3. **Never compare a stringified number.** Scala.js renders `7.0` as `"7"`. `TestRenderer`
+   keeps numeric props in `nums: Map[String, Double]`, not in the string map.
+
+And the process rule behind all three: **run the cross-built modules on all three
+backends.** Phase 2 shipped a test that only ever passed on the JVM.

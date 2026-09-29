@@ -92,6 +92,35 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   9-14 for the widgets it added (`docs/12` §12.2), and an axis is not worth renumbering six
   pending widgets over. The collision is the predictable cost of the kind code being a bare
   int agreed by comment across four files, which is the thing Forgejo #7 exists to fix.
+- 2026-09-29 — **Tests are zio-test, not munit, across every module.** User preference, and
+  it paid for itself twice on the way in. (a) zio-test runs a suite's tests **in parallel by
+  default**; munit does not. That broke the signal graph on the first run — `NullPointerException`
+  on `Runtime.collected`, `ConcurrentModificationException` in `relink` — because the
+  dependency-tracking context is two process-global `var`s, deliberately, since an `Option`
+  per tracked read is measurable against the 1 µs/node budget. The graph is owned by one
+  thread, which `ThreadGuard` enforces in production, but nothing in the test suite *said*
+  so. Every graph-touching spec now carries `@@ TestAspect.sequential` with the reason.
+  (b) `TestAspect.sequential` orders tests **within** a spec and gives no ordering
+  *between* specs. `BridgeSpec` and `RemoteScreenSpec` both install `UiThread` and
+  `ThreadGuard`, raced, and timed out. Suites sharing process-global state must be **one
+  spec**; they are now `EffectZioSpec`. `munit-scalacheck` is gone — property testing comes
+  with zio-test. `Checks` accumulates assertions made *during* a test, because these tests
+  check a mutable graph after each step and the interesting property is usually how many
+  times something happened between two writes, which the end state cannot show.
+- 2026-09-29 — **Never stringify a number in a cross-built test.** Scala.js has no
+  int/double distinction, so `7.0.toString` is `"7"` there and `"7.0"` on the JVM. Phase 2's
+  `CatalogueSuite` compared rendered strings for `Prop.Value`, `Prop.Range` and
+  `Prop.Progress`; it passed on the JVM and **had never been run on JS or Native**, where it
+  fails. `TestRenderer` now keeps numeric props in a separate `nums: Map[String, Double]`.
+  The lesson is the process one: running `coreJVM/testOnly` is not running the tests.
+
+- 2026-09-29 — **sbt 2's disk cache does not notice a *deleted* test source.** Renaming
+  `GraphPropertySuite` to `GraphPropertySpec` left `signalsNative/nativeLink` failing with
+  "Unreachable symbols found" pointing at the deleted file, through `clean`, through
+  deleting the module's `target/out` subtree, and through touching sources — every run
+  reporting "cache 100%, 35 disk cache hits". The fix is to clear `~/.cache/sbt/v2` *and*
+  `target/out/<platform>`; clearing either alone is not enough. Worth knowing before
+  chasing a phantom compile error for twenty minutes.
 - 2026-09-29 — **A widget enters the catalogue only if every platform we render to has it.**
   `docs/07` §7.10 listed the v1 catalogue before any renderer existed; phase 2 checked each
   entry against four real toolkits for the first time and two failed. **`Radio`**: UIKit has
