@@ -21,6 +21,11 @@ object AppleApp {
     */
   var rootHandle: Shim.Handle = null
 
+  /** The renderer that mounted the tree. The demo's self-test asks it what a handle was
+    * created as; nothing in the framework needs it.
+    */
+  var renderer: AppleRenderer = null
+
   /** Runs `f` on the main thread. Safe from any thread the platform permits — which on Apple means the main thread or a
     * Scala-created thread, never a GCD worker (S1).
     */
@@ -32,7 +37,7 @@ object AppleApp {
   private val onReady: Shim.VoidCb =
     CFuncPtr1.fromScalaFunction((_: Long) =>
       GcState.guarded {
-        val renderer = AppleRenderer()
+        renderer = AppleRenderer()
         given Owner = rootOwner
         val root = build
 

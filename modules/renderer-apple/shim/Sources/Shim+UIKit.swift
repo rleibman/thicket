@@ -173,6 +173,14 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.alwaysBounceVertical = true
     return retained(s)
 
+  case 15:
+    // The same class as 6, scrolling the other way.
+    let s = UIScrollView()
+    s.alwaysBounceHorizontal = true
+    s.showsHorizontalScrollIndicator = true
+    s.showsVerticalScrollIndicator = false
+    return retained(s)
+
   case 8:
     let iv = UIImageView()
     iv.contentMode = .scaleAspectFit
@@ -399,13 +407,26 @@ public func sui_insert_after(
     scroll.subviews.forEach { $0.removeFromSuperview() }
     c.translatesAutoresizingMaskIntoConstraints = false
     scroll.addSubview(c)
+    // All four edges go to the contentLayoutGuide, which is what gives the scroll view its
+    // contentSize. The one axis tied to frameLayoutGuide is the *cross* axis: that is the
+    // direction the content may not exceed, and so the direction it does not scroll.
     NSLayoutConstraint.activate([
       c.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
       c.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
       c.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
       c.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-      c.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
+      isHorizontalScroller(scroll)
+        ? c.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor)
+        : c.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
     ])
+    if isHorizontalScroller(scroll) {
+      // A UIScrollView has no intrinsic size, so in a vertical UIStackView it would stretch
+      // to whatever slack there is rather than hug the row. The height is the content's.
+      // (The width needs no such help: a vertical UIStackView is .fill-aligned here, unlike
+      // AppKit's .leading, so it stretches its children across on its own.)
+      let fit = c.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+      scroll.heightAnchor.constraint(equalToConstant: fit.height).isActive = true
+    }
     return
   }
 
@@ -433,6 +454,12 @@ public func sui_insert_after(
     index = 0
   }
   stack.insertArrangedSubview(c, at: min(index, stack.arrangedSubviews.count))
+}
+
+/// Kind 9 rather than kind 6. The axis is not stored anywhere on the Scala side of the
+/// boundary, so it is read back off the scroller's own configuration.
+private func isHorizontalScroller(_ s: UIScrollView) -> Bool {
+  s.alwaysBounceHorizontal && !s.alwaysBounceVertical
 }
 
 @_cdecl("sui_remove_child")

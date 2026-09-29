@@ -21,7 +21,14 @@ void sui_window_set_title(const char *title);
 
 /* --- widget construction ------------------------------------------------------- */
 /* kind: 0 Column, 1 Row, 2 Label, 3 Button, 4 TextField, 5 Checkbox, 6 Scroll, 7 Divider,
-         8 Image */
+         8 Image, 15 Scroll (horizontal)
+ *
+ * 9-14 are reserved for the phase 2 widgets the Apple shim has not built yet (Toggle,
+ * Spacer, ProgressBar, ActivityIndicator, Slider, SecureField - Forgejo #9).
+ *
+ * The axis of a Scroll travels as a separate kind rather than a later setter: it is read at
+ * create (Prop.Axis), and create reaches Swift as this one int. 6 stays the vertical one so
+ * nothing existing moves. */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 

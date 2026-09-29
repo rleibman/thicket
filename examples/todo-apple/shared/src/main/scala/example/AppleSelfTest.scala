@@ -1,6 +1,6 @@
 package example
 
-import scalaui.renderer.apple.{AppleApp, AppleInspect, AppleRenderer}
+import scalaui.renderer.apple.{AppleApp, AppleInspect, AppleRenderer, Shim}
 import scalaui.renderer.Constraints
 
 /** The part of the Apple example that is the same on both platforms — which is all of it
@@ -29,6 +29,15 @@ object AppleSelfTest {
   /** Every piece of text in the mounted screen, in tree order. */
   private def screenTexts: List[String] = AppleInspect.allTexts(AppleApp.rootHandle)
 
+  /** The horizontal scroller in the mounted screen, depth-first.
+    *
+    * GTK's equivalent test takes "the second scroller in tree order"; here the renderer is
+    * asked outright, because it is the thing that decided the axis at `create`.
+    */
+  private def findHorizontalScroll(h: Shim.Handle): Option[Shim.Handle] =
+    if AppleApp.renderer.isHorizontalScroll(h) then Some(h)
+    else AppleInspect.children(h).flatMap(findHorizontalScroll).headOption
+
   private var failures = 0
 
   private def check(
@@ -43,6 +52,7 @@ object AppleSelfTest {
 
   private def selfTest(): Unit = {
     println("[selftest] driving navigation and reading back out of the platform")
+    val probe = AppleRenderer()
 
     check("starts on the items screen", app.title.now == "Todo")
     val onItems = screenTexts
@@ -98,10 +108,57 @@ object AppleSelfTest {
       screenTexts.toString
     )
 
+    // --- Row overflow: five buttons that do not fit, inside a horizontal Scroll ---
+    val actionTexts = screenTexts
+    check(
+      "all five action buttons are mounted",
+      List("Add", "Rotate", "Drop", "About", "10 000 rows").forall(actionTexts.contains),
+      actionTexts.toString
+    )
+    val horizontal = findHorizontalScroll(AppleApp.rootHandle)
+    check("the button row has its own horizontal scroller", horizontal.isDefined)
+    horizontal.foreach { sw =>
+      val viewport: Double = probe.measure(sw, Constraints.unbounded).natW.toDouble
+      val content: Double =
+        AppleInspect.children(sw).map(probe.measure(_, Constraints.unbounded).natW.toDouble).maxOption.getOrElse(0.0)
+      println(s"[selftest] button row: content wants ${content.toInt}px, viewport asks ${viewport.toInt}px")
+
+      // The axis itself, stated so it holds whether or not the row happens to overflow on
+      // this screen. A horizontal scroller leaves its content's *width* free and pins the
+      // cross axis; a vertical one pins the width to the viewport. So the content keeping a
+      // width of its own is exactly what "horizontal" means here, and a scroller built on
+      // the wrong axis reports content == viewport to the pixel.
+      //
+      // GTK asserts a 4x viewport-to-content ratio instead. That is a GTK constant, not a
+      // cross-toolkit invariant: a GtkScrolledWindow reports a minimum near zero, an
+      // NSScrollView has no intrinsic size and is pinned to fill its parent, and a
+      // UIScrollView reports its laid-out frame. The three are not comparable numbers.
+      check(
+        "the scroller lets its content keep its own width",
+        math.abs(content - viewport) > 1.0,
+        s"content ${content.toInt}px is the viewport's own ${viewport.toInt}px, so the width was pinned"
+      )
+
+      // The user-visible consequence, assertable only where the row actually overflows. On
+      // a 480px mac window it does; on every simulator available here the phone is wider
+      // than the five buttons, so there is nothing to scroll and the assertion would be
+      // vacuous. Said out loud rather than passed silently.
+      if content > viewport then {
+        check(
+          "the overflowing row does not force its width on its ancestors",
+          viewport < content,
+          s"viewport ${viewport.toInt}px vs content ${content.toInt}px"
+        )
+      } else {
+        println(
+          s"[selftest]   (the row fits in ${viewport.toInt}px on this screen, so the overflow path is not exercised here)"
+        )
+      }
+    }
+
     // Reading the tree back proves the renderer made the right calls; it does not prove
     // AppKit laid anything out. Measuring does: a view with a zero natural size has been
     // created and attached but never given geometry.
-    val probe = AppleRenderer()
     val rootSize = probe.measure(AppleApp.rootHandle, Constraints.unbounded)
     check("the mounted tree has a real size", rootSize.natW > 0 && rootSize.natH > 0, rootSize.toString)
     println(s"[selftest]   root measured ${rootSize.natW.toInt} x ${rootSize.natH.toInt}")

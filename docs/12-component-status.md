@@ -15,7 +15,7 @@ catalogue in `docs/07` §7.10.
 | Widgets implemented on **every** renderer that exists | **9** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **22** |
-| Props implemented on every renderer | **17** — `Axis` and `Progress` are not honoured on Apple |
+| Props implemented on every renderer | **18** — `Progress`, `Value`, `Range` and `OnValueChange` are no-ops on Apple, because they belong to widgets it cannot create yet (#9) |
 
 **Nine of thirty-two is still the honest headline**, because four of the thirteen are not
 on Apple yet — and this doc's own rule 1 says a widget is done when *every* renderer has
@@ -39,7 +39,7 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Button` | `WidgetKind.Button` | done | done | done | done | |
 | `TextField` | `WidgetKind.TextField` | done | done | done | done | Two-way bound; renderers must not disturb a widget showing the value already written |
 | `Checkbox` | `WidgetKind.Checkbox` | done | done | done | done | |
-| `Scroll` | `WidgetKind.Scroll` | done | done | partial | partial | Vertical everywhere; horizontal (`Prop.Axis`) on GTK and Android only — Forgejo **#4** |
+| `Scroll` | `WidgetKind.Scroll` | done | done | done | done | Vertical and horizontal (`Prop.Axis`) on all four. The axis is read at `create`; Apple folds it into the kind code |
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | partial | partial | Decoding is on the UI thread everywhere; `ContentFit.Cover` distorts on AppKit — Forgejo **#6** |
 
@@ -120,16 +120,19 @@ every remaining entry before it is built, not after.
 
 ## 12.4 Props
 
-All four renderers handle all 18 props, because `Prop` is an `enum` and the match is
+All four renderers handle all 22 props, because `Prop` is an `enum` and the match is
 exhaustive under `-Werror` — a new prop breaks every renderer until it is handled, which is
 the point of doing this in Scala.
 
 `Text`, `OnTap`, `Spacing`, `Padding`, `Enabled`, `Placeholder`, `OnTextChange`, `Checked`,
 `OnCheckedChange`, `Style`, `Grow`, `Align`, `Tint`, `Fill`, `Picture`, `Fit`,
-`TextEmphasis`, `Axis`.
+`TextEmphasis`, `Axis`, `Progress`, `Value`, `Range`, `OnValueChange`.
 
-"Handled" is not "honoured": Apple's `Axis` case is an explicit documented no-op, which is
-why 12.1 counts it as 17.
+**"Handled" is not "honoured."** Eighteen are honoured everywhere. The remaining four —
+`Progress`, `Value`, `Range`, `OnValueChange` — are no-ops on Apple, but only because they
+belong to widgets its shim cannot create yet (#9); they are unreachable rather than ignored.
+`Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
+until Forgejo **#4**.
 
 ## 12.5 Renderers
 
@@ -149,9 +152,9 @@ depends on it until `Grid` or absolute positioning does.
 ## 12.6 What this list is for
 
 **Division of labour.** Apple work is done on the macOS laptop, so anything AppKit/UIKit is
-raised as a Forgejo issue rather than attempted here — currently **#4** (horizontal
-`Scroll`), **#5** (virtualised rows), **#6** (`ContentFit.Cover`) and **#7** (shim
-generation). Everything else is built and measured on the Linux box.
+raised as a Forgejo issue rather than attempted here — currently **#5** (virtualised rows),
+**#6** (`ContentFit.Cover`) and **#7** (shim generation). **#4** (horizontal `Scroll`) is
+done. Everything else is built and measured on the Linux box.
 
 Two rules, so it stays true:
 
@@ -177,7 +180,7 @@ someone and watch. It implies five things, roughly in dependency order.
 |---|---|---|
 | 1 | **Shim generation** (Forgejo **#7**, phase 1 — *code done, not yet adopted*) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
-| 3 | **Apple parity** — virtualised rows, horizontal `Scroll`, `ContentFit.Cover` | `LazyColumn` silently mounting 10 000 rows on iOS is the worst kind of gap: it works in the demo and dies in an app. |
+| 3 | **Apple parity** — virtualised rows, `ContentFit.Cover` (horizontal `Scroll` done) | `LazyColumn` silently mounting 10 000 rows on iOS is the worst kind of gap: it works in the demo and dies in an app. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |
 | 5 | **Published artefacts and a getting-started** | Without these, "an outside developer" is not a thing that can be tested. |
 
