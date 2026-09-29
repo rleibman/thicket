@@ -69,6 +69,15 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-28 — **Work is phased: one phase, one branch (`phase/<n>-<slug>`), one PR**, with a
+  measured exit criterion each. `docs/13-phases.md` holds the table. Phase 1 is the shim
+  generator rather than widget breadth, because at 11.0 Swift lines per exported function
+  across two shims the remaining 23 widgets are otherwise the largest cost in the project —
+  and because the generator is testable on Linux against the hand-written shims as golden
+  files. README rewritten as a real README (prerequisites, run-the-demo, first app, the
+  three concepts) and an Apache-2.0 `LICENSE` file added; the licence was declared in
+  `build.sbt` but the file was missing.
+
 - 2026-09-28 — **Phase 0 declared closed; work is now explicitly MVP work.** The GO gate was
   met on 2026-09-19 (`docs/10`); everything built since has been MVP work under a phase-0
   label. MVP (0.1) is defined in `docs/12` §12.7 as *an outside developer can build and ship

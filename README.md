@@ -1,133 +1,277 @@
-# scala-ui — a thick-client UI framework for Scala
+# scala-ui
 
-**Status:** phase 0 complete (**GO**); building towards an MVP. The same demo app —
-one `Element` tree, no platform code — runs today on **Linux/GTK4, Android, macOS and the
-iOS simulator**.
+**Native thick-client UIs in Scala 3.** One `Element` tree, real platform widgets —
+`android.view.*` on Android, UIKit/AppKit on iOS and macOS, GTK4 on Linux.
+
+Scala 3.9 · sbt 2.0.9 · Scala Native 0.5.12 · Apache-2.0 · **pre-release, not on Maven Central yet**
+
+<p align="center">
+  <img src="docs/screenshots/android-todo.png" width="260" alt="The demo app on Android">
+</p>
+
+---
 
 ## Why
 
-Scala covers the server (JVM), the browser (Scala.js — Laminar, scalajs-react, Tyrian) and
-the command line (Scala Native). It has **no answer for the thick client**: no way to ship a
-Scala app to a phone or a desktop that looks and feels like it belongs there. Kotlin has
-Compose Multiplatform, Dart has Flutter, JS has React Native, C# has MAUI/Avalonia/Uno, Rust
-has Tauri/Slint. Scala has nothing, and that gap keeps Scala out of an entire class of
-products.
+Scala covers the server (JVM), the browser (Laminar, Tyrian) and the command line (Scala
+Native). It has **no answer for the thick client** — no way to ship a Scala app to a phone
+or a desktop that looks and feels like it belongs there. Kotlin has Compose Multiplatform,
+Dart has Flutter, JS has React Native, C# has MAUI, Rust has Tauri. Scala has nothing, and
+that gap keeps it out of an entire class of products.
 
-## What it is
+scala-ui does not draw its own widgets. Every leaf of the tree is a real `GtkButton`,
+`android.widget.Button` or `UIButton`, so platform fidelity is true *by construction* and
+accessibility comes with the control rather than being retrofitted onto a canvas.
 
-A declarative, reactive UI core in pure Scala 3 (cross-compiled to JVM, JS and Native) that
-describes the UI as a tree and hands each leaf to a **real native widget** through a thin
-per-platform renderer: `android.view.*` on Android, AppKit/UIKit on macOS/iOS via a Swift
-shim with a C ABI, GTK4 on Linux, WinUI/Win32 later. "Looks like the platform" is true *by
-construction*, accessibility comes with the native controls, and the developer writes one
-Scala codebase.
-
-State is reactive (fine-grained signals, no `F[_]` in the core). Effects arrive through a
-per-effect-system bridge — **ZIO first**, cats-effect next — so a ZIO service layer drives
-the UI without the widget API knowing about it.
-
-```scala
-def itemsScreen(model: Model): Element =
-  Scroll()(Column(spacing = 16, padding = 16)(
-    Row(spacing = 8)(
-      TextField(model.draft, placeholder = "What needs doing?")(model.draft.set),
-      Checkbox(model.draftDone, "Done")(model.draftDone.set)
-    ),
-    Button("Add item")(model.addDraft()),
-    ForEach(model.items, key = (i: Item) => i.id) { item =>
-      Row(spacing = 12, padding = 12)(
-        Label(item.map(_.title)).grow,
-        Label(item.map(i => if i.done then "\u2713" else ""), style = TextRole.Caption)
-      ).onTap(nav.push(Route.Detail(item.now.id)))
-    }
-  ))
-```
-
-That is the whole of it: no renderer, no platform, no effect type. The GTK, Android and
-Apple hosts each mount the same function.
-
-## Where it actually is
-
-Phase 0 ran eight spikes and returned **GO** — see [docs/10](docs/10-phase-0-findings.md);
-a ninth followed, on the ZIO bridge under iOS.
-Not one of the toolchain risks the plan feared actually materialised; the risk inverted, and
-the renderer contract became the thing to prove. It has now survived **four structurally
-different toolkits with no changes**.
-
-Measured, not asserted:
+## Status — read this before you start
 
 | | |
 |---|---|
-| App size (iOS, hello app) | **0.53 MB** vs React Native 26.0 MB, Gluon 60.1 MB |
+| Works today | Linux/GTK4, Android, macOS, iOS simulator — the same app on all four |
+| Widgets | **9 of the 32** in the v1 catalogue → [docs/12](docs/12-component-status.md) |
+| Published artefacts | **None yet.** You build from this repository |
+| API stability | **None.** Expect breaking changes without notice |
+| Windows | Not started, and out of the 0.1 scope |
+
+This is early. It is real software with measured numbers, not a prototype — but you cannot
+`libraryDependencies +=` it yet, and the catalogue is a quarter complete. If you need a
+`Slider` today, it isn't here.
+
+## Getting started
+
+### Prerequisites
+
+| For | You need |
+|---|---|
+| Everything | JDK 21+, [sbt 2](https://www.scala-sbt.org/) (`cs install sbt`), [coursier](https://get-coursier.io/) |
+| Linux/GTK4 | `libgtk-4-dev`, `libunwind-dev`, clang |
+| Android | Android SDK (platform 36 + build-tools), an emulator or device |
+| macOS / iOS | Xcode, on a Mac — see [spikes/MAC-SETUP.md](spikes/MAC-SETUP.md) |
+
+Scala Native needs `clang`, `libunwind-dev` and GTK's development headers; on Ubuntu:
+
+```bash
+sudo apt install clang libunwind-dev libgtk-4-dev
+```
+
+### Run the demo in one command
+
+```bash
+git clone ssh://forgejo@forgejo.leibmanland.com/rleibman/scala-ui.git
+cd scala-ui
+sbt --error counterGtk/nativeLink
+./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk
+```
+
+That is the Todo demo: a bound text field, a checkbox, keyed list rows, navigation, and a
+10 000-row virtualised list. The first `nativeLink` takes a few minutes; after that it is
+seconds.
+
+For Android, with an emulator running:
+
+```bash
+./examples/todo-android/build.sh   # builds the Scala, hands the JAR to Gradle, installs, launches
+```
+
+### Your first app
+
+This is `examples/counter-gtk/src/main/scala/example/Counter.scala` in full — the smallest
+complete scala-ui app, and it compiles:
+
+```scala
+package example
+
+import scalaui.core.AppRoot
+import scalaui.core.dsl.*
+import scalaui.renderer.gtk.GtkApp
+import scalaui.signals.Var
+
+object Counter {
+
+  def main(args: Array[String]): Unit = {
+    val _ = GtkApp.run("dev.scalaui.counter", 380, 220) {
+      val count = Var(0)
+
+      AppRoot(
+        "scala-ui counter",
+        Column(spacing = 16, padding = 24)(
+          Label(count.map(n => s"Count: $n")),
+          Row(spacing = 8)(
+            Button("−")(count.update(_ - 1)),
+            Button("+")(count.update(_ + 1)),
+            Button("Reset")(count.set(0))
+          )
+        )
+      )
+    }
+  }
+}
+```
+
+Point `counterGtk`'s `Compile / mainClass` at `example.Counter` in `build.sbt`, then
+`nativeLink` and run it as above.
+
+**What is going on.** `count` is a `Var` — a signal. `count.map(...)` is a derived view, not
+a subscription, so it needs no lifetime management. `Label` takes either a `String` or a
+`Signal[String]`; given a signal, a change re-renders that one label and nothing else. There
+is no `setState`, no virtual-DOM diff of the whole app, and no effect type in sight.
+
+### The three concepts
+
+**1. Signals.** Fine-grained reactivity — push-mark, pull-validate, glitch-free, with an
+equality cutoff. A change touches only the widgets that actually read it.
+
+```scala
+val items = Var(List.empty[Item])
+val done  = items.map(_.count(_.done))   // a derived view: no Owner, no disposal
+val label = Signal.computed(s"${done()} of ${items().size} done")   // memoised, scoped
+```
+
+**2. Elements.** A description of the UI, not the UI itself. Structure that changes over
+time is explicit, so the reconciler knows what to do with it:
+
+```scala
+Show(model.isEmpty)(Label("Nothing left to do."))            // conditional subtree
+Switch(route)(r => screenFor(r))                             // one of N
+ForEach(items, key = (i: Item) => i.id) { item => ... }      // keyed; reorders in place
+LazyColumn(items, key = (i: Item) => i.id) { item => ... }   // virtualised: only visible rows exist
+```
+
+**3. Effects at the edges.** The core is synchronous and effect-free. ZIO arrives through a
+bridge, so a ZIO service layer drives the UI without the widget API knowing about `F[_]`:
+
+```scala
+val user: Signal[RemoteData[Throwable, User]] = fetchUser(id).asSignal
+Switch(user) {
+  case RemoteData.Loading   => Label("Loading…")
+  case RemoteData.Failed(e) => Label(s"Failed: ${e.getMessage}")
+  case RemoteData.Done(u)   => Label(u.name)
+}
+```
+
+A cats-effect bridge is planned; the core needs no change to accept one.
+
+### Theming
+
+Name a *role*, not a colour. Roles map to each platform's own tokens, so dark mode and the
+user's accessibility contrast settings keep working:
+
+```scala
+Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2E, 0x6F, 0x40)))
+```
+
+There is deliberately no way to say "grey #767676". A theme that pushes its own palette at
+every platform is how cross-platform apps come to look like none of them.
+
+### Running the same app on another platform
+
+The app is a function; each host mounts it.
+
+```scala
+// Linux
+GtkApp.run("dev.example.app", 460, 440) { MyApp(model) }
+
+// Android, in onCreate
+val mounted = Reconciler.mount(AndroidRenderer(this), app.element)
+setContentView(mounted.handle)
+```
+
+`examples/shared/TodoApp.scala` knows nothing about any platform; `counter-gtk`,
+`todo-android` and `todo-apple` each mount it in a handful of lines. That is the whole
+porting story.
+
+## What it measured
+
+Not asserted — measured, with the method recorded in
+[docs/10](docs/10-phase-0-findings.md) and the spike reports.
+
+| | |
+|---|---|
+| App size (iOS hello app) | **0.53 MB** vs React Native 26.0 MB, Gluon 60.1 MB |
 | Cold start (iOS simulator) | **425 ms** vs React Native 702 ms |
 | Android cold start | 388 ms, against hand-written Kotlin's 418 ms |
 | Android release APK | 154 KB |
-| Signal update | 77 / 219 / 419 ns per node (JVM / Native / JS) against a 1 000 ns budget |
-| Mount 10 000 rows | ~56 ms; a single row update ~1.5 ms (JVM, `ScaleSuite`) |
-| 10 000-row list | ~66 views on Android, ~205 on GTK — virtualised, not mounted |
+| Signal update | 77 / 219 / 419 ns per node (JVM / Native / JS), budget 1 000 ns |
+| Mount 10 000 rows | ~56 ms; single-row update ~1.5 ms |
+| 10 000-row list | ~66 live views on Android, ~205 on GTK |
 
-What is **not** done is breadth: **9 of the 32 v1 widgets**, no Windows renderer, no Yoga
-layout, no dev canvas, no CLI. The live list of what is done and what is left is
-[docs/12-component-status.md](docs/12-component-status.md) — start there.
-
-## Layout
+## Project layout
 
 ```
 modules/
-  signals/          fine-grained reactivity (JVM / JS / Native)
-  renderer-api/     the renderer contract — one small, versioned interface
-  core/             element tree, reconciler, navigation, theming
-  effect-zio/       the ZIO bridge
-  renderer-gtk/     GTK4        (Scala Native)
-  renderer-android/ android.view (Scala on ART)
-  renderer-apple/   AppKit + UIKit (Scala Native + Swift shim)
+  signals/           fine-grained reactivity (JVM / JS / Native)
+  renderer-api/      the renderer contract — one small, versioned interface
+  core/              element tree, reconciler, navigation, theming
+  effect-zio/        the ZIO bridge
+  renderer-gtk/      GTK4           (Scala Native)
+  renderer-android/  android.view   (Scala on ART)
+  renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)
 examples/
-  shared/           TodoApp — the platform-free demo every host mounts
+  shared/            TodoApp — the platform-free demo every host mounts
   counter-gtk/  todo-android/  todo-apple/
-spikes/             phase 0, one directory and REPORT.md per spike
-docs/               the plan, the findings, and the live status
+docs/                the plan, the findings, the living status
+spikes/              phase 0, one directory and REPORT.md per spike
 ```
 
-## Building
+Writing a renderer means implementing one trait — `create`, `update`, `insertAfter`,
+`removeChild`, `destroy`, `measure`. It has absorbed four structurally different toolkits
+without changing: [`modules/renderer-api`](modules/renderer-api/shared/src/main/scala/scalaui/renderer/Renderer.scala).
 
-Scala **3.9.0**, sbt **2.0.9**, Scala Native **0.5.12**. Always the latest stable of each —
-see [docs/decisions.md](docs/decisions.md).
+## Development
 
 ```bash
 sbt --error "signalsJVM/testOnly *; coreJVM/testOnly *; effectZioJVM/testOnly *"   # 98 tests
 
-sbt --error counterGtk/nativeLink                                                   # Linux/GTK4
-SCALAUI_SELFTEST=1 ./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk
-
-./examples/todo-android/build.sh                                                    # Android
+SCALAUI_SELFTEST=1 ./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk       # GTK self-test
+adb shell am start -n dev.scalaui.todo/example.android.MainActivity --ez selftest true
 ```
 
-`sbt test` is incremental on sbt 2 and will happily run **zero** tests and report success —
-always `testOnly *`. The Apple example is built on macOS and is deliberately not in the root
-aggregate, so Linux and Android builds are unaffected by it.
+Three things that will bite you:
+
+- **`sbt test` is incremental on sbt 2** and will run *zero* tests and report success.
+  Always `testOnly *`.
+- **The Apple modules are not in the root aggregate**, on purpose, so Linux and Android
+  builds are unaffected by them. Build them on a Mac.
+- **Braces, not significant indentation.** `-no-indent` is on; the compiler rejects it.
+
+Apple work is done on a macOS laptop and raised as issues rather than attempted elsewhere.
+
+## Roadmap
+
+Phase 0 is complete and returned **GO** ([docs/10](docs/10-phase-0-findings.md)). The work
+is now phased towards a 0.1, one branch and one PR per phase —
+[docs/13-phases.md](docs/13-phases.md).
+
+0.1 is defined as a claim that can be falsified rather than a feature count: *an outside
+developer can build and ship a real app for Android, iOS and one desktop without reading
+the framework's source.*
 
 ## Documents
 
-Read [docs/12](docs/12-component-status.md) for current state and
-[docs/11](docs/11-what-it-looks-like.md) for where it is going. The rest is the plan, frozen
-except where noted.
-
 | # | File | Contents |
 |---|---|---|
-| 1 | [docs/01-vision-and-goals.md](docs/01-vision-and-goals.md) | Problem, vision, goals, non-goals, target platforms |
-| 2 | [docs/02-what-makes-ui-frameworks-popular.md](docs/02-what-makes-ui-frameworks-popular.md) | Usability, platform fidelity, stability, performance — what the winners did |
-| 3 | [docs/03-landscape-and-alternatives.md](docs/03-landscape-and-alternatives.md) | Survey of existing frameworks and of what Scala can reach |
-| 4 | [docs/04-scala-toolchain-reality.md](docs/04-scala-toolchain-reality.md) | JVM / Scala.js / Scala Native per platform |
-| 5 | [docs/05-requirements.md](docs/05-requirements.md) | Functional & non-functional requirements (MoSCoW, numbered) |
-| 6 | [docs/06-architecture-options.md](docs/06-architecture-options.md) | Options A–F, trade-offs, scoring, recommendation |
-| 7 | [docs/07-technical-design-ideas.md](docs/07-technical-design-ideas.md) | Core API, reactivity, layout, renderer contract, threading, §7.10 v1 catalogue |
-| 8 | [docs/08-roadmap-and-spikes.md](docs/08-roadmap-and-spikes.md) | Spikes, milestones, exit criteria — **and why its estimates are inflated** |
-| 9 | [docs/09-open-questions.md](docs/09-open-questions.md) | What we do not know yet and how to find out |
+| 12 | [docs/12-component-status.md](docs/12-component-status.md) | **Start here.** Done vs left, per widget and per renderer |
+| 13 | [docs/13-phases.md](docs/13-phases.md) | Phases, branches, PRs, exit criteria |
+| 11 | [docs/11-what-it-looks-like.md](docs/11-what-it-looks-like.md) | The design ideas, and the gap each one exposed |
 | 10 | [docs/10-phase-0-findings.md](docs/10-phase-0-findings.md) | Every phase-0 measurement and the GO decision |
-| 11 | [docs/11-what-it-looks-like.md](docs/11-what-it-looks-like.md) | The vision, the design ideas, and the gaps each one exposed — **living** |
-| 12 | [docs/12-component-status.md](docs/12-component-status.md) | Done vs left, per widget and per renderer — **living** |
-| — | [docs/decisions.md](docs/decisions.md) | Versions, tooling, and the dated decision log — **living** |
+| — | [docs/decisions.md](docs/decisions.md) | Versions, tooling, the dated decision log |
 | — | [docs/screenshots/](docs/screenshots/) | What it looks like, read critically |
+| 1–9 | [docs/](docs/) | The original plan: vision, landscape, requirements, architecture options, technical design, roadmap, open questions |
 
-Facts marked **[unverified]** in docs 01–09 are claims a spike had not yet settled; docs 10
-and 12 say which ones since have been.
+Docs 10–13 and `decisions.md` are living. Docs 01–09 are frozen background; facts marked
+**[unverified]** there are claims a spike had not yet settled.
+
+## Contributing
+
+Early, and the most useful contribution is a widget or a renderer. Before starting:
+
+1. Read [docs/12](docs/12-component-status.md) so you are not duplicating work, and
+   [docs/decisions.md](docs/decisions.md) for the binding choices.
+2. A widget is **done** only when every existing renderer implements it *and* a test
+   exercises it. "Compiles" is not done.
+3. Measure. Every claim in these docs is a number with a method; a PR that says "works"
+   without one will come back.
+
+## Licence
+
+Apache-2.0. See [LICENSE](LICENSE).
