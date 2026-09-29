@@ -34,9 +34,9 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Button` | `WidgetKind.Button` | done | done | done | done | |
 | `TextField` | `WidgetKind.TextField` | done | done | done | done | Two-way bound; renderers must not disturb a widget showing the value already written |
 | `Checkbox` | `WidgetKind.Checkbox` | done | done | done | done | |
-| `Scroll` | `WidgetKind.Scroll` | done | done | partial | partial | Vertical everywhere; horizontal (`Prop.Axis`) on GTK and Android only — Forgejo #4 |
+| `Scroll` | `WidgetKind.Scroll` | done | done | partial | partial | Vertical everywhere; horizontal (`Prop.Axis`) on GTK and Android only — Forgejo **#4** |
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
-| `Image` | `WidgetKind.Image` | done | done | partial | partial | Decoding is on the UI thread everywhere; `ContentFit.Cover` distorts on AppKit |
+| `Image` | `WidgetKind.Image` | done | done | partial | partial | Decoding is on the UI thread everywhere; `ContentFit.Cover` distorts on AppKit — Forgejo **#6** |
 
 ### Not started
 
@@ -55,7 +55,7 @@ faked with `Prop.Grow`, the second with a `Checkbox`.
 |---|---|---|
 | Fine-grained signals | `modules/signals` | done — glitch-free, property-tested on JVM/JS/Native |
 | Keyed reconciliation | `Reconciler` | done — `Show`, `Switch`, `ForEach`, `Fragment`, in-place `moveAfter` |
-| Virtualised list | `LazyColumn` + `RowSource` | **partial** — GTK and Android recycle; **Apple does not** and silently mounts every row |
+| Virtualised list | `LazyColumn` + `RowSource` | **partial** — GTK and Android recycle; **Apple does not** and silently mounts every row — Forgejo **#5** |
 | Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title and Up chrome work; no *native* navigation container |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide` |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
@@ -91,6 +91,11 @@ depends on it until `Grid` or absolute positioning does.
 
 ## 12.6 What this list is for
 
+**Division of labour.** Apple work is done on the macOS laptop, so anything AppKit/UIKit is
+raised as a Forgejo issue rather than attempted here — currently **#4** (horizontal
+`Scroll`), **#5** (virtualised rows), **#6** (`ContentFit.Cover`) and **#7** (shim
+generation). Everything else is built and measured on the Linux box.
+
 Two rules, so it stays true:
 
 1. A widget is **done** only when it is implemented on every renderer that exists and
@@ -113,7 +118,7 @@ someone and watch. It implies five things, roughly in dependency order.
 
 | # | Work | Why it is on the critical path |
 |---|---|---|
-| 1 | **Shim generation** — Swift, C header and Scala externs from one widget description | The Mac measured **11.6 lines of Swift per function**, projecting ~2 800 lines across two shims. Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
+| 1 | **Shim generation** (Forgejo **#7**) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
 | 3 | **Apple parity** — virtualised rows, horizontal `Scroll`, `ContentFit.Cover` | `LazyColumn` silently mounting 10 000 rows on iOS is the worst kind of gap: it works in the demo and dies in an app. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |
