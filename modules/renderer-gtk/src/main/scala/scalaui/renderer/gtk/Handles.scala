@@ -110,6 +110,20 @@ private[gtk] object Handles {
 
   def changedPtr: CVoidPtr = CFuncPtr.toPtr(changed)
 
+  /** The same handler behind GObject's `notify::<property>`, which carries the `GParamSpec`
+    * and so is `(object, pspec, user_data)`.
+    *
+    * `GtkSwitch` has no 2-argument "it changed" signal: `state-set` also takes the new
+    * state, and `activate` is a keybinding signal that a mouse never fires. So a switch
+    * binds `notify::active` and reads the widget, exactly as the text field does.
+    */
+  private val notified: CFuncPtr3[Ptr[Byte], Ptr[Byte], gpointer, Unit] =
+    CFuncPtr3.fromScalaFunction { (_: Ptr[Byte], _: Ptr[Byte], data: gpointer) =>
+      GcState.guarded(invokeValued(pointerToId(data)))
+    }
+
+  def notifiedPtr: CVoidPtr = CFuncPtr.toPtr(notified)
+
   /** `GtkGestureClick::released` is `(gesture, n_press, x, y, user_data)`, so a tap on a
     * plain container needs its own arity rather than reusing the button trampoline.
     */

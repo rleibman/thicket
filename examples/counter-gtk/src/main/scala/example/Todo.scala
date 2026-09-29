@@ -112,6 +112,85 @@ object Todo {
         s"viewport ${viewport}px vs content ${content}px")
     }
 
+    // --- the widgets phase 2 added, read back out of GTK ---
+    val switches = GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isSwitch)
+    check("the settings row has a GtkSwitch", switches.length == 1, switches.length.toString)
+    switches.headOption.foreach { sw =>
+      check("the switch starts off", !GtkInspect.switchActive(sw))
+      // App -> widget: the renderer must write the signal into the control.
+      model.hideDone.set(true)
+      check("writing the signal flips the switch", GtkInspect.switchActive(sw))
+      // And the switch is load-bearing: flipping it filters the list.
+      check("hiding completed items shrinks the list",
+        !screenTexts.contains("Structural reconciliation"),
+        screenTexts.toString)
+      model.hideDone.set(false)
+      check("showing them again restores it", screenTexts.contains("Structural reconciliation"))
+    }
+
+    val bars = GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isProgressBar)
+    check("there is a GtkProgressBar", bars.length == 1, bars.length.toString)
+    bars.headOption.foreach { bar =>
+      // Everything is done by this point, and 1.0-against-1.0 would also pass if the
+      // renderer clamped every value to full. So drive it to a fraction that can only be
+      // right by actually being computed, and check a second, different one after it.
+      def fraction: Double = {
+        val xs = model.items.now
+        xs.count(_.done).toDouble / xs.size
+      }
+      model.items.now.take(1).foreach(i => model.toggle(i.id))
+      val expected = fraction
+      val actual   = GtkInspect.progressFraction(bar)
+      println(f"[selftest] progress bar: $actual%.3f, expected $expected%.3f")
+      check("the progress bar shows the model's fraction",
+        expected > 0.0 && expected < 1.0 && math.abs(actual - expected) < 0.001,
+        s"$actual vs $expected")
+
+      model.items.now.drop(1).take(1).foreach(i => model.toggle(i.id))
+      val expected2 = fraction
+      val actual2   = GtkInspect.progressFraction(bar)
+      check("and follows it when the model changes again",
+        expected2 != expected && math.abs(actual2 - expected2) < 0.001,
+        s"$actual2 vs $expected2")
+    }
+
+    // A Spinner has no "running" prop: Show is what starts and stops it.
+    check("no spinner while the app is idle",
+      GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isSpinner).isEmpty)
+    model.busy.set(true)
+    check("a spinner appears when busy",
+      GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isSpinner).length == 1)
+    model.busy.set(false)
+    check("and is gone again when not",
+      GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isSpinner).isEmpty)
+
+    val scales = GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isScale)
+    check("there is a GtkScale", scales.length == 1, scales.length.toString)
+    scales.headOption.foreach { sc =>
+      // The app's units reach the widget unchanged: 7 of 0..11, not 0.636.
+      check("the slider starts at the model's value",
+        math.abs(GtkInspect.scaleValue(sc) - 7.0) < 0.001,
+        GtkInspect.scaleValue(sc).toString)
+      model.volume.set(3.5)
+      check("writing the signal moves the slider",
+        math.abs(GtkInspect.scaleValue(sc) - 3.5) < 0.001,
+        GtkInspect.scaleValue(sc).toString)
+      model.volume.set(7.0)
+    }
+
+    // A SecureField holds its value like any other bound field; GTK simply does not draw
+    // the characters. Two entries exist by now — the draft field and this one — and only
+    // the secure one is invisible.
+    val entries   = GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isEntry)
+    val invisible = entries.filterNot(GtkInspect.entryVisible)
+    check("exactly one entry hides its characters",
+      invisible.length == 1,
+      s"${invisible.length} of ${entries.length} entries")
+    model.secret.set("hunter2")
+    check("the secure field still holds its value",
+      model.secret.now == "hunter2" && GtkInspect.allTexts(GtkApp.rootHandle).contains("hunter2"),
+      "the value must round-trip even though it is not drawn")
+
     // --- LazyColumn: 10 000 rows through GtkListView ---
     app.push(TodoApp.Route.Big)
     check("pushed the 10 000-row screen", app.title.now == "10 000 rows")

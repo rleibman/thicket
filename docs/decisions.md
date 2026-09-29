@@ -69,6 +69,39 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-29 — **A widget enters the catalogue only if every platform we render to has it.**
+  `docs/07` §7.10 listed the v1 catalogue before any renderer existed; phase 2 checked each
+  entry against four real toolkits for the first time and two failed. **`Radio`**: UIKit has
+  no radio control at all, and mutual exclusion is a sibling *relationship* that Android
+  expresses structurally (`RadioGroup` is a container) and GTK as a pointer to a sibling —
+  neither is a prop, and the contract has no grouping concept. **`Stepper`**: Android has
+  none, and `NumberPicker` is a scrolling wheel, a different control. Both were verified
+  against the installed GTK4 headers and `android-36/android.jar`. Neither is built;
+  both are reclassified as app-level composition or `.platform` escape hatches, and "32
+  widgets" is retired as the denominator. Every remaining §7.10 entry gets this question
+  asked before it is built, not after. See `docs/12` §12.2a.
+- 2026-09-29 — **A slider's `Prop.Value` is in the app's units, never a fraction**, and
+  `Prop.Range` is sent before it. An app choosing a volume between 0 and 11 says 7, not
+  0.636; the renderer whose control is integral underneath (Android's `SeekBar`, 1 000
+  steps) does the conversion, because only it knows its own resolution. Range first because
+  a value outside its bounds is meaningless and every toolkit clamps silently — the
+  ordering is asserted in `CatalogueSuite` rather than left to how the DSL happens to be
+  written. `SecureField` is a widget kind rather than a flag on `TextField` because
+  `NSSecureTextField` is a separate class and an Apple widget is chosen at `create`.
+
+- 2026-09-29 — **`Toggle` carries no label, and `ActivityIndicator` has no "running" prop.**
+  Two catalogue-shaping calls made in phase 2, both for the same reason: do not promise an
+  API that some platforms cannot keep. A `GtkSwitch` and a `UISwitch` have nowhere to put a
+  caption — only Android's `Switch` does — so `Toggle` takes none and the caption is a
+  sibling, which is what a settings row looks like on all four. And a spinner spins while it
+  is mounted, so `Show(loading)(Spinner())` stops it rather than a second prop that
+  duplicates what the reconciler already does. Related: `Prop.Progress` is
+  `Option[Double]`, where **`None` is indeterminate and is deliberately not `Some(0.0)`** —
+  every toolkit here distinguishes them visibly, so collapsing them would make "nothing has
+  happened yet" and "we cannot say" look identical. `Toggle` is also a separate
+  `WidgetKind` rather than a style flag on `Checkbox`, because the platforms disagree about
+  which control a given setting *is*, and that is the app's judgement to make.
+
 - 2026-09-28 — **The Apple shim's *bodies* are not generated; its *declarations* are.**
   Phase 1 measured the two shims before building anything and disproved its own premise: 80
   generatable signature lines against 211 hand-written body lines per shim, and of 34 shared

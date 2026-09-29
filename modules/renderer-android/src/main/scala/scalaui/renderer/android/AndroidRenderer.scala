@@ -5,8 +5,8 @@ import android.os.{Handler, Looper}
 import android.graphics.{BitmapFactory, Typeface}
 import android.util.TypedValue
 import android.view.{Gravity, View, ViewGroup}
-import android.text.{Editable, TextWatcher}
-import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, ScrollView, TextView}
+import android.text.{Editable, InputType, TextWatcher}
+import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, ProgressBar, ScrollView, SeekBar, Switch, TextView}
 import scala.collection.mutable
 import scalaui.renderer.*
 
@@ -22,6 +22,8 @@ import scalaui.renderer.*
 final class AndroidRenderer(context: Context) extends Renderer {
   type Handle = View
 
+  private val SliderSteps = 1000
+
   private val kinds  = mutable.Map.empty[View, WidgetKind]
 
   /** True while the renderer writes a value in, so the widget's own change listener can
@@ -29,6 +31,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * field loops: write -> listener -> signal -> write.
     */
   private val suppress = mutable.Set.empty[View]
+
+  /** A slider's app-facing bounds, kept per widget because `SeekBar` has none: it counts
+    * integer steps, and the renderer converts.
+    */
+  private val ranges = mutable.Map.empty[View, (Double, Double)]
   private val mainHandler = Handler(Looper.getMainLooper)
 
   /** Resolve a theme attribute, so colours and backgrounds come from the user's theme
@@ -68,6 +75,36 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case WidgetKind.Button    => Button(context)
       case WidgetKind.TextField => EditText(context)
       case WidgetKind.Checkbox  => CheckBox(context)
+      // A CompoundButton exactly as CheckBox is, so Checked and OnCheckedChange need no
+      // special case below: only the drawable differs, which is the whole point of Toggle
+      // being a separate kind rather than a style flag.
+      case WidgetKind.Toggle => Switch(context)
+
+      case WidgetKind.SecureField =>
+        val e = EditText(context)
+        // The same EditText; only the input type differs. AppKit is the renderer that
+        // needs a separate class, which is why this is a widget kind and not a prop.
+        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        e
+
+      case WidgetKind.Slider => SeekBar(context)
+
+      case WidgetKind.Spacer =>
+        val v = View(context)
+        v.setLayoutParams(LinearLayout.LayoutParams(0, 0))
+        v
+
+      // The style is fixed at construction on Android — a horizontal bar and a circular
+      // spinner are the same class with different styles, and the style cannot be changed
+      // afterwards, which is why these are two widget kinds and not one with a prop.
+      case WidgetKind.ProgressBar =>
+        ProgressBar(context, null, _root_.android.R.attr.progressBarStyleHorizontal)
+
+      case WidgetKind.ActivityIndicator =>
+        val p = ProgressBar(context, null, _root_.android.R.attr.progressBarStyleLarge)
+        p.setIndeterminate(true)
+        p
+
       case WidgetKind.Scroll =>
         // The two directions are different classes on Android, which is why the contract
         // says the axis is read at create and never at update.
@@ -251,6 +288,64 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // Create-only: honouring a change would mean swapping ScrollView for
       // HorizontalScrollView under a live subtree. See Prop.Axis.
       case Prop.Axis(_) => ()
+
+      // A SeekBar is integral, so the renderer owns the conversion — it is the only side
+      // that knows its own resolution. 1000 steps rather than 100 so a fraction does not
+      // quantise visibly on a wide control.
+      case Prop.Range(min, max) =>
+        handle match {
+          case s: SeekBar =>
+            ranges(s) = (min, max)
+            s.setMax(SliderSteps)
+          case _ => ()
+        }
+
+      case Prop.Value(v) =>
+        handle match {
+          case s: SeekBar =>
+            val (min, max) = ranges.getOrElse(s, (0.0, 1.0))
+            val span       = if max - min == 0.0 then 1.0 else max - min
+            val steps      = (((v - min) / span) * SliderSteps).round.toInt
+            val clamped    = math.max(0, math.min(SliderSteps, steps))
+            // Same rule as the text field: writing unconditionally fights the user's drag.
+            if s.getProgress != clamped then {
+              suppress += s
+              s.setProgress(clamped)
+              suppress -= s
+            }
+          case _ => ()
+        }
+
+      case Prop.OnValueChange(f) =>
+        handle match {
+          case s: SeekBar =>
+            s.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener {
+              def onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean): Unit = {
+                if !suppress.contains(bar) then {
+                  val (min, max) = ranges.getOrElse(bar, (0.0, 1.0))
+                  f(min + (progress.toDouble / SliderSteps) * (max - min))
+                }
+              }
+              def onStartTrackingTouch(bar: SeekBar): Unit = ()
+              def onStopTrackingTouch(bar: SeekBar): Unit  = ()
+            })
+          case _ => ()
+        }
+
+      case Prop.Progress(value) =>
+        handle match {
+          case p: ProgressBar =>
+            value match {
+              case Some(f) =>
+                p.setIndeterminate(false)
+                // Android's ProgressBar is integral; 0-1000 rather than 0-100 so a
+                // fraction does not quantise visibly on a wide bar.
+                p.setMax(1000)
+                p.setProgress((math.max(0.0, math.min(1.0, f)) * 1000).toInt)
+              case None => p.setIndeterminate(true)
+            }
+          case _ => ()
+        }
 
       case Prop.Padding(v) =>
         val p = dp(v)

@@ -11,16 +11,21 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **9** |
+| Widgets implemented on at least one renderer | **15** |
 | Widgets implemented on **every** renderer that exists | **9** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **18** |
-| Props implemented on every renderer | **17** — `Axis` is missing on Apple |
+| Props in the contract | **22** |
+| Props implemented on every renderer | **17** — `Axis` and `Progress` are not honoured on Apple |
 
-Nine of thirty-two is the honest headline. The nine are, deliberately, the ones that forced
-the contract to be right: a tappable container, a two-way-bound field, a recycling list and
-a viewport between them exercise nearly every hard part of a renderer. What is left is
-mostly *breadth* — and breadth is the work, exactly as `docs/11` §11.6 predicted.
+**Nine of thirty-two is still the honest headline**, because four of the thirteen are not
+on Apple yet — and this doc's own rule 1 says a widget is done when *every* renderer has
+it. Phase 2 adds them on GTK and Android; the Apple half is Forgejo #9 and lands on the
+Mac.
+
+The first nine were, deliberately, the ones that forced the contract to be right: a
+tappable container, a two-way-bound field, a recycling list and a viewport between them
+exercise nearly every hard part of a renderer. What is left is mostly *breadth* — and
+breadth is the work, exactly as `docs/11` §11.6 predicted.
 
 ## 12.2 Widgets
 
@@ -38,16 +43,67 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | partial | partial | Decoding is on the UI thread everywhere; `ContentFit.Cover` distorts on AppKit — Forgejo **#6** |
 
+### Added in phase 2 — GTK and Android done, Apple pending (#9)
+
+Slice 2:
+
+| Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
+|---|---|---|---|---|---|---|
+| `Slider` | `WidgetKind.Slider` | done | done | — | — | `GtkScale` / `SeekBar`. `Prop.Value` is in the **app's units**, not a fraction |
+| `SecureField` | `WidgetKind.SecureField` | done | done | — | — | Entry visibility / password input type. A kind rather than a prop because `NSSecureTextField` is a separate class |
+
+Slice 1:
+
+| Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
+|---|---|---|---|---|---|---|
+| `Toggle` | `WidgetKind.Toggle` | done | done | — | — | `GtkSwitch` / `Switch`. **No label**: only Android's has anywhere to put one, so the caption is a sibling |
+| `Spacer` | `WidgetKind.Spacer` | done | done | — | — | Takes the room its siblings do not, through `Prop.Grow` |
+| `ProgressBar` | `WidgetKind.ProgressBar` | done | done | — | — | `Prop.Progress`: `None` is indeterminate, which is not `Some(0.0)` |
+| `Spinner` | `WidgetKind.ActivityIndicator` | done | done | — | — | No "running" prop; `Show` starts and stops it |
+
+The Apple renderer **throws** for these four rather than creating the wrong widget: the
+Swift `sui_create` falls through to a separator, so a `Slider` would silently render as a
+hairline rule and send whoever hit it looking in the wrong place. Kind codes 9–12 are
+reserved for them.
+
 ### Not started
 
 | Group | Left to do |
 |---|---|
-| Layout | `Stack`/`ZStack`, `Spacer`, `SafeArea`, `Grid` |
-| Controls | `SecureField`, `IconButton`, `Toggle`/`Switch`, `Radio`, `Slider`, `Stepper`, `SegmentedControl`, `Picker`, `DatePicker`, `ProgressBar`, `ActivityIndicator`, `Link` |
+| Layout | `Stack`/`ZStack`, `SafeArea`, `Grid` |
+| Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `Picker`, `DatePicker`, `Link` |
 | Containers | `TabView`, `Sheet`/`Modal`, `Alert`, `Menu`/`ContextMenu`, `Toolbar` |
 
-`Spacer` and `Toggle` are the two most conspicuous absences in the demo app: the first is
-faked with `Prop.Grow`, the second with a `Checkbox`.
+`IconButton` and `Link` are held back on purpose: the first needs an icon/resource system
+and the second needs platform URL opening, and neither should be improvised inside a widget.
+
+### 12.2a Two entries in §7.10 are not cross-platform widgets
+
+`docs/07` §7.10 listed the v1 catalogue **before any renderer existed**. Phase 2 is the
+first time each entry has been checked against four real toolkits, and two of them do not
+survive it. Verified against the installed GTK4 headers and `android-36/android.jar`:
+
+| Widget | GTK4 | Android | AppKit | UIKit |
+|---|---|---|---|---|
+| `Radio` | `GtkCheckButton` + group | `RadioGroup` — a **container**, not a property | `NSButton` radio | **no radio control at all** |
+| `Stepper` | `GtkSpinButton` | **none** (`NumberPicker` is a scrolling wheel, a different control) | `NSStepper` | `UIStepper` |
+
+Each fails on exactly one platform, for a different reason.
+
+- **`Radio` also needs grouping the contract does not have.** Mutual exclusion is a
+  relationship between siblings, and Android expresses it *structurally* — the buttons must
+  be children of a `RadioGroup` — while GTK expresses it as a pointer to a sibling. Neither
+  is a prop. And iOS has no radio button, so the iOS idiom is a checkmark list or a
+  segmented control, which is a different widget, not a styling of this one.
+- **`Stepper` has no Android equivalent**, and the Android idiom is a row of buttons the
+  app composes — which the framework can already express.
+
+**Consequence for the target.** "32 widgets" is not the right denominator. A widget earns a
+place in the catalogue by existing on every platform we render to; one that does not is
+either an app-level composition or a platform-specific escape hatch (`.platform` in
+`docs/11`), and forcing it into the contract would mean two renderers faking it. `Radio` and
+`Stepper` are the first two entries to be reclassified, and the question should be asked of
+every remaining entry before it is built, not after.
 
 ## 12.3 Structure and behaviour (not widgets, but shipped)
 
@@ -57,7 +113,7 @@ faked with `Prop.Grow`, the second with a `Checkbox`.
 | Keyed reconciliation | `Reconciler` | done — `Show`, `Switch`, `ForEach`, `Fragment`, in-place `moveAfter` |
 | Virtualised list | `LazyColumn` + `RowSource` | **partial** — GTK and Android recycle; **Apple does not** and silently mounts every row — Forgejo **#5** |
 | Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title and Up chrome work; no *native* navigation container |
-| Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide` |
+| Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide`; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread` | done |
 | Apple ABI description + consistency check | `tools/shim-gen` | done — 34 functions described; the four hand-written declarations per function are checked to agree, on any machine |

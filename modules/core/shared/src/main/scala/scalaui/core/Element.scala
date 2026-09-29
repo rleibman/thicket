@@ -190,6 +190,96 @@ object dsl {
     )
   }
 
+  /** A continuous value chosen by dragging.
+    *
+    * `value` is in the units of `min`..`max`, not a fraction: an app choosing a volume
+    * between 0 and 11 says 7. A renderer whose control is integral underneath does its own
+    * conversion, because only it knows its own resolution.
+    */
+  def Slider(
+      value: Double | Signal[Double],
+      min:   Double = 0.0,
+      max:   Double = 1.0
+  )(onChange: Double => Unit): Element = {
+    val valueAttr = value match {
+      case d: Double                    => Static(Prop.Value(d))
+      case s: Signal[Double] @unchecked => Reactive(s, Prop.Value(_))
+    }
+    Widget(
+      WidgetKind.Slider,
+      // Range first: a value outside its bounds is meaningless, and every toolkit clamps
+      // silently rather than complaining.
+      Seq(Static(Prop.Range(min, max)), valueAttr, Static(Prop.OnValueChange(onChange))),
+      Nil
+    )
+  }
+
+  /** Single-line text input that does not show what it holds.
+    *
+    * Same shape as [[TextField]] — it is a separate widget because `NSSecureTextField` is a
+    * separate class, not because the API differs.
+    */
+  def SecureField(
+      value:       String | Signal[String],
+      placeholder: String = ""
+  )(onChange: String => Unit): Element =
+    Widget(
+      WidgetKind.SecureField,
+      Seq(text(value), Static(Prop.Placeholder(placeholder)), Static(Prop.OnTextChange(onChange))),
+      Nil
+    )
+
+  /** A sliding switch. Same state as [[Checkbox]], different platform idiom — see
+    * [[scalaui.renderer.WidgetKind.Toggle]] for why the framework does not choose between
+    * them on the app's behalf.
+    */
+  /** **No label**, unlike [[Checkbox]]. A `GtkSwitch` and a `UISwitch` have nowhere to put
+    * one; only Android's does. Promising a label that two of four platforms would silently
+    * drop is worse than not having it, so the caption goes beside the switch — which is
+    * what a settings row looks like on every one of them:
+    *
+    * {{{
+    * Row()(Label("Dark mode"), Spacer(), Toggle(dark)(dark.set))
+    * }}}
+    */
+  def Toggle(
+      checked: Boolean | Signal[Boolean]
+  )(onChange: Boolean => Unit): Element = {
+    val checkedAttr = checked match {
+      case b: Boolean                    => Static(Prop.Checked(b))
+      case s: Signal[Boolean] @unchecked => Reactive(s, Prop.Checked(_))
+    }
+    Widget(
+      WidgetKind.Toggle,
+      Seq(checkedAttr, Static(Prop.OnCheckedChange(onChange))),
+      Nil
+    )
+  }
+
+  /** Blank, flexible space: it takes the room its siblings do not.
+    *
+    * `Row()(Label("left"), Spacer(), Label("right"))` pushes the two labels apart.
+    */
+  def Spacer(): Element = Widget(WidgetKind.Spacer, Seq(Static(Prop.Grow(true))), Nil)
+
+  /** A progress bar.
+    *
+    * `None` is indeterminate — the work is happening and its extent is unknown — and is
+    * deliberately not the same as `Some(0.0)`, which says nothing has happened yet.
+    */
+  def ProgressBar(value: Option[Double] | Signal[Option[Double]]): Element = {
+    val attr = value match {
+      case s: Signal[Option[Double]] @unchecked => Reactive(s, Prop.Progress(_))
+      case v: Option[Double] @unchecked         => Static(Prop.Progress(v))
+    }
+    Widget(WidgetKind.ProgressBar, Seq(attr), Nil)
+  }
+
+  /** A spinner. It spins while it is mounted, so `Show(loading)(Spinner())` is how it
+    * stops — see [[scalaui.renderer.WidgetKind.ActivityIndicator]].
+    */
+  def Spinner(): Element = Widget(WidgetKind.ActivityIndicator, Nil, Nil)
+
   /** A scrolling viewport around one child.
     *
     * `axis` is fixed for the widget's lifetime — see [[scalaui.renderer.Prop.Axis]]. A

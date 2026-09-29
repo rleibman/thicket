@@ -30,6 +30,35 @@ object GtkInspect {
 
   def isLabel(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_label_get_type())
   def isEntry(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_entry_get_type())
+  def isSwitch(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_switch_get_type())
+  def isSpinner(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_spinner_get_type())
+
+  def isProgressBar(widget: Ptr[GtkWidget]): Boolean =
+    isA(widget, gtk_progress_bar_get_type())
+
+  def isScale(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_scale_get_type())
+
+  def scaleValue(widget: Ptr[GtkWidget]): Double =
+    gtk_range_get_value(widget.asInstanceOf[Ptr[GtkRange]])
+
+  /** False for a `SecureField`: the characters are there but GTK does not draw them. */
+  def entryVisible(widget: Ptr[GtkWidget]): Boolean =
+    gtk_entry_get_visibility(widget.asInstanceOf[Ptr[GtkEntry]]).asInstanceOf[CInt] != 0
+
+  /** Every descendant for which `p` holds, in tree order. */
+  def findAll(widget: Ptr[GtkWidget])(p: Ptr[GtkWidget] => Boolean): List[Ptr[GtkWidget]] = {
+    val here = if p(widget) then List(widget) else Nil
+    here ++ children(widget).flatMap(c => findAll(c)(p))
+  }
+
+  /** What the switch actually shows, read back out of GTK rather than out of the signal
+    * that drove it — which is the only way to know the renderer wrote it.
+    */
+  def switchActive(widget: Ptr[GtkWidget]): Boolean =
+    gtk_switch_get_active(widget.asInstanceOf[Ptr[GtkSwitch]]).asInstanceOf[CInt] != 0
+
+  def progressFraction(widget: Ptr[GtkWidget]): Double =
+    gtk_progress_bar_get_fraction(widget.asInstanceOf[Ptr[GtkProgressBar]])
 
   /** Direct children of `widget`, in GTK's own order. */
   def children(widget: Ptr[GtkWidget]): List[Ptr[GtkWidget]] = {

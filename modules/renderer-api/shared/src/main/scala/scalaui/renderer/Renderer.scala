@@ -76,6 +76,50 @@ enum WidgetKind {
 
   /** A picture. */
   case Image
+
+  /** A boolean control shown as a sliding switch rather than a box with a tick.
+    *
+    * The same state as [[Checkbox]] and the same props — [[Prop.Checked]] and
+    * [[Prop.OnCheckedChange]] — deliberately a separate kind rather than a style flag,
+    * because the platforms disagree about which one a given setting *is*: a `GtkSwitch` is
+    * not a themed `GtkCheckButton`, and `UISwitch` is a different class from a checkbox
+    * AppKit has and iOS does not. An app that picks one is making a platform-idiom choice,
+    * and the framework should not silently make it for them.
+    */
+  case Toggle
+
+  /** Blank, flexible space. Has no appearance of its own; its whole purpose is to take up
+    * the room its siblings do not, which it does through [[Prop.Grow]].
+    *
+    * A `Row` with a `Spacer` between two children pushes them to the edges. This is how
+    * every toolkit here expects that to be expressed, and it is why `Spacer` is a widget
+    * rather than an alignment prop on the parent.
+    */
+  case Spacer
+
+  /** Determinate or indeterminate progress, per [[Prop.Progress]]. */
+  case ProgressBar
+
+  /** A continuous value chosen by dragging, within [[Prop.Range]]. */
+  case Slider
+
+  /** Single-line text input that does not show what it holds.
+    *
+    * A separate kind rather than a flag on [[TextField]] because AppKit makes it one:
+    * `NSSecureTextField` is a different class, and a renderer whose widget is chosen at
+    * `create` cannot switch later. GTK could have done it with a property and Android with
+    * an input type, but a kind that two renderers must have anyway is cheaper than a prop
+    * that two renderers must refuse to honour.
+    */
+  case SecureField
+
+  /** A spinner: work is happening and its extent is unknown.
+    *
+    * It has no "running" prop. It spins while it is mounted, which makes `Show(loading)` the
+    * way to stop it — the same mechanism as any other conditional subtree, rather than a
+    * second way to express the same thing.
+    */
+  case ActivityIndicator
 }
 
 /** Where a picture's data comes from.
@@ -149,6 +193,32 @@ enum Prop {
     * `update`; the framework does not animate or toggle it.
     */
   case Axis(value: Orientation)
+
+  /** How far along a [[WidgetKind.ProgressBar]] is.
+    *
+    * `Some(fraction)` for determinate, clamped to 0.0–1.0 by the renderer; **`None` means
+    * indeterminate** — the work is happening and its extent is unknown. Every toolkit here
+    * distinguishes the two, and the distinction is visible: an indeterminate bar animates
+    * and a determinate one at 0.0 does not, so collapsing them would make "nothing has
+    * happened yet" and "we cannot say" look identical.
+    */
+  case Progress(value: Option[Double])
+
+  /** Where a [[WidgetKind.Slider]] currently sits, in the units of its [[Range]].
+    *
+    * Not a fraction. An app choosing a volume between 0 and 11 should say 7, not 0.636,
+    * and a renderer whose control is integral underneath (Android's `SeekBar`) is the one
+    * that converts — which is where the conversion belongs, since only it knows its own
+    * resolution.
+    */
+  case Value(value: Double)
+
+  /** A slider's bounds. Sent before [[Value]] by the framework, because a value outside the
+    * range is meaningless and every toolkit clamps it silently.
+    */
+  case Range(min: Double, max: Double)
+
+  case OnValueChange(handler: Double => Unit)
 
   /** How prominent text should be, relative to the platform's own foreground colours.
     *

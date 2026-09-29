@@ -17,7 +17,8 @@ final class TestRenderer extends Renderer {
       var taps: Int = 0,
       var onTap: Option[() => Unit] = None,
       var onTextChange: Option[String => Unit] = None,
-      var onCheckedChange: Option[Boolean => Unit] = None
+      var onCheckedChange: Option[Boolean => Unit] = None,
+      var onValueChange: Option[Double => Unit] = None
   )
 
   type Handle = Int
@@ -121,9 +122,18 @@ final class TestRenderer extends Renderer {
     nextId
   }
 
+  /** Every prop the renderer was handed, in the order it was handed them.
+    *
+    * Order is part of the contract for at least one pair — a slider's `Range` must arrive
+    * before its `Value`, because a value outside the bounds is meaningless and every
+    * toolkit clamps it silently rather than complaining.
+    */
+  val appliedProps: mutable.ArrayBuffer[Prop] = mutable.ArrayBuffer.empty
+
   def update(handle: Handle, patch: Seq[Prop]): Unit = {
     opCount += 1
     val n = nodes(handle)
+    appliedProps ++= patch
     patch.foreach {
       case Prop.Text(v) =>
         if n.props.get("text").contains(v) then ()
@@ -153,6 +163,10 @@ final class TestRenderer extends Renderer {
         }
       case Prop.Fit(f)            => n.props("fit") = f.toString
       case Prop.Axis(a)           => n.props("axis") = a.toString
+      case Prop.Progress(v)       => n.props("progress") = v.fold("indeterminate")(_.toString)
+      case Prop.Value(v)          => n.props("value") = v.toString
+      case Prop.Range(lo, hi)     => n.props("range") = s"$lo..$hi"
+      case Prop.OnValueChange(f)  => n.onValueChange = Some(f)
     }
   }
 

@@ -10,8 +10,8 @@ survived four toolkits without changing.
 
 ## 13.1 The rules
 
-1. **One phase, one branch, one PR.** Branch name `phase/<n>-<slug>`. Never commit to the
-   integration branch directly; the user merges PRs.
+1. **One phase, one branch, one PR.** Branch name `phase/<n>-<slug>`, cut from `main`.
+   Never commit to `main` directly; the user merges the PR.
 2. **A phase is done when its exit criterion is a measured number**, recorded in the PR
    description and in `docs/12`. "Works" fails the phase — the same rule phase 0's spikes
    used, and the reason phase 0's findings are trustworthy.
@@ -30,7 +30,7 @@ survived four toolkits without changing.
 |---|---|---|---|---|
 | **0** | — | Feasibility: nine spikes, four renderers, reconciliation, navigation, ZIO bridge | GO gate S1 ∧ S2 ∧ S3 | **done** 2026-09-19 |
 | **1** | `phase/1-shim-generator` | One ABI description; generate the C header, the Scala externs and Swift signature scaffolding; check all four hand-written copies agree | Hand-maintained **declarations** per function drop from **4 to 1**; the generated header and externs declare exactly what the checked-in ones do; the consistency check runs on a machine with no Xcode | **code done, not yet adopted** |
-| **2** | `phase/2-widget-breadth` | The widgets a real app cannot do without: `Toggle`, `Spacer`, `Slider`, `ProgressBar`, `ActivityIndicator`, `SecureField`, `IconButton`, `Link` | **17 of 32** widgets, each on GTK + Android with a test, and Apple generated from phase 1; demo app exercises every one | |
+| **2** | `phase/2-widget-breadth` | **Slice 1:** `Toggle`, `Spacer`, `ProgressBar`, `ActivityIndicator`. **Slice 2:** `Slider`, `SecureField`. `Radio` and `Stepper` were in this phase and were **reclassified, not built** — neither is a cross-platform widget (`docs/12` §12.2a). `IconButton` and `Link` need an icon system and URL opening | **15 of 32** on GTK + Android, each with a unit test *and* a self-test check on both; Apple is #9. Measured on both toolkits: progress bar **0.750**, slider **7.0 of 0–11** | **both slices done** |
 | **3** | `phase/3-containers` | `Alert`, `Sheet`/`Modal`, `TabView`, `Menu`, `Toolbar` — the ones that are platform *chrome* rather than tree nodes | **22 of 32**; each rendered by the platform's own presentation API, not imitated in the tree; a screenshot per platform | |
 | **4** | `phase/4-native-nav` | Native navigation containers and per-subtree `Provide` theming — the two places the framework still asks an app to accept something non-native | Back gesture, transition animation and title bar are the platform's own on all four renderers; theme override scoped to a subtree with a test | |
 | **5** | `phase/5-release` | Publish `dev.scalaui` artefacts, a getting-started, semver policy | A developer who has not seen this repo builds and runs a new app on Android **and** one desktop in **≤ 30 minutes**, measured by watching them | |

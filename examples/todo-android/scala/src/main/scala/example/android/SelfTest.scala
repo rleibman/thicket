@@ -2,7 +2,8 @@ package example.android
 
 import android.util.Log
 import android.view.{View, ViewGroup}
-import android.widget.{EditText, TextView}
+import android.text.InputType
+import android.widget.{EditText, ProgressBar, SeekBar, Switch, TextView}
 import example.TodoApp
 import scalaui.core.NavHost
 
@@ -22,6 +23,16 @@ object SelfTest {
       (0 until g.getChildCount).toList.flatMap(i => allTexts(g.getChildAt(i)))
     case t: TextView => List(t.getText.toString)
     case _           => Nil
+  }
+
+  /** Every descendant for which `p` holds, in tree order. */
+  private def findAll(v: View)(p: View => Boolean): List[View] = {
+    val here = if p(v) then List(v) else Nil
+    val kids = v match {
+      case g: ViewGroup => (0 until g.getChildCount).toList.flatMap(i => findAll(g.getChildAt(i))(p))
+      case _            => Nil
+    }
+    here ++ kids
   }
 
   private def check(name: String, cond: Boolean, detail: => String = ""): Unit = {
@@ -81,6 +92,82 @@ object SelfTest {
       model.items.now.map(_.title).toString)
     check("the committed item kept its done flag", model.items.now.last.done)
     check("the form cleared", model.draft.now.isEmpty && !model.draftDone.now)
+
+    // --- the widgets phase 2 added, read back out of Android ---
+    val switches = findAll(root) { case _: Switch => true; case _ => false }
+    check("the settings row has a Switch", switches.length == 1, switches.length.toString)
+    switches.headOption.collect { case s: Switch => s }.foreach { s =>
+      check("the switch starts off", !s.isChecked)
+      model.hideDone.set(true)
+      check("writing the signal flips the switch", s.isChecked)
+      check("hiding completed items shrinks the list",
+        !allTexts(root).contains("Structural reconciliation"),
+        allTexts(root).toString)
+      model.hideDone.set(false)
+      check("showing them again restores it", allTexts(root).contains("Structural reconciliation"))
+    }
+
+    // A horizontal ProgressBar and an indeterminate spinner are the same Android class, so
+    // they are told apart by isIndeterminate rather than by type.
+    //
+    // And SeekBar extends ProgressBar, so a slider is a determinate progress bar as far as
+    // `isInstanceOf` is concerned. It has to be excluded explicitly — the first version of
+    // this check reported two bars once the slider landed.
+    def bars = findAll(root) {
+      case _: SeekBar     => false
+      case p: ProgressBar => !p.isIndeterminate
+      case _              => false
+    }
+    def spinners = findAll(root) { case p: ProgressBar => p.isIndeterminate; case _ => false }
+
+    check("there is a determinate ProgressBar", bars.length == 1, bars.length.toString)
+    bars.headOption.collect { case p: ProgressBar => p }.foreach { bar =>
+      // Driven to a genuine fraction: everything is done by now, and 1.0-against-1.0 would
+      // also pass if the renderer clamped every value to full.
+      model.items.now.take(1).foreach(i => model.toggle(i.id))
+      val xs       = model.items.now
+      val expected = xs.count(_.done).toDouble / xs.size
+      val actual   = bar.getProgress.toDouble / bar.getMax
+      Log.i(Tag, f"[selftest] progress bar: $actual%.3f, expected $expected%.3f")
+      check("the progress bar shows the model's fraction",
+        expected > 0.0 && expected < 1.0 && math.abs(actual - expected) < 0.002,
+        s"$actual vs $expected")
+    }
+
+    // A Spinner has no "running" prop: Show is what starts and stops it.
+    check("no spinner while the app is idle", spinners.isEmpty, spinners.length.toString)
+    model.busy.set(true)
+    check("a spinner appears when busy", spinners.length == 1, spinners.length.toString)
+    model.busy.set(false)
+    check("and is gone again when not", spinners.isEmpty, spinners.length.toString)
+
+    val seeks = findAll(root) { case _: SeekBar => true; case _ => false }
+    check("there is a SeekBar", seeks.length == 1, seeks.length.toString)
+    seeks.headOption.collect { case s: SeekBar => s }.foreach { bar =>
+      // A SeekBar counts integer steps, so the renderer converts. The app's units are
+      // 0..11 and it must never see the conversion.
+      def units: Double = bar.getProgress.toDouble / bar.getMax * 11.0
+      check("the slider starts at the model's value",
+        math.abs(units - 7.0) < 0.02, units.toString)
+      model.volume.set(3.5)
+      check("writing the signal moves the slider",
+        math.abs(units - 3.5) < 0.02, units.toString)
+      model.volume.set(7.0)
+    }
+
+    // A SecureField is an EditText with a password input type; two exist by now and only
+    // the secure one is masked.
+    val fields = findAll(root) { case _: EditText => true; case _ => false }
+      .collect { case e: EditText => e }
+    val masked = fields.filter { e =>
+      (e.getInputType & InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0
+    }
+    check("exactly one field masks its input",
+      masked.length == 1, s"${masked.length} of ${fields.length} fields")
+    model.secret.set("hunter2")
+    check("the secure field still holds its value",
+      masked.headOption.exists(_.getText.toString == "hunter2"),
+      "the value must round-trip even though it is not drawn")
 
     Log.i(
       Tag,

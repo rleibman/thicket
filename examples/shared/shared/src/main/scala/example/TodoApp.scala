@@ -55,6 +55,18 @@ object TodoApp {
     val draftDone: Var[Boolean] = Var(false)
     val draftValid: Signal[Boolean] = draft.map(_.trim.nonEmpty)
 
+    /** Drives the settings-row `Toggle`. */
+    val hideDone: Var[Boolean] = Var(false)
+
+    /** Drives the `Spinner`, which has no prop of its own: it spins while it is mounted. */
+    val busy: Var[Boolean] = Var(false)
+
+    /** A slider in the app's own units — 0 to 11, not 0.0 to 1.0. */
+    val volume: Var[Double] = Var(7.0)
+
+    /** A `SecureField`'s value, to show it round-trips like any other bound field. */
+    val secret: Var[String] = Var("")
+
     val items: Var[Seq[Item]] = Var(
       Seq(
         Item(1, "Structural reconciliation", true),
@@ -89,6 +101,12 @@ object TodoApp {
     def dropLast(): Unit = items.update(_.dropRight(1))
 
     def itemSignal(id: Int): Signal[Option[Item]] = items.map(_.find(_.id == id))
+
+    /** What the list actually shows. A derived view, so flicking the switch re-renders the
+      * list and nothing else — the caption, the progress bar and the form are untouched.
+      */
+    val visibleItems: Signal[Seq[Item]] =
+      items.zip(hideDone).map((xs, hide) => if hide then xs.filterNot(_.done) else xs)
   }
 
   def bullet(i: Item): String =
@@ -124,7 +142,7 @@ object TodoApp {
         // A real list row: a tappable *container*, not a button pretending to be one.
         // The title grows to fill the row and the status sits at the trailing edge.
         Column(spacing = 0)(
-          ForEach(model.items, key = (i: Item) => i.id) { item =>
+          ForEach(model.visibleItems, key = (i: Item) => i.id) { item =>
             Fragment(
               Row(spacing = 12, padding = 12)(
                 Label(item.map(_.title)).grow,
@@ -157,7 +175,41 @@ object TodoApp {
           model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"),
           style = TextRole.Caption,
           emphasis = Emphasis.Secondary
-        )
+        ),
+
+        Divider(),
+
+        // A settings row, which is the shape a switch takes on every platform here: the
+        // caption is a sibling, not a property of the control, because a GtkSwitch and a
+        // UISwitch have nowhere to put one. `Spacer` is what pushes them apart.
+        Row(spacing = 8)(
+          Label("Hide completed"),
+          Spacer(),
+          Toggle(model.hideDone)(model.hideDone.set)
+        ),
+
+        // Determinate progress driven by the model rather than by a timer: the bar is a
+        // view of the data, exactly as the caption above it is.
+        ProgressBar(model.items.map { xs =>
+          if xs.isEmpty then None else Some(xs.count(_.done).toDouble / xs.size)
+        }),
+
+        // The spinner has no "running" prop. `Show` is what starts and stops it.
+        Show(model.busy)(Spinner()),
+
+        // A slider in the app's own units: 0 to 11, never a fraction. The renderer whose
+        // control is integral underneath does that conversion, because only it knows its
+        // own resolution.
+        Row(spacing = 8)(
+          Label("Volume"),
+          Spacer(),
+          Label(model.volume.map(v => f"$v%.1f"), style = TextRole.Caption)
+        ),
+        Slider(model.volume, min = 0, max = 11)(model.volume.set),
+
+        // Same shape as TextField; a separate widget only because NSSecureTextField is a
+        // separate class.
+        SecureField(model.secret, placeholder = "Passphrase")(model.secret.set)
       ))
     )
 

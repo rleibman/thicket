@@ -17,6 +17,7 @@ final class GtkRenderer extends Renderer {
   private val tapIds   = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val editIds  = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val toggleIds = mutable.Map.empty[Ptr[GtkWidget], Long]
+  private val valueIds  = mutable.Map.empty[Ptr[GtkWidget], Long]
 
   /** True while the renderer is writing a value into a widget, so the widget's own change
     * signal can tell an app-driven update from a user edit and stay silent for the former.
@@ -75,6 +76,13 @@ final class GtkRenderer extends Renderer {
     */
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
 
+  private def isSwitch(handle: Handle): Boolean =
+    kinds.get(handle).contains(WidgetKind.Toggle)
+
+  /** Both text kinds are a `GtkEntry` underneath, so everything but construction is shared. */
+  private def isEntryKind(handle: Handle): Boolean =
+    kinds.get(handle).exists(k => k == WidgetKind.TextField || k == WidgetKind.SecureField)
+
   def create(kind: WidgetKind, props: Seq[Prop]): Handle = {
     val w = Zone {
       kind match {
@@ -83,6 +91,19 @@ final class GtkRenderer extends Renderer {
         case WidgetKind.Label     => gtk_label_new(toCString(""))
         case WidgetKind.Button    => gtk_button_new_with_label(toCString(""))
         case WidgetKind.TextField => gtk_entry_new()
+
+        // The same GtkEntry, with the characters hidden. GTK needs no separate class here
+        // — AppKit does, which is why SecureField is a widget kind rather than a prop.
+        case WidgetKind.SecureField =>
+          val e = gtk_entry_new()
+          gtk_entry_set_visibility(e.asInstanceOf[Ptr[GtkEntry]], gbool(false))
+          e
+
+        // Range is sent as a prop immediately afterwards; these are placeholder bounds so
+        // the widget exists in a valid state. The step is a hundredth of the default
+        // range, which is what a keyboard arrow moves.
+        case WidgetKind.Slider =>
+          gtk_scale_new_with_range(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.01)
         case WidgetKind.Checkbox  => gtk_check_button_new()
         case WidgetKind.Scroll =>
           val sw = gtk_scrolled_window_new()
@@ -108,7 +129,21 @@ final class GtkRenderer extends Renderer {
           sw
         case WidgetKind.Divider =>
           gtk_separator_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL)
-        case WidgetKind.Image => gtk_picture_new()
+        case WidgetKind.Image  => gtk_picture_new()
+        case WidgetKind.Toggle => gtk_switch_new()
+
+        // An empty box, not a label: a zero-length label still asks for a line's height,
+        // which makes a Spacer in a Row quietly taller than the row needs to be.
+        case WidgetKind.Spacer => gtk_box_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0)
+
+        case WidgetKind.ProgressBar => gtk_progress_bar_new()
+
+        case WidgetKind.ActivityIndicator =>
+          val s = gtk_spinner_new()
+          // GtkSpinner does not spin until it is told to, and it spins for as long as it
+          // exists — which is the contract: `Show(loading)` is what stops it.
+          gtk_spinner_start(s.asInstanceOf[Ptr[GtkSpinner]])
+          s
       }
     }
     kinds(w) = kind
@@ -127,7 +162,7 @@ final class GtkRenderer extends Renderer {
               gtk_button_set_label(handle.asInstanceOf[Ptr[GtkButton]], toCString(v))
             case Some(WidgetKind.Checkbox) =>
               gtk_check_button_set_label(handle.asInstanceOf[Ptr[GtkCheckButton]], toCString(v))
-            case Some(WidgetKind.TextField) =>
+            case Some(WidgetKind.TextField) | Some(WidgetKind.SecureField) =>
               // Only write when the value actually differs. Setting the text unconditionally
               // would move the caret to the end on every keystroke, because the app writes
               // back what the user just typed.
@@ -144,7 +179,7 @@ final class GtkRenderer extends Renderer {
         }
 
       case Prop.Placeholder(v) =>
-        if kinds.get(handle).contains(WidgetKind.TextField) then
+        if isEntryKind(handle) then
           Zone(gtk_entry_set_placeholder_text(handle.asInstanceOf[Ptr[GtkEntry]], toCString(v)))
 
       case Prop.OnTextChange(f) =>
@@ -167,7 +202,15 @@ final class GtkRenderer extends Renderer {
         }
 
       case Prop.Checked(v) =>
-        if kinds.get(handle).contains(WidgetKind.Checkbox) then {
+        if isSwitch(handle) then {
+          val sw     = handle.asInstanceOf[Ptr[GtkSwitch]]
+          val active = gtk_switch_get_active(sw).asInstanceOf[CInt] != 0
+          if active != v then {
+            suppress += handle
+            gtk_switch_set_active(sw, gbool(v))
+            suppress -= handle
+          }
+        } else if kinds.get(handle).contains(WidgetKind.Checkbox) then {
           val button = handle.asInstanceOf[Ptr[GtkCheckButton]]
           val active = gtk_check_button_get_active(button).asInstanceOf[CInt] != 0
           if active != v then {
@@ -183,21 +226,79 @@ final class GtkRenderer extends Renderer {
           case None =>
             val id = Handles.registerValued(s => f(s == "true"))
             toggleIds(handle) = id
+            val sw = isSwitch(handle)
             Handles.bindTextSource(
               id,
-              () => gtk_check_button_get_active(handle.asInstanceOf[Ptr[GtkCheckButton]]).asInstanceOf[CInt] != 0,
+              () =>
+                if sw then
+                  gtk_switch_get_active(handle.asInstanceOf[Ptr[GtkSwitch]]).asInstanceOf[CInt] != 0
+                else
+                  gtk_check_button_get_active(handle.asInstanceOf[Ptr[GtkCheckButton]])
+                    .asInstanceOf[CInt] != 0,
+              () => suppress.contains(handle)
+            )
+            Zone {
+              // A check button emits "toggled"; a switch has no such signal and reports
+              // through GObject's property notification instead, which carries an extra
+              // GParamSpec argument and so needs the 3-argument trampoline.
+              val _ = g_signal_connect_data(
+                handle.asInstanceOf[gpointer],
+                toCString(if sw then "notify::active" else "toggled").asInstanceOf[Ptr[gchar]],
+                GCallback.fromPtr(if sw then Handles.notifiedPtr else Handles.changedPtr),
+                Handles.idToPointer(id),
+                null.asInstanceOf[GClosureNotify],
+                GConnectFlags.define(0)
+              )
+            }
+        }
+
+      case Prop.Range(min, max) =>
+        gtk_range_set_range(handle.asInstanceOf[Ptr[GtkRange]], min, max)
+
+      case Prop.Value(v) =>
+        val range   = handle.asInstanceOf[Ptr[GtkRange]]
+        val current = gtk_range_get_value(range)
+        // Same rule as the text field: writing unconditionally fights the user's drag,
+        // because the app writes back the value the drag just produced.
+        if current != v then {
+          suppress += handle
+          gtk_range_set_value(range, v)
+          suppress -= handle
+        }
+
+      case Prop.OnValueChange(f) =>
+        valueIds.get(handle) match {
+          case Some(id) => Handles.replaceValued(id, s => f(s.toDouble))
+          case None =>
+            val id = Handles.registerValued(s => f(s.toDouble))
+            valueIds(handle) = id
+            Handles.bindTextSource(
+              id,
+              () => gtk_range_get_value(handle.asInstanceOf[Ptr[GtkRange]]),
               () => suppress.contains(handle)
             )
             Zone {
               val _ = g_signal_connect_data(
                 handle.asInstanceOf[gpointer],
-                toCString("toggled").asInstanceOf[Ptr[gchar]],
+                toCString("value-changed").asInstanceOf[Ptr[gchar]],
                 GCallback.fromPtr(Handles.changedPtr),
                 Handles.idToPointer(id),
                 null.asInstanceOf[GClosureNotify],
                 GConnectFlags.define(0)
               )
             }
+        }
+
+      case Prop.Progress(value) =>
+        val bar = handle.asInstanceOf[Ptr[GtkProgressBar]]
+        value match {
+          case Some(f) =>
+            gtk_progress_bar_set_fraction(bar, math.max(0.0, math.min(1.0, f)))
+          case None =>
+            // GTK has no "indeterminate" flag: an indeterminate bar is one that is pulsed.
+            // Pulsing once at creation shows the block; the app is expected to be doing
+            // something, and a self-animating bar would need a timer per widget.
+            gtk_progress_bar_pulse(bar)
         }
 
       case Prop.OnTap(f) =>

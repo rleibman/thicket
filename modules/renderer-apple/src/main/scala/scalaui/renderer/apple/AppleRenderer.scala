@@ -39,7 +39,25 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.Scroll    => 6
       case WidgetKind.Divider   => 7
       case WidgetKind.Image     => 8
+
+      // Reserved, and not yet built by either shim. `sui_create`'s `default:` branch
+      // returns a *separator*, so passing one of these through would silently render a
+      // slider as a hairline rule — a wrong widget that looks like a layout bug and sends
+      // whoever hits it looking in the wrong place entirely. Failing loudly with the name
+      // of the missing case is the honest behaviour until the Swift lands. Forgejo #9.
+      case WidgetKind.Toggle            => unimplemented("Toggle", 9)
+      case WidgetKind.Spacer            => unimplemented("Spacer", 10)
+      case WidgetKind.ProgressBar       => unimplemented("ProgressBar", 11)
+      case WidgetKind.ActivityIndicator => unimplemented("ActivityIndicator", 12)
+      case WidgetKind.Slider            => unimplemented("Slider", 13)
+      case WidgetKind.SecureField       => unimplemented("SecureField", 14)
     }
+
+  private def unimplemented(name: String, reservedCode: Int): Nothing =
+    throw new UnsupportedOperationException(
+      s"$name is not implemented in the Apple shim yet (kind code $reservedCode reserved). " +
+        "See Forgejo #9."
+    )
 
   def create(
     kind:  WidgetKind,
@@ -182,6 +200,16 @@ final class AppleRenderer extends Renderer {
       // says it is horizontal and is not would clip exactly the content it promised to
       // reach. Tracked as the "horizontal Scroll on AppKit/UIKit" issue.
       case Prop.Axis(_) => ()
+
+      // Unreachable while ProgressBar cannot be created at all (see kindCode), and present
+      // so this renderer keeps compiling as the catalogue grows. Forgejo #9.
+      case Prop.Progress(_) => ()
+
+      // Likewise unreachable while Slider cannot be created. NSSlider and UISlider both
+      // take the app's own units, so these are near-direct once the shim lands.
+      case Prop.Range(_, _)     => ()
+      case Prop.Value(_)        => ()
+      case Prop.OnValueChange(_) => ()
     }
 
   def insertAfter(
