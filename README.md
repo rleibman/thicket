@@ -57,8 +57,8 @@ sudo apt install clang libunwind-dev libgtk-4-dev
 ### Run the demo in one command
 
 ```bash
-git clone ssh://forgejo@forgejo.leibmanland.com/rleibman/scala-ui.git
-cd Thicket
+git clone git@github.com:rleibman/thicket.git
+cd thicket
 sbt --error counterGtk/nativeLink
 ./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk
 ```

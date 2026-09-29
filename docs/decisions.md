@@ -331,6 +331,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   deferred to M1. S1's brief updated accordingly.
 - 2026-09-18 — **Repo hosted on the user's Forgejo**
   (`ssh://forgejo@forgejo.leibmanland.com/rleibman/scala-ui.git`), matching meal-o-rama,
+  **superseded 2026-09-29: the project moved to `github.com/rleibman/thicket`**,
   rather than GitHub. Push-to-create is disabled server-side, so the repo must be created
   in the web UI before the first push.
 - 2026-09-18 — **Version policy set by the user: always target the latest stable Scala and sbt,

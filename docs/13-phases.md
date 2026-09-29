@@ -82,10 +82,14 @@ Tracked in Forgejo, done on the macOS laptop, referenced by the phase that needs
 
 | Issue | What | Blocks |
 |---|---|---|
-| ~~[#4](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/4)~~ | ~~Honour `Prop.Axis` — horizontal `Scroll`~~ — **done**, both shims | phase 2 (Apple parity) |
-| [#5](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/5) | A virtualising container, so `LazyColumn` stops mounting every row | phase 6 (a real app has real lists) |
-| [#6](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/6) | `ContentFit.Cover` distorts instead of cropping on AppKit | phase 2 |
-| [#7](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/7) | Generate shim, header and bindings from one description | **phase 1** |
+| [#1](https://github.com/rleibman/thicket/issues/1) | A virtualising container, so `LazyColumn` stops mounting every row | phase 6 (a real app has real lists) |
+| [#2](https://github.com/rleibman/thicket/issues/2) | `ContentFit.Cover` distorts instead of cropping on AppKit | phase 2 |
+| [#3](https://github.com/rleibman/thicket/issues/3) | Generate shim, header and bindings from one description | **phase 1** |
+| [#4](https://github.com/rleibman/thicket/issues/4) | The six phase-2 widgets, plus the `sui_` ABI prefix the rename left alone | phase 2 |
+
+Renumbered when the project moved to GitHub. The horizontal `Scroll` issue is done and
+closed; the four above are the open ones. Forgejo issue numbers still appear inside the
+issue *bodies* and in older commit messages — they are historical.
 
 ## 13.5 On the estimates
 

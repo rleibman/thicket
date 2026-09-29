@@ -5,7 +5,7 @@ Sketches, not decisions. Code is illustrative Scala 3 and has not been compiled.
 ## 7.1 Module layout
 
 ```
-Thicket/
+thicket/
   core/            %%% JVM/JS/Native  element tree, reconciler, theme, units, events
   signals/         %%% JVM/JS/Native  reactive primitives (Var, Signal, computed, effect)
   layout-yoga/     %%% JVM/Native     Yoga bindings (sn-bindgen on Native; JNI/Java lib on JVM)
