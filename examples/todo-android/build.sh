@@ -19,8 +19,8 @@ echo "== sbt: building the Scala JARs =="
   "rendererAndroid/package" "examplesSharedJVM/package" "todoAndroid/package" >/dev/null)
 
 rm -f "$here"/app/libs/*.jar
-for module in scala-ui-signals scala-ui-renderer-api scala-ui-core \
-              scala-ui-renderer-android scala-ui-examples-shared todo-android; do
+for module in thicket-signals thicket-renderer-api thicket-core \
+              thicket-renderer-android thicket-examples-shared todo-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store.
   # Exclude the `-tests.jar` the same directory also holds.
   src=$(readlink -f "$root"/target/out/jvm/scala-3.9.0/"$module"/"$module"_3-*[0-9T].jar)
@@ -36,14 +36,14 @@ echo "== APK: $(stat -c%s "$apk") bytes =="
 
 if adb get-state >/dev/null 2>&1; then
   adb install -r -g "$apk" >/dev/null
-  adb shell am force-stop dev.scalaui.todo
+  adb shell am force-stop dev.thicket.todo
   adb logcat -c
-  adb shell am start -W -n dev.scalaui.todo/example.android.MainActivity \
+  adb shell am start -W -n dev.thicket.todo/example.android.MainActivity \
     ${SELFTEST:+--ez selftest true} >/dev/null
   echo "== installed and launched =="
   if [ -n "${SELFTEST:-}" ]; then
     sleep 3
-    adb logcat -d -s scalaui 2>/dev/null | tr -d '\r' | sed -n 's/.*\[selftest\]/[selftest]/p'
+    adb logcat -d -s thicket 2>/dev/null | tr -d '\r' | sed -n 's/.*\[selftest\]/[selftest]/p'
   fi
 else
   echo "(no device/emulator attached; skipping install)"

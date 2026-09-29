@@ -174,7 +174,7 @@ Three things the plan has to absorb:
    `ZIO.attemptBlocking`'s pool must be checked against this before use.
 
 2. **`java.time`, `java.text` and `java.util.Locale` do not exist in Scala Native's javalib.**
-   Not an iOS issue — it would fail identically on Linux. Any `scala-ui-core` API exposing
+   Not an iOS issue — it would fail identically on Linux. Any `thicket-core` API exposing
    dates/times needs a decision at M0: ship a `java.time` subset, abstract the clock behind a
    platform interface, or depend on a cross-published date-time library. Related and worse:
    **these gaps compile cleanly and only fail at `nativeLink`**, so CI must run `nativeLink`

@@ -1,0 +1,489 @@
+package thicket.renderer.android
+
+import android.content.Context
+import android.os.{Handler, Looper}
+import android.graphics.{BitmapFactory, Typeface}
+import android.util.TypedValue
+import android.view.{Gravity, View, ViewGroup}
+import android.text.{Editable, InputType, TextWatcher}
+import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, ProgressBar, ScrollView, SeekBar, Switch, TextView}
+import scala.collection.mutable
+import thicket.renderer.*
+
+/** Android implementation of [[Renderer]], over `android.view.*`.
+  *
+  * Note the `_root_.android.R` references: this package is `thicket.renderer.android`, which
+  * shadows the platform's own `android` package — the same trap `thicket.zio` has with `zio`.
+  *
+  * Runs on the JVM: Scala compiles to bytecode, R8 dexes it, ART runs it (S2). Nothing
+  * here is Android-specific beyond the widget calls — the reconciler above is the same
+  * code the GTK renderer drives.
+  */
+final class AndroidRenderer(context: Context) extends Renderer {
+  type Handle = View
+
+  private val SliderSteps = 1000
+
+  private val kinds  = mutable.Map.empty[View, WidgetKind]
+
+  /** True while the renderer writes a value in, so the widget's own change listener can
+    * tell an app-driven update from a user edit. Without it, a signal bound to a text
+    * field loops: write -> listener -> signal -> write.
+    */
+  private val suppress = mutable.Set.empty[View]
+
+  /** A slider's app-facing bounds, kept per widget because `SeekBar` has none: it counts
+    * integer steps, and the renderer converts.
+    */
+  private val ranges = mutable.Map.empty[View, (Double, Double)]
+  private val mainHandler = Handler(Looper.getMainLooper)
+
+  /** Resolve a theme attribute, so colours and backgrounds come from the user's theme
+    * rather than from values we invent. This is what makes dark mode work for free.
+    */
+  private def themeAttr(attr: Int): TypedValue = {
+    val tv = TypedValue()
+    context.getTheme.resolveAttribute(attr, tv, true)
+    tv
+  }
+
+  private def argb(c: thicket.renderer.Rgb): Int =
+    (0xff << 24) | (c.r << 16) | (c.g << 8) | c.b
+
+  private def dp(v: Int): Int =
+    (v * context.getResources.getDisplayMetrics.density).toInt
+
+  def platform: String = "android"
+
+  /** `LinearLayout` lays out its own children, so every v0 container is toolkit-managed,
+    * exactly as on GTK. A Yoga-driven `FrameLayout` will be `FrameBased` when absolute
+    * layout lands.
+    */
+  def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
+
+  def create(kind: WidgetKind, props: Seq[Prop]): Handle = {
+    val view: View = kind match {
+      case WidgetKind.Column =>
+        val l = LinearLayout(context)
+        l.setOrientation(LinearLayout.VERTICAL)
+        l
+      case WidgetKind.Row =>
+        val l = LinearLayout(context)
+        l.setOrientation(LinearLayout.HORIZONTAL)
+        l
+      case WidgetKind.Label     => TextView(context)
+      case WidgetKind.Button    => Button(context)
+      case WidgetKind.TextField => EditText(context)
+      case WidgetKind.Checkbox  => CheckBox(context)
+      // A CompoundButton exactly as CheckBox is, so Checked and OnCheckedChange need no
+      // special case below: only the drawable differs, which is the whole point of Toggle
+      // being a separate kind rather than a style flag.
+      case WidgetKind.Toggle => Switch(context)
+
+      case WidgetKind.SecureField =>
+        val e = EditText(context)
+        // The same EditText; only the input type differs. AppKit is the renderer that
+        // needs a separate class, which is why this is a widget kind and not a prop.
+        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        e
+
+      case WidgetKind.Slider => SeekBar(context)
+
+      case WidgetKind.Spacer =>
+        val v = View(context)
+        v.setLayoutParams(LinearLayout.LayoutParams(0, 0))
+        v
+
+      // The style is fixed at construction on Android — a horizontal bar and a circular
+      // spinner are the same class with different styles, and the style cannot be changed
+      // afterwards, which is why these are two widget kinds and not one with a prop.
+      case WidgetKind.ProgressBar =>
+        ProgressBar(context, null, _root_.android.R.attr.progressBarStyleHorizontal)
+
+      case WidgetKind.ActivityIndicator =>
+        val p = ProgressBar(context, null, _root_.android.R.attr.progressBarStyleLarge)
+        p.setIndeterminate(true)
+        p
+
+      case WidgetKind.Scroll =>
+        // The two directions are different classes on Android, which is why the contract
+        // says the axis is read at create and never at update.
+        val horizontal = props.exists {
+          case Prop.Axis(Orientation.Horizontal) => true
+          case _                                 => false
+        }
+        if horizontal then HorizontalScrollView(context) else ScrollView(context)
+      case WidgetKind.Image => ImageView(context)
+      case WidgetKind.Divider =>
+        val v  = View(context)
+        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)))
+        v.setLayoutParams(lp)
+        // `listDivider` is a *drawable* attribute, not a colour: reading `TypedValue.data`
+        // as a colour silently yields an invisible line.
+        v.setBackgroundResource(themeAttr(_root_.android.R.attr.listDivider).resourceId)
+        v
+    }
+    kinds(view) = kind
+    update(view, props)
+    view
+  }
+
+  def update(handle: Handle, patch: Seq[Prop]): Unit =
+    patch.foreach {
+      case Prop.Text(v) =>
+        handle match {
+          case e: EditText =>
+            // Only write when it differs, or the caret jumps to the end on every keystroke
+            // as the app writes back what the user just typed.
+            if e.getText.toString != v then {
+              suppress += handle
+              e.setText(v)
+              e.setSelection(v.length)
+              suppress -= handle
+            }
+          case t: TextView => t.setText(v)
+          case _           => ()
+        }
+
+      case Prop.Placeholder(v) =>
+        handle match {
+          case e: EditText => e.setHint(v)
+          case _           => ()
+        }
+
+      case Prop.OnTextChange(f) =>
+        handle match {
+          case e: EditText =>
+            e.addTextChangedListener(new TextWatcher {
+              def beforeTextChanged(s: CharSequence, a: Int, b: Int, c: Int): Unit = ()
+              def onTextChanged(s: CharSequence, a: Int, b: Int, c: Int): Unit     = ()
+              def afterTextChanged(s: Editable): Unit =
+                if !suppress.contains(handle) then f(s.toString)
+            })
+          case _ => ()
+        }
+
+      case Prop.Checked(v) =>
+        handle match {
+          case c: CompoundButton =>
+            if c.isChecked != v then {
+              suppress += handle
+              c.setChecked(v)
+              suppress -= handle
+            }
+          case _ => ()
+        }
+
+      case Prop.OnCheckedChange(f) =>
+        handle match {
+          case c: CompoundButton =>
+            c.setOnCheckedChangeListener { (_: CompoundButton, checked: Boolean) =>
+              if !suppress.contains(handle) then f(checked)
+            }
+          case _ => ()
+        }
+
+      case Prop.Style(role) =>
+        handle match {
+          case t: TextView =>
+            val (sp, bold) = role match {
+              case TextRole.Title   => (24f, true)
+              case TextRole.Body    => (16f, false)
+              case TextRole.Caption => (13f, false)
+            }
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            t.setTypeface(null, if bold then Typeface.BOLD else Typeface.NORMAL)
+          case _ => ()
+        }
+
+      case Prop.Grow(v) =>
+        val lp = handle.getLayoutParams match {
+          case p: LinearLayout.LayoutParams => p
+          case _ =>
+            LinearLayout.LayoutParams(
+              ViewGroup.LayoutParams.WRAP_CONTENT,
+              ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        lp.weight = if v then 1f else 0f
+        if v then lp.width = 0
+        handle.setLayoutParams(lp)
+
+      case Prop.Tint(color) =>
+        // `None` means "leave it to the platform", so the emphasis handling below keeps
+        // using the theme attribute. Only an explicit override sets a literal colour.
+        color.foreach { c =>
+          handle match {
+            case t: TextView => t.setTextColor(argb(c))
+            case _           => ()
+          }
+        }
+
+      case Prop.Fill(color) =>
+        color.foreach(c => handle.setBackgroundColor(argb(c)))
+
+      case Prop.Picture(source) =>
+        handle match {
+          case iv: ImageView =>
+            source match {
+              case None => iv.setImageDrawable(null)
+              case Some(ImageSource.FromFile(path)) =>
+                iv.setImageBitmap(BitmapFactory.decodeFile(path))
+              case Some(ImageSource.FromBytes(data)) =>
+                iv.setImageBitmap(BitmapFactory.decodeByteArray(data, 0, data.length))
+            }
+          case _ => ()
+        }
+
+      case Prop.Fit(fit) =>
+        handle match {
+          case iv: ImageView =>
+            iv.setScaleType(fit match {
+              case ContentFit.Contain => ImageView.ScaleType.FIT_CENTER
+              case ContentFit.Cover   => ImageView.ScaleType.CENTER_CROP
+              case ContentFit.Fill    => ImageView.ScaleType.FIT_XY
+            })
+          case _ => ()
+        }
+
+      case Prop.TextEmphasis(level) =>
+        handle match {
+          case t: TextView =>
+            val attr = level match {
+              case Emphasis.Secondary => _root_.android.R.attr.textColorSecondary
+              case Emphasis.Normal    => _root_.android.R.attr.textColorPrimary
+            }
+            val tv = themeAttr(attr)
+            t.setTextColor(context.getResources.getColor(tv.resourceId, context.getTheme))
+          case _ => ()
+        }
+
+      case Prop.Align(a) =>
+        handle match {
+          case t: TextView =>
+            t.setGravity(a match {
+              case Alignment.Start  => Gravity.START
+              case Alignment.Center => Gravity.CENTER_HORIZONTAL
+              case Alignment.End    => Gravity.END
+            })
+          case _ => ()
+        }
+
+      case Prop.OnTap(f) =>
+        // Setting a listener replaces the previous one, so repeated updates cannot
+        // stack handlers — the same property the GTK renderer gets by swapping the
+        // closure behind a single connected signal.
+        handle.setOnClickListener((_: View) => f())
+        // Something tappable should look tappable: a container picks up the platform's
+        // own ripple. Buttons already have theirs.
+        handle match {
+          case _: Button => ()
+          case v =>
+            v.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackground).resourceId)
+        }
+
+      case Prop.Enabled(v) =>
+        handle.setEnabled(v)
+
+      // Create-only: honouring a change would mean swapping ScrollView for
+      // HorizontalScrollView under a live subtree. See Prop.Axis.
+      case Prop.Axis(_) => ()
+
+      // A SeekBar is integral, so the renderer owns the conversion — it is the only side
+      // that knows its own resolution. 1000 steps rather than 100 so a fraction does not
+      // quantise visibly on a wide control.
+      case Prop.Range(min, max) =>
+        handle match {
+          case s: SeekBar =>
+            ranges(s) = (min, max)
+            s.setMax(SliderSteps)
+          case _ => ()
+        }
+
+      case Prop.Value(v) =>
+        handle match {
+          case s: SeekBar =>
+            val (min, max) = ranges.getOrElse(s, (0.0, 1.0))
+            val span       = if max - min == 0.0 then 1.0 else max - min
+            val steps      = (((v - min) / span) * SliderSteps).round.toInt
+            val clamped    = math.max(0, math.min(SliderSteps, steps))
+            // Same rule as the text field: writing unconditionally fights the user's drag.
+            if s.getProgress != clamped then {
+              suppress += s
+              s.setProgress(clamped)
+              suppress -= s
+            }
+          case _ => ()
+        }
+
+      case Prop.OnValueChange(f) =>
+        handle match {
+          case s: SeekBar =>
+            s.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener {
+              def onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean): Unit = {
+                if !suppress.contains(bar) then {
+                  val (min, max) = ranges.getOrElse(bar, (0.0, 1.0))
+                  f(min + (progress.toDouble / SliderSteps) * (max - min))
+                }
+              }
+              def onStartTrackingTouch(bar: SeekBar): Unit = ()
+              def onStopTrackingTouch(bar: SeekBar): Unit  = ()
+            })
+          case _ => ()
+        }
+
+      case Prop.Progress(value) =>
+        handle match {
+          case p: ProgressBar =>
+            value match {
+              case Some(f) =>
+                p.setIndeterminate(false)
+                // Android's ProgressBar is integral; 0-1000 rather than 0-100 so a
+                // fraction does not quantise visibly on a wide bar.
+                p.setMax(1000)
+                p.setProgress((math.max(0.0, math.min(1.0, f)) * 1000).toInt)
+              case None => p.setIndeterminate(true)
+            }
+          case _ => ()
+        }
+
+      case Prop.Padding(v) =>
+        val p = dp(v)
+        handle.setPadding(p, p, p, p)
+
+      case Prop.Spacing(v) =>
+        handle match {
+          case l: LinearLayout =>
+            spacing(l) = dp(v)
+            applySpacing(l)
+          case _ => ()
+        }
+    }
+
+  private val spacing = mutable.Map.empty[LinearLayout, Int]
+
+  /** `LinearLayout` has no spacing property, so gaps are child margins. They have to be
+    * recomputed whenever the children change, because "which child is first" changes.
+    */
+  private def applySpacing(l: LinearLayout): Unit = {
+    val gap        = spacing.getOrElse(l, 0)
+    val horizontal = l.getOrientation == LinearLayout.HORIZONTAL
+    var i          = 0
+    while i < l.getChildCount do {
+      val child = l.getChildAt(i)
+      val lp = child.getLayoutParams match {
+        case p: LinearLayout.LayoutParams => p
+        case _ =>
+          LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+          )
+      }
+      val lead = if i == 0 then 0 else gap
+      if horizontal then lp.leftMargin = lead else lp.topMargin = lead
+      child.setLayoutParams(lp)
+      i += 1
+    }
+  }
+
+  def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    if kinds.get(parent).contains(WidgetKind.Scroll) then {
+      // A scroll view holds one child, so "insert" is "set". Typed as ViewGroup, not
+      // ScrollView: a horizontal Scroll is a HorizontalScrollView and the two share no
+      // subclass below FrameLayout.
+      val sv = parent.asInstanceOf[ViewGroup]
+      sv.removeAllViews()
+      sv.addView(child)
+      return
+    }
+    val vg = parent.asInstanceOf[ViewGroup]
+    // `indexOfChild` is a linear scan, and mounting a list is n appends, so checking the
+    // tail first is the difference between O(n) and O(n^2).
+    val count = vg.getChildCount
+    val index = after match {
+      case None                                            => 0
+      case Some(a) if count > 0 && vg.getChildAt(count - 1) == a => count
+      case Some(a)                                         => vg.indexOfChild(a) + 1
+    }
+    vg.addView(child, index)
+    vg match {
+      case l: LinearLayout => applySpacing(l)
+      case _               => ()
+    }
+  }
+
+  def removeChild(parent: Handle, child: Handle): Unit = {
+    val vg = parent.asInstanceOf[ViewGroup]
+    vg.removeView(child)
+    vg match {
+      case l: LinearLayout => applySpacing(l)
+      case _               => ()
+    }
+  }
+
+  def destroy(handle: Handle): Unit = {
+    handle.getParent match {
+      case vg: ViewGroup =>
+        vg.removeView(handle)
+        vg match {
+          case l: LinearLayout => applySpacing(l)
+          case _               => ()
+        }
+      case _ => ()
+    }
+    handle.setOnClickListener(null)
+    suppress -= handle
+    val _ = kinds.remove(handle)
+    handle match {
+      case l: LinearLayout => val _ = spacing.remove(l)
+      case _               => ()
+    }
+  }
+
+  def measure(handle: Handle, constraints: Constraints): Measurement = {
+    def spec(v: Float): Int =
+      if v.isNaN then View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+      else View.MeasureSpec.makeMeasureSpec(v.toInt, View.MeasureSpec.AT_MOST)
+    handle.measure(spec(constraints.maxW), spec(constraints.maxH))
+    Measurement(
+      minW = handle.getMinimumWidth.toFloat,
+      minH = handle.getMinimumHeight.toFloat,
+      natW = handle.getMeasuredWidth.toFloat,
+      natH = handle.getMeasuredHeight.toFloat
+    )
+  }
+
+  /** No-op while every container is toolkit-managed. */
+  def setFrame(handle: Handle, frame: Frame): Unit = ()
+
+  /** `ListView` materialises only the rows on screen and recycles the rest, which is the
+    * whole point of `LazyColumn`. It is the platform's own widget — no AndroidX dependency.
+    */
+  override def supportsVirtualRows: Boolean = true
+
+  override def createVirtualList(source: RowSource[View]): View = {
+    val list = ListView(context)
+
+    val adapter = new BaseAdapter {
+      def getCount: Int            = source.count
+      def getItem(i: Int): Object  = Integer.valueOf(i)
+      def getItemId(i: Int): Long  = i.toLong
+
+      override def getView(position: Int, convertView: View, parent: ViewGroup): View =
+        // Handing `convertView` back to the framework is what turns a scroll into a few
+        // property writes: it re-binds that row's signal rather than building widgets.
+        source.bind(position, Option(convertView))
+    }
+
+    list.setAdapter(adapter)
+    // The platform draws its own dividers here, so rows need not supply them.
+    source.onInvalidate(() => adapter.notifyDataSetChanged())
+    list
+  }
+
+  def runOnUiThread(f: () => Unit): Unit =
+    if Looper.myLooper eq Looper.getMainLooper then f()
+    else {
+      val _ = mainHandler.post(() => f())
+    }
+}

@@ -1,4 +1,4 @@
-# scala-ui
+# Thicket
 
 **Native thick-client UIs in Scala 3.** One `Element` tree, real platform widgets —
 `android.view.*` on Android, UIKit/AppKit on iOS and macOS, GTK4 on Linux.
@@ -19,7 +19,7 @@ or a desktop that looks and feels like it belongs there. Kotlin has Compose Mult
 Dart has Flutter, JS has React Native, C# has MAUI, Rust has Tauri. Scala has nothing, and
 that gap keeps it out of an entire class of products.
 
-scala-ui does not draw its own widgets. Every leaf of the tree is a real `GtkButton`,
+Thicket does not draw its own widgets. Every leaf of the tree is a real `GtkButton`,
 `android.widget.Button` or `UIButton`, so platform fidelity is true *by construction* and
 accessibility comes with the control rather than being retrofitted onto a canvas.
 
@@ -58,7 +58,7 @@ sudo apt install clang libunwind-dev libgtk-4-dev
 
 ```bash
 git clone ssh://forgejo@forgejo.leibmanland.com/rleibman/scala-ui.git
-cd scala-ui
+cd Thicket
 sbt --error counterGtk/nativeLink
 ./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk
 ```
@@ -76,24 +76,24 @@ For Android, with an emulator running:
 ### Your first app
 
 This is `examples/counter-gtk/src/main/scala/example/Counter.scala` in full — the smallest
-complete scala-ui app, and it compiles:
+complete Thicket app, and it compiles:
 
 ```scala
 package example
 
-import scalaui.core.AppRoot
-import scalaui.core.dsl.*
-import scalaui.renderer.gtk.GtkApp
-import scalaui.signals.Var
+import thicket.core.AppRoot
+import thicket.core.dsl.*
+import thicket.renderer.gtk.GtkApp
+import thicket.signals.Var
 
 object Counter {
 
   def main(args: Array[String]): Unit = {
-    val _ = GtkApp.run("dev.scalaui.counter", 380, 220) {
+    val _ = GtkApp.run("dev.thicket.counter", 380, 220) {
       val count = Var(0)
 
       AppRoot(
-        "scala-ui counter",
+        "Thicket counter",
         Column(spacing = 16, padding = 24)(
           Label(count.map(n => s"Count: $n")),
           Row(spacing = 8)(
@@ -215,15 +215,15 @@ spikes/              phase 0, one directory and REPORT.md per spike
 
 Writing a renderer means implementing one trait — `create`, `update`, `insertAfter`,
 `removeChild`, `destroy`, `measure`. It has absorbed four structurally different toolkits
-without changing: [`modules/renderer-api`](modules/renderer-api/shared/src/main/scala/scalaui/renderer/Renderer.scala).
+without changing: [`modules/renderer-api`](modules/renderer-api/shared/src/main/scala/thicket/renderer/Renderer.scala).
 
 ## Development
 
 ```bash
 sbt --error "signalsJVM/testOnly *; coreJVM/testOnly *; effectZioJVM/testOnly *"   # 98 tests
 
-SCALAUI_SELFTEST=1 ./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk       # GTK self-test
-adb shell am start -n dev.scalaui.todo/example.android.MainActivity --ez selftest true
+THICKET_SELFTEST=1 ./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk       # GTK self-test
+adb shell am start -n dev.thicket.todo/example.android.MainActivity --ez selftest true
 ```
 
 Three things that will bite you:

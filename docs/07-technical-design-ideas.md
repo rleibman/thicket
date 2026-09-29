@@ -5,14 +5,14 @@ Sketches, not decisions. Code is illustrative Scala 3 and has not been compiled.
 ## 7.1 Module layout
 
 ```
-scala-ui/
+Thicket/
   core/            %%% JVM/JS/Native  element tree, reconciler, theme, units, events
   signals/         %%% JVM/JS/Native  reactive primitives (Var, Signal, computed, effect)
   layout-yoga/     %%% JVM/Native     Yoga bindings (sn-bindgen on Native; JNI/Java lib on JVM)
   layout-web/      JS                 CSS flexbox passthrough for the dev canvas
   renderer-api/    %%% all            the renderer contract (versioned, S-01)
   renderer-android/ JVM               android.view.* backend
-  renderer-apple/   Native            calls ScalaUIShim (Swift, C ABI); UIKit + AppKit
+  renderer-apple/   Native            calls ThicketShim (Swift, C ABI); UIKit + AppKit
   renderer-gtk/     Native            GTK4 via com.indoorvivants.gnome
   renderer-win/     Native            Win32 first, WinUI3 shim later
   renderer-dom/     JS                dev canvas (HTML/CSS, platform-mimicking themes)
@@ -20,7 +20,7 @@ scala-ui/
   effect-zio/      %%% all            ZIO 2 bridge — reference implementation, built with the core
   effect-cats/     %%% all            cats-effect 3 / fs2 bridge, same contract, later
   tooling/sbt-plugin, tooling/mill-plugin, tooling/cli
-  shims/apple/ScalaUIShim (SwiftPM), shims/win/ (C++/WinRT)
+  shims/apple/ThicketShim (SwiftPM), shims/win/ (C++/WinRT)
   gallery/          %%% all            component catalogue & perf test-bed
 ```
 
@@ -62,7 +62,7 @@ in §7.13, which is where ZIO lives.
 ## 7.3 Element DSL: context functions, no plugin
 
 ```scala
-import scalaui.*
+import thicket.*
 
 def Counter(): Element =
   val count = Var(0)
@@ -152,7 +152,7 @@ Native uses, and has Java/ObjC/C# bindings.
 ## 7.6 The Apple shim (Swift, C ABI)
 
 ```swift
-// ScalaUIShim/Sources/ScalaUIShim/Button.swift
+// ThicketShim/Sources/ThicketShim/Button.swift
 @_cdecl("sui_button_new")   public func buttonNew() -> UnsafeMutableRawPointer
 @_cdecl("sui_button_set_title") public func buttonSetTitle(_ h: UnsafeMutableRawPointer, _ utf8: UnsafePointer<CChar>)
 @_cdecl("sui_button_on_tap") public func buttonOnTap(_ h: UnsafeMutableRawPointer,
@@ -161,13 +161,13 @@ Native uses, and has Java/ObjC/C# bindings.
 @_cdecl("sui_run_on_main")   public func runOnMain(_ cb: @convention(c) (UnsafeMutableRawPointer?) -> Void, _ ctx: UnsafeMutableRawPointer?)
 ```
 
-A single C header `scalaui_shim.h` declares these; sn-bindgen turns it into the
+A single C header `thicket_shim.h` declares these; sn-bindgen turns it into the
 Scala `extern` object. Handles are `Unmanaged<UIView>` pointers retained by the shim
 and released on `sui_destroy`. Callbacks pass a `ctx` pointer that Scala Native maps
 back to the closure (via a handle table, since GC'd objects cannot be pinned across
 C — verify pinning story in S3). AppKit variants live behind `#if canImport(UIKit)`.
 
-App start-up: the Xcode project's `@main` Swift entry calls `scalaui_main()` — an
+App start-up: the Xcode project's `@main` Swift entry calls `thicket_main()` — an
 `@exported` Scala Native function — after UIKit finishes launching, hands it the
 root view controller handle, and Scala mounts the tree.
 
@@ -205,7 +205,7 @@ substitute.
 
 ## 7.9 Build tooling
 
-- `sbt-scala-ui` / `mill-scala-ui`: tasks `iosXcodeProject`, `androidGradleProject`,
+- `sbt-thicket` / `mill-thicket`: tasks `iosXcodeProject`, `androidGradleProject`,
   `desktopPackage`. Xcode/Gradle shells are *generated once, then owned by the app*
   (P-04); regeneration writes only framework-owned files.
 - iOS: the plugin builds the Scala Native `.a` for each (arch, sdk) and assembles an
@@ -214,7 +214,7 @@ substitute.
   rules for Scala 3 (vendored `scala3.pro`), Gradle app consumes it. Alternative
   investigated in S2: a Gradle plugin that runs Zinc so Android Studio's normal
   build works end-to-end.
-- `scala-ui` CLI: thin wrapper over the plugins + `xcodebuild`/`gradlew` + `doctor`.
+- `thicket` CLI: thin wrapper over the plugins + `xcodebuild`/`gradlew` + `doctor`.
 
 ## 7.10 Component catalogue (v1 scope)
 
@@ -232,7 +232,7 @@ Platform-only via `Platform.ios {}` etc.: e.g. `UIMenu` inline styles, Android F
   shim and re-raised as `PlatformError(platform, code, message, nativeStack)`.
 - Dev mode logs every reconciliation with element path; inspector (D-05) later.
 - Crash reports: symbolication guide for Scala Native mangled names; ship a
-  `scala-ui symbolicate` helper.
+  `thicket symbolicate` helper.
 
 ## 7.12 Where Scala 3 specifically helps
 

@@ -1,6 +1,6 @@
 package example
 
-import scalaui.renderer.apple.AppleApp
+import thicket.renderer.apple.AppleApp
 
 /** The macOS (AppKit) host for [[TodoApp]].
   *
