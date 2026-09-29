@@ -69,6 +69,14 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-29 — **sbt 2's disk cache does not notice a *deleted* test source.** Renaming
+  `GraphPropertySuite` to `GraphPropertySpec` left `signalsNative/nativeLink` failing with
+  "Unreachable symbols found" pointing at the deleted file, through `clean`, through
+  deleting the module's `target/out` subtree, and through touching sources — every run
+  reporting "cache 100%, 35 disk cache hits". The fix is to clear `~/.cache/sbt/v2` *and*
+  `target/out/<platform>`; clearing either alone is not enough. Worth knowing before
+  chasing a phantom compile error for twenty minutes.
+
 - 2026-09-29 — **A widget enters the catalogue only if every platform we render to has it.**
   `docs/07` §7.10 listed the v1 catalogue before any renderer existed; phase 2 checked each
   entry against four real toolkits for the first time and two failed. **`Radio`**: UIKit has

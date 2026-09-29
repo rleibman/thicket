@@ -35,14 +35,32 @@ lazy val munitJs     = Seq("org.scalameta" % "munit_sjs1_3" % munitV % Test,
 lazy val munitNative = Seq("org.scalameta" % "munit_native0.5_3" % munitV % Test,
                            "org.scalameta" % "munit-scalacheck_native0.5_3" % munitCheckV % Test)
 
+// zio-test. Property testing comes with it (`check` + `Gen`), so there is no scalacheck
+// equivalent to add. sbt 2 has no `%%%`, hence the explicit artefact suffixes.
+//
+// zio-test-sbt for Native is built against Scala Native's test-interface 0.5.10 while this
+// build is on 0.5.12. Scala Native keeps binary compatibility across 0.5.x patch releases,
+// so this is an eviction *policy* disagreement rather than a real incompatibility, and the
+// scheme says so narrowly instead of turning eviction errors off build-wide.
+ThisBuild / libraryDependencySchemes +=
+  "org.scala-native" % "test-interface_native0.5_3" % VersionScheme.EarlySemVer
+lazy val zioTestFramework = testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+
+lazy val zioTestJvm    = Seq("dev.zio" %% "zio-test"     % zioV % Test,
+                             "dev.zio" %% "zio-test-sbt" % zioV % Test)
+lazy val zioTestJs     = Seq("dev.zio" % "zio-test_sjs1_3"     % zioV % Test,
+                             "dev.zio" % "zio-test-sbt_sjs1_3" % zioV % Test)
+lazy val zioTestNative = Seq("dev.zio" % "zio-test_native0.5_3"     % zioV % Test,
+                             "dev.zio" % "zio-test-sbt_native0.5_3" % zioV % Test)
+
 /** Fine-grained reactive core. No dependencies beyond the Scala library (S5). */
 lazy val signals = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/signals"))
-  .settings(commonSettings, name := "scala-ui-signals")
-  .jvmSettings(libraryDependencies ++= munitJvm)
-  .jsSettings(libraryDependencies ++= munitJs)
-  .nativeSettings(libraryDependencies ++= munitNative)
+  .settings(commonSettings, zioTestFramework, name := "scala-ui-signals")
+  .jvmSettings(libraryDependencies ++= zioTestJvm)
+  .jsSettings(libraryDependencies ++= zioTestJs)
+  .nativeSettings(libraryDependencies ++= zioTestNative)
 
 /** The framework/toolkit seam. Pure types: no platform code. */
 lazy val rendererApi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
@@ -57,7 +75,7 @@ lazy val rendererApi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/core"))
-  .dependsOn(signals, rendererApi)
+  .dependsOn(signals % "compile->compile;test->test", rendererApi)
   .settings(commonSettings, name := "scala-ui-core")
   .jvmSettings(libraryDependencies ++= munitJvm)
   .jsSettings(libraryDependencies ++= munitJs)
