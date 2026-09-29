@@ -68,6 +68,41 @@ private final class TapView: NSStackView {
   }
 }
 
+/// `ContentFit.Cover` — fill the frame, keep the aspect ratio, crop the overflow.
+///
+/// `NSImageView.imageScaling` has no such mode: `.scaleProportionallyUpOrDown` is Contain
+/// and `.scaleAxesIndependently` is Fill. Cover used to map to the latter, which is the one
+/// thing it must not do, since Cover is the fit for avatars and hero images where a wrong
+/// aspect ratio is immediately visible. UIKit needs none of this — `.scaleAspectFill` is
+/// exactly Cover — so the divergence lives here rather than in the contract.
+///
+/// Drawn rather than done with a layer's `contentsGravity`: `NSImageView` draws its own
+/// image, so setting layer contents underneath it fights the view instead of replacing it.
+private final class ImageView: NSImageView {
+  var cover = false
+
+  override func draw(_ dirtyRect: NSRect) {
+    let b = bounds
+    guard cover, let img = image, img.size.width > 0, img.size.height > 0, b.width > 0, b.height > 0
+    else {
+      super.draw(dirtyRect)
+      return
+    }
+    // The one line that is the whole fit: `max` covers and crops, `min` would contain and
+    // letterbox.
+    let scale = max(b.width / img.size.width, b.height / img.size.height)
+    let size = NSSize(width: img.size.width * scale, height: img.size.height * scale)
+    let rect = NSRect(
+      x: b.midX - size.width / 2, y: b.midY - size.height / 2,
+      width: size.width, height: size.height
+    )
+    NSGraphicsContext.saveGraphicsState()
+    NSBezierPath(rect: b).setClip()
+    img.draw(in: rect)
+    NSGraphicsContext.restoreGraphicsState()
+  }
+}
+
 // MARK: - application lifecycle
 
 private var window: NSWindow?
@@ -185,7 +220,7 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     return retained(s)
 
   case 8:
-    let iv = NSImageView()
+    let iv = ImageView()
     iv.imageScaling = .scaleProportionallyUpOrDown
     return retained(iv)
 
@@ -247,14 +282,15 @@ public func sui_clear_image(_ h: UnsafeMutableRawPointer) {
 @_cdecl("sui_set_content_fit")
 public func sui_set_content_fit(_ h: UnsafeMutableRawPointer, _ fit: Int32) {
   guard let iv = view(h) as? NSImageView else { return }
+  // Cover is drawn by ImageView rather than expressed as an imageScaling, because AppKit
+  // has no scaling mode that crops. The others are the platform's own.
+  (iv as? ImageView)?.cover = (fit == 1)
   switch fit {
-  // NSImageView has no "cover" that crops, so Cover maps to the closest AppKit offers:
-  // fill the frame, accepting distortion rather than cropping. Worth revisiting if it
-  // shows; a layer-backed contentsGravity would crop properly.
-  case 1: iv.imageScaling = .scaleAxesIndependently
+  case 1: iv.imageScaling = .scaleNone
   case 2: iv.imageScaling = .scaleAxesIndependently
   default: iv.imageScaling = .scaleProportionallyUpOrDown
   }
+  iv.needsDisplay = true
 }
 
 @_cdecl("sui_destroy")
