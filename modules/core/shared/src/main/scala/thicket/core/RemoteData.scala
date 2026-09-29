@@ -11,9 +11,10 @@ import thicket.signals.Signal
   * you skip those branches; this does not.
   *
   * The name is Elm's, from `krisajenkins/remotedata`, where this ADT was popularised. It is
-  * deliberately *not* called `RemoteData`: `cats.effect.RemoteData` is a well-known typeclass for
-  * asynchronous effects, and this project plans a cats-effect bridge (docs/07 §7.13), so
-  * that name would collide with something every cats user already knows.
+  * deliberately *not* called `Async`, which is what it was first called here:
+  * `cats.effect.Async` is a well-known typeclass for asynchronous effects, and this project
+  * plans a cats-effect bridge (docs/07 §7.13), so that name would collide with something
+  * every cats user already knows.
   *
   * Nothing off the shelf has this shape. `cats.effect.kernel.Outcome[F, E, A]` is the
   * closest — three cases — but it describes a fibre that has *finished*
