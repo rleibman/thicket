@@ -29,7 +29,7 @@ survived four toolkits without changing.
 | Phase | Branch | Scope | Exit criterion (a number) | Status |
 |---|---|---|---|---|
 | **0** | — | Feasibility: nine spikes, four renderers, reconciliation, navigation, ZIO bridge | GO gate S1 ∧ S2 ∧ S3 | **done** 2026-09-19 |
-| **1** | `phase/1-shim-generator` | Generate the Swift shim, C header and Scala externs from one widget description | The generator reproduces both hand-written shims from a description of the nine current widgets, diffed byte-for-byte modulo formatting; lines of hand-maintained Swift per new widget **drops from ~22 (11.0 × 2 shims) to 0** | **open** |
+| **1** | `phase/1-shim-generator` | One ABI description; generate the C header, the Scala externs and Swift signature scaffolding; check all four hand-written copies agree | Hand-maintained **declarations** per function drop from **4 to 1**; the generated header and externs declare exactly what the checked-in ones do; the consistency check runs on a machine with no Xcode | **code done, not yet adopted** |
 | **2** | `phase/2-widget-breadth` | The widgets a real app cannot do without: `Toggle`, `Spacer`, `Slider`, `ProgressBar`, `ActivityIndicator`, `SecureField`, `IconButton`, `Link` | **17 of 32** widgets, each on GTK + Android with a test, and Apple generated from phase 1; demo app exercises every one | |
 | **3** | `phase/3-containers` | `Alert`, `Sheet`/`Modal`, `TabView`, `Menu`, `Toolbar` — the ones that are platform *chrome* rather than tree nodes | **22 of 32**; each rendered by the platform's own presentation API, not imitated in the tree; a screenshot per platform | |
 | **4** | `phase/4-native-nav` | Native navigation containers and per-subtree `Provide` theming — the two places the framework still asks an app to accept something non-native | Back gesture, transition animation and title bar are the platform's own on all four renderers; theme override scoped to a subtree with a test | |
@@ -40,22 +40,41 @@ survived four toolkits without changing.
 (Win32/WinUI), Yoga / `FrameBased` layout, the Scala.js dev canvas, the `scala-ui` CLI, the
 inspector, and the cats-effect bridge.
 
-## 13.3 Why phase 1 is first
+## 13.3 Why phase 1 is first — and what measuring it changed
 
-It is not the most visible work, and it is still first.
+It is not the most visible work, and it is still first. But the first thing phase 1 did was
+disprove its own original framing, which is worth recording rather than quietly editing.
 
-The Apple renderer measured **11.0 non-comment Swift lines per exported function**, against
-S3's 5.8 estimate — and there are two shims, kept in step by nothing but a C header and a
-self-test. `docs/09` projects the v1 catalogue at ~240 functions, i.e. roughly **5 200 lines
-of Swift maintained in duplicate**.
+**The plan was "generate the shim".** The number behind that was 11.0 non-comment Swift
+lines per exported function across two shims, projecting ~5 200 lines of duplicated Swift
+for the full catalogue. Measured properly, per shim:
 
-The catalogue is 9 of 32. Doing phase 2 before phase 1 means hand-writing the other 23
-widgets twice in Swift, and then doing it a third time when Windows arrives. Phase 1 is what
-makes every later phase affordable, which is exactly the criterion §13.1 uses to order them.
+| | AppKit | UIKit |
+|---|---|---|
+| Exported functions | 34 | 35 |
+| Signature lines — generatable | 80 | 82 |
+| Body lines — hand-written | 211 | 212 |
 
-It is also the phase that can be *built and tested on Linux*: the generator is ordinary
-Scala and its test is a golden-file diff against the shims the Mac already wrote. Only the
-final "does the generated Swift still compile" step needs a Mac.
+Of the 34 functions in both shims, **7** have byte-identical bodies, 13 differ only in a
+type or property name, and **14 are genuinely different code**. The bodies are real AppKit
+and UIKit logic: `NSImageView.imageScaling` is not `UIView.contentMode`,
+`placeholderString` is not `placeholder`, AppKit's coordinate system is flipped. **A
+generator that emitted bodies would be emitting guesses**, and the projected 5 200-line
+saving was never available.
+
+**What is available, and is worth more.** Every boundary function is declared *four* times
+— C header, two `@_cdecl` signatures, one Scala `extern`. At 34 functions that is **136
+declarations kept in step by hand, with nothing checking them**: Swift compiles against its
+own signature, Scala Native against its own `extern`, and the linker matches them **by name
+only**. An `Int32` against an `Int64` links cleanly and reads a garbage register at runtime,
+in a callback, on a phone.
+
+So phase 1's real deliverable is a described ABI plus the check that the four copies agree
+— and that check runs on a machine with no Xcode, which is exactly where the mistake gets
+made. Generation of the declaration layer falls out of the description for free.
+
+Phase 1 is still first: it is what stops the remaining 23 widgets multiplying 4 undetected
+declarations each, and the catalogue is only 9 of 32.
 
 ## 13.4 Open Apple issues
 

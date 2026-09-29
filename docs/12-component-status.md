@@ -4,7 +4,7 @@
 renderer lands — unlike `docs/01`–`docs/09`, which are frozen. The target is the v1
 catalogue in `docs/07` §7.10.
 
-**Last updated:** 2026-09-28.
+**Last updated:** 2026-09-28 (phase 1 in progress).
 
 ## 12.1 Scoreboard
 
@@ -60,6 +60,7 @@ faked with `Prop.Grow`, the second with a `Checkbox`.
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide` |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread` | done |
+| Apple ABI description + consistency check | `tools/shim-gen` | done — 34 functions described; the four hand-written declarations per function are checked to agree, on any machine |
 
 ## 12.4 Props
 
@@ -118,7 +119,7 @@ someone and watch. It implies five things, roughly in dependency order.
 
 | # | Work | Why it is on the critical path |
 |---|---|---|
-| 1 | **Shim generation** (Forgejo **#7**) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
+| 1 | **Shim generation** (Forgejo **#7**, phase 1 — *code done, not yet adopted*) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
 | 3 | **Apple parity** — virtualised rows, horizontal `Scroll`, `ContentFit.Cover` | `LazyColumn` silently mounting 10 000 rows on iOS is the worst kind of gap: it works in the demo and dies in an app. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |

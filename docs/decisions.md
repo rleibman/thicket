@@ -69,6 +69,21 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-28 — **The Apple shim's *bodies* are not generated; its *declarations* are.**
+  Phase 1 measured the two shims before building anything and disproved its own premise: 80
+  generatable signature lines against 211 hand-written body lines per shim, and of 34 shared
+  functions only 7 have byte-identical bodies while 14 are genuinely different AppKit/UIKit
+  code. The projected ~5 200-line saving from generating Swift was never available. What is
+  available is worth more: every boundary function is declared **four** times (C header, two
+  `@_cdecl`, one Scala `extern`) — 136 declarations at current size — and **nothing checks
+  them**, because the linker matches by name only, so an `Int32`/`Int64` mismatch links
+  cleanly and reads a garbage register at runtime. `tools/shim-gen` describes the ABI once,
+  generates the declaration layer, and checks all four copies agree; it is plain JVM and
+  runs where there is no Xcode. Two deliberate exceptions are encoded: `sui_set_root_view`
+  is Swift-only (iOS owns `@main`), and the Scala comparison runs at machine
+  representation, because Scala Native binds `sui_handle` and `const uint8_t *` to the same
+  `Ptr[Byte]`.
+
 - 2026-09-28 — **Work is phased: one phase, one branch (`phase/<n>-<slug>`), one PR**, with a
   measured exit criterion each. `docs/13-phases.md` holds the table. Phase 1 is the shim
   generator rather than widget breadth, because at 11.0 Swift lines per exported function

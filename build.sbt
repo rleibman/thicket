@@ -278,10 +278,32 @@ lazy val todoAndroid = project
     scalacOptions ++= Seq("-release", "17")
   )
 
+/** The shim generator and, more importantly, the ABI consistency check.
+  *
+  * Plain JVM, depends on nothing in the framework, and deliberately aggregated: the check
+  * it runs is the only thing that can catch a disagreement between the C header, the two
+  * Swift shims and the Scala externs, and that disagreement is a silent runtime fault
+  * rather than a compile error. It must run on every machine, including the ones with no
+  * Xcode.
+  */
+lazy val shimGen = project
+  .in(file("tools/shim-gen"))
+  .settings(commonSettings)
+  .settings(
+    name           := "scala-ui-shim-gen",
+    publish / skip := true,
+    libraryDependencies ++= munitJvm,
+    // The suite reads the checked-in shim artefacts, so it needs the repository root
+    // rather than the subproject's base directory.
+    Test / javaOptions += s"-Dscalaui.root=${(ThisBuild / baseDirectory).value}",
+    Test / fork := true
+  )
+
 lazy val root = project
   .in(file("."))
   .aggregate(signals.jvm, signals.js, signals.native,
              rendererApi.jvm, rendererApi.js, rendererApi.native,
              core.jvm, core.js, core.native,
-             effectZio.jvm, effectZio.native)
+             effectZio.jvm, effectZio.native,
+             shimGen)
   .settings(publish / skip := true, name := "scala-ui")
