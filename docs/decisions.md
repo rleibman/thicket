@@ -69,6 +69,29 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-29 — **A scroll view must pin its document view on the cross axis, on both Apple
+  toolkits** (Forgejo #4). The vertical `Scroll` had been left on AppKit's defaults with the
+  note that it laid out correctly without constraints. It did — until something inside it
+  asked the container for its width. A horizontal `Scroll` does exactly that, which closed a
+  width loop (`Column` asks its children, a child asks the `Column`) and Auto Layout resolves
+  a circular width as **zero**: the button row collapsed to 0px rather than clipping. So the
+  cross-axis pin is not an optimisation for the horizontal case, it is what keeps the
+  vertical one composable. Measured on macOS: viewport 206px against content 357px.
+- 2026-09-29 — **A renderer's self-test asserts the *axis*, not GTK's viewport-to-content
+  ratio.** GTK asserts `viewport * 4 < content`, which is a GTK constant rather than a
+  cross-toolkit invariant: `GtkScrolledWindow` reports a minimum near zero, `NSScrollView`
+  has no intrinsic size and is pinned to fill its parent, and `UIScrollView` reports its
+  laid-out frame — the three numbers are not comparable. The portable invariant is that a
+  horizontal scroller leaves its content's **width free**, so content ≠ viewport; a scroller
+  built on the wrong axis reports them equal to the pixel. Falsified on both platforms by
+  forcing the vertical kind code and confirming the check goes red. Also recorded: on every
+  simulator available here the phone is wider than the five buttons, so the *overflow* path
+  is exercised on macOS only and the iOS self-test says so out loud rather than passing
+  silently.
+- 2026-09-29 — **A horizontal `Scroll` is Apple kind code 15, not 9.** Phase 2 reserved
+  9-14 for the widgets it added (`docs/12` §12.2), and an axis is not worth renumbering six
+  pending widgets over. The collision is the predictable cost of the kind code being a bare
+  int agreed by comment across four files, which is the thing Forgejo #7 exists to fix.
 - 2026-09-29 — **Tests are zio-test, not munit, across every module.** User preference, and
   it paid for itself twice on the way in. (a) zio-test runs a suite's tests **in parallel by
   default**; munit does not. That broke the signal graph on the first run — `NullPointerException`
@@ -98,7 +121,6 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   reporting "cache 100%, 35 disk cache hits". The fix is to clear `~/.cache/sbt/v2` *and*
   `target/out/<platform>`; clearing either alone is not enough. Worth knowing before
   chasing a phantom compile error for twenty minutes.
-
 - 2026-09-29 — **A widget enters the catalogue only if every platform we render to has it.**
   `docs/07` §7.10 listed the v1 catalogue before any renderer existed; phase 2 checked each
   entry against four real toolkits for the first time and two failed. **`Radio`**: UIKit has

@@ -174,6 +174,16 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.drawsBackground = false
     return retained(s)
 
+  case 15:
+    // The same class as 6, scrolling the other way. Turning the *cross*-axis scroller off
+    // is what makes the scroller give its natural size there instead of reserving room for
+    // a bar it will never show — the same reason GTK sets its cross-axis policy to NEVER.
+    let s = NSScrollView()
+    s.hasHorizontalScroller = true
+    s.hasVerticalScroller = false
+    s.drawsBackground = false
+    return retained(s)
+
   case 8:
     let iv = NSImageView()
     iv.imageScaling = .scaleProportionallyUpOrDown
@@ -391,6 +401,34 @@ public func sui_insert_after(
     // A scroll view holds exactly one child, so "insert" is "set" — the same shape as
     // gtk_scrolled_window_set_child.
     scroll.documentView = c
+
+    // The document view is pinned on the *cross* axis and left free on the scrolling one.
+    // That asymmetry is the whole of the axis here.
+    //
+    // Pinning the cross axis is not optional even for the vertical case, which used to be
+    // left on AppKit's defaults: an unpinned document view takes its width from its own
+    // content, so a child that in turn wants the container's width — a horizontal scroller
+    // is exactly that — closes a loop, and Auto Layout resolves a circular width as zero.
+    // That is what collapsed the button row to 0px rather than clipping it.
+    c.translatesAutoresizingMaskIntoConstraints = false
+    if isHorizontalScroller(scroll) {
+      NSLayoutConstraint.activate([
+        c.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+        c.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+        c.bottomAnchor.constraint(equalTo: scroll.contentView.bottomAnchor)
+      ])
+      // An NSScrollView has no intrinsic size in either direction. The height is the
+      // content's, fixed here so the scroller hugs the row instead of stretching; the width
+      // is the parent's, pinned below where the parent is known.
+      scroll.heightAnchor.constraint(equalToConstant: c.fittingSize.height).isActive = true
+    } else {
+      NSLayoutConstraint.activate([
+        c.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+        c.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+        c.topAnchor.constraint(equalTo: scroll.contentView.topAnchor)
+      ])
+    }
+    scroll.layoutSubtreeIfNeeded()
     return
   }
 
@@ -419,6 +457,20 @@ public func sui_insert_after(
     index = 0
   }
   stack.insertArrangedSubview(c, at: min(index, stack.arrangedSubviews.count))
+
+  // A vertical NSStackView aligned .leading gives each child its own natural width, which
+  // for a horizontal scroller is zero. Filling the stack is what gives it a viewport to
+  // clip against, and is what turns the overflow into something scrollable.
+  if let sv = c as? NSScrollView, isHorizontalScroller(sv), stack.orientation == .vertical {
+    sv.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    stack.layoutSubtreeIfNeeded()
+  }
+}
+
+/// Kind 9 rather than kind 6. The axis is not stored anywhere on the Scala side of the
+/// boundary, so it is read back off the scroller's own configuration.
+private func isHorizontalScroller(_ s: NSScrollView) -> Bool {
+  s.hasHorizontalScroller && !s.hasVerticalScroller
 }
 
 @_cdecl("sui_remove_child")

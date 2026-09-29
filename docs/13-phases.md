@@ -82,7 +82,7 @@ Tracked in Forgejo, done on the macOS laptop, referenced by the phase that needs
 
 | Issue | What | Blocks |
 |---|---|---|
-| [#4](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/4) | Honour `Prop.Axis` — horizontal `Scroll` | phase 2 (Apple parity) |
+| ~~[#4](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/4)~~ | ~~Honour `Prop.Axis` — horizontal `Scroll`~~ — **done**, both shims | phase 2 (Apple parity) |
 | [#5](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/5) | A virtualising container, so `LazyColumn` stops mounting every row | phase 6 (a real app has real lists) |
 | [#6](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/6) | `ContentFit.Cover` distorts instead of cropping on AppKit | phase 2 |
 | [#7](https://forgejo.leibmanland.com/rleibman/scala-ui/issues/7) | Generate shim, header and bindings from one description | **phase 1** |

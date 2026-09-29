@@ -21,6 +21,13 @@ final class AppleRenderer extends Renderer {
   private val editIds = mutable.Map.empty[Handle, Long]
   private val boolIds = mutable.Map.empty[Handle, Long]
 
+  /** The scrollers created horizontally. The renderer is the only thing that knows: the axis
+    * is folded into the kind code at `create` and nothing on the Swift side is asked about
+    * it afterwards. Exposed for [[isHorizontalScroll]] so a test can tell the two scrollers
+    * in a screen apart without a tree-order guess.
+    */
+  private val horizontalScrolls = mutable.Set.empty[Handle]
+
   def platform: String = "appkit"
 
   /** Every container in the v0 vocabulary is an `NSStackView` or an `NSScrollView`, both of which lay out their own
@@ -28,7 +35,18 @@ final class AppleRenderer extends Renderer {
     */
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
 
-  private def kindCode(kind: WidgetKind): CInt =
+  /** The axis has to be folded into the kind code because `create` reaches Swift as a single
+    * int and the axis is read at create, not at update. 15 is a horizontal `Scroll`; 6 stays
+    * the vertical one. `NSScrollView` and `UIScrollView` each do both directions, so unlike
+    * Android this is one class configured two ways rather than two classes.
+    *
+    * 15 rather than 9 because phase 2 reserved 9-14 for the widgets it added; an axis is not
+    * worth renumbering six pending widgets over.
+    */
+  private def kindCode(
+    kind:  WidgetKind,
+    props: Seq[Prop]
+  ): CInt =
     kind match {
       case WidgetKind.Column    => 0
       case WidgetKind.Row       => 1
@@ -36,7 +54,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.Button    => 3
       case WidgetKind.TextField => 4
       case WidgetKind.Checkbox  => 5
-      case WidgetKind.Scroll    => 6
+      case WidgetKind.Scroll    => if isHorizontal(props) then 15 else 6
       case WidgetKind.Divider   => 7
       case WidgetKind.Image     => 8
 
@@ -59,12 +77,19 @@ final class AppleRenderer extends Renderer {
         "See Forgejo #9."
     )
 
+  private def isHorizontal(props: Seq[Prop]): Boolean =
+    props.exists {
+      case Prop.Axis(Orientation.Horizontal) => true
+      case _                                 => false
+    }
+
   def create(
     kind:  WidgetKind,
     props: Seq[Prop]
   ): Handle = {
-    val h = Shim.sui_create(kindCode(kind))
+    val h = Shim.sui_create(kindCode(kind, props))
     kinds(h) = kind
+    if kind == WidgetKind.Scroll && isHorizontal(props) then horizontalScrolls += h
     update(h, props)
     h
   }
@@ -195,10 +220,9 @@ final class AppleRenderer extends Renderer {
             Shim.sui_on_checked_change(handle, Handles.boolTrampoline, id)
         }
 
-      // Not yet honoured: both shims create a vertical scroller and the axis would have to
-      // travel to Swift as a new kind code. Ignored rather than faked — a scroller that
-      // says it is horizontal and is not would clip exactly the content it promised to
-      // reach. Tracked as the "horizontal Scroll on AppKit/UIKit" issue.
+      // Create-only: the contract says a renderer may ignore a later axis change, and
+      // re-policying a live scroller mid-scroll is worse than ignoring it. Honoured at
+      // `create` via `kindCode`, exactly as GTK and Android do it.
       case Prop.Axis(_) => ()
 
       // Unreachable while ProgressBar cannot be created at all (see kindCode), and present
@@ -231,10 +255,14 @@ final class AppleRenderer extends Renderer {
     editIds.remove(handle).foreach(Handles.release)
     boolIds.remove(handle).foreach(Handles.release)
     kinds.remove(handle)
+    horizontalScrolls.remove(handle)
     // Detaching is part of destroying; the shim removes from the superview before
     // releasing, and the reconciler destroys depth-first.
     Shim.sui_destroy(handle)
   }
+
+  /** Whether a handle is a `Scroll` that was created with [[Orientation.Horizontal]]. */
+  def isHorizontalScroll(handle: Handle): Boolean = horizontalScrolls.contains(handle)
 
   def measure(
     handle:      Handle,
