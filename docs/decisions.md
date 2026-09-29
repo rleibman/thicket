@@ -69,6 +69,19 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-29 — **Coverage is measured over the JVM-tested modules only, and the figure is
+  reported as such.** 91.10% statement / 87.64% branch via sbt-scoverage 2.4.4, which does
+  publish for sbt 2 (`_sbt2_3`); Scala 3 needs no compiler plugin because coverage is built
+  into the compiler. A ratchet minimum sits just under the measured value. The three
+  renderers are deliberately absent: they are Scala Native and ART code exercised by
+  self-tests against the real toolkit, which scoverage cannot instrument, so their absence
+  is not a testing gap and the number must never be quoted as "the project's coverage".
+  Two traps are encoded in `bin/coverage.sh` rather than left to be rediscovered: sbt 2's
+  disk cache restores instrumented classes without re-running the compiler, so the
+  scoverage *metadata* is missing and the module silently drops out of the aggregate; and a
+  report with no metadata reads **100% of 0 statements** and passes any threshold, so the
+  script fails when the statement count is zero. See `docs/12` §12.9.
+
 - 2026-09-29 — **The project is `Thicket`, not `scala-ui`.** `scala-ui` was provisional and
   became a liability ahead of going public: `<language>-<thing>` reads as *official*, so
   `dev.scalaui` would invite the assumption of Scala Center or EPFL endorsement while

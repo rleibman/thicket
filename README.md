@@ -226,6 +226,16 @@ THICKET_SELFTEST=1 ./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk   
 adb shell am start -n dev.thicket.todo/example.android.MainActivity --ez selftest true
 ```
 
+Coverage over the JVM-tested modules:
+
+```bash
+./bin/coverage.sh          # 91.10% statement, 87.64% branch
+```
+
+It clears the sbt disk cache first, and that is not optional — see `docs/12` §12.9. The
+figure covers the effect-free core; the three renderers are exercised by self-tests that
+drive the real toolkit, which no coverage tool instruments.
+
 Three things that will bite you:
 
 - **`sbt test` is incremental on sbt 2** and will run *zero* tests and report success.
