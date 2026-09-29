@@ -54,6 +54,12 @@ object Abi {
       * avoids the `Long`⇄`Ptr` laundering that S7 found throws at runtime.
       */
     case VoidCb, TextCb, BoolCb
+
+    /** The row-binding callback, and the only one that returns a value. A returned
+      * *pointer* is a single register; what S4 and S3 found silently broken was a returned
+      * small struct.
+      */
+    case RowCb
   }
 
   /** What a type is *at the ABI*, as opposed to what it is called.
@@ -78,7 +84,7 @@ object Abi {
       case CType.F64  => Repr.F64
 
       case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle => Repr.Pointer
-      case CType.VoidCb | CType.TextCb | CType.BoolCb            => Repr.FnPointer
+      case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb => Repr.FnPointer
     }
   }
 
@@ -181,6 +187,33 @@ object Abi {
     Fn("sui_run_on_main", Void, List(p("cb", VoidCb), p("ctx", I64)))
   )
 
+  /** The one place control is inverted: everywhere else Scala builds a tree and the shim
+    * obeys, but a table asks for the row it is about to show and recycles the ones it is
+    * not. Mirrors `GtkSignalListItemFactory`'s bind callback and `BaseAdapter.getView`.
+    */
+  val virtualRows: List[Fn] = List(
+    Fn(
+      "sui_create_table",
+      Handle,
+      List(p("cb", RowCb), p("ctx", I64)),
+      doc = "An NSTableView / UITableView inside its scroller. `cb` is called for each row" + "\n" +
+        "   that becomes visible, with a recycled view or NULL."
+    ),
+    Fn(
+      "sui_table_reload",
+      Void,
+      List(p("h", Handle), p("count", I32)),
+      doc = "The new row count, from RowSource.onInvalidate."
+    ),
+    Fn(
+      "sui_table_materialised",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many row views the table has actually created. The measurement that says" + "\n" +
+        "   virtualisation is working, so it is part of the ABI rather than the self-test."
+    )
+  )
+
   val inspection: List[Fn] = List(
     Fn("sui_child_count", I32, List(p("h", Handle))),
     Fn("sui_child_at", Handle, List(p("h", Handle), p("index", I32))),
@@ -204,6 +237,7 @@ object Abi {
     Group("tree", tree),
     Group("layout", layout),
     Group("threading", threading),
+    Group("virtual rows", virtualRows),
     Group("inspection, for the self-test", inspection)
   )
 

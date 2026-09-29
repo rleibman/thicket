@@ -16,6 +16,7 @@ object Handles {
   private val taps = new ConcurrentHashMap[java.lang.Long, () => Unit]()
   private val texts = new ConcurrentHashMap[java.lang.Long, String => Unit]()
   private val bools = new ConcurrentHashMap[java.lang.Long, Boolean => Unit]()
+  private val rows = new ConcurrentHashMap[java.lang.Long, (Int, Option[Shim.Handle]) => Shim.Handle]()
   private val nextId = new AtomicLong(1L)
 
   def register(f: () => Unit): Long = {
@@ -33,6 +34,12 @@ object Handles {
   def registerBool(f: Boolean => Unit): Long = {
     val id = nextId.getAndIncrement()
     bools.put(id, f)
+    id
+  }
+
+  def registerRow(f: (Int, Option[Shim.Handle]) => Shim.Handle): Long = {
+    val id = nextId.getAndIncrement()
+    rows.put(id, f)
     id
   }
 
@@ -56,6 +63,7 @@ object Handles {
     val _ = taps.remove(id)
     val _ = texts.remove(id)
     val _ = bools.remove(id)
+    val _ = rows.remove(id)
   }
 
   /** One-shot, for `runOnUiThread`: at frame rate a table that never sheds entries is a leak with a clock on it (S8).
@@ -72,7 +80,7 @@ object Handles {
     id
   }
 
-  def count: Int = taps.size + texts.size + bools.size
+  def count: Int = taps.size + texts.size + bools.size + rows.size
 
   // One static trampoline per callback shape: a CFuncPtr cannot close over state, so the
   // id is the only thing that distinguishes one handler from another (S4).
@@ -93,6 +101,24 @@ object Handles {
         GcState.guarded {
           val f = texts.get(id)
           if f != null then f(if value == null then "" else fromCString(value))
+        }
+    )
+
+  /** The only trampoline that returns a value, because a table asks for a row rather than
+    * being told about one. Returning `null` means "no view", which both shims treat as
+    * "leave the row empty" rather than crashing.
+    */
+  val rowTrampoline: Shim.RowCb =
+    CFuncPtr3.fromScalaFunction(
+      (
+        id:       Long,
+        index:    CInt,
+        recycled: Shim.Handle
+      ) =>
+        GcState.guarded {
+          val f = rows.get(id)
+          if f == null then null.asInstanceOf[Shim.Handle]
+          else f(index, if recycled == null then None else Some(recycled))
         }
     )
 

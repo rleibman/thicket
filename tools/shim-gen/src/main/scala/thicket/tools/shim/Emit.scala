@@ -32,6 +32,7 @@ object Emit {
     case CType.VoidCb => "sui_void_cb"
     case CType.TextCb => "sui_text_cb"
     case CType.BoolCb => "sui_bool_cb"
+    case CType.RowCb  => "sui_row_cb"
   }
 
   private def cParam(p: Param): String = {
@@ -102,6 +103,7 @@ object Emit {
     case CType.VoidCb => "VoidCb"
     case CType.TextCb => "TextCb"
     case CType.BoolCb => "BoolCb"
+    case CType.RowCb  => "RowCb"
   }
 
   def scalaExterns(fns: List[Fn] = Abi.all): String = {
@@ -124,6 +126,7 @@ object Shim {
   type VoidCb = CFuncPtr1[Long, Unit]
   type TextCb = CFuncPtr2[Long, CString, Unit]
   type BoolCb = CFuncPtr2[Long, CInt, Unit]
+  type RowCb  = CFuncPtr3[Long, CInt, Handle, Handle]
 
 """)
     fns.foreach { fn =>
@@ -147,6 +150,7 @@ object Shim {
     case CType.VoidCb => "@escaping sui_void_cb"
     case CType.TextCb => "@escaping sui_text_cb"
     case CType.BoolCb => "@escaping sui_bool_cb"
+    case CType.RowCb  => "@escaping sui_row_cb"
     case CType.Void   => "Void"
   }
 

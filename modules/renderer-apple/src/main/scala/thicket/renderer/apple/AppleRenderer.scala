@@ -264,6 +264,31 @@ final class AppleRenderer extends Renderer {
   /** Whether a handle is a `Scroll` that was created with [[Orientation.Horizontal]]. */
   def isHorizontalScroll(handle: Handle): Boolean = horizontalScrolls.contains(handle)
 
+  /** `NSTableView` and `UITableView` both recycle, so the contract's `RowSource` is a direct
+    * fit and needed no change — the third toolkit in a row for which that is true, after
+    * `GtkListView` and Android's `ListView`.
+    */
+  override def supportsVirtualRows: Boolean = true
+
+  override def createVirtualList(source: RowSource[Handle]): Handle = {
+    // The id, not the closure, is what crosses to Swift: a C function pointer cannot close
+    // over state (S4), so one static trampoline serves every table.
+    val id = Handles.registerRow((index, recycled) =>
+      if index >= 0 && index < source.count then source.bind(index, recycled)
+      else null.asInstanceOf[Handle]
+    )
+    val table = Shim.sui_create_table(Handles.rowTrampoline, id)
+    kinds(table) = WidgetKind.Scroll
+    Shim.sui_table_reload(table, source.count)
+    source.onInvalidate(() => Shim.sui_table_reload(table, source.count))
+    table
+  }
+
+  /** How many row views the table has actually built. The number that says virtualisation is
+    * working: without it a 10 000-row list silently materialises 10 000 rows.
+    */
+  def materialisedRows(handle: Handle): Int = Shim.sui_table_materialised(handle)
+
   def measure(
     handle:      Handle,
     constraints: Constraints

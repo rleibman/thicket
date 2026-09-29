@@ -24,7 +24,8 @@ object TodoIos {
     // `sui_set_root_view`, and the renderer reads it back through `sui_root_view()`, the
     // same call the AppKit shim answers. Width and height are ignored on iOS — the window
     // is the screen — but are passed anyway so the two hosts differ in nothing but shape.
-    AppleApp.run("Todo", 480, 460)(AppleSelfTest.build())
+    if sys.env.contains("THICKET_LAZYTEST") then AppleApp.run("10 000 rows", 480, 640)(LazyProbe.build())
+    else AppleApp.run("Todo", 480, 460)(AppleSelfTest.build())
   }
 
 }

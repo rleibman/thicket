@@ -509,6 +509,105 @@ private func isHorizontalScroller(_ s: NSScrollView) -> Bool {
   s.hasHorizontalScroller && !s.hasVerticalScroller
 }
 
+// MARK: - virtual rows
+
+/// The one place control is inverted: everywhere else Scala builds a tree and this obeys,
+/// but a table asks for the row it is about to show and recycles the ones it is not.
+/// `GtkSignalListItemFactory`'s bind callback and `BaseAdapter.getView` have the same shape.
+///
+/// `makeView(withIdentifier:owner:)` is what supplies the recycled view. Handing it back to
+/// Scala — rather than always building a fresh one — is the whole point: the framework
+/// re-binds that row's signal, so scrolling becomes a few property writes instead of a
+/// subtree.
+private final class TableSource: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+  let cb: sui_row_cb
+  let ctx: Int64
+  var count: Int = 0
+
+  /// Every row view handed out, so `sui_table_materialised` can answer with a number rather
+  /// than an impression. Identity, not equality: two rows are different views even when
+  /// they show the same text.
+  var materialised = Set<ObjectIdentifier>()
+
+  init(cb: @escaping sui_row_cb, ctx: Int64) {
+    self.cb = cb
+    self.ctx = ctx
+  }
+
+  func numberOfRows(in tableView: NSTableView) -> Int { count }
+
+  func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
+    guard row >= 0, row < count else { return nil }
+    let recycled = tableView.makeView(withIdentifier: rowId, owner: nil)
+    let recycledPtr = recycled.map { Unmanaged.passUnretained($0).toOpaque() }
+    guard let produced = cb(ctx, Int32(row), recycledPtr) else { return nil }
+    let view = Unmanaged<NSView>.fromOpaque(produced).takeUnretainedValue()
+    // The identifier is what makes the view eligible for recycling next time; without it
+    // `makeView` always returns nil and the table quietly builds every row.
+    view.identifier = rowId
+    materialised.insert(ObjectIdentifier(view))
+    return view
+  }
+}
+
+private let rowId = NSUserInterfaceItemIdentifier("sui_row")
+private var tableSources: [ObjectIdentifier: TableSource] = [:]
+
+@_cdecl("sui_create_table")
+public func sui_create_table(_ cb: @escaping sui_row_cb, _ ctx: Int64) -> UnsafeMutableRawPointer {
+  let table = NSTableView()
+  let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("sui_column"))
+  column.resizingMask = .autoresizingMask
+  table.addTableColumn(column)
+  table.headerView = nil
+  table.style = .plain
+  table.rowSizeStyle = .custom
+  table.usesAutomaticRowHeights = true
+
+  let source = TableSource(cb: cb, ctx: ctx)
+  table.dataSource = source
+  table.delegate = source
+
+  // A table virtualises only inside something that scrolls; the scroller is the handle
+  // Scala holds, exactly as GTK returns its `GtkScrolledWindow`.
+  let scroll = NSScrollView()
+  scroll.hasVerticalScroller = true
+  scroll.drawsBackground = false
+  scroll.documentView = table
+  table.translatesAutoresizingMaskIntoConstraints = false
+  NSLayoutConstraint.activate([
+    table.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+    table.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+    table.topAnchor.constraint(equalTo: scroll.contentView.topAnchor)
+  ])
+
+  // The source is owned here: the delegate and dataSource references are weak, so without
+  // this the whole table stops binding as soon as this function returns.
+  tableSources[ObjectIdentifier(scroll)] = source
+  return retained(scroll)
+}
+
+private func table(of h: UnsafeMutableRawPointer) -> (NSTableView, TableSource)? {
+  guard let scroll = view(h) as? NSScrollView,
+        let t = scroll.documentView as? NSTableView,
+        let s = tableSources[ObjectIdentifier(scroll)]
+  else { return nil }
+  return (t, s)
+}
+
+@_cdecl("sui_table_reload")
+public func sui_table_reload(_ h: UnsafeMutableRawPointer, _ count: Int32) {
+  guard let (t, s) = table(of: h) else { return }
+  s.count = Int(count)
+  t.reloadData()
+}
+
+@_cdecl("sui_table_materialised")
+public func sui_table_materialised(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let (_, s) = table(of: h) else { return 0 }
+  return Int32(s.materialised.count)
+}
+
 @_cdecl("sui_remove_child")
 public func sui_remove_child(_ parent: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer) {
   let p = view(parent)

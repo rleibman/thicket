@@ -19,4 +19,13 @@ typedef void (*sui_void_cb)(int64_t ctx);
 typedef void (*sui_text_cb)(int64_t ctx, const char *value);
 typedef void (*sui_bool_cb)(int64_t ctx, int32_t value);
 
+/* Asks Scala for the view of row `index`, returning it. `recycled` is a view the table is
+   no longer showing, or NULL; handing it back is what makes scrolling cheap.
+
+   This is the only callback that returns a value. A pointer is a single register, which is
+   not the case S4 and S3 found broken — that was a small *struct* returned by value, in the
+   wrong registers and silently. Verified here rather than assumed: see the round-trip check
+   in the renderer's REPORT. */
+typedef sui_handle (*sui_row_cb)(int64_t ctx, int32_t index, sui_handle recycled);
+
 #endif
