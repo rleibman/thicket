@@ -1,8 +1,8 @@
 package example
 
-import scalaui.core.Element
-import scalaui.core.dsl.*
-import scalaui.signals.Var
+import thicket.core.Element
+import thicket.core.dsl.*
+import thicket.signals.Var
 
 /** The todo app's UI, with no reference to any platform.
   *

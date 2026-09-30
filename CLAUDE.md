@@ -1,4 +1,4 @@
-# scala-ui — instructions for agents working in this repository
+# Thicket — instructions for agents working in this repository
 
 This repository is **phase 0 of a plan**: a Scala 3 UI framework for Android, iOS,
 macOS, Windows and Linux. Nothing is built yet. Your job is almost certainly **one

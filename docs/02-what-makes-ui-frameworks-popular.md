@@ -37,7 +37,7 @@ What the winners share:
    A UI framework without it feels a generation old regardless of its merits.
 3. **A single command to scaffold, run and ship.** `flutter create/run/build`,
    `npx create-expo-app`, Xcode/Android Studio integration. The Scala equivalent
-   must be `sbt`/`mill`/`scala-cli` plus, ideally, a `scala-ui` CLI.
+   must be `sbt`/`mill`/`scala-cli` plus, ideally, a `thicket` CLI.
 4. **Batteries in the box**: navigation, lists, forms, theming, images, storage,
    networking, permissions. Flutter's "pub.dev has a package for that" and RN's
    Expo SDK matter as much as the core.

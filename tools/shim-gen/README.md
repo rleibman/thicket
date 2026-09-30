@@ -13,7 +13,7 @@ Every function crossing the Scala ⇄ Apple boundary is declared **four** times:
 
 | | |
 |---|---|
-| `shim/include/scalaui_apple.h` | what sn-bindgen reads |
+| `shim/include/thicket_apple.h` | what sn-bindgen reads |
 | `shim/Sources/Shim+AppKit.swift` | the `@_cdecl` signature |
 | `shim/Sources/Shim+UIKit.swift` | the `@_cdecl` signature again |
 | `src/main/scala/.../Shim.scala` | the `@extern` binding |
@@ -52,7 +52,7 @@ inventing something.
 ```bash
 sbt "shimGen/testOnly *"          # the consistency and round-trip checks — run this
 sbt shimGen/run                   # dry run: what would be written
-sbt "shimGen/run /tmp/out"        # write scalaui_apple.h, Shim.scala, Shim+New.swift
+sbt "shimGen/run /tmp/out"        # write thicket_apple.h, Shim.scala, Shim+New.swift
 ```
 
 ## The files

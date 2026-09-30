@@ -47,7 +47,7 @@ private func writeTestImage() -> String {
     // Centred, so it survives Cover's crop: at x2 the visible window is the middle 200px.
     NSBezierPath(ovalIn: NSRect(x: 175, y: 25, width: 50, height: 50)).fill()
   }
-  let path = NSTemporaryDirectory() + "scalaui-fit-source.png"
+  let path = NSTemporaryDirectory() + "thicket-fit-source.png"
   try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
   return path
 }

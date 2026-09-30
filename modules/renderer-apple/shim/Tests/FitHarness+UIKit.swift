@@ -25,7 +25,7 @@ private func writeTestImage() -> String {
     // Centred, so it survives Cover's crop.
     ctx.fill(CGRect(x: 175, y: 25, width: 50, height: 50))
   }
-  let path = NSTemporaryDirectory() + "scalaui-fit-source.png"
+  let path = NSTemporaryDirectory() + "thicket-fit-source.png"
   try! img.pngData()!.write(to: URL(fileURLWithPath: path))
   return path
 }

@@ -4,7 +4,7 @@
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleExecutable</key><string>TodoIos</string>
-  <key>CFBundleIdentifier</key><string>dev.scalaui.todoios</string>
+  <key>CFBundleIdentifier</key><string>dev.thicket.todoios</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>TodoIos</string>
   <key>CFBundlePackageType</key><string>APPL</string>

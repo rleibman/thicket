@@ -1,7 +1,7 @@
 // =============================================================================
 //  MOCKUP — this does not compile and is not on the build path.
 //
-//  This is what an app should look like when scala-ui is finished. It is a
+//  This is what an app should look like when Thicket is finished. It is a
 //  mobile client for meal-o-rama, sharing its domain types with the ZIO/Caliban
 //  server. Read it as a target to design towards, not a promise.
 //
@@ -9,8 +9,8 @@
 // =============================================================================
 package mealorama.client
 
-import scalaui.*
-import scalaui.zio.given
+import thicket.*
+import thicket.zio.given
 import zio.*
 
 // The domain comes from the *same module the server uses*. No DTOs, no codegen,
@@ -39,7 +39,7 @@ enum Route derives Routable {
 // Add a case to Route and this match fails to compile. There is no router
 // registry to forget to update, and no runtime "unknown route" branch.
 
-object MealPlanner extends ScalaUiApp[AppEnv] {
+object MealPlanner extends ThicketApp[AppEnv] {
 
   val environment: ZLayer[Any, Nothing, AppEnv] = AppLayer.live
   val home: Route                               = Route.Plan(Week.current)

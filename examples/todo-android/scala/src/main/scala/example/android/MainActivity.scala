@@ -6,9 +6,9 @@ import android.view.{MenuItem, View, WindowInsets}
 import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
 import scala.annotation.nowarn
 import example.TodoApp
-import scalaui.core.{ColorRole, Reconciler, Rgb, Theme}
-import scalaui.renderer.android.AndroidRenderer
-import scalaui.signals.{Owner, Signal, ThreadGuard}
+import thicket.core.{ColorRole, Reconciler, Rgb, Theme}
+import thicket.renderer.android.AndroidRenderer
+import thicket.signals.{Owner, Signal, ThreadGuard}
 
 /** The Android host for [[TodoApp]] — the same app the GTK host mounts.
   *
@@ -115,5 +115,5 @@ class MainActivity extends Activity {
     super.onDestroy()
   }
 
-  private val StackKey = "scalaui.backstack"
+  private val StackKey = "thicket.backstack"
 }

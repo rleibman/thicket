@@ -1,23 +1,23 @@
 package example
 
-import scalaui.core.{ColorRole, Rgb, Theme}
-import scalaui.renderer.gtk.{GtkApp, GtkInspect}
+import thicket.core.{ColorRole, Rgb, Theme}
+import thicket.renderer.gtk.{GtkApp, GtkInspect}
 
 /** The GTK host for [[TodoApp]] — which knows nothing about GTK.
   *
-  * With `SCALAUI_SELFTEST=1` it drives the app and reads the result back out of GTK,
+  * With `THICKET_SELFTEST=1` it drives the app and reads the result back out of GTK,
   * including navigation: push, pop, and the window title following the top screen.
   */
 object Todo {
 
   private val model = TodoApp.Model()
-  private var app: scalaui.core.NavHost[TodoApp.Route] = null
+  private var app: thicket.core.NavHost[TodoApp.Route] = null
 
   def main(args: Array[String]): Unit = {
     // Same single-role branding as the Android host; everything else stays GTK's.
     Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2E, 0x6F, 0x40)))
-    val _ = GtkApp.run("dev.scalaui.todo", 460, 440) {
-      if sys.env.contains("SCALAUI_SELFTEST") then GtkApp.postToUi(() => selfTest())
+    val _ = GtkApp.run("dev.thicket.todo", 460, 440) {
+      if sys.env.contains("THICKET_SELFTEST") then GtkApp.postToUi(() => selfTest())
       app = TodoApp(model)
       app
     }

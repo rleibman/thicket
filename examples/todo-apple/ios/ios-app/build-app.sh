@@ -14,12 +14,12 @@
 set -euo pipefail
 
 DEVICE="${1:-iPhone 17}"
-BUNDLE_ID="dev.scalaui.todoios"
+BUNDLE_ID="dev.thicket.todoios"
 cd "$(dirname "$0")"
 
 REPO=$(cd ../../../.. && pwd)
 A="$REPO/target/out/native0.5/scala-3.9.0/todo-ios/libtodo-ios.a"
-SHIM="$REPO/modules/renderer-apple/shim/build-ios/libscalauiapple.a"
+SHIM="$REPO/modules/renderer-apple/shim/build-ios/libthicketapple.a"
 
 [ -f "$SHIM" ] || { echo "Missing $SHIM — run modules/renderer-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
 [ -f "$A" ]    || { echo "Missing $A — run 'sbt todoIos/nativeLink'" >&2; exit 1; }
@@ -38,7 +38,7 @@ swiftc \
   -target arm64-apple-ios17.0-simulator \
   -sdk "$SDK" \
   -parse-as-library \
-  -import-objc-header Sources/ScalaUI-Bridging-Header.h \
+  -import-objc-header Sources/Thicket-Bridging-Header.h \
   -Xcc -I"$REPO/modules/renderer-apple/shim/include" \
   Sources/Host.swift \
   "$SHIM" "$A" \
@@ -55,13 +55,13 @@ xcrun simctl bootstatus "$DEVICE" -b >/dev/null 2>&1 || true
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
 xcrun simctl install "$DEVICE" "$APP"
 # SIMCTL_CHILD_ passes an environment variable through to the app, which is how the
-# self-test is switched on: the same SCALAUI_SELFTEST the macOS example reads.
+# self-test is switched on: the same THICKET_SELFTEST the macOS example reads.
 #
 # --console-pty, backgrounded: a simulator app's stdout does not reach os_log, so
 # `log show` cannot see println output — only a pty can. It never returns on its own, so
 # it is run detached, given time to finish, and then stopped.
 LOG=build/run.log
-SIMCTL_CHILD_SCALAUI_SELFTEST=1 xcrun simctl launch --console-pty "$DEVICE" "$BUNDLE_ID" >"$LOG" 2>&1 &
+SIMCTL_CHILD_THICKET_SELFTEST=1 xcrun simctl launch --console-pty "$DEVICE" "$BUNDLE_ID" >"$LOG" 2>&1 &
 LAUNCHER=$!
 for _ in $(seq 1 30); do
   grep -q "ALL CHECKS PASSED\|CHECK(S) FAILED" "$LOG" 2>/dev/null && break

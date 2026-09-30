@@ -1,7 +1,7 @@
 package example
 
-import scalaui.renderer.apple.{AppleApp, AppleInspect, AppleRenderer, Shim}
-import scalaui.renderer.Constraints
+import thicket.renderer.apple.{AppleApp, AppleInspect, AppleRenderer, Shim}
+import thicket.renderer.Constraints
 
 /** The part of the Apple example that is the same on both platforms — which is all of it
   * except the entry point.
@@ -10,18 +10,18 @@ import scalaui.renderer.Constraints
   * which is the single renderer both hosts share. `TodoMac.main` and `TodoIos.start`
   * differ only in how the process gets here.
   *
-  * With `SCALAUI_SELFTEST=1` it drives the app and reads the result back out of the
+  * With `THICKET_SELFTEST=1` it drives the app and reads the result back out of the
   * platform, including navigation: push, pop, and the window title following the top
   * screen.
   */
 object AppleSelfTest {
 
   val model = TodoApp.Model()
-  private var app: scalaui.core.NavHost[TodoApp.Route] = null
+  private var app: thicket.core.NavHost[TodoApp.Route] = null
 
   /** The UI, plus the self-test if it was asked for. Both hosts call exactly this. */
-  def build(): scalaui.core.NavHost[TodoApp.Route] = {
-    if sys.env.contains("SCALAUI_SELFTEST") then AppleApp.postToUi(() => selfTest())
+  def build(): thicket.core.NavHost[TodoApp.Route] = {
+    if sys.env.contains("THICKET_SELFTEST") then AppleApp.postToUi(() => selfTest())
     app = TodoApp(model)
     app
   }

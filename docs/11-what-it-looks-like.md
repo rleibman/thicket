@@ -55,7 +55,7 @@ intersection of all platforms and bolt on escape hatches.
 
 ## 11.3 What this buys that the incumbents do not
 
-| | Flutter | Compose MP | React Native | scala-ui (intended) |
+| | Flutter | Compose MP | React Native | Thicket (intended) |
 |---|---|---|---|---|
 | Unhandled loading state | runtime blank | runtime blank | runtime blank | **compile error** |
 | Navigate without args | runtime | runtime | runtime | **compile error** |
@@ -160,7 +160,7 @@ against Android first, it would have specified an index and GTK would have had t
 of this section claimed the framework added ~90 ms and had pushed the app over N-01. That was
 wrong: it compared figures from two different emulator sessions. Measured properly — all three
 APKs installed together, launched round-robin, 10 rounds each — the bare Kotlin activity, the
-bare Scala activity and the full scala-ui todo app are **418 / 386 / 388 ms**, i.e.
+bare Scala activity and the full Thicket todo app are **418 / 386 / 388 ms**, i.e.
 indistinguishable, with Kotlin nominally slowest.
 
 Instrumenting `onCreate` shows where the framework's time actually goes:
@@ -242,7 +242,7 @@ with the action bar title following the stack and the Up arrow appearing on its 
 The third was that nothing was themed. That is now partly addressed — and the approach is
 worth stating, because it is the opposite of what most cross-platform frameworks do.
 
-**There is no palette.** `scala-ui` has no colour constants, no design tokens, no default
+**There is no palette.** `thicket` has no colour constants, no design tokens, no default
 theme. A widget asks for a *role* — `TextRole.Caption`, `Emphasis.Secondary`, "this row is
 tappable" — and each renderer maps it onto the platform's own token: a GTK style class
 (`title-1`, `dim-label`, `activatable`), an Android theme attribute
