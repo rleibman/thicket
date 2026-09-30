@@ -28,10 +28,17 @@ private func retained(_ v: UIView) -> UnsafeMutableRawPointer {
 private struct Tap { let cb: sui_void_cb; let ctx: Int64 }
 private struct TextEdit { let cb: sui_text_cb; let ctx: Int64 }
 private struct Toggle { let cb: sui_bool_cb; let ctx: Int64 }
+private struct ValueChange { let cb: sui_value_cb; let ctx: Int64 }
 
 private var taps: [ObjectIdentifier: Tap] = [:]
 private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
+private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
+
+/// Progress views told `None`. UIProgressView has no indeterminate mode — there is no
+/// UIKit equivalent of an animating bar — so the state is recorded here, where
+/// `sui_get_progress` can report it, and the bar is drawn empty.
+private var indeterminate: Set<ObjectIdentifier> = []
 
 /// True while the renderer is writing a value in, so a control's own change event can tell
 /// an app-driven update from a user edit and stay silent for the former. Without it,
@@ -49,6 +56,12 @@ private final class Proxy: NSObject {
     let id = ObjectIdentifier(sender)
     guard !suppressed.contains(id), let e = edits[id] else { return }
     (sender.text ?? "").withCString { e.cb(e.ctx, $0) }
+  }
+
+  @objc func slid(_ sender: UISlider) {
+    let id = ObjectIdentifier(sender)
+    guard !suppressed.contains(id), let c = valueChanges[id] else { return }
+    c.cb(c.ctx, Double(sender.value))
   }
 
   @objc func switched(_ sender: UISwitch) {
@@ -187,6 +200,43 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     iv.clipsToBounds = true
     return retained(iv)
 
+  case 9:
+    // The same control as a checkbox on UIKit. No label: the caption is a sibling.
+    let sw = UISwitch()
+    sw.addTarget(proxy, action: #selector(Proxy.switched(_:)), for: .valueChanged)
+    return retained(sw)
+
+  case 10:
+    // Nothing to draw and no intrinsic size; it takes the room its siblings do not, through
+    // Prop.Grow, which lowers its hugging exactly as for any other growing child.
+    let v = UIView()
+    v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    v.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+    return retained(v)
+
+  case 11:
+    return retained(UIProgressView(progressViewStyle: .default))
+
+  case 12:
+    // No "running" prop: it spins while mounted, and Show is what stops it.
+    let a = UIActivityIndicatorView(style: .medium)
+    a.startAnimating()
+    return retained(a)
+
+  case 13:
+    let s = UISlider()
+    s.isContinuous = true
+    s.addTarget(proxy, action: #selector(Proxy.slid(_:)), for: .valueChanged)
+    return retained(s)
+
+  case 14:
+    // Only construction differs from a TextField; text, placeholder and edits are shared.
+    let f = UITextField()
+    f.isSecureTextEntry = true
+    f.borderStyle = .roundedRect
+    f.addTarget(proxy, action: #selector(Proxy.edited(_:)), for: .editingChanged)
+    return retained(f)
+
   default:
     // No UIKit separator type: a hairline view at the platform's own separator colour.
     let v = UIView()
@@ -205,6 +255,8 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   taps.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
+  valueChanges.removeValue(forKey: id)
+  indeterminate.remove(id)
   // A virtual list's source is owned here (the table's references to it are weak), so it
   // goes with the view; keyed by the handle, which is the same object `sui_create_table`
   // keyed it by.
@@ -379,6 +431,35 @@ public func sui_set_content_fit(_ h: UnsafeMutableRawPointer, _ fit: Int32) {
   }
 }
 
+@_cdecl("sui_set_progress")
+public func sui_set_progress(_ h: UnsafeMutableRawPointer, _ has: Int32, _ fraction: Double) {
+  guard let p = view(h) as? UIProgressView else { return }
+  let id = ObjectIdentifier(p)
+  if has == 0 {
+    indeterminate.insert(id)
+    p.setProgress(0, animated: false)
+  } else {
+    indeterminate.remove(id)
+    p.setProgress(Float(min(max(fraction, 0), 1)), animated: false)
+  }
+}
+
+@_cdecl("sui_set_range")
+public func sui_set_range(_ h: UnsafeMutableRawPointer, _ lo: Double, _ hi: Double) {
+  guard let s = view(h) as? UISlider else { return }
+  s.minimumValue = Float(lo)
+  s.maximumValue = Float(hi)
+}
+
+@_cdecl("sui_set_value")
+public func sui_set_value(_ h: UnsafeMutableRawPointer, _ value: Double) {
+  guard let s = view(h) as? UISlider, s.value != Float(value) else { return }
+  let id = ObjectIdentifier(s)
+  suppressed.insert(id)
+  s.setValue(Float(value), animated: false)
+  suppressed.remove(id)
+}
+
 // MARK: - events
 
 @_cdecl("sui_on_tap")
@@ -394,6 +475,11 @@ public func sui_on_text_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui
 @_cdecl("sui_on_checked_change")
 public func sui_on_checked_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_bool_cb, _ ctx: Int64) {
   toggles[ObjectIdentifier(view(h))] = Toggle(cb: cb, ctx: ctx)
+}
+
+@_cdecl("sui_on_value_change")
+public func sui_on_value_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_value_cb, _ ctx: Int64) {
+  valueChanges[ObjectIdentifier(view(h))] = ValueChange(cb: cb, ctx: ctx)
 }
 
 // MARK: - tree
@@ -645,4 +731,35 @@ public func sui_get_text(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? 
 public func sui_is_text_bearing(_ h: UnsafeMutableRawPointer) -> Int32 {
   let v = view(h)
   return (v is UILabel || v is UITextField || v is UIButton) ? 1 : 0
+}
+
+private func scratch(_ value: String) -> UnsafePointer<CChar>? {
+  let bytes = Array(value.utf8CString)
+  guard bytes.count <= textScratch.count else { return nil }
+  textScratch.replaceSubrange(0..<bytes.count, with: bytes)
+  return textScratch.withUnsafeBufferPointer { UnsafePointer($0.baseAddress!) }
+}
+
+@_cdecl("sui_class_name")
+public func sui_class_name(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  scratch(NSStringFromClass(type(of: view(h))))
+}
+
+@_cdecl("sui_get_progress")
+public func sui_get_progress(_ h: UnsafeMutableRawPointer) -> Double {
+  switch view(h) {
+  case let p as UIProgressView: return indeterminate.contains(ObjectIdentifier(p)) ? -1 : Double(p.progress)
+  case is UIActivityIndicatorView: return -1
+  default: return -2
+  }
+}
+
+@_cdecl("sui_get_value")
+public func sui_get_value(_ h: UnsafeMutableRawPointer) -> Double {
+  Double((view(h) as? UISlider)?.value ?? 0)
+}
+
+@_cdecl("sui_is_secure")
+public func sui_is_secure(_ h: UnsafeMutableRawPointer) -> Int32 {
+  ((view(h) as? UITextField)?.isSecureTextEntry ?? false) ? 1 : 0
 }

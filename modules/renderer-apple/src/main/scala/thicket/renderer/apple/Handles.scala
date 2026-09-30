@@ -16,6 +16,7 @@ object Handles {
   private val taps = new ConcurrentHashMap[java.lang.Long, () => Unit]()
   private val texts = new ConcurrentHashMap[java.lang.Long, String => Unit]()
   private val bools = new ConcurrentHashMap[java.lang.Long, Boolean => Unit]()
+  private val values = new ConcurrentHashMap[java.lang.Long, Double => Unit]()
   private val rows = new ConcurrentHashMap[java.lang.Long, (Int, Option[Shim.Handle]) => Shim.Handle]()
   private val nextId = new AtomicLong(1L)
 
@@ -34,6 +35,12 @@ object Handles {
   def registerBool(f: Boolean => Unit): Long = {
     val id = nextId.getAndIncrement()
     bools.put(id, f)
+    id
+  }
+
+  def registerValue(f: Double => Unit): Long = {
+    val id = nextId.getAndIncrement()
+    values.put(id, f)
     id
   }
 
@@ -58,11 +65,16 @@ object Handles {
     id: Long,
     f:  Boolean => Unit
   ): Unit = bools.put(id, f)
+  def replaceValue(
+    id: Long,
+    f:  Double => Unit
+  ): Unit = values.put(id, f)
 
   def release(id: Long): Unit = {
     val _ = taps.remove(id)
     val _ = texts.remove(id)
     val _ = bools.remove(id)
+    val _ = values.remove(id)
     val _ = rows.remove(id)
   }
 
@@ -80,7 +92,7 @@ object Handles {
     id
   }
 
-  def count: Int = taps.size + texts.size + bools.size + rows.size
+  def count: Int = taps.size + texts.size + bools.size + values.size + rows.size
 
   /** Row callbacks alone. `count` also moves with every `postToUi` one-shot, which is noise when the question is
     * whether an unmounted virtual list let go of its `RowSource`.
@@ -135,6 +147,21 @@ object Handles {
         GcState.guarded {
           val f = bools.get(id)
           if f != null then f(value != 0)
+        }
+    )
+
+  /** A slider's value arrives in the app's own units: both Apple controls take them directly, so there is nothing to
+    * convert, unlike Android's integral `SeekBar`.
+    */
+  val valueTrampoline: Shim.ValueCb =
+    CFuncPtr2.fromScalaFunction(
+      (
+        id:    Long,
+        value: Double
+      ) =>
+        GcState.guarded {
+          val f = values.get(id)
+          if f != null then f(value)
         }
     )
 

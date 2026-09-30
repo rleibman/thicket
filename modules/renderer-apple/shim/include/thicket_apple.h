@@ -40,12 +40,12 @@ void sui_window_set_title(const char *title);
       6 Scroll             NSScrollView()                 UIScrollView()    vertical
       7 Divider            NSBox()                        UIView()          the shims' default: branch
       8 Image              ImageView()                    UIImageView()
-      9 Toggle             -                              -                 reserved, not built yet (#4)
-     10 Spacer             -                              -                 reserved, not built yet (#4)
-     11 ProgressBar        -                              -                 reserved, not built yet (#4)
-     12 ActivityIndicator  -                              -                 reserved, not built yet (#4)
-     13 Slider             -                              -                 reserved, not built yet (#4)
-     14 SecureField        -                              -                 reserved, not built yet (#4)
+      9 Toggle             NSSwitch()                     UISwitch()        no label: the caption is a sibling
+     10 Spacer             NSView()                       UIView()          grows through Prop.Grow
+     11 ProgressBar        NSProgressIndicator()          UIProgressView()
+     12 ActivityIndicator  NSProgressIndicator()          UIActivityIndicatorView()  spins while mounted
+     13 Slider             NSSlider()                     UISlider()
+     14 SecureField        NSSecureTextField()            UITextField()     isSecureTextEntry on UIKit
      15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create
      16 Alert              -                              -                 reserved, not built yet (phase 3; NSAlert / UIAlertController) */
 sui_handle sui_create(int32_t kind);
@@ -75,11 +75,20 @@ void sui_set_image_bytes(sui_handle h, const uint8_t *data, int32_t length);
 void sui_clear_image(sui_handle h);
 /* fit: 0 Contain, 1 Cover, 2 Fill */
 void sui_set_content_fit(sui_handle h, int32_t fit);
+/* has 0 means indeterminate, which is deliberately not the same as a fraction of 0.0.
+   The fraction is 0.0-1.0; the shim scales it for NSProgressIndicator's 0-100. */
+void sui_set_progress(sui_handle h, int32_t has, double fraction);
+/* A slider's bounds, in the app's own units. Always arrives before sui_set_value. */
+void sui_set_range(sui_handle h, double min, double max);
+/* A slider's value, in the app's own units. Written only when it differs, so an
+   app writing back what the user dragged to does not fight the drag. */
+void sui_set_value(sui_handle h, double value);
 
 /* --- events ------------------------------------------------------------------ */
 void sui_on_tap(sui_handle h, sui_void_cb cb, int64_t ctx);
 void sui_on_text_change(sui_handle h, sui_text_cb cb, int64_t ctx);
 void sui_on_checked_change(sui_handle h, sui_bool_cb cb, int64_t ctx);
+void sui_on_value_change(sui_handle h, sui_value_cb cb, int64_t ctx);
 
 /* --- tree -------------------------------------------------------------------- */
 void sui_insert_after(sui_handle parent, sui_handle child, sui_handle after);
@@ -117,5 +126,15 @@ sui_handle sui_child_at(sui_handle h, int32_t index);
    valid until the next call, so Scala must copy before calling again. */
 const char *sui_get_text(sui_handle h);
 int32_t sui_is_text_bearing(sui_handle h);
+/* The platform class of the view, e.g. NSSwitch. What the platform built, not what
+   the renderer asked for. Same buffer rule as sui_get_text. */
+const char *sui_class_name(sui_handle h);
+/* A determinate fraction 0.0-1.0; -1 when indeterminate (a spinner, or a bar given
+   no fraction); -2 when the view shows no progress at all. */
+double sui_get_progress(sui_handle h);
+/* A slider's value, in the app's own units. */
+double sui_get_value(sui_handle h);
+/* 1 when the field masks what is typed into it. */
+int32_t sui_is_secure(sui_handle h);
 
 #endif
