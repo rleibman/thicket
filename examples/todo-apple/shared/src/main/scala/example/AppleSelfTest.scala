@@ -3,16 +3,13 @@ package example
 import thicket.renderer.apple.{AppleApp, AppleInspect, AppleRenderer, Shim}
 import thicket.renderer.Constraints
 
-/** The part of the Apple example that is the same on both platforms — which is all of it
-  * except the entry point.
+/** The part of the Apple example that is the same on both platforms — which is all of it except the entry point.
   *
-  * [[TodoApp]] itself knows nothing about AppKit or UIKit; this knows only `AppleApp`,
-  * which is the single renderer both hosts share. `TodoMac.main` and `TodoIos.start`
-  * differ only in how the process gets here.
+  * [[TodoApp]] itself knows nothing about AppKit or UIKit; this knows only `AppleApp`, which is the single renderer
+  * both hosts share. `TodoMac.main` and `TodoIos.start` differ only in how the process gets here.
   *
-  * With `THICKET_SELFTEST=1` it drives the app and reads the result back out of the
-  * platform, including navigation: push, pop, and the window title following the top
-  * screen.
+  * With `THICKET_SELFTEST=1` it drives the app and reads the result back out of the platform, including navigation:
+  * push, pop, and the window title following the top screen.
   */
 object AppleSelfTest {
 
@@ -31,8 +28,8 @@ object AppleSelfTest {
 
   /** The horizontal scroller in the mounted screen, depth-first.
     *
-    * GTK's equivalent test takes "the second scroller in tree order"; here the renderer is
-    * asked outright, because it is the thing that decided the axis at `create`.
+    * GTK's equivalent test takes "the second scroller in tree order"; here the renderer is asked outright, because it
+    * is the thing that decided the axis at `create`.
     */
   private def findHorizontalScroll(h: Shim.Handle): Option[Shim.Handle] =
     if AppleApp.renderer.isHorizontalScroll(h) then Some(h)
@@ -108,6 +105,9 @@ object AppleSelfTest {
       screenTexts.toString
     )
 
+    // --- the widgets phase 2 added, read back out of AppKit / UIKit ---
+    phase2Widgets()
+
     // --- Row overflow: five buttons that do not fit, inside a horizontal Scroll ---
     val actionTexts = screenTexts
     check(
@@ -174,6 +174,98 @@ object AppleSelfTest {
     println(
       if failures == 0 then "[selftest] ALL CHECKS PASSED"
       else s"[selftest] $failures CHECK(S) FAILED"
+    )
+  }
+
+  /** Every view in the mounted screen whose platform class is one of `classes`. */
+  private def viewsOf(classes: String*): List[Shim.Handle] =
+    AppleInspect.all(AppleApp.rootHandle).filter(h => classes.contains(AppleInspect.className(h)))
+
+  /** The same checks the GTK and Android hosts run, against what the platform built.
+    *
+    * Found by *platform class*, not by the renderer's own bookkeeping, so a renderer that asked for the right kind and
+    * got the wrong control fails here. That also avoids the trap Android hit: a "find the determinate progress bar"
+    * predicate must not match the slider, and on AppKit `NSSlider` and `NSProgressIndicator` are unrelated classes, so
+    * the class name keeps them apart where an `isInstanceOf` on a shared superclass would not.
+    */
+  private def phase2Widgets(): Unit = {
+    // Toggle. On UIKit the draft form's Checkbox is a UISwitch too, so the settings switch is
+    // found through its row rather than by counting switches.
+    val settingsRow = AppleInspect.all(AppleApp.rootHandle).find { h =>
+      AppleInspect.children(h).exists(c => AppleInspect.text(c).contains("Hide completed"))
+    }
+    val switch = settingsRow.toList.flatMap(AppleInspect.children).find { h =>
+      Set("NSSwitch", "UISwitch").contains(AppleInspect.className(h))
+    }
+    check(
+      "the settings row has a switch",
+      switch.isDefined,
+      settingsRow.map(r => AppleInspect.children(r).map(AppleInspect.className).toString).getOrElse("no row")
+    )
+    switch.foreach { sw =>
+      check("the switch starts off", Shim.sui_get_checked(sw) == 0)
+      model.hideDone.set(true)
+      check("writing the signal flips the switch", Shim.sui_get_checked(sw) == 1)
+      check(
+        "hiding completed items shrinks the list",
+        !screenTexts.contains("Structural reconciliation"),
+        screenTexts.toString
+      )
+      model.hideDone.set(false)
+      check("showing them again restores it", screenTexts.contains("Structural reconciliation"))
+    }
+
+    // ProgressBar. Driven to a genuine fraction first: everything may be done by now, and
+    // 1.0-against-1.0 would also pass if the renderer clamped every value to full.
+    def bars = viewsOf("NSProgressIndicator", "UIProgressView").filter(AppleInspect.progress(_) >= 0)
+    def spinners = viewsOf("NSProgressIndicator", "UIActivityIndicatorView").filter(AppleInspect.progress(_) == -1)
+    check("there is a determinate progress bar", bars.length == 1, bars.length.toString)
+    bars.headOption.foreach { bar =>
+      model.items.now.take(1).foreach(i => model.toggle(i.id))
+      val xs = model.items.now
+      val expected = xs.count(_.done).toDouble / xs.size
+      val actual = AppleInspect.progress(bar)
+      println(f"[selftest]   progress bar: $actual%.3f, expected $expected%.3f")
+      check(
+        "the progress bar shows the model's fraction",
+        expected > 0.0 && expected < 1.0 && math.abs(actual - expected) < 0.002,
+        s"$actual vs $expected"
+      )
+    }
+
+    // Spinner: no "running" prop, Show is what starts and stops it.
+    check("no spinner while the app is idle", spinners.isEmpty, spinners.length.toString)
+    model.busy.set(true)
+    check("a spinner appears when busy", spinners.length == 1, spinners.length.toString)
+    model.busy.set(false)
+    check("and is gone again when not", spinners.isEmpty, spinners.length.toString)
+
+    // Slider, in the app's own units: a renderer that stored a fraction fails here.
+    val sliders = viewsOf("NSSlider", "UISlider")
+    check("there is a slider", sliders.length == 1, sliders.length.toString)
+    sliders.headOption.foreach { s =>
+      check(
+        "the slider starts at the model's value",
+        math.abs(AppleInspect.value(s) - 7.0) < 0.02,
+        AppleInspect.value(s).toString
+      )
+      model.volume.set(3.5)
+      check(
+        "writing the signal moves the slider",
+        math.abs(AppleInspect.value(s) - 3.5) < 0.02,
+        AppleInspect.value(s).toString
+      )
+      model.volume.set(7.0)
+    }
+
+    // SecureField: exactly one field masks its input, and it still holds its value.
+    val masked = AppleInspect.all(AppleApp.rootHandle).filter(AppleInspect.isSecure)
+    check("exactly one field masks its input", masked.length == 1, masked.map(AppleInspect.className).toString)
+    model.secret.set("hunter2")
+    check(
+      "the secure field still holds its value",
+      masked.headOption.flatMap(AppleInspect.text).contains("hunter2"),
+      "the value must round-trip even though it is not drawn"
     )
   }
 

@@ -4,7 +4,7 @@
 renderer lands — unlike `docs/01`–`docs/09`, which are frozen. The target is the v1
 catalogue in `docs/07` §7.10.
 
-**Last updated:** 2026-09-28 (phase 1 in progress).
+**Last updated:** 2026-09-30 (the phase 2 widgets on Apple, #4).
 
 ## 12.1 Scoreboard
 
@@ -12,15 +12,15 @@ catalogue in `docs/07` §7.10.
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
 | Widgets implemented on at least one renderer | **16** |
-| Widgets implemented on **every** renderer that exists | **9** |
+| Widgets implemented on **every** renderer that exists | **15** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **25** |
-| Props implemented on every renderer | **18** — `Progress`, `Value`, `Range` and `OnValueChange` are no-ops on Apple, because they belong to widgets it cannot create yet (#9) |
+| Props implemented on every renderer | **22** — `Message`, `Actions` and `OnDismiss` are no-ops on Apple, because they belong to `Alert`, which it cannot present yet |
 
-**Nine of thirty-two is still the honest headline**, because four of the thirteen are not
-on Apple yet — and this doc's own rule 1 says a widget is done when *every* renderer has
-it. Phase 2 adds them on GTK and Android; the Apple half is Forgejo #9 and lands on the
-Mac.
+**Fifteen of thirty-two**, and this time on every renderer: the six phase 2 widgets landed
+on AppKit and UIKit (#4), measured by the same self-test checks GTK and Android run —
+**43/43** on macOS and **42/42** on the iOS simulator, progress bar **0.750** on both.
+`Alert` is the one widget still on two renderers only.
 
 The first nine were, deliberately, the ones that forced the contract to be right: a
 tappable container, a two-way-bound field, a recycling list and a viewport between them
@@ -43,7 +43,7 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
 
-### Added in phase 3 — GTK and Android done, Apple pending (#4)
+### Added in phase 3 — GTK and Android done, Apple pending
 
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
@@ -74,28 +74,30 @@ letting each platform place them:
   GTK a cancel action absorbs Escape, and `OnDismiss` fires only when there is no cancel
   button. Both are the platform's own behaviour, which is the point.
 
-### Added in phase 2 — GTK and Android done, Apple pending (#4)
+### Added in phase 2 — done on all four (#4)
 
 Slice 2:
 
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
-| `Slider` | `WidgetKind.Slider` | done | done | — | — | `GtkScale` / `SeekBar`. `Prop.Value` is in the **app's units**, not a fraction |
-| `SecureField` | `WidgetKind.SecureField` | done | done | — | — | Entry visibility / password input type. A kind rather than a prop because `NSSecureTextField` is a separate class |
+| `Slider` | `WidgetKind.Slider` | done | done | done | done | `GtkScale` / `SeekBar`. `Prop.Value` is in the **app's units**, not a fraction |
+| `SecureField` | `WidgetKind.SecureField` | done | done | done | done | Entry visibility / password input type. A kind rather than a prop because `NSSecureTextField` is a separate class |
 
 Slice 1:
 
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
-| `Toggle` | `WidgetKind.Toggle` | done | done | — | — | `GtkSwitch` / `Switch`. **No label**: only Android's has anywhere to put one, so the caption is a sibling |
-| `Spacer` | `WidgetKind.Spacer` | done | done | — | — | Takes the room its siblings do not, through `Prop.Grow` |
-| `ProgressBar` | `WidgetKind.ProgressBar` | done | done | — | — | `Prop.Progress`: `None` is indeterminate, which is not `Some(0.0)` |
-| `Spinner` | `WidgetKind.ActivityIndicator` | done | done | — | — | No "running" prop; `Show` starts and stops it |
+| `Toggle` | `WidgetKind.Toggle` | done | done | done | done | `GtkSwitch` / `Switch`. **No label**: only Android's has anywhere to put one, so the caption is a sibling |
+| `Spacer` | `WidgetKind.Spacer` | done | done | done | done | Takes the room its siblings do not, through `Prop.Grow` |
+| `ProgressBar` | `WidgetKind.ProgressBar` | done | done | done | done | `Prop.Progress`: `None` is indeterminate, which is not `Some(0.0)` |
+| `Spinner` | `WidgetKind.ActivityIndicator` | done | done | done | done | No "running" prop; `Show` starts and stops it |
 
-The Apple renderer **throws** for these four rather than creating the wrong widget: the
-Swift `sui_create` falls through to a separator, so a `Slider` would silently render as a
-hairline rule and send whoever hit it looking in the wrong place. Kind codes 9–12 are
-reserved for them.
+On Apple they are kind codes 9–14, each naming its control per toolkit in `Abi.kinds`:
+`NSSwitch` / `UISwitch`, a plain view, `NSProgressIndicator` (`.bar`, `.spinning`) /
+`UIProgressView` and `UIActivityIndicatorView`, `NSSlider` / `UISlider`, and
+`NSSecureTextField` / a `UITextField` with `isSecureTextEntry`. **One platform gap:**
+`UIProgressView` has no indeterminate mode, so `ProgressBar(None)` draws an empty bar on
+UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 
 ### Not started
 
@@ -159,9 +161,9 @@ the point of doing this in Scala.
 `OnCheckedChange`, `Style`, `Grow`, `Align`, `Tint`, `Fill`, `Picture`, `Fit`,
 `TextEmphasis`, `Axis`, `Progress`, `Value`, `Range`, `OnValueChange`.
 
-**"Handled" is not "honoured."** Eighteen are honoured everywhere. The remaining four —
-`Progress`, `Value`, `Range`, `OnValueChange` — are no-ops on Apple, but only because they
-belong to widgets its shim cannot create yet (#9); they are unreachable rather than ignored.
+**"Handled" is not "honoured."** Twenty-two are honoured everywhere. The remaining three —
+`Message`, `Actions`, `OnDismiss` — are no-ops on Apple, but only because they belong to
+`Alert`, which its shim cannot present yet; they are unreachable rather than ignored.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
 until Forgejo **#4**.
 
@@ -183,9 +185,9 @@ depends on it until `Grid` or absolute positioning does.
 ## 12.6 What this list is for
 
 **Division of labour.** Apple work is done on the macOS laptop, so anything AppKit/UIKit is
-raised as an issue rather than attempted here — currently **#3** (shim generation)
-and **#4** (the phase 2 widgets). Horizontal `Scroll`, **#1** (virtualised rows) and
-**#2** (`ContentFit.Cover`) are done. Everything else is built and measured on the
+raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
+rows), **#2** (`ContentFit.Cover`), **#3** (shim generation) and **#4** (the phase 2
+widgets) are done; `Alert` on Apple is next. Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:
@@ -212,7 +214,7 @@ someone and watch. It implies five things, roughly in dependency order.
 |---|---|---|
 | 1 | **Shim generation** (Forgejo **#7**, phase 1 — *adopted 2026-09-29, GitHub #3; Swift bodies deliberately stay hand-written*) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
-| 3 | **Apple parity** — the phase 2 widgets (#4); virtualised rows, horizontal `Scroll` and `ContentFit.Cover` are done | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
+| 3 | **Apple parity** — `Alert`; the phase 2 widgets, virtualised rows, horizontal `Scroll` and `ContentFit.Cover` are done | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |
 | 5 | **Published artefacts and a getting-started** | Without these, "an outside developer" is not a thing that can be tested. |
 

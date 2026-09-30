@@ -69,6 +69,24 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-30 — **The Apple self-test finds widgets by *platform class*, read back from the
+  shim, not by the renderer's own bookkeeping** (#4). Four inspection functions were added
+  for it — `sui_class_name`, `sui_get_progress`, `sui_get_value`, `sui_is_secure` — so a
+  renderer that asked for the right kind and got the wrong control fails the check. It also
+  sidesteps the trap Android hit (a slider matching "the determinate progress bar", since
+  `SeekBar` extends `ProgressBar`): `NSSlider` and `NSProgressIndicator` are different
+  classes by name. One consequence worth knowing: on UIKit the draft form's `Checkbox` is a
+  `UISwitch` too, so the Toggle check finds *the settings row's* switch rather than counting
+  switches. Measured: **43/43** on macOS, **42/42** on the iOS simulator (one overflow check
+  is not exercised on a phone this wide, and says so), progress bar **0.750** on both — the
+  same figure GTK and Android report. Control: clamping `sui_set_progress` to full made the
+  progress check fail with 1.000 against 0.750.
+- 2026-09-30 — **UIKit has no indeterminate progress bar, and `ProgressBar(None)` is not
+  faked there.** `UIProgressView` only draws a fraction. The shim records the state, so
+  `sui_get_progress` reports it as indeterminate, and draws an empty bar. Substituting an
+  activity indicator would change the widget's shape and size under the app. On AppKit
+  `NSProgressIndicator` does both, so `None` animates there.
+
 - 2026-09-29 — **`thicket_apple.h` and `Shim.scala` are generated artefacts, checked in**
   (GitHub #3). Both are now written by `sbt shimGen/run` from
   `tools/shim-gen/.../Abi.scala` and carry a "GENERATED — edit Abi.scala" header;

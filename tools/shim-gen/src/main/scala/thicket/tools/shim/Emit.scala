@@ -19,18 +19,19 @@ object Emit {
 
   private def cType(t: CType): String =
     t match {
-      case CType.Void   => "void"
-      case CType.I32    => "int32_t"
-      case CType.I64    => "int64_t"
-      case CType.F64    => "double"
-      case CType.Str    => "const char *"
-      case CType.Bytes  => "const uint8_t *"
-      case CType.OutF64 => "double *"
-      case CType.Handle => "sui_handle"
-      case CType.VoidCb => "sui_void_cb"
-      case CType.TextCb => "sui_text_cb"
-      case CType.BoolCb => "sui_bool_cb"
-      case CType.RowCb  => "sui_row_cb"
+      case CType.Void    => "void"
+      case CType.I32     => "int32_t"
+      case CType.I64     => "int64_t"
+      case CType.F64     => "double"
+      case CType.Str     => "const char *"
+      case CType.Bytes   => "const uint8_t *"
+      case CType.OutF64  => "double *"
+      case CType.Handle  => "sui_handle"
+      case CType.VoidCb  => "sui_void_cb"
+      case CType.TextCb  => "sui_text_cb"
+      case CType.BoolCb  => "sui_bool_cb"
+      case CType.RowCb   => "sui_row_cb"
+      case CType.ValueCb => "sui_value_cb"
     }
 
   private def cParam(p: Param): String = {
@@ -101,13 +102,14 @@ object Emit {
       case CType.Str  => "CString"
       // Not Ptr[UByte]: the renderer fills the buffer with `alloc[Byte]`, and the two are the
       // same register at the ABI (see Abi.Repr).
-      case CType.Bytes  => "Ptr[Byte]"
-      case CType.OutF64 => "Ptr[CDouble]"
-      case CType.Handle => "Handle"
-      case CType.VoidCb => "VoidCb"
-      case CType.TextCb => "TextCb"
-      case CType.BoolCb => "BoolCb"
-      case CType.RowCb  => "RowCb"
+      case CType.Bytes   => "Ptr[Byte]"
+      case CType.OutF64  => "Ptr[CDouble]"
+      case CType.Handle  => "Handle"
+      case CType.VoidCb  => "VoidCb"
+      case CType.TextCb  => "TextCb"
+      case CType.BoolCb  => "BoolCb"
+      case CType.RowCb   => "RowCb"
+      case CType.ValueCb => "ValueCb"
     }
 
   /** The generated Scala file: the `@extern` bindings, then the kind codes.
@@ -146,6 +148,9 @@ object Shim {
     */
   type RowCb = CFuncPtr3[Long, CInt, Handle, Handle]
 
+  /** A slider's value, in the app's own units. */
+  type ValueCb = CFuncPtr2[Long, Double, Unit]
+
 """)
     fns.foreach { fn =>
       val args = fn.params.map(p => s"${p.name}: ${scalaType(p.tpe)}").mkString(", ")
@@ -169,18 +174,19 @@ object ShimKind {
 
   private def swiftType(t: CType): String =
     t match {
-      case CType.I32    => "Int32"
-      case CType.I64    => "Int64"
-      case CType.F64    => "Double"
-      case CType.Str    => "UnsafePointer<CChar>"
-      case CType.Bytes  => "UnsafePointer<UInt8>"
-      case CType.OutF64 => "UnsafeMutablePointer<Double>"
-      case CType.Handle => "UnsafeMutableRawPointer"
-      case CType.VoidCb => "@escaping sui_void_cb"
-      case CType.TextCb => "@escaping sui_text_cb"
-      case CType.BoolCb => "@escaping sui_bool_cb"
-      case CType.RowCb  => "@escaping sui_row_cb"
-      case CType.Void   => "Void"
+      case CType.I32     => "Int32"
+      case CType.I64     => "Int64"
+      case CType.F64     => "Double"
+      case CType.Str     => "UnsafePointer<CChar>"
+      case CType.Bytes   => "UnsafePointer<UInt8>"
+      case CType.OutF64  => "UnsafeMutablePointer<Double>"
+      case CType.Handle  => "UnsafeMutableRawPointer"
+      case CType.VoidCb  => "@escaping sui_void_cb"
+      case CType.TextCb  => "@escaping sui_text_cb"
+      case CType.BoolCb  => "@escaping sui_bool_cb"
+      case CType.RowCb   => "@escaping sui_row_cb"
+      case CType.ValueCb => "@escaping sui_value_cb"
+      case CType.Void    => "Void"
     }
 
   /** Swift `@_cdecl` signatures with placeholder bodies.

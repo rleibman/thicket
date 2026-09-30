@@ -27,5 +27,7 @@ typedef void (*sui_bool_cb)(int64_t ctx, int32_t value);
    wrong registers and silently. Verified here rather than assumed: see the round-trip check
    in the renderer's REPORT. */
 typedef sui_handle (*sui_row_cb)(int64_t ctx, int32_t index, sui_handle recycled);
+/* A slider's new value, in the app's own units. */
+typedef void (*sui_value_cb)(int64_t ctx, double value);
 
 #endif

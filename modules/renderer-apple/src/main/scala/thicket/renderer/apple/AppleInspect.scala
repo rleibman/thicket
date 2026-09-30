@@ -38,4 +38,22 @@ object AppleInspect {
     if Shim.sui_is_text_bearing(h) != 0 then text(h).toList
     else children(h).flatMap(allTexts)
 
+  /** The platform class of a view — what AppKit or UIKit actually built, not what the renderer asked for. */
+  def className(h: Shim.Handle): String = {
+    val p = Shim.sui_class_name(h)
+    if p == null then "" else fromCString(p)
+  }
+
+  /** Every view in the subtree, parent before children. */
+  def all(h: Shim.Handle): List[Shim.Handle] = h :: children(h).flatMap(all)
+
+  /** A determinate fraction 0.0-1.0; -1 when indeterminate; -2 when the view shows no progress. */
+  def progress(h: Shim.Handle): Double = Shim.sui_get_progress(h)
+
+  /** A slider's value, in the app's own units. */
+  def value(h: Shim.Handle): Double = Shim.sui_get_value(h)
+
+  /** Whether a field masks what is typed into it. */
+  def isSecure(h: Shim.Handle): Boolean = Shim.sui_is_secure(h) != 0
+
 }

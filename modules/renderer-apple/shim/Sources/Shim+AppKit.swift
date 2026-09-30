@@ -26,10 +26,12 @@ private func retained(_ v: NSView) -> UnsafeMutableRawPointer {
 private struct Tap { let cb: sui_void_cb; let ctx: Int64 }
 private struct TextEdit { let cb: sui_text_cb; let ctx: Int64 }
 private struct Toggle { let cb: sui_bool_cb; let ctx: Int64 }
+private struct ValueChange { let cb: sui_value_cb; let ctx: Int64 }
 
 private var taps: [ObjectIdentifier: Tap] = [:]
 private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
+private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
 
 /// True while the renderer is writing a value in, so a control's own change notification
 /// can tell an app-driven update from a user edit and stay silent for the former. Without
@@ -44,10 +46,18 @@ private final class Proxy: NSObject, NSTextFieldDelegate {
     if let t = taps[ObjectIdentifier(sender)] { t.cb(t.ctx) }
   }
 
-  @objc func toggled(_ sender: NSButton) {
+  /// A checkbox is an `NSButton` and a `Toggle` is an `NSSwitch`, which is not one; both
+  /// carry `state`, so this reads it from whichever it is.
+  @objc func toggled(_ sender: NSControl) {
     let id = ObjectIdentifier(sender)
     guard !suppressed.contains(id), let t = toggles[id] else { return }
-    t.cb(t.ctx, sender.state == .on ? 1 : 0)
+    t.cb(t.ctx, isOn(sender) ? 1 : 0)
+  }
+
+  @objc func slid(_ sender: NSSlider) {
+    let id = ObjectIdentifier(sender)
+    guard !suppressed.contains(id), let c = valueChanges[id] else { return }
+    c.cb(c.ctx, sender.doubleValue)
   }
 
   func controlTextDidChange(_ note: Notification) {
@@ -59,6 +69,12 @@ private final class Proxy: NSObject, NSTextFieldDelegate {
 }
 
 private let proxy = Proxy()
+
+private func isOn(_ v: NSView) -> Bool {
+  if let b = v as? NSButton { return b.state == .on }
+  if let s = v as? NSSwitch { return s.state == .on }
+  return false
+}
 
 /// Taps on a plain container: NSStackView emits no action, so a click recogniser is
 /// attached the way GTK needs a GtkGestureClick on a GtkBox.
@@ -224,6 +240,52 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     iv.imageScaling = .scaleProportionallyUpOrDown
     return retained(iv)
 
+  case 9:
+    // No label: NSSwitch has nowhere to put one, so the caption is a sibling.
+    let s = NSSwitch()
+    s.target = proxy
+    s.action = #selector(Proxy.toggled(_:))
+    return retained(s)
+
+  case 10:
+    // Nothing to draw and no intrinsic size; it takes the room its siblings do not, through
+    // Prop.Grow, which lowers its hugging exactly as for any other growing child.
+    let v = NSView()
+    v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    v.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+    return retained(v)
+
+  case 11:
+    let p = NSProgressIndicator()
+    p.style = .bar
+    p.isIndeterminate = false
+    p.minValue = 0
+    p.maxValue = 100
+    return retained(p)
+
+  case 12:
+    // No "running" prop: it spins while mounted, and Show is what stops it.
+    let p = NSProgressIndicator()
+    p.style = .spinning
+    p.isIndeterminate = true
+    p.startAnimation(nil)
+    return retained(p)
+
+  case 13:
+    let s = NSSlider()
+    s.isContinuous = true
+    s.target = proxy
+    s.action = #selector(Proxy.slid(_:))
+    return retained(s)
+
+  case 14:
+    // A separate class on AppKit, which is why SecureField is a kind rather than a prop.
+    let f = NSSecureTextField(string: "")
+    f.delegate = proxy
+    f.isEditable = true
+    f.isBordered = true
+    return retained(f)
+
   default:
     let box = NSBox()
     box.boxType = .separator
@@ -300,6 +362,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   taps.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
+  valueChanges.removeValue(forKey: id)
   // A virtual list's source is owned here (the table's references to it are weak), so it
   // goes with the view; keyed by the handle, which is the same object `sui_create_table`
   // keyed it by.
@@ -341,19 +404,19 @@ public func sui_set_placeholder(_ h: UnsafeMutableRawPointer, _ text: UnsafePoin
 
 @_cdecl("sui_set_checked")
 public func sui_set_checked(_ h: UnsafeMutableRawPointer, _ on: Int32) {
-  guard let b = view(h) as? NSButton else { return }
-  let want: NSControl.StateValue = on != 0 ? .on : .off
-  if b.state != want {
-    let id = ObjectIdentifier(b)
-    suppressed.insert(id)
-    b.state = want
-    suppressed.remove(id)
-  }
+  let v = view(h)
+  let want = on != 0
+  guard isOn(v) != want else { return }
+  let id = ObjectIdentifier(v)
+  suppressed.insert(id)
+  let state: NSControl.StateValue = want ? .on : .off
+  if let b = v as? NSButton { b.state = state } else if let s = v as? NSSwitch { s.state = state }
+  suppressed.remove(id)
 }
 
 @_cdecl("sui_get_checked")
 public func sui_get_checked(_ h: UnsafeMutableRawPointer) -> Int32 {
-  ((view(h) as? NSButton)?.state == .on) ? 1 : 0
+  isOn(view(h)) ? 1 : 0
 }
 
 @_cdecl("sui_set_enabled")
@@ -410,6 +473,36 @@ public func sui_set_align(_ h: UnsafeMutableRawPointer, _ align: Int32) {
   }
 }
 
+@_cdecl("sui_set_progress")
+public func sui_set_progress(_ h: UnsafeMutableRawPointer, _ has: Int32, _ fraction: Double) {
+  guard let p = view(h) as? NSProgressIndicator, p.style == .bar else { return }
+  if has == 0 {
+    // None is "no idea how far", not "not started": an animating bar, not an empty one.
+    p.isIndeterminate = true
+    p.startAnimation(nil)
+  } else {
+    p.stopAnimation(nil)
+    p.isIndeterminate = false
+    p.doubleValue = min(max(fraction, 0), 1) * p.maxValue
+  }
+}
+
+@_cdecl("sui_set_range")
+public func sui_set_range(_ h: UnsafeMutableRawPointer, _ lo: Double, _ hi: Double) {
+  guard let s = view(h) as? NSSlider else { return }
+  s.minValue = lo
+  s.maxValue = hi
+}
+
+@_cdecl("sui_set_value")
+public func sui_set_value(_ h: UnsafeMutableRawPointer, _ value: Double) {
+  guard let s = view(h) as? NSSlider, s.doubleValue != value else { return }
+  let id = ObjectIdentifier(s)
+  suppressed.insert(id)
+  s.doubleValue = value
+  suppressed.remove(id)
+}
+
 // MARK: - events
 
 @_cdecl("sui_on_tap")
@@ -425,6 +518,11 @@ public func sui_on_text_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui
 @_cdecl("sui_on_checked_change")
 public func sui_on_checked_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_bool_cb, _ ctx: Int64) {
   toggles[ObjectIdentifier(view(h))] = Toggle(cb: cb, ctx: ctx)
+}
+
+@_cdecl("sui_on_value_change")
+public func sui_on_value_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_value_cb, _ ctx: Int64) {
+  valueChanges[ObjectIdentifier(view(h))] = ValueChange(cb: cb, ctx: ctx)
 }
 
 // MARK: - tree
@@ -718,4 +816,34 @@ public func sui_get_text(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? 
 public func sui_is_text_bearing(_ h: UnsafeMutableRawPointer) -> Int32 {
   let v = view(h)
   return (v is NSTextField || v is NSButton) ? 1 : 0
+}
+
+private func scratch(_ value: String) -> UnsafePointer<CChar>? {
+  let bytes = Array(value.utf8CString)
+  guard bytes.count <= textScratch.count else { return nil }
+  textScratch.replaceSubrange(0..<bytes.count, with: bytes)
+  return textScratch.withUnsafeBufferPointer { UnsafePointer($0.baseAddress!) }
+}
+
+@_cdecl("sui_class_name")
+public func sui_class_name(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  scratch(NSStringFromClass(type(of: view(h))))
+}
+
+@_cdecl("sui_get_progress")
+public func sui_get_progress(_ h: UnsafeMutableRawPointer) -> Double {
+  guard let p = view(h) as? NSProgressIndicator else { return -2 }
+  if p.isIndeterminate { return -1 }
+  let span = p.maxValue - p.minValue
+  return span > 0 ? (p.doubleValue - p.minValue) / span : 0
+}
+
+@_cdecl("sui_get_value")
+public func sui_get_value(_ h: UnsafeMutableRawPointer) -> Double {
+  (view(h) as? NSSlider)?.doubleValue ?? 0
+}
+
+@_cdecl("sui_is_secure")
+public func sui_is_secure(_ h: UnsafeMutableRawPointer) -> Int32 {
+  view(h) is NSSecureTextField ? 1 : 0
 }
