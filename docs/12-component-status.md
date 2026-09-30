@@ -142,12 +142,12 @@ every remaining entry before it is built, not after.
 |---|---|---|
 | Fine-grained signals | `modules/signals` | done — glitch-free, property-tested on JVM/JS/Native |
 | Keyed reconciliation | `Reconciler` | done — `Show`, `Switch`, `ForEach`, `Fragment`, in-place `moveAfter` |
-| Virtualised list | `LazyColumn` + `RowSource` | **partial** — GTK and Android recycle; **Apple does not** and silently mounts every row — Forgejo **#5** |
+| Virtualised list | `LazyColumn` + `RowSource` | done — all four recycle. Materialised rows for a 10 000-row list: GTK **205**, Android **66**, AppKit **40**, UIKit **34** |
 | Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title, Up and **toolbar actions** work as native chrome; no *native* navigation container |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide`; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread` | done |
-| Apple ABI description + consistency check | `tools/shim-gen` | done — 34 functions described; the four hand-written declarations per function are checked to agree, on any machine |
+| Apple ABI description + consistency check | `tools/shim-gen` | done — 38 functions described; the four hand-written declarations per function are checked to agree, on any machine |
 
 ## 12.4 Props
 
@@ -171,8 +171,8 @@ until Forgejo **#4**.
 |---|---|---|---|---|
 | GTK4 | `renderer-gtk` | ToolkitManaged | yes (`GtkListView`) | Linux, Scala Native |
 | Android | `renderer-android` | ToolkitManaged | yes (`ListView`) | Android 26+, Scala on ART |
-| AppKit | `renderer-apple` | ToolkitManaged | **no** | macOS, Scala Native + Swift shim |
-| UIKit | `renderer-apple` | ToolkitManaged | **no** | iOS simulator, Scala Native + Swift shim |
+| AppKit | `renderer-apple` | ToolkitManaged | yes (`NSTableView`) | macOS, Scala Native + Swift shim |
+| UIKit | `renderer-apple` | ToolkitManaged | yes (`UITableView`) | iOS simulator, Scala Native + Swift shim |
 | Win32/WinUI | — | — | — | not started |
 | DOM (dev canvas) | — | — | — | not started |
 
@@ -183,9 +183,10 @@ depends on it until `Grid` or absolute positioning does.
 ## 12.6 What this list is for
 
 **Division of labour.** Apple work is done on the macOS laptop, so anything AppKit/UIKit is
-raised as an issue rather than attempted here — currently **#5** (virtualised rows) and
-**#7** (shim generation). **#4** (horizontal `Scroll`) and **#6** (`ContentFit.Cover`) are
-done. Everything else is built and measured on the Linux box.
+raised as an issue rather than attempted here — currently **#3** (shim generation)
+and **#4** (the phase 2 widgets). Horizontal `Scroll`, **#1** (virtualised rows) and
+**#2** (`ContentFit.Cover`) are done. Everything else is built and measured on the
+Linux box.
 
 Two rules, so it stays true:
 
@@ -211,7 +212,7 @@ someone and watch. It implies five things, roughly in dependency order.
 |---|---|---|
 | 1 | **Shim generation** (Forgejo **#7**, phase 1 — *code done, not yet adopted*) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
-| 3 | **Apple parity** — virtualised rows (horizontal `Scroll` and `ContentFit.Cover` done) | `LazyColumn` silently mounting 10 000 rows on iOS is the worst kind of gap: it works in the demo and dies in an app. |
+| 3 | **Apple parity** — the phase 2 widgets (#4); virtualised rows, horizontal `Scroll` and `ContentFit.Cover` are done | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |
 | 5 | **Published artefacts and a getting-started** | Without these, "an outside developer" is not a thing that can be tested. |
 
