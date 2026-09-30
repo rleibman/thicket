@@ -27,6 +27,16 @@ modules/renderer-apple/shim/run-fit-harness.sh
 cp modules/renderer-apple/shim/build/fit/content-fit-appkit.png docs/screenshots/
 ```
 
+Every screenshot of the items screen carries the logo, which the *host* supplies as an
+`ImageSource` rather than the shared app baking one in: the framework renders bytes and does
+not fetch, and where those bytes live is a platform question. GTK reads a file beside the
+binary; Android reads an asset out of the APK, because `BitmapFactory.decodeFile` cannot see
+inside one.
+
+The in-app asset is **transparent**, not the white-background one the README uses — it has
+to sit on whatever surface the platform theme provides, and a white card would look pasted
+on.
+
 **Read them critically.** What is still missing is as visible as what works: no images, no
 branding beyond the one accent role, the buttons are still the platform default rather than
 anything designed, and a horizontally scrolling button row is a workaround for the absence of

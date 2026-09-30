@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <title>Thicket UI Logo</title>
+  <desc>Five colored leaves branching from a dark central stem, with Thicket wordmark.</desc>
+
+  <!-- Transparent background -->
+
+  <!-- Branches: rounded, dark blue-black -->
+  <g fill="none" stroke="#09242B" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <!-- trunk -->
+    <path d="M600 425 L600 315"/>
+    <!-- upper-left / green -->
+    <path d="M600 330 C570 300 552 270 552 222"/>
+    <!-- upper-right / blue -->
+    <path d="M600 318 C630 292 650 260 650 225"/>
+    <!-- middle-left / coral -->
+    <path d="M600 365 C560 365 525 350 498 318"/>
+    <!-- middle-right / orange -->
+    <path d="M600 375 C650 375 684 352 708 320"/>
+    <!-- lower-left / purple -->
+    <path d="M600 405 C560 410 535 430 518 462"/>
+  </g>
+
+  <!-- Leaves -->
+  <!-- green -->
+  <path d="M552 222
+           C500 222 470 192 470 142
+           L470 112
+           L500 112
+           C552 112 582 142 582 192
+           L582 222 Z"
+        fill="#58A65C"/>
+
+  <!-- blue -->
+  <path d="M650 225
+           L650 194
+           C650 146 680 120 728 120
+           L765 120
+           L765 155
+           C765 203 735 225 688 225 Z"
+        fill="#4196D2"/>
+
+  <!-- coral/red -->
+  <path d="M498 318
+           L464 318
+           C418 318 390 290 390 245
+           L390 214
+           L424 214
+           C470 214 498 242 498 287 Z"
+        fill="#F0643D"/>
+
+  <!-- orange -->
+  <path d="M708 320
+           L708 287
+           C708 243 737 216 783 216
+           L824 216
+           L824 250
+           C824 294 795 320 749 320 Z"
+        fill="#F5A13B"/>
+
+  <!-- purple -->
+  <path d="M518 462
+           L482 462
+           L482 429
+           C482 385 510 358 555 358
+           L586 358
+           L586 390
+           C586 435 558 462 518 462 Z"
+        fill="#8567CC"/>
+
+  <!-- Wordmark -->
+  <text x="600" y="610"
+        text-anchor="middle"
+        font-family="Inter, Avenir Next, Helvetica Neue, Arial, sans-serif"
+        font-size="118"
+        font-weight="700"
+        letter-spacing="-5"
+        fill="#09242B">Thicket</text>
+
+  <!-- Tagline -->
+  <text x="600" y="675"
+        text-anchor="middle"
+        font-family="Inter, Avenir Next, Helvetica Neue, Arial, sans-serif"
+        font-size="30"
+        font-weight="400"
+        letter-spacing="5"
+        fill="#607B8B">Scala UI for Native Apps</text>
+</svg>

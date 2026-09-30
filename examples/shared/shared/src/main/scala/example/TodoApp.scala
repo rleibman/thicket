@@ -2,7 +2,7 @@ package example
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{Alignment, AlertAction, Emphasis, Orientation, TextRole}
+import thicket.renderer.{Alignment, AlertAction, ContentFit, Emphasis, ImageSource, Orientation, TextRole}
 import thicket.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -122,18 +122,26 @@ object TodoApp {
     (if i.done then "✓" else "•") + "  " + i.title
 
   /** The app: a `Nav` plus a total function from `Route` to `Screen`. */
-  def apply(model: Model): NavHost[Route] = {
+  /** `logo` is supplied by the *host*, not baked in here.
+    *
+    * The framework renders bytes and does not fetch (docs/11 §11.9), and where those bytes
+    * live is a platform question: GTK reads a file beside the binary, Android reads an
+    * asset out of the APK — `BitmapFactory.decodeFile` cannot see inside one. So the app
+    * declares "show this image" and each host answers with an `ImageSource`, which is the
+    * same split the rest of the framework uses.
+    */
+  def apply(model: Model, logo: Option[ImageSource] = None): NavHost[Route] = {
     val nav = Nav[Route](Route.Items)
 
     NavHost(nav) {
-      case Route.Items     => itemsScreen(model, nav)
+      case Route.Items     => itemsScreen(model, nav, logo)
       case Route.Detail(i) => detailScreen(model, nav, i)
       case Route.About     => aboutScreen()
       case Route.Big       => bigScreen(nav)
     }
   }
 
-  private def itemsScreen(model: Model, nav: Nav[Route]): Screen =
+  private def itemsScreen(model: Model, nav: Nav[Route], logo: Option[ImageSource]): Screen =
     Screen(
       title = "Todo",
       // Toolbar actions: a GTK header-bar button, an Android action-bar item. They are
@@ -148,6 +156,8 @@ object TodoApp {
       // chrome (action bar, header bar), and repeating it is how cross-platform apps end
       // up looking like neither platform.
       content = Scroll()(Column(spacing = 16, padding = 16)(
+        // Shown when the host supplies one, so every screenshot of this screen carries it.
+        Fragment(logo.map(src => Image(src, fit = ContentFit.Contain)).toSeq*),
         // A small form: a bound text field, a bound checkbox, and a button whose enabled
         // state is derived from the model rather than remembered.
         Row(spacing = 8)(

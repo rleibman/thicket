@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/thicket-logo.png" width="230" alt="Thicket">
+</p>
+
 # Thicket
 
 **Native thick-client UIs in Scala 3.** One `Element` tree, real platform widgets —

@@ -13,12 +13,19 @@ object Todo {
   private val model = TodoApp.Model()
   private var app: thicket.core.NavHost[TodoApp.Route] = null
 
+  private def logoSource: Option[thicket.renderer.ImageSource] = {
+    val f = new java.io.File("docs/assets/thicket-logo-app.png")
+    if f.exists() then Some(thicket.renderer.ImageSource.FromFile(f.getPath)) else None
+  }
+
   def main(args: Array[String]): Unit = {
     // Same single-role branding as the Android host; everything else stays GTK's.
     Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2E, 0x6F, 0x40)))
     val _ = GtkApp.run("dev.thicket.todo", 460, 440) {
       if sys.env.contains("THICKET_SELFTEST") then GtkApp.postToUi(() => selfTest())
-      app = TodoApp(model)
+      // A plain file path: the GTK binary runs from the repo, so this resolves. A packaged
+      // app would ship it alongside the executable and resolve relative to that.
+      app = TodoApp(model, logo = logoSource)
       app
     }
   }
