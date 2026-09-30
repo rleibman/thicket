@@ -191,6 +191,25 @@ object Todo {
       model.secret.now == "hunter2" && GtkInspect.allTexts(GtkApp.rootHandle).contains("hunter2"),
       "the value must round-trip even though it is not drawn")
 
+    // --- Alert: presented by a signal, dismissed by unmounting ---
+    check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
+    val itemsBeforeAlert = model.items.now.size
+
+    model.confirmingDrop.set(true)
+    // GtkAlertDialog is a GObject, not a widget, so it is deliberately absent from the
+    // widget tree — that is what WidgetKind.presented means. The observable effect here is
+    // that presenting it neither crashes nor disturbs the screen behind it.
+    check("presenting an alert leaves the screen intact",
+      screenTexts.contains("Hide completed"), screenTexts.toString)
+
+    // Unmounting is the whole of dismissing. Crucially this must NOT fire onDismiss: the
+    // app asked for it to go away, which is not the user declining to choose.
+    model.confirmingDrop.set(false)
+    check("dismissing from the app does not report a user dismissal",
+      model.lastAlertChoice.now.isEmpty,
+      s"choice was '${model.lastAlertChoice.now}'")
+    check("and nothing was dropped", model.items.now.size == itemsBeforeAlert)
+
     // --- LazyColumn: 10 000 rows through GtkListView ---
     app.push(TodoApp.Route.Big)
     check("pushed the 10 000-row screen", app.title.now == "10 000 rows")

@@ -1,6 +1,6 @@
 package thicket.core
 
-import thicket.renderer.{Alignment, ContentFit, Emphasis, ImageSource, Orientation, Prop, Rgb as RRgb, TextRole, WidgetKind}
+import thicket.renderer.{Alignment, AlertAction, ContentFit, Emphasis, ImageSource, Orientation, Prop, Rgb as RRgb, TextRole, WidgetKind}
 import thicket.signals.Signal
 
 /** A property of a widget, static or signal-driven. */
@@ -189,6 +189,37 @@ object dsl {
       Nil
     )
   }
+
+  /** A modal alert, presented while it is mounted.
+    *
+    * {{{
+    * Show(model.confirmingDelete) {
+    *   Alert("Delete this item?", "This cannot be undone.")(
+    *     AlertAction("Delete", destructive = true)(model.delete()),
+    *     AlertAction("Cancel", cancel = true)(model.cancel())
+    *   )(onDismiss = model.cancel())
+    * }
+    * }}}
+    *
+    * There is no `show()` call and nothing to close: flipping the signal off unmounts it,
+    * and unmounting is what dismisses it. `onDismiss` fires when the *platform* dismisses
+    * it — Escape, a tap outside, a back gesture — which is not the same as the user
+    * choosing a cancel button, and an app that conflates them will eventually be wrong
+    * about whether the user declined or merely looked away.
+    */
+  def Alert(title: String, message: String = "")(
+    actions:       AlertAction*
+  )(onDismiss:     => Unit = ()): Element =
+    Widget(
+      WidgetKind.Alert,
+      Seq(
+        Static(Prop.Text(title)),
+        Static(Prop.Message(message)),
+        Static(Prop.Actions(actions)),
+        Static(Prop.OnDismiss(() => onDismiss))
+      ),
+      Nil
+    )
 
   /** A continuous value chosen by dragging.
     *

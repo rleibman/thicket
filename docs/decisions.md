@@ -69,6 +69,30 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-29 — **Some widgets are *presented*, not inserted, and the contract now says so.**
+  `WidgetKind.presented` plus `Renderer.present` / `Renderer.dismiss`. An alert is not a
+  child of anything on any of the four toolkits, and GTK makes that a type error —
+  `GtkAlertDialog` is a `GObject`, not a `GtkWidget`. Routing it through `insertAfter`
+  would have meant the same special case in three methods of four renderers. Mounting
+  presents and unmounting dismisses, so `Show(confirming)(Alert(...))` is the whole API and
+  there is no `show()` — the same choice `ActivityIndicator` made. `Sheet` and `Menu` will
+  follow the same path.
+- 2026-09-29 — **An alert states button *roles*; each platform decides position and
+  meaning.** GTK takes an ordered array and answers with an index; Android has three fixed
+  slots placed by its own convention, so the declared order is not the shown order there.
+  And `OnDismiss` means the *platform* closed it — which Android reports natively and GTK
+  does not, because declaring a cancel button makes Escape activate that button instead.
+  Both behaviours are the platform's own; the framework exposes the distinction rather than
+  flattening it, since an app that conflates "declined" with "looked away" will eventually
+  be wrong.
+- 2026-09-29 — **Android's platform SDK is drifting away from Android's idioms, and this
+  renderer stays on the platform.** `android.app.AlertDialog` and `android.widget.TabHost`
+  both carry class-level deprecation flags in android-36; the replacements live in AndroidX
+  and Material, not in the platform. The Alert uses the platform class anyway: scalac does
+  not even warn on it, it still draws correctly, and the reason this APK is 168 KB is that
+  it depends on nothing. `TabView` is a harder case and is not built — see §12.2a, this is
+  the same question `Radio` and `Stepper` raised.
+
 - 2026-09-29 — **`ContentFit.Cover` is drawn by hand on AppKit, and rendering is verified by
   measuring pixels rather than asserting on the property that was set** (Forgejo #6).
   `NSImageView.imageScaling` has no mode that crops: `.scaleProportionallyUpOrDown` is

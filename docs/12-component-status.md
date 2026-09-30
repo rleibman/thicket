@@ -11,10 +11,10 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **15** |
+| Widgets implemented on at least one renderer | **16** |
 | Widgets implemented on **every** renderer that exists | **9** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **22** |
+| Props in the contract | **25** |
 | Props implemented on every renderer | **18** — `Progress`, `Value`, `Range` and `OnValueChange` are no-ops on Apple, because they belong to widgets it cannot create yet (#9) |
 
 **Nine of thirty-two is still the honest headline**, because four of the thirteen are not
@@ -43,7 +43,38 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
 
-### Added in phase 2 — GTK and Android done, Apple pending (#9)
+### Added in phase 3 — GTK and Android done, Apple pending (#4)
+
+| Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
+|---|---|---|---|---|---|---|
+| `Alert` | `WidgetKind.Alert` | done | done | — | — | `GtkAlertDialog` / `AlertDialog`. **Presented, not inserted** — see below |
+
+**The first presented widget, and it changed the contract.** An alert is not a child of
+anything on any of the four toolkits, and GTK says so in its types: `GtkAlertDialog` is a
+`GObject`, not a `GtkWidget`, so it could not be inserted even if we wanted to. So
+`WidgetKind.presented` marks such kinds and the reconciler calls `Renderer.present` /
+`Renderer.dismiss` instead of `insertAfter` / `removeChild`. Without it every renderer
+would need the same special case in three methods — twelve places to keep in step.
+
+Mounting presents, unmounting dismisses: `Show(confirming)(Alert(...))` is the whole API.
+That is the same mechanism `Spinner` uses, rather than a second imperative way to say it.
+
+Two things the platforms disagree about, both resolved in favour of stating *roles* and
+letting each platform place them:
+
+- **Button order.** GTK takes an array and answers with an index, so the declared order is
+  the shown order. Android has three fixed *slots* and its own conventional positions —
+  which is why `docs/screenshots/android-alert.png` shows Cancel left of Drop, the reverse
+  of the order the app wrote. An app that assumed its own order would be right on GTK and
+  wrong on Android.
+- **What dismissal means.** `Prop.OnDismiss` is for the *platform* closing the alert —
+  Escape, a tap outside, a back gesture — which is not the same as the user choosing a
+  cancel button. Android distinguishes them natively (`setOnCancelListener` does not fire
+  for a button). GTK does not: declaring a cancel button makes Escape *activate* it. So on
+  GTK a cancel action absorbs Escape, and `OnDismiss` fires only when there is no cancel
+  button. Both are the platform's own behaviour, which is the point.
+
+### Added in phase 2 — GTK and Android done, Apple pending (#4)
 
 Slice 2:
 
@@ -72,7 +103,7 @@ reserved for them.
 |---|---|
 | Layout | `Stack`/`ZStack`, `SafeArea`, `Grid` |
 | Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `Picker`, `DatePicker`, `Link` |
-| Containers | `TabView`, `Sheet`/`Modal`, `Alert`, `Menu`/`ContextMenu`, `Toolbar` |
+| Containers | `TabView`, `Sheet`/`Modal`, `Menu`/`ContextMenu`, `Toolbar` |
 
 `IconButton` and `Link` are held back on purpose: the first needs an icon/resource system
 and the second needs platform URL opening, and neither should be improvised inside a widget.

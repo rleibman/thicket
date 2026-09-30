@@ -17,6 +17,14 @@ object GtkApp {
   // A CFuncPtr cannot close over local state, so the mount parameters live here.
   private var appId: String                   = "dev.thicket.app"
   private var windowSize: (Int, Int)          = (420, 260)
+
+  /** The application window, once it exists.
+    *
+    * A modal dialog needs a parent to be modal *to*; GTK will show one without a parent but
+    * it is then a free-floating window rather than a sheet over the app.
+    */
+  private var mainWindow: Ptr[GtkWindow] = null
+  private[gtk] def window: Ptr[GtkWindow] = mainWindow
   private var build: Owner ?=> AppRoot        =
     (_: Owner) ?=> throw IllegalStateException("GtkApp.run was not given a UI")
 
@@ -43,6 +51,7 @@ object GtkApp {
       GcState.guarded {
         val window = gtk_application_window_new(app.asInstanceOf[Ptr[GtkApplication]])
         val w      = window.asInstanceOf[Ptr[GtkWindow]]
+        mainWindow = w
         gtk_window_set_default_size(w, windowSize._1, windowSize._2)
         val header = gtk_header_bar_new()
         gtk_window_set_titlebar(w, header)

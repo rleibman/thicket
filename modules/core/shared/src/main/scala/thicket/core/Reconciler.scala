@@ -119,8 +119,12 @@ private[core] object Slot {
     }
 
     val children = mountChildren(renderer, w.children, handle)
-    parent.foreach(p => renderer.insertAfter(p, handle, anchor()))
-    WidgetSlot(renderer, handle, children)
+    // A presented kind is shown over the app rather than attached to a parent — see
+    // WidgetKind.presented. Mounting is what presents it, so `Show(flag)(Alert(...))` is
+    // the whole of opening and closing one.
+    if w.kind.presented then renderer.present(handle)
+    else parent.foreach(p => renderer.insertAfter(p, handle, anchor()))
+    WidgetSlot(renderer, handle, children, presented = w.kind.presented)
   }
 
   private def fragment[H](
@@ -206,11 +210,16 @@ private[core] object Slot {
 private final class WidgetSlot[H](
     renderer: Renderer { type Handle = H },
     val handle: H,
-    val children: Vector[Slot[H]]
+    val children: Vector[Slot[H]],
+    presented: Boolean = false
 ) extends Slot[H] {
   def handles: Vector[H] = Vector(handle)
   def dispose(): Unit = {
     children.foreach(_.dispose())
+    // A presented widget is dismissed before it is destroyed. `destroy` detaches, and a
+    // presented widget was never attached — so without this the alert would be freed while
+    // still on screen.
+    if presented then renderer.dismiss(handle)
     renderer.destroy(handle)
   }
 }

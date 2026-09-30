@@ -19,6 +19,8 @@ final class TestRenderer extends Renderer {
       var onTextChange: Option[String => Unit] = None,
       var onCheckedChange: Option[Boolean => Unit] = None,
       var onValueChange: Option[Double => Unit] = None,
+      var onDismiss: Option[() => Unit] = None,
+      var actions: Seq[thicket.renderer.AlertAction] = Nil,
       // Numbers are kept as numbers, never stringified. Scala.js has no int/double
       // distinction, so `7.0.toString` is "7" there and "7.0" on the JVM — a test that
       // compares the rendered string passes on one backend and fails on the other.
@@ -175,7 +177,27 @@ final class TestRenderer extends Renderer {
         n.nums("rangeMin") = lo
         n.nums("rangeMax") = hi
       case Prop.OnValueChange(f)  => n.onValueChange = Some(f)
+      case Prop.Message(v)        => n.props("message") = v
+      case Prop.OnDismiss(f)      => n.onDismiss = Some(f)
+      case Prop.Actions(as) =>
+        n.actions = as
+        n.props("actions") = as.map(_.label).mkString(",")
     }
+  }
+
+  /** Presented widgets, in the order they were presented. A test asserts on this rather
+    * than on `childrenOf`, because a presented widget is deliberately not a child.
+    */
+  val presentedNow: mutable.ArrayBuffer[Handle] = mutable.ArrayBuffer.empty
+
+  override def present(handle: Handle): Unit = {
+    opCount += 1
+    presentedNow += handle
+  }
+
+  override def dismiss(handle: Handle): Unit = {
+    opCount += 1
+    val _ = presentedNow.subtractOne(handle)
   }
 
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {

@@ -113,6 +113,21 @@ enum WidgetKind {
     */
   case SecureField
 
+  /** A modal alert: a title, a message, and one or more choices.
+    *
+    * **Presented while it is mounted**, not inserted into the tree. `Show(confirming)(Alert(...))`
+    * is how it opens and closes, which is the same mechanism [[ActivityIndicator]] uses and
+    * the same one the reconciler already provides — rather than a second, imperative way to
+    * say the same thing.
+    *
+    * It has no children. Every toolkit here takes its buttons as *data* — an array of
+    * labels returning an index (`gtk_alert_dialog_set_buttons`), or a label plus a callback
+    * (`AlertDialog.Builder.setButton`, `NSAlert.addButton`, `UIAlertAction`) — so
+    * representing them as child widgets would mean every renderer creating widgets it then
+    * had to throw away. They travel in [[Prop.Actions]] instead.
+    */
+  case Alert
+
   /** A spinner: work is happening and its extent is unknown.
     *
     * It has no "running" prop. It spins while it is mounted, which makes `Show(loading)` the
@@ -120,6 +135,23 @@ enum WidgetKind {
     * second way to express the same thing.
     */
   case ActivityIndicator
+
+  /** Whether this kind is *presented over* the app rather than placed in the tree.
+    *
+    * A framework-level fact rather than a per-renderer one: an alert is not a child of
+    * anything on any of the four toolkits. GTK says so in its types — `GtkAlertDialog` is a
+    * `GObject`, not a `GtkWidget`, so it could not be inserted even if we wanted to — and
+    * AppKit, UIKit and Android all present rather than attach.
+    *
+    * The reconciler reads this and calls [[Renderer.present]] / [[Renderer.dismiss]]
+    * instead of `insertAfter` / `removeChild`. Without it every renderer would need the
+    * same special case in three methods, which is twelve places to keep in step and twelve
+    * chances to forget.
+    */
+  def presented: Boolean = this match {
+    case Alert => true
+    case _     => false
+  }
 }
 
 /** Where a picture's data comes from.
@@ -220,6 +252,28 @@ enum Prop {
 
   case OnValueChange(handler: Double => Unit)
 
+  /** The body text of an [[WidgetKind.Alert]]. [[Text]] is its title.
+    *
+    * Two fields rather than one because all four toolkits have two and style them
+    * differently — `message`/`detail` on GTK, `messageText`/`informativeText` on AppKit —
+    * and collapsing them would throw away the platform's own typography.
+    */
+  case Message(value: String)
+
+  /** An alert's choices, in order. The first is conventionally the default.
+    *
+    * Data, not child widgets: see [[WidgetKind.Alert]].
+    */
+  case Actions(value: Seq[AlertAction])
+
+  /** Dismissed without choosing — Escape, a tap outside, the system back gesture.
+    *
+    * Distinct from choosing a cancel button: a platform can dismiss an alert without the
+    * app offering that choice, and an app that treats the two as the same will eventually
+    * be wrong about whether the user declined or simply looked away.
+    */
+  case OnDismiss(handler: () => Unit)
+
   /** How prominent text should be, relative to the platform's own foreground colours.
     *
     * Not a colour. There is deliberately no way to say "grey #767676": a theme that pushes
@@ -253,6 +307,25 @@ enum Alignment {
 
 enum Orientation {
   case Vertical, Horizontal
+}
+
+/** One choice in an [[WidgetKind.Alert]].
+  *
+  * `destructive` and `cancel` are *roles*, not styling: every platform draws them
+  * differently and puts them in a different position — iOS red and last, AppKit leftmost —
+  * and an app that hard-codes a colour gets it wrong on three of four.
+  */
+final case class AlertAction(
+  label:       String,
+  destructive: Boolean = false,
+  cancel:      Boolean = false
+)(body: => Unit) {
+
+  /** By-name, and re-evaluated per call, so `AlertAction("Delete")(model.delete())` reads
+    * the same as `Button("Delete")(model.delete())` rather than making the caller write a
+    * thunk the rest of the DSL never asks for.
+    */
+  def onSelect(): Unit = body
 }
 
 /** Rows for a virtualising container to pull from.
@@ -334,6 +407,20 @@ trait Renderer {
     * each renderer detaches whatever it is given.
     */
   def destroy(handle: Handle): Unit
+
+  /** Show a [[WidgetKind.presented]] widget over the app.
+    *
+    * Called instead of `insertAfter` when the node is mounted. The default throws rather
+    * than silently doing nothing: a renderer that grows a presented kind and forgets to
+    * implement this would otherwise mount an alert that never appears, which looks like the
+    * app ignoring the user.
+    */
+  def present(handle: Handle): Unit =
+    throw new UnsupportedOperationException(s"$platform cannot present this widget")
+
+  /** Dismiss a presented widget. Called when it unmounts, before `destroy`. */
+  def dismiss(handle: Handle): Unit =
+    throw new UnsupportedOperationException(s"$platform cannot dismiss this widget")
 
   def measure(handle: Handle, constraints: Constraints): Measurement
 
