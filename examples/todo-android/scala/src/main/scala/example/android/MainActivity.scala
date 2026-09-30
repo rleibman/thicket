@@ -6,7 +6,8 @@ import android.view.{Menu, MenuItem, View, WindowInsets}
 import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
 import scala.annotation.nowarn
 import example.TodoApp
-import thicket.core.{Action, ColorRole, Reconciler, Rgb, Theme}
+import thicket.core.{Action, ColorRole, NavHost, Reconciler, Rgb, Theme}
+import thicket.renderer.ImageSource
 import thicket.renderer.android.AndroidRenderer
 import thicket.signals.{Owner, Signal, ThreadGuard}
 
@@ -21,7 +22,7 @@ class MainActivity extends Activity {
 
   private val owner = Owner()
   private val model = TodoApp.Model()
-  private val app   = TodoApp(model)
+  private var app: NavHost[TodoApp.Route] = null
 
   override def onCreate(saved: Bundle): Unit = {
     super.onCreate(saved)
@@ -37,6 +38,11 @@ class MainActivity extends Activity {
 
     val renderer = AndroidRenderer(this)
     given Owner  = owner
+
+    // The logo lives in the APK's assets, which has no filesystem path —
+    // `BitmapFactory.decodeFile` cannot see inside an APK. So the host reads the bytes and
+    // hands the app an ImageSource, which is the split TodoApp expects.
+    app = TodoApp(model, logo = logoBytes.map(ImageSource.FromBytes(_)))
 
     // Restore the back stack across process death. It is a List of a route ADT, so this is
     // ordinary serialisation rather than a framework-specific save/restore protocol.
@@ -150,6 +156,16 @@ class MainActivity extends Activity {
     owner.dispose()
     super.onDestroy()
   }
+
+  /** The bundled logo, as bytes. `None` rather than a crash if it is missing: a demo that
+    * will not start because an image is absent is worse than a demo without a logo.
+    */
+  private def logoBytes: Option[Array[Byte]] =
+    try {
+      val in = getAssets.open("thicket-logo.png")
+      try Some(in.readAllBytes())
+      finally in.close()
+    } catch { case _: java.io.IOException => None }
 
   private val StackKey = "thicket.backstack"
 }

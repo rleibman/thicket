@@ -49,8 +49,7 @@ object RemoteScreenTests {
     )
   }
 
-  private def eventually(what: String)(cond: => Boolean): Unit =
-    TestUiThread.eventually(what)(cond)
+  private def eventually(what: String)(cond: => Boolean): Unit = TestUiThread.eventually(what)(cond)
 
   private def texts(
     r:    TestRenderer,

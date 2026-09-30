@@ -96,4 +96,5 @@ object ShimKind {
   inline val SecureField = 14
   inline val ScrollHorizontal = 15
   inline val Alert = 16
+  inline val Sheet = 17
 }

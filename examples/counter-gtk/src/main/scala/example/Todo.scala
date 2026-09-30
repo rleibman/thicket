@@ -13,12 +13,19 @@ object Todo {
   private val model = TodoApp.Model()
   private var app: thicket.core.NavHost[TodoApp.Route] = null
 
+  private def logoSource: Option[thicket.renderer.ImageSource] = {
+    val f = new java.io.File("docs/assets/thicket-logo-app.png")
+    if f.exists() then Some(thicket.renderer.ImageSource.FromFile(f.getPath)) else None
+  }
+
   def main(args: Array[String]): Unit = {
     // Same single-role branding as the Android host; everything else stays GTK's.
     Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2E, 0x6F, 0x40)))
     val _ = GtkApp.run("dev.thicket.todo", 460, 440) {
       if sys.env.contains("THICKET_SELFTEST") then GtkApp.postToUi(() => selfTest())
-      app = TodoApp(model)
+      // A plain file path: the GTK binary runs from the repo, so this resolves. A packaged
+      // app would ship it alongside the executable and resolve relative to that.
+      app = TodoApp(model, logo = logoSource)
       app
     }
   }
@@ -213,6 +220,30 @@ object Todo {
     val _ = app.back()
     check("and they come back on return",
       GtkInspect.allTexts(GtkApp.windowHandle).contains("About"))
+
+    // --- Sheet: a presented *container*, with a live subtree inside it ---
+    check("no sheet window before it is asked for",
+      GtkInspect.findAll(GtkApp.windowHandle)(GtkInspect.isEntry).length == 2,
+      "the screen's own two entries and no more")
+
+    model.editing.set(true)
+    // The sheet's content is a real widget tree in its own modal window, not something
+    // drawn into the screen behind it - so the screen's entry count is unchanged while a
+    // third entry now exists inside the sheet.
+    check("the screen behind is untouched",
+      GtkInspect.allTexts(GtkApp.rootHandle).contains("Hide completed"))
+
+    val sizeBeforeSheet = model.items.now.size
+    model.draft.set("From the sheet")
+    model.addDraft()
+    check("the sheet's bound field drives the same model",
+      model.items.now.size == sizeBeforeSheet + 1 &&
+        model.items.now.last.title == "From the sheet",
+      model.items.now.map(_.title).toString)
+
+    model.editing.set(false)
+    check("unmounting takes the sheet down and leaves the screen",
+      GtkInspect.allTexts(GtkApp.rootHandle).contains("Hide completed"))
 
     // --- Alert: presented by a signal, dismissed by unmounting ---
     check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)

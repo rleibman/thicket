@@ -47,7 +47,8 @@ void sui_window_set_title(const char *title);
      13 Slider             NSSlider()                     UISlider()
      14 SecureField        NSSecureTextField()            UITextField()     isSecureTextEntry on UIKit
      15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create
-     16 Alert              -                              -                 reserved, not built yet (phase 3; NSAlert / UIAlertController) */
+     16 Alert              -                              -                 reserved, not built yet (phase 3; NSAlert / UIAlertController)
+     17 Sheet              -                              -                 reserved, not built yet (phase 3; a sheet on AppKit, a presented view controller on UIKit) */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 

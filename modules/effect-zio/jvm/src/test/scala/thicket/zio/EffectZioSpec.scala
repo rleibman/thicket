@@ -24,8 +24,7 @@ object EffectZioSpec extends ZIOSpecDefault {
     * `java.lang.System` spelled out because `import zio.*` brings `zio.System` into scope and shadows it — S8 finding
     * 2, met in the wild.
     */
-  private def eventually(what: String)(cond: => Boolean): Unit =
-    TestUiThread.eventually(what)(cond)
+  private def eventually(what: String)(cond: => Boolean): Unit = TestUiThread.eventually(what)(cond)
 
   private val bridge = zio.test.suite("Bridge")(
     test("a succeeding effect goes Loading -> Done") {

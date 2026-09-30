@@ -191,7 +191,8 @@ object Abi {
     built(13, "Slider", "NSSlider(", "UISlider("),
     built(14, "SecureField", "NSSecureTextField(", "UITextField(", "isSecureTextEntry on UIKit"),
     built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create"),
-    reserved(16, "Alert", "phase 3; NSAlert / UIAlertController")
+    reserved(16, "Alert", "phase 3; NSAlert / UIAlertController"),
+    reserved(17, "Sheet", "phase 3; a sheet on AppKit, a presented view controller on UIKit")
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of

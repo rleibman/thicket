@@ -47,6 +47,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
   private val alertActions = mutable.Map.empty[View, Seq[AlertAction]]
   private val alertDismiss = mutable.Map.empty[View, () => Unit]
   private val alertShowing = mutable.Map.empty[View, AlertDialog]
+  private val sheetShowing = mutable.Map.empty[View, AlertDialog]
   private val mainHandler = Handler(Looper.getMainLooper)
 
   /** Resolve a theme attribute, so colours and backgrounds come from the user's theme
@@ -95,6 +96,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // only to be a handle the renderer can key its dialog off. It is never added to any
       // parent and never drawn.
       case WidgetKind.Alert => View(context)
+
+      // The sheet's content container. The Dialog that carries it is built in `present`.
+      case WidgetKind.Sheet =>
+        val l = LinearLayout(context)
+        l.setOrientation(LinearLayout.VERTICAL)
+        l
 
       case WidgetKind.SecureField =>
         val e = EditText(context)
@@ -159,7 +166,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
             }
           case t: TextView => t.setText(v)
           // An Alert's title arrives as Prop.Text on its placeholder View.
-          case _ if kinds.get(handle).contains(WidgetKind.Alert) => alertTitle(handle) = v
+          // Both presented kinds take their title as Prop.Text on the placeholder. This
+          // read Alert only, so a Sheet's title silently went nowhere — invisible to the
+          // self-tests, which never looked at it, and obvious the moment one was on screen.
+          case _ if kinds.get(handle).exists(k => k == WidgetKind.Alert || k == WidgetKind.Sheet) =>
+            alertTitle(handle) = v
           case _                                                 => ()
         }
 
@@ -493,7 +504,32 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * correctly — and the reason this APK is 165 KB is that it depends on nothing. Revisit
     * if it is ever actually removed rather than merely discouraged.
     */
-  override def present(handle: View): Unit = {
+  override def present(handle: View): Unit =
+    if kinds.get(handle).contains(WidgetKind.Sheet) then presentSheet(handle)
+    else presentAlert(handle)
+
+  /** Built on `AlertDialog.Builder().setView(...)`, not a plain `Dialog`.
+    *
+    * A plain `Dialog` reserves a title band under the current themes and then draws nothing
+    * in it — a blank strip above the content, whether or not `setTitle` is called, before
+    * or after `setContentView`. `AlertDialog` renders the title properly and handles the
+    * content's padding and insets, and taking a custom view is what its `setView` is for.
+    * It is the Android idiom for a modal with your own content; the plain `Dialog` is the
+    * lower-level thing underneath it.
+    */
+  private def presentSheet(handle: View): Unit = {
+    val b = AlertDialog.Builder(context)
+    alertTitle.get(handle).filter(_.nonEmpty).foreach(b.setTitle)
+    b.setView(handle)
+    // Back gesture and tapping outside, which is what OnDismiss means. Not fired by
+    // `dismiss()`, so an app-initiated take-down stays distinguishable.
+    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => f()))
+    val d = b.create()
+    sheetShowing(handle) = d
+    d.show()
+  }
+
+  private def presentAlert(handle: View): Unit = {
     val b = AlertDialog.Builder(context)
     alertTitle.get(handle).foreach(b.setTitle)
     alertMessage.get(handle).filter(_.nonEmpty).foreach(b.setMessage)
@@ -525,6 +561,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   override def dismiss(handle: View): Unit = {
     alertShowing.remove(handle).foreach(_.dismiss())
+    sheetShowing.remove(handle).foreach { d =>
+      d.dismiss()
+      // setContentView parented this view inside the dialog's window. Detach it, or the
+      // reconciler's destroy runs against a view the dialog still owns.
+      handle.getParent match {
+        case g: ViewGroup => g.removeView(handle)
+        case _            => ()
+      }
+    }
   }
 
   override def createVirtualList(source: RowSource[View]): View = {

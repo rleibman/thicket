@@ -74,6 +74,7 @@ final class AppleRenderer extends Renderer {
       // looking in the wrong place entirely. Failing loudly with the name of the missing case
       // is the honest behaviour until the Swift lands.
       case WidgetKind.Alert => unimplemented("Alert", ShimKind.Alert)
+      case WidgetKind.Sheet => unimplemented("Sheet", ShimKind.Sheet)
     }
 
   private def unimplemented(

@@ -104,6 +104,25 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   measurement (14 of 34 genuinely different) rules out.
   (c) The generated Scala binds `const uint8_t *` as `Ptr[Byte]`, not `Ptr[UByte]` — the
   renderer allocates the buffer as `Byte`, and the two are the same register (`Abi.Repr`).
+- 2026-09-30 — **`Sheet` is presented *and* a container, and needed no reconciler change.**
+  That is the evidence `WidgetKind.presented` is a real distinction rather than a special
+  case shaped around `Alert`: the children mount into the sheet's own handle by the ordinary
+  `insertAfter` path, and only the attachment differs.
+  Two platform notes. GTK: the content is attached through `gtk_window_set_child`, so it is
+  *detached* the same way — and that call drops the window's only reference, so it is also
+  the release. Doing it in `dismiss` freed the widget before the reconciler destroyed it and
+  GTK said so (`assertion 'GTK_IS_WIDGET (widget)' failed`); `dismiss` now only hides, and
+  `destroy` owns the teardown, which is the rule the `Scroll` case already encoded.
+  Android: built on `AlertDialog.Builder().setView(...)`, not a plain `Dialog` — a plain
+  `Dialog` reserves a title band under current themes and then draws nothing in it.
+- 2026-09-30 — **A presented widget is in its own window, so no in-process view walk can see
+  it.** Both self-tests can check that the screen behind is untouched and that the subtree's
+  signals still drive the model; they cannot check what the sheet *shows*. That belongs at
+  the renderer boundary, in a unit test. It matters because both renderers routed
+  `Prop.Text` to a title only when the kind was `Alert`, so a `Sheet`'s title silently went
+  nowhere — and every automated check passed, because not one of them could observe it. A
+  screenshot caught it. Where a class of assertion is structurally unavailable, say so and
+  move the assertion rather than leaving a check that cannot fail.
 - 2026-09-30 — **A test's `UiThread` must actually marshal; `install(f => f())` is the wrong
   stub.** The effect-zio suite installed a UiThread that runs the post *inline on the ZIO
   fibre's thread*, so `Var.set` happened off the test thread while the test spun on

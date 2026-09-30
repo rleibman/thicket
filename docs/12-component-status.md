@@ -11,7 +11,7 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **16** |
+| Widgets implemented on at least one renderer | **17** |
 | Widgets implemented on **every** renderer that exists | **15** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **25** |
@@ -48,6 +48,7 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
 | `Alert` | `WidgetKind.Alert` | done | done | — | — | `GtkAlertDialog` / `AlertDialog`. **Presented, not inserted** — see below |
+| `Sheet` | `WidgetKind.Sheet` | done | done | — | — | A modal window / `AlertDialog` with a custom view. Presented **and** a container |
 
 **The first presented widget, and it changed the contract.** An alert is not a child of
 anything on any of the four toolkits, and GTK says so in its types: `GtkAlertDialog` is a
@@ -58,6 +59,19 @@ would need the same special case in three methods — twelve places to keep in s
 
 Mounting presents, unmounting dismisses: `Show(confirming)(Alert(...))` is the whole API.
 That is the same mechanism `Spinner` uses, rather than a second imperative way to say it.
+
+**`Sheet` is what proved the seam generalises.** It is presented *and* a container, so its
+children mount into its handle by the ordinary `insertAfter` path while only the attachment
+differs — and it needed **no reconciler change**, which is the evidence that `presented` is
+a real distinction rather than a special case shaped around `Alert`.
+
+A presented widget lives in its **own window**, which has a testing consequence worth
+stating: neither host's in-process view walk can see into it. The GTK self-test and the
+Android one can observe that the screen *behind* is untouched and that the subtree's signals
+still drive the model, but not the presented content itself. Anything about what the sheet
+*shows* is asserted at the renderer boundary in `SheetSpec`. Both renderers routed a title
+only for `Alert`, so a `Sheet`'s title went nowhere — and no automated check caught it,
+because none of them could see it. A screenshot did.
 
 Two things the platforms disagree about, both resolved in favour of stating *roles* and
 letting each platform place them:
