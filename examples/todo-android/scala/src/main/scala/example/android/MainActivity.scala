@@ -2,11 +2,11 @@ package example.android
 
 import android.app.Activity
 import android.os.{Build, Bundle}
-import android.view.{MenuItem, View, WindowInsets}
+import android.view.{Menu, MenuItem, View, WindowInsets}
 import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
 import scala.annotation.nowarn
 import example.TodoApp
-import thicket.core.{ColorRole, Reconciler, Rgb, Theme}
+import thicket.core.{Action, ColorRole, Reconciler, Rgb, Theme}
 import thicket.renderer.android.AndroidRenderer
 import thicket.signals.{Owner, Signal, ThreadGuard}
 
@@ -55,10 +55,39 @@ class MainActivity extends Activity {
       Option(getActionBar).foreach(_.setDisplayHomeAsUpEnabled(up))
     }
 
+    // Toolbar actions in the action bar's options menu, which is Android's own place for
+    // them. `invalidateOptionsMenu` asks the platform to rebuild it; the actual building
+    // happens in onCreateOptionsMenu below, because Android owns that lifecycle rather
+    // than letting a caller push items in.
+    Signal.effect {
+      currentActions = app.actions()
+      invalidateOptionsMenu()
+    }
+
     registerBackHandler()
 
     if getIntent != null && getIntent.getBooleanExtra("selftest", false) then
       SelfTest.run(model, app, mounted.handle)
+  }
+
+  /** The actions the current screen declares, read by [[onCreateOptionsMenu]].
+    *
+    * Held in a field because Android drives menu construction on its own schedule: the app
+    * says "the menu changed", and the platform asks for it back when it is ready.
+    */
+  private var currentActions: Seq[Action] = Nil
+
+  override def onCreateOptionsMenu(menu: Menu): Boolean = {
+    menu.clear()
+    currentActions.zipWithIndex.foreach { (a, i) =>
+      val item = menu.add(Menu.NONE, i, i, a.label)
+      item.setEnabled(a.enabled)
+      // SHOW_AS_ACTION_IF_ROOM, not ALWAYS: Android decides whether an action fits on the
+      // bar or belongs in the overflow, and overriding that is how a toolbar ends up
+      // clipped on a narrow phone.
+      item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+    }
+    true
   }
 
   /** Keep content out from under the system bars.
@@ -102,13 +131,20 @@ class MainActivity extends Activity {
   override def onBackPressed(): Unit =
     if !app.back() then super.onBackPressed()
 
-  /** The action bar's Up arrow. */
+  /** One handler for both: Android routes the Up arrow and the screen's own actions
+    * through the same callback, distinguished by item id. Up is checked first because
+    * `android.R.id.home` is a platform id and could otherwise collide with an action
+    * index.
+    */
   override def onOptionsItemSelected(item: MenuItem): Boolean =
     if item.getItemId == android.R.id.home then {
       val _ = app.back()
       true
-    }
-    else super.onOptionsItemSelected(item)
+    } else
+      currentActions.lift(item.getItemId) match {
+        case Some(a) => a.onTap(); true
+        case None    => super.onOptionsItemSelected(item)
+      }
 
   override def onDestroy(): Unit = {
     owner.dispose()

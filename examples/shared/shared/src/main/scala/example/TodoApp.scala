@@ -133,6 +133,13 @@ object TodoApp {
   private def itemsScreen(model: Model, nav: Nav[Route]): Screen =
     Screen(
       title = "Todo",
+      // Toolbar actions: a GTK header-bar button, an Android action-bar item. They are
+      // never in the element tree — that is what makes each platform put them where its
+      // users expect rather than where this file happens to list them.
+      actions = Seq(
+        Action("Add")(model.add()),
+        Action("About")(nav.push(Route.About))
+      ),
       // No title label in the content: `Screen.title` already drives the platform's own
       // chrome (action bar, header bar), and repeating it is how cross-platform apps end
       // up looking like neither platform.
