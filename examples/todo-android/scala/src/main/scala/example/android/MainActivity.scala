@@ -131,7 +131,6 @@ class MainActivity extends Activity {
   override def onBackPressed(): Unit =
     if !app.back() then super.onBackPressed()
 
-  /** The action bar's Up arrow. */
   /** One handler for both: Android routes the Up arrow and the screen's own actions
     * through the same callback, distinguished by item id. Up is checked first because
     * `android.R.id.home` is a platform id and could otherwise collide with an action
