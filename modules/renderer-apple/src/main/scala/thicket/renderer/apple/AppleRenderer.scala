@@ -20,11 +20,11 @@ final class AppleRenderer extends Renderer {
   private val tapIds = mutable.Map.empty[Handle, Long]
   private val editIds = mutable.Map.empty[Handle, Long]
   private val boolIds = mutable.Map.empty[Handle, Long]
+  private val rowIds = mutable.Map.empty[Handle, Long]
 
-  /** The scrollers created horizontally. The renderer is the only thing that knows: the axis
-    * is folded into the kind code at `create` and nothing on the Swift side is asked about
-    * it afterwards. Exposed for [[isHorizontalScroll]] so a test can tell the two scrollers
-    * in a screen apart without a tree-order guess.
+  /** The scrollers created horizontally. The renderer is the only thing that knows: the axis is folded into the kind
+    * code at `create` and nothing on the Swift side is asked about it afterwards. Exposed for [[isHorizontalScroll]] so
+    * a test can tell the two scrollers in a screen apart without a tree-order guess.
     */
   private val horizontalScrolls = mutable.Set.empty[Handle]
 
@@ -35,45 +35,50 @@ final class AppleRenderer extends Renderer {
     */
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
 
-  /** The axis has to be folded into the kind code because `create` reaches Swift as a single
-    * int and the axis is read at create, not at update. 15 is a horizontal `Scroll`; 6 stays
-    * the vertical one. `NSScrollView` and `UIScrollView` each do both directions, so unlike
-    * Android this is one class configured two ways rather than two classes.
+  /** The axis has to be folded into the kind code because `create` reaches Swift as a single int and the axis is read
+    * at create, not at update. 15 is a horizontal `Scroll`; 6 stays the vertical one. `NSScrollView` and `UIScrollView`
+    * each do both directions, so unlike Android this is one class configured two ways rather than two classes.
     *
-    * 15 rather than 9 because phase 2 reserved 9-14 for the widgets it added; an axis is not
-    * worth renumbering six pending widgets over.
+    * 15 rather than 9 because phase 2 reserved 9-14 for the widgets it added; an axis is not worth renumbering six
+    * pending widgets over.
+    *
+    * The codes are `ShimKind`, generated from `tools/shim-gen`'s `Abi.kinds` alongside the header table that says which
+    * view each toolkit builds for them.
     */
   private def kindCode(
     kind:  WidgetKind,
     props: Seq[Prop]
   ): CInt =
     kind match {
-      case WidgetKind.Column    => 0
-      case WidgetKind.Row       => 1
-      case WidgetKind.Label     => 2
-      case WidgetKind.Button    => 3
-      case WidgetKind.TextField => 4
-      case WidgetKind.Checkbox  => 5
-      case WidgetKind.Scroll    => if isHorizontal(props) then 15 else 6
-      case WidgetKind.Divider   => 7
-      case WidgetKind.Image     => 8
+      case WidgetKind.Column    => ShimKind.Column
+      case WidgetKind.Row       => ShimKind.Row
+      case WidgetKind.Label     => ShimKind.Label
+      case WidgetKind.Button    => ShimKind.Button
+      case WidgetKind.TextField => ShimKind.TextField
+      case WidgetKind.Checkbox  => ShimKind.Checkbox
+      case WidgetKind.Scroll    => if isHorizontal(props) then ShimKind.ScrollHorizontal else ShimKind.Scroll
+      case WidgetKind.Divider   => ShimKind.Divider
+      case WidgetKind.Image     => ShimKind.Image
 
       // Reserved, and not yet built by either shim. `sui_create`'s `default:` branch
       // returns a *separator*, so passing one of these through would silently render a
       // slider as a hairline rule — a wrong widget that looks like a layout bug and sends
       // whoever hits it looking in the wrong place entirely. Failing loudly with the name
       // of the missing case is the honest behaviour until the Swift lands. Forgejo #9.
-      case WidgetKind.Toggle            => unimplemented("Toggle", 9)
-      case WidgetKind.Spacer            => unimplemented("Spacer", 10)
-      case WidgetKind.ProgressBar       => unimplemented("ProgressBar", 11)
-      case WidgetKind.ActivityIndicator => unimplemented("ActivityIndicator", 12)
-      case WidgetKind.Slider            => unimplemented("Slider", 13)
-      case WidgetKind.SecureField       => unimplemented("SecureField", 14)
-      case WidgetKind.Alert             => unimplemented("Alert", 16)
-      case WidgetKind.Sheet             => unimplemented("Sheet", 17)
+      case WidgetKind.Toggle            => unimplemented("Toggle", ShimKind.Toggle)
+      case WidgetKind.Spacer            => unimplemented("Spacer", ShimKind.Spacer)
+      case WidgetKind.ProgressBar       => unimplemented("ProgressBar", ShimKind.ProgressBar)
+      case WidgetKind.ActivityIndicator => unimplemented("ActivityIndicator", ShimKind.ActivityIndicator)
+      case WidgetKind.Slider            => unimplemented("Slider", ShimKind.Slider)
+      case WidgetKind.SecureField       => unimplemented("SecureField", ShimKind.SecureField)
+      case WidgetKind.Alert             => unimplemented("Alert", ShimKind.Alert)
+      case WidgetKind.Sheet             => unimplemented("Sheet", ShimKind.Sheet)
     }
 
-  private def unimplemented(name: String, reservedCode: Int): Nothing =
+  private def unimplemented(
+    name:         String,
+    reservedCode: Int
+  ): Nothing =
     throw new UnsupportedOperationException(
       s"$name is not implemented in the Apple shim yet (kind code $reservedCode reserved). " +
         "See Forgejo #9."
@@ -233,8 +238,8 @@ final class AppleRenderer extends Renderer {
 
       // Likewise unreachable while Slider cannot be created. NSSlider and UISlider both
       // take the app's own units, so these are near-direct once the shim lands.
-      case Prop.Range(_, _)     => ()
-      case Prop.Value(_)        => ()
+      case Prop.Range(_, _)      => ()
+      case Prop.Value(_)         => ()
       case Prop.OnValueChange(_) => ()
 
       // Alert's props. Unreachable while Alert cannot be created; present here so this
@@ -264,6 +269,10 @@ final class AppleRenderer extends Renderer {
     tapIds.remove(handle).foreach(Handles.release)
     editIds.remove(handle).foreach(Handles.release)
     boolIds.remove(handle).foreach(Handles.release)
+    // The row closure captures the whole RowSource graph, so an unreleased id keeps every
+    // unmounted list alive. A table asking for a row after this gets null, which it treats as
+    // no view.
+    rowIds.remove(handle).foreach(Handles.release)
     kinds.remove(handle)
     horizontalScrolls.remove(handle)
     // Detaching is part of destroying; the shim removes from the superview before
@@ -273,6 +282,35 @@ final class AppleRenderer extends Renderer {
 
   /** Whether a handle is a `Scroll` that was created with [[Orientation.Horizontal]]. */
   def isHorizontalScroll(handle: Handle): Boolean = horizontalScrolls.contains(handle)
+
+  /** `NSTableView` and `UITableView` both recycle, so the contract's `RowSource` is a direct fit and needed no change —
+    * the third toolkit in a row for which that is true, after `GtkListView` and Android's `ListView`.
+    */
+  override def supportsVirtualRows: Boolean = true
+
+  override def createVirtualList(source: RowSource[Handle]): Handle = {
+    // The id, not the closure, is what crosses to Swift: a C function pointer cannot close
+    // over state (S4), so one static trampoline serves every table.
+    val id = Handles.registerRow(
+      (
+        index,
+        recycled
+      ) =>
+        if index >= 0 && index < source.count then source.bind(index, recycled)
+        else null.asInstanceOf[Handle]
+    )
+    val table = Shim.sui_create_table(Handles.rowTrampoline, id)
+    rowIds(table) = id
+    kinds(table) = WidgetKind.Scroll
+    Shim.sui_table_reload(table, source.count)
+    source.onInvalidate(() => Shim.sui_table_reload(table, source.count))
+    table
+  }
+
+  /** How many row views the table has actually built. The number that says virtualisation is working: without it a 10
+    * 000-row list silently materialises 10 000 rows.
+    */
+  def materialisedRows(handle: Handle): Int = Shim.sui_table_materialised(handle)
 
   def measure(
     handle:      Handle,

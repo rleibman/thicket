@@ -205,6 +205,10 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   taps.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
+  // A virtual list's source is owned here (the table's references to it are weak), so it
+  // goes with the view; keyed by the handle, which is the same object `sui_create_table`
+  // keyed it by.
+  tableSources.removeValue(forKey: id)
   suppressed.remove(id)
   // Detaching is part of destroying, not a separate step the caller performs first.
   if let stack = v.superview as? UIStackView { stack.removeArrangedSubview(v) }
@@ -460,6 +464,95 @@ public func sui_insert_after(
 /// boundary, so it is read back off the scroller's own configuration.
 private func isHorizontalScroller(_ s: UIScrollView) -> Bool {
   s.alwaysBounceHorizontal && !s.alwaysBounceVertical
+}
+
+// MARK: - virtual rows
+
+/// The UIKit mirror of AppKit's TableSource. The inversion is the same; the recycling
+/// mechanism is not, and that is why this is a separate file rather than an `#if`.
+///
+/// `UITableView` recycles *cells*, not the views inside them, so the Scala view is hosted in
+/// a cell's `contentView` and the recycled handle is whatever that cell held last. AppKit
+/// hands back the row view itself.
+private final class TableSource: NSObject, UITableViewDataSource, UITableViewDelegate {
+  let cb: sui_row_cb
+  let ctx: Int64
+  var count: Int = 0
+  var materialised = Set<ObjectIdentifier>()
+
+  init(cb: @escaping sui_row_cb, ctx: Int64) {
+    self.cb = cb
+    self.ctx = ctx
+  }
+
+  func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { count }
+
+  func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    let cell = tableView.dequeueReusableCell(withIdentifier: rowId)
+      ?? UITableViewCell(style: .default, reuseIdentifier: rowId)
+
+    // Whatever this cell last hosted is the recycled view.
+    let previous = cell.contentView.subviews.first
+    let recycledPtr = previous.map { Unmanaged.passUnretained($0).toOpaque() }
+    guard let produced = cb(ctx, Int32(indexPath.row), recycledPtr) else { return cell }
+    let v = Unmanaged<UIView>.fromOpaque(produced).takeUnretainedValue()
+    materialised.insert(ObjectIdentifier(v))
+
+    // Re-binding usually returns the same view, in which case re-pinning it would add a
+    // duplicate set of constraints on every scroll.
+    if v !== previous {
+      previous?.removeFromSuperview()
+      v.translatesAutoresizingMaskIntoConstraints = false
+      cell.contentView.addSubview(v)
+      NSLayoutConstraint.activate([
+        v.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor),
+        v.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor),
+        v.topAnchor.constraint(equalTo: cell.contentView.topAnchor),
+        v.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor)
+      ])
+    }
+    return cell
+  }
+}
+
+private let rowId = "sui_row"
+private var tableSources: [ObjectIdentifier: TableSource] = [:]
+
+@_cdecl("sui_create_table")
+public func sui_create_table(_ cb: @escaping sui_row_cb, _ ctx: Int64) -> UnsafeMutableRawPointer {
+  let table = UITableView(frame: .zero, style: .plain)
+  table.rowHeight = UITableView.automaticDimension
+  table.estimatedRowHeight = 44
+  let source = TableSource(cb: cb, ctx: ctx)
+  table.dataSource = source
+  table.delegate = source
+  // UITableView scrolls on its own, so unlike AppKit there is no separate scroller: the
+  // table itself is the handle Scala holds.
+  tableSources[ObjectIdentifier(table)] = source
+  return retained(table)
+}
+
+private func table(of h: UnsafeMutableRawPointer) -> (UITableView, TableSource)? {
+  guard let t = view(h) as? UITableView, let s = tableSources[ObjectIdentifier(t)] else { return nil }
+  return (t, s)
+}
+
+@_cdecl("sui_table_reload")
+public func sui_table_reload(_ h: UnsafeMutableRawPointer, _ count: Int32) {
+  guard let (t, s) = table(of: h) else { return }
+  s.count = Int(count)
+  t.reloadData()
+}
+
+@_cdecl("sui_table_materialised")
+public func sui_table_materialised(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let (_, s) = table(of: h) else { return 0 }
+  return Int32(s.materialised.count)
+}
+
+@_cdecl("sui_table_live")
+public func sui_table_live() -> Int32 {
+  Int32(tableSources.count)
 }
 
 @_cdecl("sui_remove_child")

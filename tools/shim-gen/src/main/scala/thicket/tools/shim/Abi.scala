@@ -8,10 +8,10 @@ package thicket.tools.shim
   *   - `shim/Sources/Shim+AppKit.swift` and `Shim+UIKit.swift` — the `@_cdecl` signatures,
   *   - `src/main/scala/.../Shim.scala` — the `@extern` bindings.
   *
-  * Today all three are hand-written, which is 4 declarations per function across two shims and, at 34 functions, 136
-  * places to get right. A disagreement between them is not a compile error on either side: it is a silent ABI mismatch
-  * that reads a garbage register at runtime, on a phone. That — not the line count — is what this description exists to
-  * remove.
+  * The header and the Scala externs are generated from this (`sbt shimGen/run`); the two Swift shims are hand-written
+  * and checked against it. Before that, all four were hand-written: at 34 functions, 136 places to get right. A
+  * disagreement between them is not a compile error on either side: it is a silent ABI mismatch that reads a garbage
+  * register at runtime, on a phone. That — not the line count — is what this description exists to remove.
   *
   * **What this does not describe.** Function *bodies*. Measured on the two shims that exist: 80 generatable signature
   * lines against 211 hand-written body lines each, and of the 34 shared functions only 7 have byte-identical bodies.
@@ -53,6 +53,11 @@ object Abi {
       */
     case VoidCb, TextCb, BoolCb
 
+    /** The row-binding callback, and the only one that returns a value. A returned *pointer* is a single register; what
+      * S4 and S3 found silently broken was a returned small struct.
+      */
+    case RowCb
+
   }
 
   /** What a type is *at the ABI*, as opposed to what it is called.
@@ -76,8 +81,8 @@ object Abi {
         case CType.I64  => Repr.I64
         case CType.F64  => Repr.F64
 
-        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle => Repr.Pointer
-        case CType.VoidCb | CType.TextCb | CType.BoolCb            => Repr.FnPointer
+        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle    => Repr.Pointer
+        case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb => Repr.FnPointer
       }
 
   }
@@ -133,14 +138,78 @@ object Abi {
     Fn("sui_window_set_title", Void, List(p("title", Str)))
   )
 
+  /** One `sui_create` kind code, and the view each toolkit builds for it.
+    *
+    * This is where per-platform widget *choice* is expressed, not only per-platform naming: kind 5 is a checkbox on the
+    * Mac and a switch on iOS, because UIKit has no checkbox. The strings are the Swift construction each shim's `case`
+    * must contain — `NSButton( checkboxWithTitle:` and `UISwitch(` — and ConsistencySpec reads both `sui_create` bodies
+    * to check it does. So a shim that quietly builds a different widget, or handles a code this table does not know,
+    * fails on any machine.
+    *
+    * `None` is a code that is reserved and not built by that shim; Scala refuses to create it rather than let it reach
+    * the shim's `default:` branch.
+    */
+  final case class Kind(
+    code:    Int,
+    name:    String,
+    appKit:  Option[String],
+    uiKit:   Option[String],
+    comment: String = ""
+  )
+
+  private def built(
+    code:    Int,
+    name:    String,
+    appKit:  String,
+    uiKit:   String,
+    comment: String = ""
+  ) = Kind(code, name, Some(appKit), Some(uiKit), comment)
+
+  private def reserved(
+    code: Int,
+    name: String,
+    why:  String = "#4"
+  ) = Kind(code, name, None, None, s"reserved, not built yet ($why)")
+
+  val kinds: List[Kind] = List(
+    built(0, "Column", "TapView(", "UIStackView("),
+    built(1, "Row", "TapView(", "UIStackView("),
+    built(2, "Label", "NSTextField(labelWithString:", "UILabel(", "AppKit has no label class"),
+    built(3, "Button", "NSButton(title:", "UIButton(type:"),
+    built(4, "TextField", "NSTextField(string:", "UITextField("),
+    built(5, "Checkbox", "NSButton(checkboxWithTitle:", "UISwitch(", "UIKit has no checkbox"),
+    built(6, "Scroll", "NSScrollView(", "UIScrollView(", "vertical"),
+    built(7, "Divider", "NSBox(", "UIView(", "the shims' default: branch"),
+    built(8, "Image", "ImageView(", "UIImageView("),
+    reserved(9, "Toggle"),
+    reserved(10, "Spacer"),
+    reserved(11, "ProgressBar"),
+    reserved(12, "ActivityIndicator"),
+    reserved(13, "Slider"),
+    reserved(14, "SecureField"),
+    built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create"),
+    reserved(16, "Alert", "phase 3; NSAlert / UIAlertController"),
+    reserved(17, "Sheet", "phase 3; a sheet on AppKit, a presented view controller on UIKit")
+  )
+
+  /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of
+    * codes from the one Scala sends.
+    */
+  private def kindDoc: String = {
+    def show(v: Option[String]) = v.fold("-")(c => if c.endsWith("(") then s"$c)" else s"$c)")
+    val rows = kinds.map { k =>
+      val note = if k.comment.isEmpty then "" else s"  ${k.comment}"
+      f"     ${k.code}%2d ${k.name}%-18s ${show(k.appKit)}%-30s ${show(k.uiKit)}%-16s$note".stripTrailing
+    }
+    ("kind: the view each toolkit builds. A different *widget* per platform is chosen here," ::
+      "   not only a different name. Generated from Abi.kinds; ConsistencySpec checks both" ::
+      "   shims' sui_create build what this says." ::
+      "" ::
+      rows).mkString("\n")
+  }
+
   val construction: List[Fn] = List(
-    Fn(
-      "sui_create",
-      Handle,
-      List(p("kind", I32)),
-      doc = "kind: 0 Column, 1 Row, 2 Label, 3 Button, 4 TextField, 5 Checkbox, 6 Scroll,\n" +
-        "        7 Divider, 8 Image"
-    ),
+    Fn("sui_create", Handle, List(p("kind", I32)), doc = kindDoc),
     Fn("sui_destroy", Void, List(p("h", Handle)))
   )
 
@@ -206,6 +275,40 @@ object Abi {
     Fn("sui_run_on_main", Void, List(p("cb", VoidCb), p("ctx", I64)))
   )
 
+  /** The one place control is inverted: everywhere else Scala builds a tree and the shim obeys, but a table asks for
+    * the row it is about to show and recycles the ones it is not. Mirrors `GtkSignalListItemFactory`'s bind callback
+    * and `BaseAdapter.getView`.
+    */
+  val virtualRows: List[Fn] = List(
+    Fn(
+      "sui_create_table",
+      Handle,
+      List(p("cb", RowCb), p("ctx", I64)),
+      doc = "An NSTableView / UITableView inside its scroller. `cb` is called for each row" + "\n" +
+        "   that becomes visible, with a recycled view or NULL."
+    ),
+    Fn(
+      "sui_table_reload",
+      Void,
+      List(p("h", Handle), p("count", I32)),
+      doc = "The new row count, from RowSource.onInvalidate."
+    ),
+    Fn(
+      "sui_table_materialised",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many row views the table has actually created. The measurement that says" + "\n" +
+        "   virtualisation is working, so it is part of the ABI rather than the self-test."
+    ),
+    Fn(
+      "sui_table_live",
+      I32,
+      Nil,
+      doc = "How many table sources the shim still owns. Falls back to zero once every" + "\n" +
+        "   virtual list is destroyed; the measurement that says destroying one frees it."
+    )
+  )
+
   val inspection: List[Fn] = List(
     Fn("sui_child_count", I32, List(p("h", Handle))),
     Fn("sui_child_at", Handle, List(p("h", Handle), p("index", I32))),
@@ -219,9 +322,11 @@ object Abi {
     Fn("sui_is_text_bearing", I32, List(p("h", Handle)))
   )
 
+  /** `doc`, when set, is emitted as a comment under the group's rule in the header. */
   final case class Group(
     title: String,
-    fns:   List[Fn]
+    fns:   List[Fn],
+    doc:   String = ""
   )
 
   val groups: List[Group] = List(
@@ -232,6 +337,12 @@ object Abi {
     Group("tree", tree),
     Group("layout", layout),
     Group("threading", threading),
+    Group(
+      "virtual rows",
+      virtualRows,
+      doc = "The one place control is inverted: everywhere else Scala builds a tree and the shim" + "\n" +
+        "   obeys, but a table asks for the row it is about to show and recycles the ones it is not."
+    ),
     Group("inspection, for the self-test", inspection)
   )
 

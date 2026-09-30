@@ -144,11 +144,10 @@ enum WidgetKind {
 
   /** A modal sheet: an element subtree presented over the app.
     *
-    * Like [[Alert]] it is [[presented]] rather than inserted, and like every container it
-    * holds children — which is the point of building it second. `Alert` could have been
-    * special-cased; a presented kind that is *also* a container is what shows the
-    * `present`/`dismiss` seam generalises, because the children mount into its handle by
-    * the ordinary path and only the attachment differs.
+    * Like [[Alert]] it is [[presented]] rather than inserted, and like every container it holds children — which is the
+    * point of building it second. `Alert` could have been special-cased; a presented kind that is *also* a container is
+    * what shows the `present`/`dismiss` seam generalises, because the children mount into its handle by the ordinary
+    * path and only the attachment differs.
     */
   case Sheet
 

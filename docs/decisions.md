@@ -69,6 +69,23 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-29 — **`thicket_apple.h` and `Shim.scala` are generated artefacts, checked in**
+  (GitHub #3). Both are now written by `sbt shimGen/run` from
+  `tools/shim-gen/.../Abi.scala` and carry a "GENERATED — edit Abi.scala" header;
+  `GenerateSpec` compares them to the generator's output byte for byte, so `sbt test` fails on
+  a hand edit or a missed regeneration (`sbt "shimGen/run --check"` is the same check as an
+  exit code). They stay checked in so that building `rendererApple` needs nothing but the
+  repository. Also decided:
+  (a) **Per-platform widget choice lives in `Abi.kinds`**: each `sui_create` code names the
+  Swift construction each toolkit uses (`NSButton(checkboxWithTitle:` vs `UISwitch(`), and
+  `ConsistencySpec` reads both shims' `sui_create` to check it — and that no shim handles a code
+  the table does not declare. The Scala codes are generated as `ShimKind` next to the externs.
+  (b) **Swift bodies stay hand-written**, and so do the two `@_cdecl` signatures per function:
+  per function that is 1 description entry + 2 checked Swift signatures, down from 4 unchecked
+  declarations. Generating Swift *files* would mean generating bodies, which the phase-1
+  measurement (14 of 34 genuinely different) rules out.
+  (c) The generated Scala binds `const uint8_t *` as `Ptr[Byte]`, not `Ptr[UByte]` — the
+  renderer allocates the buffer as `Byte`, and the two are the same register (`Abi.Repr`).
 - 2026-09-30 — **`Sheet` is presented *and* a container, and needed no reconciler change.**
   That is the evidence `WidgetKind.presented` is a real distinction rather than a special
   case shaped around `Alert`: the children mount into the sheet's own handle by the ordinary
@@ -88,7 +105,6 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   nowhere — and every automated check passed, because not one of them could observe it. A
   screenshot caught it. Where a class of assertion is structurally unavailable, say so and
   move the assertion rather than leaving a check that cannot fail.
-
 - 2026-09-30 — **A test's `UiThread` must actually marshal; `install(f => f())` is the wrong
   stub.** The effect-zio suite installed a UiThread that runs the post *inline on the ZIO
   fibre's thread*, so `Var.set` happened off the test thread while the test spun on
@@ -189,6 +205,31 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   cross-boundary symbol the Scala side had already renamed and whose Swift caller would
   otherwise have failed to link. `shimGen`'s ConsistencySuite proves the four artefacts
   still agree.
+- 2026-09-29 — **A callback may return a pointer across the Scala/Swift boundary; what is
+  banned is a returned *struct*** (#1). A virtualising table inverts control — it
+  asks for the row it is about to show — so `sui_row_cb` returns the row's view rather than
+  taking it. That looked like it collided with S3/S4, which found `CFuncPtr` returns
+  silently wrong, but those were small structs returned by value in the wrong registers. A
+  pointer is one register. Verified by running it: 10 000 rows, correct views, no
+  corruption. The ban in the ABI description is now written as "no struct by value",
+  which is what it always meant.
+- 2026-09-29 — **`RowSource` needed no change for a third toolkit in a row.** `NSTableView`
+  (`makeView(withIdentifier:)`) and `UITableView` (`dequeueReusableCell`) both fit the
+  contract as written, after `GtkListView` and Android's `ListView`. Measured on a
+  10 000-row list: **AppKit 40 row views, UIKit 34**, against GTK 205 and Android 66 — the
+  Apple toolkits recycle harder, not less. The counter lives in the shim
+  (`sui_table_materialised`) rather than the self-test, because only the platform knows what
+  it chose to build, and "how many rows exist" is exactly the measurement that distinguishes
+  virtualisation from a list that merely works in a demo. With `supportsVirtualRows = false`
+  the same probe produced **no output in 151 s** — the tree never finished mounting, which
+  is what "works in the demo and dies in an app" looks like with a stopwatch on it.
+- 2026-09-29 — **Apple measurements now run through focused probes, not the demo's
+  self-test.** Phase 2 made the shared `TodoApp` use six widgets `AppleRenderer` throws on
+  (#4), so the Apple demo cannot start at all, and an unrelated gap would otherwise
+  block every Apple measurement behind it. `LazyProbe` (a 10 000-row screen and nothing
+  else) and `run-fit-harness.sh` (which links the shim without the app) are the pattern: a
+  renderer measurement should depend on the widgets it is measuring and no others.
+
 - 2026-09-29 — **A scroll view must pin its document view on the cross axis, on both Apple
   toolkits** (Forgejo #4). The vertical `Scroll` had been left on AppKit's defaults with the
   note that it laid out correctly without constraints. It did — until something inside it

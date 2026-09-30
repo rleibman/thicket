@@ -45,7 +45,8 @@ object Parse {
     "sui_handle"      -> CType.Handle,
     "sui_void_cb"     -> CType.VoidCb,
     "sui_text_cb"     -> CType.TextCb,
-    "sui_bool_cb"     -> CType.BoolCb
+    "sui_bool_cb"     -> CType.BoolCb,
+    "sui_row_cb"      -> CType.RowCb
   )
 
   /** Splits `const char *title` into its type and drops the parameter name. C puts the `*` with the name, so the type
@@ -97,7 +98,8 @@ object Parse {
     "UnsafeMutableRawPointer"      -> CType.Handle,
     "sui_void_cb"                  -> CType.VoidCb,
     "sui_text_cb"                  -> CType.TextCb,
-    "sui_bool_cb"                  -> CType.BoolCb
+    "sui_bool_cb"                  -> CType.BoolCb,
+    "sui_row_cb"                   -> CType.RowCb
   )
 
   /** A trailing `?` is Swift's optional, which is the same C pointer — `sui_get_text` returns `UnsafePointer<CChar>?`
@@ -161,7 +163,8 @@ object Parse {
     "Ptr[UByte]"   -> CType.Bytes,
     "VoidCb"       -> CType.VoidCb,
     "TextCb"       -> CType.TextCb,
-    "BoolCb"       -> CType.BoolCb
+    "BoolCb"       -> CType.BoolCb,
+    "RowCb"        -> CType.RowCb
   )
 
   private val scFn = """^\s*def\s+(sui_\w+)\s*\((.*)\)\s*:\s*(\S+?)\s*=\s*extern\s*$""".r
@@ -183,6 +186,61 @@ object Parse {
       case _                                                 => ()
     }
     Result(decls.result(), unparsed.result())
+  }
+
+  // -- Swift sui_create ----------------------------------------------------
+
+  /** The `case` blocks of a shim's `sui_create` switch: each explicit code with the source of its block, plus the
+    * `default:` block. Enough to check which view a kind builds without parsing Swift — the switch is flat, one `case`
+    * or `default:` per block.
+    */
+  final case class Cases(
+    explicit: Map[Int, String],
+    default:  Option[String]
+  ) {
+
+    /** The block a code actually runs: its own case, or `default:`. */
+    def blockFor(code: Int): Option[String] = explicit.get(code).orElse(default)
+
+  }
+
+  private val swCase = """^\s*case\s+([\d,\s]+):\s*$""".r
+  private val swDefault = """^\s*default:\s*$""".r
+
+  def swiftCreateCases(source: String): Cases = {
+    val lines = source
+      .split("\n", -1).toList
+      .dropWhile(l => !l.contains("func sui_create("))
+      .drop(1)
+      .takeWhile(_ != "}")
+    val explicit = Map.newBuilder[Int, String]
+    var default = Option.empty[String]
+    var codes = Option.empty[List[Int]] // None: the current block is `default:`
+    var inBlock = false // false until the first case: the switch header
+    val buf = new StringBuilder
+
+    def flush(): Unit = {
+      if inBlock then
+        codes match {
+          case Some(cs) => cs.foreach(c => explicit += c -> buf.toString)
+          case None     => default = Some(buf.toString)
+        }
+      buf.clear()
+    }
+
+    lines.foreach {
+      case swCase(raw) =>
+        flush()
+        inBlock = true
+        codes = Some(raw.split(",").toList.map(_.trim).filter(_.nonEmpty).map(_.toInt))
+      case swDefault() =>
+        flush()
+        inBlock = true
+        codes = None
+      case l => buf.append(l).append('\n')
+    }
+    flush()
+    Cases(explicit.result(), default)
   }
 
   // -- shared helpers ------------------------------------------------------

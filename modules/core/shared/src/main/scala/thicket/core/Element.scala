@@ -220,15 +220,18 @@ object dsl {
     * }
     * }}}
     *
-    * Where [[Alert]] takes its buttons as data because every toolkit does, a `Sheet` takes
-    * an element subtree, because its whole purpose is content the framework does not know
-    * the shape of. It is otherwise the same bargain: mounting presents it, unmounting
-    * dismisses it, and `onDismiss` reports a *platform* dismissal — so it carries the same
+    * Where [[Alert]] takes its buttons as data because every toolkit does, a `Sheet` takes an element subtree, because
+    * its whole purpose is content the framework does not know the shape of. It is otherwise the same bargain: mounting
+    * presents it, unmounting dismisses it, and `onDismiss` reports a *platform* dismissal — so it carries the same
     * obligation to take the sheet down itself. See [[Alert]] for why that matters.
     */
-  def Sheet(title: String = "")(
-    content:      Element*
-  )(onDismiss:    => Unit = ()): Element =
+  def Sheet(
+    title: String = ""
+  )(
+    content: Element*
+  )(
+    onDismiss: => Unit = ()
+  ): Element =
     Widget(
       WidgetKind.Sheet,
       Seq(Static(Prop.Text(title)), Static(Prop.OnDismiss(() => onDismiss))),
