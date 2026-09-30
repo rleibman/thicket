@@ -41,6 +41,7 @@ object SheetSpec extends ZIOSpecDefault {
 
       editing.set(false)
       chk.eq(r.presentedNow.toSeq, Seq.empty)
+      o.dispose()
       chk.result
     },
     test("the title reaches the renderer") {
