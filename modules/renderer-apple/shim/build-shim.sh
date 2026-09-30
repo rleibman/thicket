@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Compile the Apple shim to a static library that Scala Native links into the final binary.
 #
-#   ./build-shim.sh            # macOS / AppKit  -> build/libscalauiapple.a
-#   ./build-shim.sh ios-sim    # iOS simulator / UIKit -> build-ios/libscalauiapple.a
+#   ./build-shim.sh            # macOS / AppKit  -> build/libthicketapple.a
+#   ./build-shim.sh ios-sim    # iOS simulator / UIKit -> build-ios/libthicketapple.a
 #
 # Two Swift files, one header, one Scala renderer. S3 recommended per-*file* separation
 # rather than `#if` inside function bodies, because AppKit and UIKit diverge structurally:
@@ -44,10 +44,10 @@ swiftc \
   -parse-as-library \
   -target "$TRIPLE" \
   -sdk "$SDK" \
-  -module-name ScalaUIApple \
-  -import-objc-header include/scalaui_apple_types.h \
+  -module-name ThicketApple \
+  -import-objc-header include/thicket_apple_types.h \
   "$SRC" \
   -o "$OUT/shim.o"
 
-ar rcs "$OUT/libscalauiapple.a" "$OUT/shim.o"
-echo "built $OUT/libscalauiapple.a for $TARGET ($(stat -f%z "$OUT/libscalauiapple.a") bytes)"
+ar rcs "$OUT/libthicketapple.a" "$OUT/shim.o"
+echo "built $OUT/libthicketapple.a for $TARGET ($(stat -f%z "$OUT/libthicketapple.a") bytes)"
