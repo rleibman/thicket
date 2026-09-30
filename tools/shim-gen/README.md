@@ -67,8 +67,8 @@ shims and `Abi` agree — including which view each shim builds for a new kind c
 | `Abi.scala` | **The source of truth.** 34 functions, in a type vocabulary with no struct in it |
 | `Parse.scala` | Reads declarations back out of C, Swift and Scala — regex parsers, deliberately |
 | `Emit.scala` | Emits the C header, the Scala externs, and Swift signature scaffolding |
-| `ConsistencySuite` | The four artefacts agree, and `Abi` describes them |
-| `GenerateSuite` | Generating from `Abi` reproduces what is checked in |
+| `ConsistencySpec` | The four artefacts agree, and `Abi` describes them |
+| `GenerateSpec` | Generating from `Abi` reproduces what is checked in |
 
 ## Two things the checks had to be taught
 
@@ -88,11 +88,11 @@ a false positive forever; what survives is every difference that costs a wrong r
 
 Done 2026-09-29 (GitHub #3). `modules/renderer-apple/shim/include/thicket_apple.h` and
 `modules/renderer-apple/src/main/scala/thicket/renderer/apple/Shim.scala` are generated,
-checked in, and compared to the generator's output **byte for byte** by `GenerateSuite`. Do not
+checked in, and compared to the generator's output **byte for byte** by `GenerateSpec`. Do not
 edit them: the test fails and names the file. `Shim.scala` is excluded from scalafmt for the
 same reason.
 
 `Shim.scala` also carries `ShimKind`, the `sui_create` codes, generated from `Abi.kinds`. That
 table is where per-platform widget *choice* is written down — kind 5 is
-`NSButton(checkboxWithTitle:` on AppKit and `UISwitch(` on UIKit — and `ConsistencySuite`
+`NSButton(checkboxWithTitle:` on AppKit and `UISwitch(` on UIKit — and `ConsistencySpec`
 checks each shim's `sui_create` case really builds it.

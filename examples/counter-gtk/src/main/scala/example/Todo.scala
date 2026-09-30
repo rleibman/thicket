@@ -191,6 +191,48 @@ object Todo {
       model.secret.now == "hunter2" && GtkInspect.allTexts(GtkApp.rootHandle).contains("hunter2"),
       "the value must round-trip even though it is not drawn")
 
+    // --- toolbar actions, in the header bar rather than the element tree ---
+    // GtkInspect walks the window, so the header bar's buttons are reachable the same way
+    // the content is — which is the point: they are real GTK widgets in the platform's own
+    // chrome, not something drawn into the tree.
+    val chrome = GtkInspect.allTexts(GtkApp.windowHandle)
+    check("the screen's actions are in the header bar",
+      chrome.contains("Add") && chrome.contains("About"),
+      chrome.toString)
+
+    val sizeBeforeAction = model.items.now.size
+    GtkApp.clickHeaderAction("Add")
+    check("tapping a header action runs it", model.items.now.size == sizeBeforeAction + 1)
+
+    // Actions are per screen, so navigating swaps them. The detail screen declares none.
+    app.push(TodoApp.Route.Detail(1))
+    val onDetail2 = GtkInspect.allTexts(GtkApp.windowHandle)
+    check("a screen with no actions has none in the header bar",
+      !onDetail2.contains("About"),
+      onDetail2.toString)
+    val _ = app.back()
+    check("and they come back on return",
+      GtkInspect.allTexts(GtkApp.windowHandle).contains("About"))
+
+    // --- Alert: presented by a signal, dismissed by unmounting ---
+    check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
+    val itemsBeforeAlert = model.items.now.size
+
+    model.confirmingDrop.set(true)
+    // GtkAlertDialog is a GObject, not a widget, so it is deliberately absent from the
+    // widget tree — that is what WidgetKind.presented means. The observable effect here is
+    // that presenting it neither crashes nor disturbs the screen behind it.
+    check("presenting an alert leaves the screen intact",
+      screenTexts.contains("Hide completed"), screenTexts.toString)
+
+    // Unmounting is the whole of dismissing. Crucially this must NOT fire onDismiss: the
+    // app asked for it to go away, which is not the user declining to choose.
+    model.confirmingDrop.set(false)
+    check("dismissing from the app does not report a user dismissal",
+      model.lastAlertChoice.now.isEmpty,
+      s"choice was '${model.lastAlertChoice.now}'")
+    check("and nothing was dropped", model.items.now.size == itemsBeforeAlert)
+
     // --- LazyColumn: 10 000 rows through GtkListView ---
     app.push(TodoApp.Route.Big)
     check("pushed the 10 000-row screen", app.title.now == "10 000 rows")

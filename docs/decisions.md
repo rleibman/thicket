@@ -86,6 +86,56 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   measurement (14 of 34 genuinely different) rules out.
   (c) The generated Scala binds `const uint8_t *` as `Ptr[Byte]`, not `Ptr[UByte]` — the
   renderer allocates the buffer as `Byte`, and the two are the same register (`Abi.Repr`).
+- 2026-09-30 — **A test's `UiThread` must actually marshal; `install(f => f())` is the wrong
+  stub.** The effect-zio suite installed a UiThread that runs the post *inline on the ZIO
+  fibre's thread*, so `Var.set` happened off the test thread while the test spun on
+  `signal.now`. The signal graph is single-threaded by construction — plain `var`s, no
+  barriers, which is precisely what `ThreadGuard` enforces — so that spin was racing on
+  memory visibility and lost about half the time. It surfaced as one flaky test,
+  "RemoteScreen: a failure renders the error branch", which was blamed twice on fibre
+  scheduling and was not that. `TestUiThread` queues posts and drains them on the waiting
+  thread, which is what GTK's main loop and Android's looper do, so the tests now exercise
+  the marshalling instead of skipping it. Eight consecutive clean runs against ~50% failure
+  before.
+  Two lessons worth keeping: a stub that is *simpler* than the real thing can hide the
+  behaviour under test, and "flaky" is a hypothesis, not a diagnosis.
+
+- 2026-09-30 — **`AppRoot.actions` had been in the contract since navigation landed and no
+  host ever read it.** `Screen.actions` → `NavHost.actions` → `AppRoot.actions` was wired
+  end to end, and both hosts dropped it on the floor: an API the docs described and nothing
+  honoured, which is worse than a missing feature because it reads as done. Now rendered as
+  native chrome — `gtk_header_bar_pack_end` on GTK, the action bar's options menu on
+  Android, via `invalidateOptionsMenu` because Android owns that lifecycle rather than
+  letting a caller push items in. Android uppercases the labels itself, which is the point
+  of keeping chrome out of the element tree.
+  `Action` also changed shape to `Action(label, enabled)(body)` with a by-name body,
+  matching `Button` and `AlertAction`; it was the only callback in the DSL that still took
+  an explicit `() => Unit`, and the moment to fix that was while nothing rendered it.
+  GTK packs in reverse because `pack_end` puts each new button nearest the window controls.
+
+- 2026-09-29 — **Some widgets are *presented*, not inserted, and the contract now says so.**
+  `WidgetKind.presented` plus `Renderer.present` / `Renderer.dismiss`. An alert is not a
+  child of anything on any of the four toolkits, and GTK makes that a type error —
+  `GtkAlertDialog` is a `GObject`, not a `GtkWidget`. Routing it through `insertAfter`
+  would have meant the same special case in three methods of four renderers. Mounting
+  presents and unmounting dismisses, so `Show(confirming)(Alert(...))` is the whole API and
+  there is no `show()` — the same choice `ActivityIndicator` made. `Sheet` and `Menu` will
+  follow the same path.
+- 2026-09-29 — **An alert states button *roles*; each platform decides position and
+  meaning.** GTK takes an ordered array and answers with an index; Android has three fixed
+  slots placed by its own convention, so the declared order is not the shown order there.
+  And `OnDismiss` means the *platform* closed it — which Android reports natively and GTK
+  does not, because declaring a cancel button makes Escape activate that button instead.
+  Both behaviours are the platform's own; the framework exposes the distinction rather than
+  flattening it, since an app that conflates "declined" with "looked away" will eventually
+  be wrong.
+- 2026-09-29 — **Android's platform SDK is drifting away from Android's idioms, and this
+  renderer stays on the platform.** `android.app.AlertDialog` and `android.widget.TabHost`
+  both carry class-level deprecation flags in android-36; the replacements live in AndroidX
+  and Material, not in the platform. The Alert uses the platform class anyway: scalac does
+  not even warn on it, it still draws correctly, and the reason this APK is 165 KB is that
+  it depends on nothing. `TabView` is a harder case and is not built — see §12.2a, this is
+  the same question `Radio` and `Stepper` raised.
 
 - 2026-09-29 — **`ContentFit.Cover` is drawn by hand on AppKit, and rendering is verified by
   measuring pixels rather than asserting on the property that was set** (Forgejo #6).
@@ -136,6 +186,31 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   cross-boundary symbol the Scala side had already renamed and whose Swift caller would
   otherwise have failed to link. `shimGen`'s ConsistencySuite proves the four artefacts
   still agree.
+- 2026-09-29 — **A callback may return a pointer across the Scala/Swift boundary; what is
+  banned is a returned *struct*** (#1). A virtualising table inverts control — it
+  asks for the row it is about to show — so `sui_row_cb` returns the row's view rather than
+  taking it. That looked like it collided with S3/S4, which found `CFuncPtr` returns
+  silently wrong, but those were small structs returned by value in the wrong registers. A
+  pointer is one register. Verified by running it: 10 000 rows, correct views, no
+  corruption. The ban in the ABI description is now written as "no struct by value",
+  which is what it always meant.
+- 2026-09-29 — **`RowSource` needed no change for a third toolkit in a row.** `NSTableView`
+  (`makeView(withIdentifier:)`) and `UITableView` (`dequeueReusableCell`) both fit the
+  contract as written, after `GtkListView` and Android's `ListView`. Measured on a
+  10 000-row list: **AppKit 40 row views, UIKit 34**, against GTK 205 and Android 66 — the
+  Apple toolkits recycle harder, not less. The counter lives in the shim
+  (`sui_table_materialised`) rather than the self-test, because only the platform knows what
+  it chose to build, and "how many rows exist" is exactly the measurement that distinguishes
+  virtualisation from a list that merely works in a demo. With `supportsVirtualRows = false`
+  the same probe produced **no output in 151 s** — the tree never finished mounting, which
+  is what "works in the demo and dies in an app" looks like with a stopwatch on it.
+- 2026-09-29 — **Apple measurements now run through focused probes, not the demo's
+  self-test.** Phase 2 made the shared `TodoApp` use six widgets `AppleRenderer` throws on
+  (#4), so the Apple demo cannot start at all, and an unrelated gap would otherwise
+  block every Apple measurement behind it. `LazyProbe` (a 10 000-row screen and nothing
+  else) and `run-fit-harness.sh` (which links the shim without the app) are the pattern: a
+  renderer measurement should depend on the widgets it is measuring and no others.
+
 - 2026-09-29 — **A scroll view must pin its document view on the cross axis, on both Apple
   toolkits** (Forgejo #4). The vertical `Scroll` had been left on AppKit's defaults with the
   note that it laid out correctly without constraints. It did — until something inside it

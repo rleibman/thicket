@@ -11,10 +11,10 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **15** |
+| Widgets implemented on at least one renderer | **16** |
 | Widgets implemented on **every** renderer that exists | **9** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **22** |
+| Props in the contract | **25** |
 | Props implemented on every renderer | **18** — `Progress`, `Value`, `Range` and `OnValueChange` are no-ops on Apple, because they belong to widgets it cannot create yet (#9) |
 
 **Nine of thirty-two is still the honest headline**, because four of the thirteen are not
@@ -43,7 +43,38 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
 
-### Added in phase 2 — GTK and Android done, Apple pending (#9)
+### Added in phase 3 — GTK and Android done, Apple pending (#4)
+
+| Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
+|---|---|---|---|---|---|---|
+| `Alert` | `WidgetKind.Alert` | done | done | — | — | `GtkAlertDialog` / `AlertDialog`. **Presented, not inserted** — see below |
+
+**The first presented widget, and it changed the contract.** An alert is not a child of
+anything on any of the four toolkits, and GTK says so in its types: `GtkAlertDialog` is a
+`GObject`, not a `GtkWidget`, so it could not be inserted even if we wanted to. So
+`WidgetKind.presented` marks such kinds and the reconciler calls `Renderer.present` /
+`Renderer.dismiss` instead of `insertAfter` / `removeChild`. Without it every renderer
+would need the same special case in three methods — twelve places to keep in step.
+
+Mounting presents, unmounting dismisses: `Show(confirming)(Alert(...))` is the whole API.
+That is the same mechanism `Spinner` uses, rather than a second imperative way to say it.
+
+Two things the platforms disagree about, both resolved in favour of stating *roles* and
+letting each platform place them:
+
+- **Button order.** GTK takes an array and answers with an index, so the declared order is
+  the shown order. Android has three fixed *slots* and its own conventional positions —
+  which is why `docs/screenshots/android-alert.png` shows Cancel left of Drop, the reverse
+  of the order the app wrote. An app that assumed its own order would be right on GTK and
+  wrong on Android.
+- **What dismissal means.** `Prop.OnDismiss` is for the *platform* closing the alert —
+  Escape, a tap outside, a back gesture — which is not the same as the user choosing a
+  cancel button. Android distinguishes them natively (`setOnCancelListener` does not fire
+  for a button). GTK does not: declaring a cancel button makes Escape *activate* it. So on
+  GTK a cancel action absorbs Escape, and `OnDismiss` fires only when there is no cancel
+  button. Both are the platform's own behaviour, which is the point.
+
+### Added in phase 2 — GTK and Android done, Apple pending (#4)
 
 Slice 2:
 
@@ -72,7 +103,7 @@ reserved for them.
 |---|---|
 | Layout | `Stack`/`ZStack`, `SafeArea`, `Grid` |
 | Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `Picker`, `DatePicker`, `Link` |
-| Containers | `TabView`, `Sheet`/`Modal`, `Alert`, `Menu`/`ContextMenu`, `Toolbar` |
+| Containers | `TabView`, `Sheet`/`Modal`, `Menu`/`ContextMenu`, `Toolbar` |
 
 `IconButton` and `Link` are held back on purpose: the first needs an icon/resource system
 and the second needs platform URL opening, and neither should be improvised inside a widget.
@@ -111,12 +142,12 @@ every remaining entry before it is built, not after.
 |---|---|---|
 | Fine-grained signals | `modules/signals` | done — glitch-free, property-tested on JVM/JS/Native |
 | Keyed reconciliation | `Reconciler` | done — `Show`, `Switch`, `ForEach`, `Fragment`, in-place `moveAfter` |
-| Virtualised list | `LazyColumn` + `RowSource` | **partial** — GTK and Android recycle; **Apple does not** and silently mounts every row — Forgejo **#5** |
-| Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title and Up chrome work; no *native* navigation container |
+| Virtualised list | `LazyColumn` + `RowSource` | done — all four recycle. Materialised rows for a 10 000-row list: GTK **205**, Android **66**, AppKit **40**, UIKit **34** |
+| Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title, Up and **toolbar actions** work as native chrome; no *native* navigation container |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide`; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread` | done |
-| Apple ABI description + consistency check | `tools/shim-gen` | done — 34 functions and 16 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
+| Apple ABI description + consistency check | `tools/shim-gen` | done — 38 functions and 17 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
 
 ## 12.4 Props
 
@@ -140,8 +171,8 @@ until Forgejo **#4**.
 |---|---|---|---|---|
 | GTK4 | `renderer-gtk` | ToolkitManaged | yes (`GtkListView`) | Linux, Scala Native |
 | Android | `renderer-android` | ToolkitManaged | yes (`ListView`) | Android 26+, Scala on ART |
-| AppKit | `renderer-apple` | ToolkitManaged | **no** | macOS, Scala Native + Swift shim |
-| UIKit | `renderer-apple` | ToolkitManaged | **no** | iOS simulator, Scala Native + Swift shim |
+| AppKit | `renderer-apple` | ToolkitManaged | yes (`NSTableView`) | macOS, Scala Native + Swift shim |
+| UIKit | `renderer-apple` | ToolkitManaged | yes (`UITableView`) | iOS simulator, Scala Native + Swift shim |
 | Win32/WinUI | — | — | — | not started |
 | DOM (dev canvas) | — | — | — | not started |
 
@@ -152,9 +183,10 @@ depends on it until `Grid` or absolute positioning does.
 ## 12.6 What this list is for
 
 **Division of labour.** Apple work is done on the macOS laptop, so anything AppKit/UIKit is
-raised as an issue rather than attempted here — currently **#5** (virtualised rows) and
-**#7** (shim generation). **#4** (horizontal `Scroll`) and **#6** (`ContentFit.Cover`) are
-done. Everything else is built and measured on the Linux box.
+raised as an issue rather than attempted here — currently **#3** (shim generation)
+and **#4** (the phase 2 widgets). Horizontal `Scroll`, **#1** (virtualised rows) and
+**#2** (`ContentFit.Cover`) are done. Everything else is built and measured on the
+Linux box.
 
 Two rules, so it stays true:
 
@@ -180,7 +212,7 @@ someone and watch. It implies five things, roughly in dependency order.
 |---|---|---|
 | 1 | **Shim generation** (Forgejo **#7**, phase 1 — *adopted 2026-09-29, GitHub #3; Swift bodies deliberately stay hand-written*) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
-| 3 | **Apple parity** — virtualised rows (horizontal `Scroll` and `ContentFit.Cover` done) | `LazyColumn` silently mounting 10 000 rows on iOS is the worst kind of gap: it works in the demo and dies in an app. |
+| 3 | **Apple parity** — the phase 2 widgets (#4); virtualised rows, horizontal `Scroll` and `ContentFit.Cover` are done | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |
 | 5 | **Published artefacts and a getting-started** | Without these, "an outside developer" is not a thing that can be tested. |
 
@@ -206,18 +238,28 @@ someone who did not write the framework, running on all three targets.
 | `effectZioJVM` | 13 |
 | `shimGen` | 10 |
 
-Three rules the migration established, each paid for by a failure rather than guessed at:
+Four rules the migration established:
 
 1. **Anything touching the signal graph needs `@@ TestAspect.sequential`.** The
    dependency-tracking context is two process-global `var`s, so parallel tests corrupt each
    other. zio-test runs a suite's tests in parallel by default.
-2. **Suites sharing process-global state must be one spec.** `sequential` orders tests
-   within a spec and promises nothing between specs, which zio-test runs concurrently.
-   `EffectZioSpec` holds both the bridge and the remote-screen suites for this reason.
-3. **Never compare a stringified number.** Scala.js renders `7.0` as `"7"`. `TestRenderer`
+2. **Suites sharing process-global state should be one spec.** `sequential` orders tests
+   within a spec and promises nothing between specs, which zio-test runs concurrently, so
+   two specs both installing `UiThread` and `ThreadGuard` can interleave. `EffectZioSpec`
+   holds both the bridge and the remote-screen suites for this reason.
+
+   *Weaker evidence than the others, and worth saying so.* This was adopted to fix a flaky
+   test, and it did not: the flake was rule 3 below, and it kept failing for another two
+   rounds. The rule stands on its own argument rather than on that failure, and merging the
+   specs costs nothing — but it is a precaution, not a diagnosis, and it was presented as a
+   diagnosis once already.
+3. **A test's `UiThread` must marshal, not run inline.** `install(f => f())` runs the post
+   on whatever thread called it — a ZIO fibre, typically — so signal writes land off the
+   test thread and a spin-wait races on memory visibility. `TestUiThread` queues and drains.
+4. **Never compare a stringified number.** Scala.js renders `7.0` as `"7"`. `TestRenderer`
    keeps numeric props in `nums: Map[String, Double]`, not in the string map.
 
-And the process rule behind all three: **run the cross-built modules on all three
+And the process rule behind all four: **run the cross-built modules on all three
 backends.** Phase 2 shipped a test that only ever passed on the JVM.
 
 ## 12.9 Coverage

@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.scalanative.unsafe.*
 import scala.scalanative.runtime.{Intrinsics, fromRawPtr, toRawPtr}
 import sn.gnome.glib.internal.{gpointer, gboolean, gint}
+import sn.gnome.gtk4.internal.{GtkAlertDialog, gtk_alert_dialog_choose_finish}
+import sn.gnome.gio.internal.GAsyncResult
 
 /** Callbacks cannot close over local state in Scala Native (compile error), so every C
   * callback is a static trampoline plus an explicit context. The context travels as the
@@ -156,6 +158,44 @@ private[gtk] object Handles {
     }
 
   def listBindPtr: CVoidPtr = CFuncPtr.toPtr(listBind)
+
+  private val chosen: ConcurrentHashMap[java.lang.Long, Int => Unit] =
+    new ConcurrentHashMap[java.lang.Long, Int => Unit]()
+
+  def registerChosen(f: Int => Unit): Long = {
+    val id = nextId.getAndIncrement()
+    chosen.put(id, f)
+    id
+  }
+
+  def releaseChosen(id: Long): Unit = {
+    val _ = chosen.remove(id)
+  }
+
+  /** `GAsyncReadyCallback`: (source, result, user_data).
+    *
+    * `gtk_alert_dialog_choose_finish` returns the chosen button's index, or -1 with the
+    * error set — which is what a cancellation looks like, and cancelling is the only way to
+    * take an alert down programmatically. So -1 is "no choice was made", and it is the
+    * caller that knows whether that was a dismissal or its own `dismiss`.
+    */
+  private val alertChosen: CFuncPtr3[Ptr[Byte], Ptr[Byte], gpointer, Unit] =
+    CFuncPtr3.fromScalaFunction { (source: Ptr[Byte], result: Ptr[Byte], data: gpointer) =>
+      GcState.guarded {
+        val id = pointerToId(data)
+        val index =
+          gtk_alert_dialog_choose_finish(
+            source.asInstanceOf[Ptr[GtkAlertDialog]],
+            result.asInstanceOf[Ptr[GAsyncResult]],
+            null
+          )
+        val f = chosen.get(id)
+        if f != null then f(index)
+        releaseChosen(id)
+      }
+    }
+
+  def alertChosenPtr: CVoidPtr = CFuncPtr.toPtr(alertChosen)
 
   /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not
     * shed entries at UI rates is a leak with a clock on it (S8).

@@ -46,7 +46,8 @@ void sui_window_set_title(const char *title);
      12 ActivityIndicator  -                              -                 reserved, not built yet (#4)
      13 Slider             -                              -                 reserved, not built yet (#4)
      14 SecureField        -                              -                 reserved, not built yet (#4)
-     15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create */
+     15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create
+     16 Alert              -                              -                 reserved, not built yet (phase 3; NSAlert / UIAlertController) */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -93,6 +94,21 @@ void sui_set_frame(sui_handle h, double x, double y, double w, double height);
 
 /* --- threading --------------------------------------------------------------- */
 void sui_run_on_main(sui_void_cb cb, int64_t ctx);
+
+/* --- virtual rows ------------------------------------------------------------ */
+/* The one place control is inverted: everywhere else Scala builds a tree and the shim
+   obeys, but a table asks for the row it is about to show and recycles the ones it is not. */
+/* An NSTableView / UITableView inside its scroller. `cb` is called for each row
+   that becomes visible, with a recycled view or NULL. */
+sui_handle sui_create_table(sui_row_cb cb, int64_t ctx);
+/* The new row count, from RowSource.onInvalidate. */
+void sui_table_reload(sui_handle h, int32_t count);
+/* How many row views the table has actually created. The measurement that says
+   virtualisation is working, so it is part of the ABI rather than the self-test. */
+int32_t sui_table_materialised(sui_handle h);
+/* How many table sources the shim still owns. Falls back to zero once every
+   virtual list is destroyed; the measurement that says destroying one frees it. */
+int32_t sui_table_live(void);
 
 /* --- inspection, for the self-test ------------------------------------------- */
 int32_t sui_child_count(sui_handle h);

@@ -169,6 +169,41 @@ object SelfTest {
       masked.headOption.exists(_.getText.toString == "hunter2"),
       "the value must round-trip even though it is not drawn")
 
+    // --- toolbar actions, in the action bar rather than the element tree ---
+    // Android builds the options menu on its own schedule, so the check is that the app
+    // declared them and that invoking one works - the menu itself belongs to the platform
+    // and is not in this View tree by design.
+    check("the items screen declares actions", app.actions.now.map(_.label) == Seq("Add", "About"),
+      app.actions.now.map(_.label).toString)
+
+    val sizeBeforeAction = model.items.now.size
+    app.actions.now.find(_.label == "Add").foreach(_.onTap())
+    check("invoking a toolbar action runs it", model.items.now.size == sizeBeforeAction + 1)
+
+    app.push(TodoApp.Route.Detail(1))
+    check("a screen with no actions declares none", app.actions.now.isEmpty,
+      app.actions.now.map(_.label).toString)
+    val _ = app.back()
+    check("and they come back on return", app.actions.now.map(_.label) == Seq("Add", "About"))
+
+    // --- Alert: presented by a signal, dismissed by unmounting ---
+    check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
+    val itemsBeforeAlert = model.items.now.size
+
+    model.confirmingDrop.set(true)
+    check("presenting an alert leaves the screen intact",
+      allTexts(root).contains("Hide completed"), allTexts(root).toString)
+
+    // Unmounting is the whole of dismissing, and it must NOT report a user dismissal: the
+    // app asked for it to go away, which is not the user declining to choose. On Android
+    // that distinction is real - setOnCancelListener fires for the back gesture and a tap
+    // outside, but not for Dialog.dismiss().
+    model.confirmingDrop.set(false)
+    check("dismissing from the app does not report a user dismissal",
+      model.lastAlertChoice.now.isEmpty,
+      s"choice was '${model.lastAlertChoice.now}'")
+    check("and nothing was dropped", model.items.now.size == itemsBeforeAlert)
+
     Log.i(
       Tag,
       if failures == 0 then "[selftest] ALL CHECKS PASSED"

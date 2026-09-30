@@ -8,31 +8,28 @@ package thicket.tools.shim
   *   - `shim/Sources/Shim+AppKit.swift` and `Shim+UIKit.swift` — the `@_cdecl` signatures,
   *   - `src/main/scala/.../Shim.scala` — the `@extern` bindings.
   *
-  * The header and the Scala externs are generated from this (`sbt shimGen/run`); the two
-  * Swift shims are hand-written and checked against it. Before that, all four were
-  * hand-written: at 34 functions, 136 places to get right. A disagreement between them is not a
-  * compile error on either side: it is a silent ABI mismatch that reads a garbage register
-  * at runtime, on a phone. That — not the line count — is what this description exists to
-  * remove.
+  * The header and the Scala externs are generated from this (`sbt shimGen/run`); the two Swift shims are hand-written
+  * and checked against it. Before that, all four were hand-written: at 34 functions, 136 places to get right. A
+  * disagreement between them is not a compile error on either side: it is a silent ABI mismatch that reads a garbage
+  * register at runtime, on a phone. That — not the line count — is what this description exists to remove.
   *
-  * **What this does not describe.** Function *bodies*. Measured on the two shims that
-  * exist: 80 generatable signature lines against 211 hand-written body lines each, and of
-  * the 34 shared functions only 7 have byte-identical bodies. The bodies are real AppKit
-  * and UIKit logic — `NSImageView.imageScaling` is not `UIView.contentMode`,
-  * `placeholderString` is not `placeholder` — and pretending otherwise would produce a
-  * generator that emits code nobody wants. See `docs/13-phases.md` §13.3.
+  * **What this does not describe.** Function *bodies*. Measured on the two shims that exist: 80 generatable signature
+  * lines against 211 hand-written body lines each, and of the 34 shared functions only 7 have byte-identical bodies.
+  * The bodies are real AppKit and UIKit logic — `NSImageView.imageScaling` is not `UIView.contentMode`,
+  * `placeholderString` is not `placeholder` — and pretending otherwise would produce a generator that emits code nobody
+  * wants. See `docs/13-phases.md` §13.3.
   */
 object Abi {
 
   /** A C type, as it appears at this boundary.
     *
-    * Deliberately small: every type here is a scalar, a pointer to a scalar, or an opaque
-    * handle. **No struct crosses this boundary by value** — Scala Native returns a small
-    * struct from a `CFuncPtr` in the wrong registers, silently, on both x86-64 (S4) and
-    * arm64 with a *different* wrong answer (S3). `NSRect` is flattened to four doubles and
+    * Deliberately small: every type here is a scalar, a pointer to a scalar, or an opaque handle. **No struct crosses
+    * this boundary by value** — Scala Native returns a small struct from a `CFuncPtr` in the wrong registers, silently,
+    * on both x86-64 (S4) and arm64 with a *different* wrong answer (S3). `NSRect` is flattened to four doubles and
     * sizes come back through out-parameters.
     */
   enum CType {
+
     case Void
     case I32
     case I64
@@ -50,54 +47,86 @@ object Abi {
     /** `sui_handle`: an opaque retained view pointer. */
     case Handle
 
-    /** The three callback shapes. The context is `int64_t`, never `void *`: callbacks
-      * cannot close over state, so each carries a handle-table id, and a numeric context
-      * avoids the `Long`⇄`Ptr` laundering that S7 found throws at runtime.
+    /** The three callback shapes. The context is `int64_t`, never `void *`: callbacks cannot close over state, so each
+      * carries a handle-table id, and a numeric context avoids the `Long`⇄`Ptr` laundering that S7 found throws at
+      * runtime.
       */
     case VoidCb, TextCb, BoolCb
+
+    /** The row-binding callback, and the only one that returns a value. A returned *pointer* is a single register; what
+      * S4 and S3 found silently broken was a returned small struct.
+      */
+    case RowCb
+
   }
 
   /** What a type is *at the ABI*, as opposed to what it is called.
     *
-    * `sui_handle` and `const uint8_t *` are different types in C and in Swift, and the same
-    * machine word in Scala Native — `Ptr[Byte]` is what both bind to, and there is no
-    * `Ptr[UByte]` variant that would land in a different register. So a check that demanded
-    * the Scala side distinguish them would be demanding a distinction that does not exist,
-    * and would report a false positive forever.
+    * `sui_handle` and `const uint8_t *` are different types in C and in Swift, and the same machine word in Scala
+    * Native — `Ptr[Byte]` is what both bind to, and there is no `Ptr[UByte]` variant that would land in a different
+    * register. So a check that demanded the Scala side distinguish them would be demanding a distinction that does not
+    * exist, and would report a false positive forever.
     *
-    * This is the level at which a mismatch actually costs something: an `Int32` where the
-    * other side expects an `Int64`, or a scalar where it expects a pointer, links cleanly
-    * and reads the wrong register at runtime.
+    * This is the level at which a mismatch actually costs something: an `Int32` where the other side expects an
+    * `Int64`, or a scalar where it expects a pointer, links cleanly and reads the wrong register at runtime.
     */
   enum Repr { case I32, I64, F64, Pointer, FnPointer, Void }
 
   extension (t: CType) {
-    def repr: Repr = t match {
-      case CType.Void => Repr.Void
-      case CType.I32  => Repr.I32
-      case CType.I64  => Repr.I64
-      case CType.F64  => Repr.F64
 
-      case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle => Repr.Pointer
-      case CType.VoidCb | CType.TextCb | CType.BoolCb            => Repr.FnPointer
-    }
+    def repr: Repr =
+      t match {
+        case CType.Void => Repr.Void
+        case CType.I32  => Repr.I32
+        case CType.I64  => Repr.I64
+        case CType.F64  => Repr.F64
+
+        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle    => Repr.Pointer
+        case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb => Repr.FnPointer
+      }
+
   }
 
   import CType.*
 
-  final case class Param(name: String, tpe: CType)
-  final case class Fn(name: String, ret: CType, params: List[Param], doc: String = "") {
+  final case class Param(
+    name: String,
+    tpe:  CType
+  )
+  final case class Fn(
+    name:   String,
+    ret:    CType,
+    params: List[Param],
+    doc:    String = ""
+  ) {
+
     def arity: Int = params.length
+
   }
 
-  private def p(n: String, t: CType) = Param(n, t)
+  private def p(
+    n: String,
+    t: CType
+  ) = Param(n, t)
 
   /** A handle-taking setter, which is most of the surface. */
-  private def setter(name: String, rest: (String, CType)*): Fn =
-    Fn(name, Void, p("h", Handle) :: rest.toList.map((n, t) => p(n, t)))
+  private def setter(
+    name: String,
+    rest: (String, CType)*
+  ): Fn =
+    Fn(
+      name,
+      Void,
+      p("h", Handle) :: rest.toList.map(
+        (
+          n,
+          t
+        ) => p(n, t)
+      )
+    )
 
-  /** Grouped exactly as the C header groups them, because the header is generated from
-    * this and a diff that reorders everything is a diff nobody reads.
+  /** Grouped exactly as the C header groups them, because the header is generated from this and a diff that reorders
+    * everything is a diff nobody reads.
     */
   val lifecycle: List[Fn] = List(
     Fn(
@@ -111,15 +140,14 @@ object Abi {
 
   /** One `sui_create` kind code, and the view each toolkit builds for it.
     *
-    * This is where per-platform widget *choice* is expressed, not only per-platform naming:
-    * kind 5 is a checkbox on the Mac and a switch on iOS, because UIKit has no checkbox. The
-    * strings are the Swift construction each shim's `case` must contain — `NSButton(
-    * checkboxWithTitle:` and `UISwitch(` — and ConsistencySpec reads both `sui_create`
-    * bodies to check it does. So a shim that quietly builds a different widget, or handles a
-    * code this table does not know, fails on any machine.
+    * This is where per-platform widget *choice* is expressed, not only per-platform naming: kind 5 is a checkbox on the
+    * Mac and a switch on iOS, because UIKit has no checkbox. The strings are the Swift construction each shim's `case`
+    * must contain — `NSButton( checkboxWithTitle:` and `UISwitch(` — and ConsistencySpec reads both `sui_create` bodies
+    * to check it does. So a shim that quietly builds a different widget, or handles a code this table does not know,
+    * fails on any machine.
     *
-    * `None` is a code that is reserved and not built by that shim; Scala refuses to create
-    * it rather than let it reach the shim's `default:` branch.
+    * `None` is a code that is reserved and not built by that shim; Scala refuses to create it rather than let it reach
+    * the shim's `default:` branch.
     */
   final case class Kind(
     code:    Int,
@@ -129,11 +157,19 @@ object Abi {
     comment: String = ""
   )
 
-  private def built(code: Int, name: String, appKit: String, uiKit: String, comment: String = "") =
-    Kind(code, name, Some(appKit), Some(uiKit), comment)
+  private def built(
+    code:    Int,
+    name:    String,
+    appKit:  String,
+    uiKit:   String,
+    comment: String = ""
+  ) = Kind(code, name, Some(appKit), Some(uiKit), comment)
 
-  private def reserved(code: Int, name: String) =
-    Kind(code, name, None, None, "reserved, not built yet (#4)")
+  private def reserved(
+    code: Int,
+    name: String,
+    why:  String = "#4"
+  ) = Kind(code, name, None, None, s"reserved, not built yet ($why)")
 
   val kinds: List[Kind] = List(
     built(0, "Column", "TapView(", "UIStackView("),
@@ -151,14 +187,15 @@ object Abi {
     reserved(12, "ActivityIndicator"),
     reserved(13, "Slider"),
     reserved(14, "SecureField"),
-    built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create")
+    built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create"),
+    reserved(16, "Alert", "phase 3; NSAlert / UIAlertController")
   )
 
-  /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot
-    * describe a different set of codes from the one Scala sends.
+  /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of
+    * codes from the one Scala sends.
     */
   private def kindDoc: String = {
-    def show(v: Option[String]) = v.fold("-")(c => if c.endsWith("(") then s"${c})" else s"$c)")
+    def show(v: Option[String]) = v.fold("-")(c => if c.endsWith("(") then s"$c)" else s"$c)")
     val rows = kinds.map { k =>
       val note = if k.comment.isEmpty then "" else s"  ${k.comment}"
       f"     ${k.code}%2d ${k.name}%-18s ${show(k.appKit)}%-30s ${show(k.uiKit)}%-16s$note".stripTrailing
@@ -186,14 +223,14 @@ object Abi {
     setter("sui_set_text_role", "role" -> I32).copy(doc = "role: 0 Title, 1 Body, 2 Caption"),
     setter("sui_set_text_emphasis", "emphasis" -> I32)
       .copy(doc = "emphasis: 0 Normal, 1 Secondary"),
-    setter("sui_set_grow", "on"     -> I32),
+    setter("sui_set_grow", "on" -> I32),
     setter("sui_set_align", "align" -> I32).copy(doc = "align: 0 Start, 1 Center, 2 End"),
     setter("sui_set_tint", "has" -> I32, "r" -> I32, "g" -> I32, "b" -> I32).copy(
       doc = "Colour is passed as three components plus a \"set\" flag rather than a struct:\n" +
         "   `None` means \"leave it to the platform\", which is not the same as black."
     ),
-    setter("sui_set_fill", "has"      -> I32, "r" -> I32, "g" -> I32, "b" -> I32),
-    setter("sui_set_image_file", "path" -> Str),
+    setter("sui_set_fill", "has"         -> I32, "r"        -> I32, "g" -> I32, "b" -> I32),
+    setter("sui_set_image_file", "path"  -> Str),
     setter("sui_set_image_bytes", "data" -> Bytes, "length" -> I32),
     setter("sui_clear_image"),
     setter("sui_set_content_fit", "fit" -> I32).copy(doc = "fit: 0 Contain, 1 Cover, 2 Fill")
@@ -237,6 +274,40 @@ object Abi {
     Fn("sui_run_on_main", Void, List(p("cb", VoidCb), p("ctx", I64)))
   )
 
+  /** The one place control is inverted: everywhere else Scala builds a tree and the shim obeys, but a table asks for
+    * the row it is about to show and recycles the ones it is not. Mirrors `GtkSignalListItemFactory`'s bind callback
+    * and `BaseAdapter.getView`.
+    */
+  val virtualRows: List[Fn] = List(
+    Fn(
+      "sui_create_table",
+      Handle,
+      List(p("cb", RowCb), p("ctx", I64)),
+      doc = "An NSTableView / UITableView inside its scroller. `cb` is called for each row" + "\n" +
+        "   that becomes visible, with a recycled view or NULL."
+    ),
+    Fn(
+      "sui_table_reload",
+      Void,
+      List(p("h", Handle), p("count", I32)),
+      doc = "The new row count, from RowSource.onInvalidate."
+    ),
+    Fn(
+      "sui_table_materialised",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many row views the table has actually created. The measurement that says" + "\n" +
+        "   virtualisation is working, so it is part of the ABI rather than the self-test."
+    ),
+    Fn(
+      "sui_table_live",
+      I32,
+      Nil,
+      doc = "How many table sources the shim still owns. Falls back to zero once every" + "\n" +
+        "   virtual list is destroyed; the measurement that says destroying one frees it."
+    )
+  )
+
   val inspection: List[Fn] = List(
     Fn("sui_child_count", I32, List(p("h", Handle))),
     Fn("sui_child_at", Handle, List(p("h", Handle), p("index", I32))),
@@ -251,7 +322,11 @@ object Abi {
   )
 
   /** `doc`, when set, is emitted as a comment under the group's rule in the header. */
-  final case class Group(title: String, fns: List[Fn], doc: String = "")
+  final case class Group(
+    title: String,
+    fns:   List[Fn],
+    doc:   String = ""
+  )
 
   val groups: List[Group] = List(
     Group("lifecycle", lifecycle),
@@ -261,6 +336,12 @@ object Abi {
     Group("tree", tree),
     Group("layout", layout),
     Group("threading", threading),
+    Group(
+      "virtual rows",
+      virtualRows,
+      doc = "The one place control is inverted: everywhere else Scala builds a tree and the shim" + "\n" +
+        "   obeys, but a table asks for the row it is about to show and recycles the ones it is not."
+    ),
     Group("inspection, for the self-test", inspection)
   )
 
@@ -268,11 +349,11 @@ object Abi {
 
   /** Exported by a shim but deliberately **not** in this ABI.
     *
-    * `sui_set_root_view` is called by the iOS host's Swift, never by Scala: on iOS the
-    * Swift side owns `@main` because a `UIScene` delegate cannot live in the static archive
-    * Scala Native produces, so it hands its root view *in* rather than asking for one. It
-    * therefore belongs in neither the C header nor `Shim.scala`, and the consistency check
-    * must not report it as drift.
+    * `sui_set_root_view` is called by the iOS host's Swift, never by Scala: on iOS the Swift side owns `@main` because
+    * a `UIScene` delegate cannot live in the static archive Scala Native produces, so it hands its root view *in*
+    * rather than asking for one. It therefore belongs in neither the C header nor `Shim.scala`, and the consistency
+    * check must not report it as drift.
     */
   val swiftOnly: Set[String] = Set("sui_set_root_view")
+
 }

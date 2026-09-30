@@ -4,20 +4,25 @@ import scala.collection.mutable
 
 /** Something that can be torn down. */
 trait Disposable {
+
   def dispose(): Unit
+
 }
 
 object Disposable {
+
   val noop: Disposable = () => ()
+
 }
 
 /** A value that changes over time. Reads are synchronous and always up to date.
   *
   *   - [[now]] reads without subscribing (safe anywhere).
-  *   - [[apply]] reads *and subscribes*, and is only callable inside a reactive
-  *     computation, where a `Tracking` is in scope.
+  *   - [[apply]] reads *and subscribes*, and is only callable inside a reactive computation, where a `Tracking` is in
+  *     scope.
   */
 trait Signal[+A] {
+
   /** Untracked read. */
   def now: A
 
@@ -26,38 +31,44 @@ trait Signal[+A] {
 
   /** A derived view of this signal.
     *
-    * Deliberately *not* a graph node: it holds no state, registers nothing, and needs no
-    * `Owner`, so it can be used freely in UI code without threading a lifetime through
-    * every function. `f` re-runs on each read, and reads track this signal's source.
+    * Deliberately *not* a graph node: it holds no state, registers nothing, and needs no `Owner`, so it can be used
+    * freely in UI code without threading a lifetime through every function. `f` re-runs on each read, and reads track
+    * this signal's source.
     *
-    * The trade is memoisation: a `map` does not cut off propagation when `f` returns an
-    * unchanged value. Where that matters — an expensive `f`, or a coarse source feeding a
-    * narrow view — use [[Signal.computed]], which memoises and takes an `Owner`. This is
-    * the same split as SolidJS's derived functions vs `createMemo`.
+    * The trade is memoisation: a `map` does not cut off propagation when `f` returns an unchanged value. Where that
+    * matters — an expensive `f`, or a coarse source feeding a narrow view — use [[Signal.computed]], which memoises and
+    * takes an `Owner`. This is the same split as SolidJS's derived functions vs `createMemo`.
     */
   def map[B](f: A => B): Signal[B] = new Signal.Derived(this, f)
 
   def zip[B](that: Signal[B]): Signal[(A, B)] =
     new Signal.Derived[A, (A, B)](this, _ => (this.now, that.now)) {
       override def apply()(using Tracking): (A, B) = (Signal.this.apply(), that.apply())
-      override def now: (A, B)                     = (Signal.this.now, that.now)
+      override def now:                     (A, B) = (Signal.this.now, that.now)
     }
+
 }
 
 object Signal {
 
   /** A pass-through view of another signal. Stateless, so nothing owns or disposes it. */
-  private[signals] class Derived[A, B](source: Signal[A], f: A => B) extends Signal[B] {
-    def now: B                     = f(source.now)
+  private[signals] class Derived[A, B](
+    source: Signal[A],
+    f:      A => B
+  ) extends Signal[B] {
+
+    def now:                     B = f(source.now)
     def apply()(using Tracking): B = f(source())
+
   }
 
   /** Never changes; does not participate in the graph. */
-  def const[A](a: A): Signal[A] = new Signal[A] {
-    def now: A                        = a
-    def apply()(using Tracking): A    = a
-    override def map[B](f: A => B): Signal[B] = const(f(a))
-  }
+  def const[A](a: A): Signal[A] =
+    new Signal[A] {
+      def now:                        A = a
+      def apply()(using Tracking):    A = a
+      override def map[B](f: A => B): Signal[B] = const(f(a))
+    }
 
   /** A derived value. Lazy: recomputed only when read after a dependency changed. */
   def computed[A](f: Tracking ?=> A)(using owner: Owner): Signal[A] = {
@@ -84,18 +95,20 @@ object Signal {
     try body(using Runtime.tracking)
     finally Runtime.collected = prev
   }
+
 }
 
 /** A mutable root of the graph. */
 final class Var[A] private (initial: A) extends Signal[A] with Source {
-  private var value: A   = initial
-  private var ver: Long  = 0
+
+  private var value:              A = initial
+  private var ver:                Long = 0
   private[signals] val observers: mutable.ArrayBuffer[Computation] = mutable.ArrayBuffer.empty
 
-  private[signals] def version: Long  = ver
+  private[signals] def version:    Long = ver
   private[signals] def validate(): Unit = () // roots are always current
 
-  def now: A                     = value
+  def now: A = value
   def apply()(using Tracking): A = {
     Runtime.track(this)
     value
@@ -115,27 +128,27 @@ final class Var[A] private (initial: A) extends Signal[A] with Source {
   def update(f: A => A): Unit = set(f(value))
 
   override def toString: String = s"Var($value)"
+
 }
 
 object Var {
+
   def apply[A](initial: A): Var[A] = new Var(initial)
+
 }
 
 /** A derived node: both a `Source` (others depend on it) and a `Computation`. */
-private final class Computed[A](fn: () => Tracking ?=> A)
-    extends Signal[A]
-    with Source
-    with Computation {
+final private class Computed[A](fn: () => Tracking ?=> A) extends Signal[A] with Source with Computation {
 
-  private var cached: Any   = ()
-  private var hasValue      = false
-  private var ver: Long     = 0
+  private var cached: Any = ()
+  private var hasValue = false
+  private var ver:                Long = 0
   private[signals] val observers: mutable.ArrayBuffer[Computation] = mutable.ArrayBuffer.empty
 
-  private[signals] def version: Long                                   = ver
+  private[signals] def version:         Long = ver
   private[signals] def observersOfSelf: mutable.ArrayBuffer[Computation] = observers
-  private[signals] def isEffect: Boolean                               = false
-  private[signals] def validate(): Unit                                = updateIfNecessary()
+  private[signals] def isEffect:        Boolean = false
+  private[signals] def validate():      Unit = updateIfNecessary()
 
   private[signals] def recompute(): Unit = {
     val next = trackDependencies(fn())
@@ -159,14 +172,16 @@ private final class Computed[A](fn: () => Tracking ?=> A)
   }
 
   override def toString: String = s"Computed(${if hasValue then cached else "<unevaluated>"})"
+
 }
 
 /** A leaf computation run for its side effects. */
-private final class Effect(body: () => Tracking ?=> Unit) extends Computation {
+final private class Effect(body: () => Tracking ?=> Unit) extends Computation {
+
   private val noObservers: mutable.ArrayBuffer[Computation] = mutable.ArrayBuffer.empty
 
   private[signals] def observersOfSelf: mutable.ArrayBuffer[Computation] = noObservers
-  private[signals] def isEffect: Boolean                                = true
+  private[signals] def isEffect:        Boolean = true
 
   private[signals] def recompute(): Unit = {
     trackDependencies(body())
@@ -177,4 +192,5 @@ private final class Effect(body: () => Tracking ?=> Unit) extends Computation {
     state = State.Dirty
     recompute()
   }
+
 }

@@ -2,13 +2,14 @@ package thicket.signals
 
 import scala.collection.mutable
 
-/** A lifetime. Computeds and effects created under an owner are disposed with it,
-  * which is how a UI component unsubscribes everything it created when it unmounts
-  * (docs/07 §7.2). Disposal is explicit: no weak references, no GC dependence.
+/** A lifetime. Computeds and effects created under an owner are disposed with it, which is how a UI component
+  * unsubscribes everything it created when it unmounts (docs/07 §7.2). Disposal is explicit: no weak references, no GC
+  * dependence.
   */
 final class Owner private[signals] (parent: Owner | Null) extends Disposable {
+
   private val children: mutable.ArrayBuffer[Disposable] = mutable.ArrayBuffer.empty
-  private var isDisposed                                = false
+  private var isDisposed = false
 
   if parent != null then parent.nn.children += this
 
@@ -24,11 +25,10 @@ final class Owner private[signals] (parent: Owner | Null) extends Disposable {
 
   def disposed: Boolean = isDisposed
 
-  /** Disposes children in reverse creation order, then itself, and unlinks from its
-    * parent. Idempotent.
+  /** Disposes children in reverse creation order, then itself, and unlinks from its parent. Idempotent.
     *
-    * The unlink matters: a dynamic region (`Show`, `ForEach`) creates and disposes a child
-    * owner on every update, and without this the parent's buffer would grow forever.
+    * The unlink matters: a dynamic region (`Show`, `ForEach`) creates and disposes a child owner on every update, and
+    * without this the parent's buffer would grow forever.
     */
   def dispose(): Unit =
     if !isDisposed then {
@@ -41,17 +41,19 @@ final class Owner private[signals] (parent: Owner | Null) extends Disposable {
       children.clear()
       if parent != null then parent.nn.forget(this)
     }
+
 }
 
 object Owner {
+
   /** A new detached lifetime; caller is responsible for disposing it. */
   def apply(): Owner = new Owner(null)
 
   /** A lifetime nested in the current one. */
   def child(using parent: Owner): Owner = new Owner(parent)
 
-  /** Runs `body` under a *child* of the current owner and returns that child, so
-    * nested lifetimes do not need a second named `given` in the same scope.
+  /** Runs `body` under a *child* of the current owner and returns that child, so nested lifetimes do not need a second
+    * named `given` in the same scope.
     */
   def scoped[A](body: Owner ?=> A)(using parent: Owner): Owner = {
     val o = new Owner(parent)
@@ -64,4 +66,5 @@ object Owner {
     val o = Owner()
     (body(using o), o)
   }
+
 }

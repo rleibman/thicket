@@ -133,7 +133,12 @@ lazy val rendererGtk = project
   .settings(commonSettings)
   .settings(
     name := "thicket-renderer-gtk",
-    libraryDependencies += "com.indoorvivants.gnome" % "gtk4_native0.5_3" % "0.2.6"
+    libraryDependencies ++= Seq(
+      "com.indoorvivants.gnome" % "gtk4_native0.5_3" % "0.2.6",
+      // GCancellable and GAsyncResult: GtkAlertDialog reports the chosen button through
+      // an async callback, and cancelling is the only way to dismiss one programmatically.
+      "com.indoorvivants.gnome" % "gio_native0.5_3"  % "0.2.6"
+    )
   )
   .settings(gtkNativeSettings)
 

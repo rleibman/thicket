@@ -19,6 +19,11 @@ object Shim {
   type TextCb = CFuncPtr2[Long, CString, Unit]
   type BoolCb = CFuncPtr2[Long, CInt, Unit]
 
+  /** The only callback that returns a value. A returned pointer is one register; what S4 and S3 found silently broken
+    * was a returned small struct.
+    */
+  type RowCb = CFuncPtr3[Long, CInt, Handle, Handle]
+
   def sui_app_start(width: CInt, height: CInt, title: CString, ready: VoidCb, ctx: Long): Unit = extern
   def sui_root_view(): Handle = extern
   def sui_window_set_title(title: CString): Unit = extern
@@ -49,6 +54,10 @@ object Shim {
   def sui_measure(h: Handle, maxW: CDouble, maxH: CDouble, outMinW: Ptr[CDouble], outMinH: Ptr[CDouble], outNatW: Ptr[CDouble], outNatH: Ptr[CDouble]): Unit = extern
   def sui_set_frame(h: Handle, x: CDouble, y: CDouble, w: CDouble, height: CDouble): Unit = extern
   def sui_run_on_main(cb: VoidCb, ctx: Long): Unit = extern
+  def sui_create_table(cb: RowCb, ctx: Long): Handle = extern
+  def sui_table_reload(h: Handle, count: CInt): Unit = extern
+  def sui_table_materialised(h: Handle): CInt = extern
+  def sui_table_live(): CInt = extern
   def sui_child_count(h: Handle): CInt = extern
   def sui_child_at(h: Handle, index: CInt): Handle = extern
   def sui_get_text(h: Handle): CString = extern
@@ -75,4 +84,5 @@ object ShimKind {
   inline val Slider = 13
   inline val SecureField = 14
   inline val ScrollHorizontal = 15
+  inline val Alert = 16
 }

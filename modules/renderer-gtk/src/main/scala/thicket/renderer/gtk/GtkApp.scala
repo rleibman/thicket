@@ -17,6 +17,39 @@ object GtkApp {
   // A CFuncPtr cannot close over local state, so the mount parameters live here.
   private var appId: String                   = "dev.thicket.app"
   private var windowSize: (Int, Int)          = (420, 260)
+
+  /** The application window, once it exists.
+    *
+    * A modal dialog needs a parent to be modal *to*; GTK will show one without a parent but
+    * it is then a free-floating window rather than a sheet over the app.
+    */
+  private var mainWindow: Ptr[GtkWindow] = null
+
+  /** Callback ids for the header-bar action buttons, so rebuilding the bar releases them
+    * rather than leaking one handle-table entry per navigation.
+    */
+  private val actionIds = scala.collection.mutable.Map.empty[Ptr[GtkWidget], Long]
+  private[gtk] def window: Ptr[GtkWindow] = mainWindow
+
+  /** The whole window, chrome included — the header bar is not part of `rootHandle`.
+    *
+    * Demos and self-tests use this to check that toolbar actions really are native widgets
+    * in the platform's own chrome, rather than trusting that they were asked for.
+    */
+  def windowHandle: Ptr[GtkWidget] = mainWindow.asInstanceOf[Ptr[GtkWidget]]
+
+  /** Click a header-bar action by label. For self-tests: a real `clicked` emission on the
+    * real button, not a call to the handler behind it.
+    */
+  def clickHeaderAction(label: String): Boolean =
+    actionIds.keys
+      .find(b => GtkInspect.labelTexts(b).contains(label) || GtkInspect.allTexts(b).contains(label))
+      .exists { b =>
+        Zone {
+          g_signal_emit_by_name(b.asInstanceOf[gpointer], toCString("clicked").asInstanceOf[Ptr[gchar]])
+        }
+        true
+      }
   private var build: Owner ?=> AppRoot        =
     (_: Owner) ?=> throw IllegalStateException("GtkApp.run was not given a UI")
 
@@ -43,6 +76,7 @@ object GtkApp {
       GcState.guarded {
         val window = gtk_application_window_new(app.asInstanceOf[Ptr[GtkApplication]])
         val w      = window.asInstanceOf[Ptr[GtkWindow]]
+        mainWindow = w
         gtk_window_set_default_size(w, windowSize._1, windowSize._2)
         val header = gtk_header_bar_new()
         gtk_window_set_titlebar(w, header)
@@ -67,6 +101,45 @@ object GtkApp {
         }
         Signal.effect(gtk_widget_set_visible(back, gboolTrue(root.canGoBack())))
         Signal.effect(Zone(gtk_window_set_title(w, toCString(root.title()))))
+
+        // Toolbar actions, packed at the trailing edge of the header bar. `AppRoot.actions`
+        // has been in the contract since navigation landed and no host had ever read it —
+        // an API the docs promised and nothing honoured.
+        //
+        // Rebuilt wholesale when the signal changes rather than diffed: a screen has a
+        // handful of actions, they change only on navigation, and a keyed diff here would
+        // be machinery guarding against a cost that does not exist.
+        val actionButtons = scala.collection.mutable.ArrayBuffer.empty[Ptr[GtkWidget]]
+        Signal.effect {
+          val hb = header.asInstanceOf[Ptr[GtkHeaderBar]]
+          actionButtons.foreach { b =>
+            Handles.release(actionIds.getOrElse(b, 0L))
+            val _ = actionIds.remove(b)
+            gtk_header_bar_remove(hb, b)
+          }
+          actionButtons.clear()
+
+          // Reversed: pack_end puts each new button closest to the window controls, so
+          // packing in order would show them right-to-left.
+          root.actions().reverse.foreach { a =>
+            val button = Zone(gtk_button_new_with_label(toCString(a.label)))
+            gtk_widget_set_sensitive(button, gboolTrue(a.enabled))
+            val id = Handles.register(() => a.onTap())
+            actionIds(button) = id
+            Zone {
+              val _ = g_signal_connect_data(
+                button.asInstanceOf[gpointer],
+                toCString("clicked").asInstanceOf[Ptr[gchar]],
+                GCallback.fromPtr(Handles.clickedPtr),
+                Handles.idToPointer(id),
+                null.asInstanceOf[GClosureNotify],
+                GConnectFlags.define(0)
+              )
+            }
+            gtk_header_bar_pack_end(hb, button)
+            actionButtons += button
+          }
+        }
 
         val mounted = Reconciler.mount(renderer, root.element)
         rootHandle = mounted.handle

@@ -5,6 +5,8 @@ import android.os.{Handler, Looper}
 import android.graphics.{BitmapFactory, Typeface}
 import android.util.TypedValue
 import android.view.{Gravity, View, ViewGroup}
+import android.app.AlertDialog
+import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
 import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, ProgressBar, ScrollView, SeekBar, Switch, TextView}
 import scala.collection.mutable
@@ -36,6 +38,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * integer steps, and the renderer converts.
     */
   private val ranges = mutable.Map.empty[View, (Double, Double)]
+
+  // An Alert's state, keyed by its placeholder handle. Held here rather than on the View
+  // because the View is a stand-in: the real object is the Dialog, and it does not exist
+  // until `present`.
+  private val alertTitle   = mutable.Map.empty[View, String]
+  private val alertMessage = mutable.Map.empty[View, String]
+  private val alertActions = mutable.Map.empty[View, Seq[AlertAction]]
+  private val alertDismiss = mutable.Map.empty[View, () => Unit]
+  private val alertShowing = mutable.Map.empty[View, AlertDialog]
   private val mainHandler = Handler(Looper.getMainLooper)
 
   /** Resolve a theme attribute, so colours and backgrounds come from the user's theme
@@ -79,6 +90,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // special case below: only the drawable differs, which is the whole point of Toggle
       // being a separate kind rather than a style flag.
       case WidgetKind.Toggle => Switch(context)
+
+      // An Alert is presented, never attached (WidgetKind.presented), so this View exists
+      // only to be a handle the renderer can key its dialog off. It is never added to any
+      // parent and never drawn.
+      case WidgetKind.Alert => View(context)
 
       case WidgetKind.SecureField =>
         val e = EditText(context)
@@ -142,7 +158,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
               suppress -= handle
             }
           case t: TextView => t.setText(v)
-          case _           => ()
+          // An Alert's title arrives as Prop.Text on its placeholder View.
+          case _ if kinds.get(handle).contains(WidgetKind.Alert) => alertTitle(handle) = v
+          case _                                                 => ()
         }
 
       case Prop.Placeholder(v) =>
@@ -332,6 +350,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case _ => ()
         }
 
+      case Prop.Message(v) => alertMessage(handle) = v
+
+      case Prop.OnDismiss(f) => alertDismiss(handle) = f
+
+      case Prop.Actions(as) => alertActions(handle) = as
+
       case Prop.Progress(value) =>
         handle match {
           case p: ProgressBar =>
@@ -460,6 +484,48 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * whole point of `LazyColumn`. It is the platform's own widget — no AndroidX dependency.
     */
   override def supportsVirtualRows: Boolean = true
+
+  /** Uses the platform `android.app.AlertDialog`, not AndroidX's.
+    *
+    * The class carries a deprecation flag in android-36's bytecode, though scalac does not
+    * warn on it. Taking the AndroidX dependency to get the undeprecated one would add a
+    * library this renderer otherwise does not need, for a dialog the platform still draws
+    * correctly — and the reason this APK is 165 KB is that it depends on nothing. Revisit
+    * if it is ever actually removed rather than merely discouraged.
+    */
+  override def present(handle: View): Unit = {
+    val b = AlertDialog.Builder(context)
+    alertTitle.get(handle).foreach(b.setTitle)
+    alertMessage.get(handle).filter(_.nonEmpty).foreach(b.setMessage)
+
+    // Android has three button *slots*, not a list, and their on-screen order is fixed by
+    // the platform rather than by the order given. So the roles decide the slot: cancel
+    // goes to NEGATIVE, the first non-cancel to POSITIVE, and a third to NEUTRAL. An app
+    // that assumed its own order would be wrong here and right everywhere else.
+    val actions = alertActions.getOrElse(handle, Nil)
+    val cancel  = actions.find(_.cancel)
+    val rest    = actions.filterNot(_.cancel)
+
+    def listener(a: AlertAction): DialogInterface.OnClickListener =
+      (_: DialogInterface, _: Int) => a.onSelect()
+
+    rest.headOption.foreach(a => b.setPositiveButton(a.label, listener(a)))
+    cancel.foreach(a => b.setNegativeButton(a.label, listener(a)))
+    rest.drop(1).headOption.foreach(a => b.setNeutralButton(a.label, listener(a)))
+
+    // Dismissal without a choice: back gesture or a tap outside. `setOnCancelListener`
+    // fires for exactly those and not for a button, which is the distinction Prop.OnDismiss
+    // exists to preserve.
+    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => f()))
+
+    val d = b.create()
+    alertShowing(handle) = d
+    d.show()
+  }
+
+  override def dismiss(handle: View): Unit = {
+    alertShowing.remove(handle).foreach(_.dismiss())
+  }
 
   override def createVirtualList(source: RowSource[View]): View = {
     val list = ListView(context)

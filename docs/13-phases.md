@@ -31,7 +31,7 @@ survived four toolkits without changing.
 | **0** | — | Feasibility: nine spikes, four renderers, reconciliation, navigation, ZIO bridge | GO gate S1 ∧ S2 ∧ S3 | **done** 2026-09-19 |
 | **1** | `phase/1-shim-generator` | One ABI description; generate the C header, the Scala externs and Swift signature scaffolding; check all four hand-written copies agree | Hand-maintained **declarations** per function drop from **4 to 1**; the generated header and externs declare exactly what the checked-in ones do; the consistency check runs on a machine with no Xcode | **adopted** 2026-09-29 (#3): header and Scala externs are generated and checked byte-for-byte; the two Swift signatures per function stay hand-written and checked, so hand-maintained declarations went **4 → 3**, all checked |
 | **2** | `phase/2-widget-breadth` | **Slice 1:** `Toggle`, `Spacer`, `ProgressBar`, `ActivityIndicator`. **Slice 2:** `Slider`, `SecureField`. `Radio` and `Stepper` were in this phase and were **reclassified, not built** — neither is a cross-platform widget (`docs/12` §12.2a). `IconButton` and `Link` need an icon system and URL opening | **15 of 32** on GTK + Android, each with a unit test *and* a self-test check on both; Apple is #9. Measured on both toolkits: progress bar **0.750**, slider **7.0 of 0–11** | **both slices done** |
-| **3** | `phase/3-containers` | `Alert`, `Sheet`/`Modal`, `TabView`, `Menu`, `Toolbar` — the ones that are platform *chrome* rather than tree nodes | **22 of 32**; each rendered by the platform's own presentation API, not imitated in the tree; a screenshot per platform | |
+| **3** | `phase/3-containers` | The ones that are platform *chrome* rather than tree nodes. **Slice 1 (done):** `Alert`, plus the `presented` contract it forced. **Next:** `Sheet`/`Modal`, `Menu`, `Toolbar`. `TabView` is in doubt — Android's `TabHost` is deprecated and the idiom lives in Material, not the platform (§12.2a again) | **16 of 32** reachable; each rendered by the platform's own presentation API, never imitated in the tree. Slice 1: GTK and Android green, round trip verified by tapping the real dialog | **slice 1 done** |
 | **4** | `phase/4-native-nav` | Native navigation containers and per-subtree `Provide` theming — the two places the framework still asks an app to accept something non-native | Back gesture, transition animation and title bar are the platform's own on all four renderers; theme override scoped to a subtree with a test | |
 | **5** | `phase/5-release` | Publish `dev.thicket` artefacts, a getting-started, semver policy | A developer who has not seen this repo builds and runs a new app on Android **and** one desktop in **≤ 30 minutes**, measured by watching them | |
 | **6** | `phase/6-real-app` | The falsification test: the meal-planner client against its Caliban server | Runs on Android, iOS and one desktop; startup and size still inside N-01/N-03 | |
@@ -82,13 +82,13 @@ Tracked in Forgejo, done on the macOS laptop, referenced by the phase that needs
 
 | Issue | What | Blocks |
 |---|---|---|
-| [#1](https://github.com/rleibman/thicket/issues/1) | A virtualising container, so `LazyColumn` stops mounting every row | phase 6 (a real app has real lists) |
+| ~~[#1](https://github.com/rleibman/thicket/issues/1)~~ | ~~A virtualising container, so `LazyColumn` stops mounting every row~~ — **done**; 40 rows on AppKit, 34 on UIKit, of 10 000 | phase 6 (a real app has real lists) |
 | ~~[#2](https://github.com/rleibman/thicket/issues/2)~~ | ~~`ContentFit.Cover` distorts instead of cropping on AppKit~~ — **done**; UIKit confirmed already correct | phase 2 |
 | [#3](https://github.com/rleibman/thicket/issues/3) | Generate shim, header and bindings from one description | **phase 1** |
 | [#4](https://github.com/rleibman/thicket/issues/4) | The six phase-2 widgets, plus the `sui_` ABI prefix the rename left alone | phase 2 |
 
-Renumbered when the project moved to GitHub. The horizontal `Scroll` issue and
-`ContentFit.Cover` are both done and closed. Forgejo issue numbers still appear inside the
+Renumbered when the project moved to GitHub. The horizontal `Scroll` issue,
+`ContentFit.Cover` and virtualised rows are done and closed. Forgejo issue numbers still appear inside the
 issue *bodies* and in older commit messages — they are historical.
 
 ## 13.5 On the estimates
