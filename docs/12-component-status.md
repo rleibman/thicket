@@ -143,7 +143,7 @@ every remaining entry before it is built, not after.
 | Fine-grained signals | `modules/signals` | done — glitch-free, property-tested on JVM/JS/Native |
 | Keyed reconciliation | `Reconciler` | done — `Show`, `Switch`, `ForEach`, `Fragment`, in-place `moveAfter` |
 | Virtualised list | `LazyColumn` + `RowSource` | done — all four recycle. Materialised rows for a 10 000-row list: GTK **205**, Android **66**, AppKit **40**, UIKit **34** |
-| Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title and Up chrome work; no *native* navigation container |
+| Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title, Up and **toolbar actions** work as native chrome; no *native* navigation container |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide`; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread` | done |
@@ -238,18 +238,28 @@ someone who did not write the framework, running on all three targets.
 | `effectZioJVM` | 13 |
 | `shimGen` | 10 |
 
-Three rules the migration established, each paid for by a failure rather than guessed at:
+Four rules the migration established:
 
 1. **Anything touching the signal graph needs `@@ TestAspect.sequential`.** The
    dependency-tracking context is two process-global `var`s, so parallel tests corrupt each
    other. zio-test runs a suite's tests in parallel by default.
-2. **Suites sharing process-global state must be one spec.** `sequential` orders tests
-   within a spec and promises nothing between specs, which zio-test runs concurrently.
-   `EffectZioSpec` holds both the bridge and the remote-screen suites for this reason.
-3. **Never compare a stringified number.** Scala.js renders `7.0` as `"7"`. `TestRenderer`
+2. **Suites sharing process-global state should be one spec.** `sequential` orders tests
+   within a spec and promises nothing between specs, which zio-test runs concurrently, so
+   two specs both installing `UiThread` and `ThreadGuard` can interleave. `EffectZioSpec`
+   holds both the bridge and the remote-screen suites for this reason.
+
+   *Weaker evidence than the others, and worth saying so.* This was adopted to fix a flaky
+   test, and it did not: the flake was rule 3 below, and it kept failing for another two
+   rounds. The rule stands on its own argument rather than on that failure, and merging the
+   specs costs nothing — but it is a precaution, not a diagnosis, and it was presented as a
+   diagnosis once already.
+3. **A test's `UiThread` must marshal, not run inline.** `install(f => f())` runs the post
+   on whatever thread called it — a ZIO fibre, typically — so signal writes land off the
+   test thread and a spin-wait races on memory visibility. `TestUiThread` queues and drains.
+4. **Never compare a stringified number.** Scala.js renders `7.0` as `"7"`. `TestRenderer`
    keeps numeric props in `nums: Map[String, Double]`, not in the string map.
 
-And the process rule behind all three: **run the cross-built modules on all three
+And the process rule behind all four: **run the cross-built modules on all three
 backends.** Phase 2 shipped a test that only ever passed on the JVM.
 
 ## 12.9 Coverage

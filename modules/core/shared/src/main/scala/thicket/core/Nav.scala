@@ -24,11 +24,19 @@ final case class Screen(
   actions: Seq[Action] = Nil
 )
 
+/** A toolbar action: a header-bar button on GTK, an action-bar item on Android.
+  *
+  * The body is by-name and re-evaluated per invocation, matching `Button` and
+  * `AlertAction` — `Action("Add")(model.add())` rather than a hand-written thunk. It was
+  * `onTap: () => Unit` until the hosts actually started rendering these, at which point
+  * being the only callback in the DSL shaped differently stopped being defensible.
+  */
 final case class Action(
   label:   String,
-  onTap:   () => Unit,
   enabled: Boolean = true
-)
+)(body: => Unit) {
+  def onTap(): Unit = body
+}
 
 /** The back stack, as a value.
   *

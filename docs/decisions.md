@@ -69,6 +69,33 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-30 — **A test's `UiThread` must actually marshal; `install(f => f())` is the wrong
+  stub.** The effect-zio suite installed a UiThread that runs the post *inline on the ZIO
+  fibre's thread*, so `Var.set` happened off the test thread while the test spun on
+  `signal.now`. The signal graph is single-threaded by construction — plain `var`s, no
+  barriers, which is precisely what `ThreadGuard` enforces — so that spin was racing on
+  memory visibility and lost about half the time. It surfaced as one flaky test,
+  "RemoteScreen: a failure renders the error branch", which was blamed twice on fibre
+  scheduling and was not that. `TestUiThread` queues posts and drains them on the waiting
+  thread, which is what GTK's main loop and Android's looper do, so the tests now exercise
+  the marshalling instead of skipping it. Eight consecutive clean runs against ~50% failure
+  before.
+  Two lessons worth keeping: a stub that is *simpler* than the real thing can hide the
+  behaviour under test, and "flaky" is a hypothesis, not a diagnosis.
+
+- 2026-09-30 — **`AppRoot.actions` had been in the contract since navigation landed and no
+  host ever read it.** `Screen.actions` → `NavHost.actions` → `AppRoot.actions` was wired
+  end to end, and both hosts dropped it on the floor: an API the docs described and nothing
+  honoured, which is worse than a missing feature because it reads as done. Now rendered as
+  native chrome — `gtk_header_bar_pack_end` on GTK, the action bar's options menu on
+  Android, via `invalidateOptionsMenu` because Android owns that lifecycle rather than
+  letting a caller push items in. Android uppercases the labels itself, which is the point
+  of keeping chrome out of the element tree.
+  `Action` also changed shape to `Action(label, enabled)(body)` with a by-name body,
+  matching `Button` and `AlertAction`; it was the only callback in the DSL that still took
+  an explicit `() => Unit`, and the moment to fix that was while nothing rendered it.
+  GTK packs in reverse because `pack_end` puts each new button nearest the window controls.
+
 - 2026-09-29 — **Some widgets are *presented*, not inserted, and the contract now says so.**
   `WidgetKind.presented` plus `Renderer.present` / `Renderer.dismiss`. An alert is not a
   child of anything on any of the four toolkits, and GTK makes that a type error —
