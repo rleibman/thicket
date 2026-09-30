@@ -50,10 +50,15 @@ inventing something.
 ## Usage
 
 ```bash
-sbt "shimGen/testOnly *"          # the consistency and round-trip checks — run this
-sbt shimGen/run                   # dry run: what would be written
-sbt "shimGen/run /tmp/out"        # write thicket_apple.h, Shim.scala, Shim+New.swift
+sbt "shimGen/testOnly *"            # the consistency and round-trip checks — run this
+sbt shimGen/run                     # regenerate thicket_apple.h and Shim.scala in place
+sbt "shimGen/run --check"           # exit 1 if either is stale (same check GenerateSpec makes)
+sbt "shimGen/run --scaffold /tmp/x" # Swift @_cdecl signatures with fatalError bodies, for a new shim
 ```
+
+**Adding a function or a widget kind:** add it to `Abi.scala`, run `sbt shimGen/run`, then
+write the two Swift bodies by hand. `sbt test` fails until the header, `Shim.scala`, both
+shims and `Abi` agree — including which view each shim builds for a new kind code.
 
 ## The files
 
@@ -81,6 +86,13 @@ a false positive forever; what survives is every difference that costs a wrong r
 
 ## Adopting the generated files
 
-Not done yet, on purpose. `GenerateSuite` proves the generated header and externs declare
-exactly what the checked-in ones declare, so the swap is safe — but it should be made on a
-machine that can compile the Swift and run the 23-check self-test afterwards. Forgejo #7.
+Done 2026-09-29 (GitHub #3). `modules/renderer-apple/shim/include/thicket_apple.h` and
+`modules/renderer-apple/src/main/scala/thicket/renderer/apple/Shim.scala` are generated,
+checked in, and compared to the generator's output **byte for byte** by `GenerateSuite`. Do not
+edit them: the test fails and names the file. `Shim.scala` is excluded from scalafmt for the
+same reason.
+
+`Shim.scala` also carries `ShimKind`, the `sui_create` codes, generated from `Abi.kinds`. That
+table is where per-platform widget *choice* is written down — kind 5 is
+`NSButton(checkboxWithTitle:` on AppKit and `UISwitch(` on UIKit — and `ConsistencySuite`
+checks each shim's `sui_create` case really builds it.

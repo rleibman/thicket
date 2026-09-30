@@ -101,6 +101,38 @@ object ConsistencySpec extends ZIOSpecDefault {
       val u = byName(uikit).keySet -- Abi.swiftOnly
       assertTrue(a == u)
     },
+    test("each shim's sui_create builds the view Abi.kinds chooses for it") {
+      // The per-platform *choice* of widget — a checkbox on the Mac, a switch on iOS — is
+      // in the description, and this is what stops a shim quietly building something else.
+      val problems = List(
+        ("AppKit", "Sources/Shim+AppKit.swift", (k: Abi.Kind) => k.appKit),
+        ("UIKit", "Sources/Shim+UIKit.swift", (k: Abi.Kind) => k.uiKit)
+      ).flatMap { (label, path, view) =>
+        val cases = Parse.swiftCreateCases(read(shim.resolve(path)))
+        val known = Abi.kinds.filter(view(_).isDefined).map(_.code).toSet
+        val wrong = Abi.kinds.flatMap { k =>
+          view(k).flatMap { expected =>
+            Option.when(!cases.blockFor(k.code).exists(_.contains(expected)))(
+              s"$label kind ${k.code} ${k.name} does not build $expected"
+            )
+          }
+        }
+        val undeclared = (cases.explicit.keySet -- known).toList.sorted
+          .map(c => s"$label handles kind $c, which Abi.kinds does not declare for it")
+        val empty = Option.when(cases.explicit.isEmpty)(s"$label: no sui_create cases found")
+        wrong ++ undeclared ++ empty
+      }
+      assertTrue(problems.isEmpty)
+    },
+    test("kind codes are unique and their names are Scala identifiers") {
+      val codes = Abi.kinds.map(_.code)
+      val names = Abi.kinds.map(_.name)
+      assertTrue(
+        codes.distinct == codes,
+        names.distinct == names,
+        names.forall(_.matches("[A-Z][A-Za-z0-9]*"))
+      )
+    },
     test("nothing crosses the boundary that cannot cross it safely") {
       // The rule S3 and S4 paid for: no struct by value, in either direction. The type
       // vocabulary enforces it by construction, so this asserts the vocabulary has not

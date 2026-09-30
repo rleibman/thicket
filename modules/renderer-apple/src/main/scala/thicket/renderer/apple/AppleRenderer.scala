@@ -42,33 +42,36 @@ final class AppleRenderer extends Renderer {
     *
     * 15 rather than 9 because phase 2 reserved 9-14 for the widgets it added; an axis is not
     * worth renumbering six pending widgets over.
+    *
+    * The codes are `ShimKind`, generated from `tools/shim-gen`'s `Abi.kinds` alongside the
+    * header table that says which view each toolkit builds for them.
     */
   private def kindCode(
     kind:  WidgetKind,
     props: Seq[Prop]
   ): CInt =
     kind match {
-      case WidgetKind.Column    => 0
-      case WidgetKind.Row       => 1
-      case WidgetKind.Label     => 2
-      case WidgetKind.Button    => 3
-      case WidgetKind.TextField => 4
-      case WidgetKind.Checkbox  => 5
-      case WidgetKind.Scroll    => if isHorizontal(props) then 15 else 6
-      case WidgetKind.Divider   => 7
-      case WidgetKind.Image     => 8
+      case WidgetKind.Column    => ShimKind.Column
+      case WidgetKind.Row       => ShimKind.Row
+      case WidgetKind.Label     => ShimKind.Label
+      case WidgetKind.Button    => ShimKind.Button
+      case WidgetKind.TextField => ShimKind.TextField
+      case WidgetKind.Checkbox  => ShimKind.Checkbox
+      case WidgetKind.Scroll    => if isHorizontal(props) then ShimKind.ScrollHorizontal else ShimKind.Scroll
+      case WidgetKind.Divider   => ShimKind.Divider
+      case WidgetKind.Image     => ShimKind.Image
 
       // Reserved, and not yet built by either shim. `sui_create`'s `default:` branch
       // returns a *separator*, so passing one of these through would silently render a
       // slider as a hairline rule — a wrong widget that looks like a layout bug and sends
       // whoever hits it looking in the wrong place entirely. Failing loudly with the name
       // of the missing case is the honest behaviour until the Swift lands. Forgejo #9.
-      case WidgetKind.Toggle            => unimplemented("Toggle", 9)
-      case WidgetKind.Spacer            => unimplemented("Spacer", 10)
-      case WidgetKind.ProgressBar       => unimplemented("ProgressBar", 11)
-      case WidgetKind.ActivityIndicator => unimplemented("ActivityIndicator", 12)
-      case WidgetKind.Slider            => unimplemented("Slider", 13)
-      case WidgetKind.SecureField       => unimplemented("SecureField", 14)
+      case WidgetKind.Toggle            => unimplemented("Toggle", ShimKind.Toggle)
+      case WidgetKind.Spacer            => unimplemented("Spacer", ShimKind.Spacer)
+      case WidgetKind.ProgressBar       => unimplemented("ProgressBar", ShimKind.ProgressBar)
+      case WidgetKind.ActivityIndicator => unimplemented("ActivityIndicator", ShimKind.ActivityIndicator)
+      case WidgetKind.Slider            => unimplemented("Slider", ShimKind.Slider)
+      case WidgetKind.SecureField       => unimplemented("SecureField", ShimKind.SecureField)
     }
 
   private def unimplemented(name: String, reservedCode: Int): Nothing =
