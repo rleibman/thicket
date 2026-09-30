@@ -169,6 +169,24 @@ object SelfTest {
       masked.headOption.exists(_.getText.toString == "hunter2"),
       "the value must round-trip even though it is not drawn")
 
+    // --- Alert: presented by a signal, dismissed by unmounting ---
+    check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
+    val itemsBeforeAlert = model.items.now.size
+
+    model.confirmingDrop.set(true)
+    check("presenting an alert leaves the screen intact",
+      allTexts(root).contains("Hide completed"), allTexts(root).toString)
+
+    // Unmounting is the whole of dismissing, and it must NOT report a user dismissal: the
+    // app asked for it to go away, which is not the user declining to choose. On Android
+    // that distinction is real - setOnCancelListener fires for the back gesture and a tap
+    // outside, but not for Dialog.dismiss().
+    model.confirmingDrop.set(false)
+    check("dismissing from the app does not report a user dismissal",
+      model.lastAlertChoice.now.isEmpty,
+      s"choice was '${model.lastAlertChoice.now}'")
+    check("and nothing was dropped", model.items.now.size == itemsBeforeAlert)
+
     Log.i(
       Tag,
       if failures == 0 then "[selftest] ALL CHECKS PASSED"

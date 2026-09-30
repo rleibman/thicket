@@ -38,7 +38,7 @@ object Reconciler {
   */
 final class Mounted[H] private[core] (private[core] val slot: Slot[H]) {
   /** The root handle, when the tree has exactly one. A `Fragment` root has none. */
-  def handle: H = slot.handles.headOption.getOrElse(
+  def handle: H = slot.ownedHandles.headOption.getOrElse(
     throw new IllegalStateException("this tree has no root widget (a Fragment root?)")
   )
 
@@ -49,8 +49,22 @@ final class Mounted[H] private[core] (private[core] val slot: Slot[H]) {
 // ---------------------------------------------------------------------------------------
 
 private[core] sealed trait Slot[H] {
-  /** The handles this slot currently contributes to its parent, in order. */
+  /** The handles this slot contributes to its parent *for positioning*, in order.
+    *
+    * A presented slot contributes none: its widget was never attached, so using it as an
+    * anchor asks the toolkit to position against something that is not a child. On Android
+    * `ViewGroup.indexOfChild` answers -1 and the next sibling silently jumps to the front;
+    * on GTK `gtk_box_insert_child_after` emits a critical. Neither fails loudly, which is
+    * exactly why this has to be empty rather than merely skipped at the call sites.
+    */
   def handles: Vector[H]
+
+  /** Every handle this slot owns, positioned or not.
+    *
+    * Only [[Mounted.handle]] wants this: a host mounting a single `Alert` still needs its
+    * handle back, even though that handle anchors nothing.
+    */
+  def ownedHandles: Vector[H] = handles
 
   /** The last handle this slot contributes, if any — the anchor a following sibling uses. */
   def lastHandle: Option[H] = handles.lastOption
@@ -119,8 +133,12 @@ private[core] object Slot {
     }
 
     val children = mountChildren(renderer, w.children, handle)
-    parent.foreach(p => renderer.insertAfter(p, handle, anchor()))
-    WidgetSlot(renderer, handle, children)
+    // A presented kind is shown over the app rather than attached to a parent — see
+    // WidgetKind.presented. Mounting is what presents it, so `Show(flag)(Alert(...))` is
+    // the whole of opening and closing one.
+    if w.kind.presented then renderer.present(handle)
+    else parent.foreach(p => renderer.insertAfter(p, handle, anchor()))
+    WidgetSlot(renderer, handle, children, presented = w.kind.presented)
   }
 
   private def fragment[H](
@@ -206,11 +224,20 @@ private[core] object Slot {
 private final class WidgetSlot[H](
     renderer: Renderer { type Handle = H },
     val handle: H,
-    val children: Vector[Slot[H]]
+    val children: Vector[Slot[H]],
+    presented: Boolean = false
 ) extends Slot[H] {
-  def handles: Vector[H] = Vector(handle)
+  // Empty when presented: see Slot.handles. The widget exists and is owned, but it is not
+  // in the parent's child list, so it must not act as an anchor for what follows it.
+  def handles: Vector[H]              = if presented then Vector.empty else Vector(handle)
+  override def ownedHandles: Vector[H] = Vector(handle)
+
   def dispose(): Unit = {
     children.foreach(_.dispose())
+    // A presented widget is dismissed before it is destroyed. `destroy` detaches, and a
+    // presented widget was never attached — so without this the alert would be freed while
+    // still on screen.
+    if presented then renderer.dismiss(handle)
     renderer.destroy(handle)
   }
 }
@@ -278,7 +305,8 @@ private final class VirtualRows[H, A, K](
         }
         val handle = slot.handles.headOption.getOrElse(
           throw new IllegalArgumentException(
-            "a LazyColumn row must have a single root widget (a Fragment has none)"
+            "a LazyColumn row must have a single root widget that the container can place " +
+              "(a Fragment has none, and a presented widget such as Alert places itself)"
           )
         )
         rows(handle) = new Row(v, rowOwner, slot)
@@ -303,7 +331,8 @@ private final class VirtualRows[H, A, K](
 }
 
 private final class FragmentSlot[H](val slots: Vector[Slot[H]]) extends Slot[H] {
-  def handles: Vector[H] = slots.flatMap(_.handles)
+  def handles: Vector[H]               = slots.flatMap(_.handles)
+  override def ownedHandles: Vector[H] = slots.flatMap(_.ownedHandles)
   def dispose(): Unit    = slots.foreach(_.dispose())
 }
 

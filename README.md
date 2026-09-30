@@ -190,7 +190,7 @@ Not asserted — measured, with the method recorded in
 | App size (iOS hello app) | **0.53 MB** vs React Native 26.0 MB, Gluon 60.1 MB |
 | Cold start (iOS simulator) | **425 ms** vs React Native 702 ms |
 | Android cold start | 388 ms, against hand-written Kotlin's 418 ms |
-| Android release APK | 154 KB |
+| Android release APK | 165 KB |
 | Signal update | 77 / 219 / 419 ns per node (JVM / Native / JS), budget 1 000 ns |
 | Mount 10 000 rows | ~56 ms; single-row update ~1.5 ms |
 | 10 000-row list | ~66 live views on Android, ~205 on GTK |
