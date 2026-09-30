@@ -541,7 +541,13 @@ final class GtkRenderer extends Renderer {
 
   override def present(handle: Handle): Unit = Zone {
     val actions = alertActions.getOrElse(handle, Nil)
-    val dialog  = gtk_alert_dialog_new(toCString("%s"))
+    // An empty format, not "%s" and not null. `gtk_alert_dialog_new` is printf-style
+    // variadic: "%s" declares a conversion with no argument pushed, so g_strdup_vprintf
+    // reads a register that was never set — undefined behaviour that happens to work.
+    // `null` is not the fix; GTK hands the format straight to g_strdup_vprintf and
+    // segfaults. An empty string declares no conversions, so nothing is read, and the
+    // message it produces is overwritten by set_message on the next line anyway.
+    val dialog  = gtk_alert_dialog_new(toCString(""))
 
     gtk_alert_dialog_set_message(dialog, toCString(alertTitle.getOrElse(handle, "")))
     alertDetail.get(handle).filter(_.nonEmpty).foreach { d =>

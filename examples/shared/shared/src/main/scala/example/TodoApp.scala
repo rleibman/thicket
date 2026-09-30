@@ -231,7 +231,13 @@ object TodoApp {
               model.lastAlertChoice.set("cancel")
               model.confirmingDrop.set(false)
             }
-          )(model.lastAlertChoice.set("dismissed"))
+          ) {
+            // A platform dismissal - back gesture, tap outside - does not unmount the
+            // alert, so the app has to take it down itself. Without this the signal stays
+            // true, the native dialog is already gone, and `Drop` can never reopen it.
+            model.lastAlertChoice.set("dismissed")
+            model.confirmingDrop.set(false)
+          }
         }
       ))
     )

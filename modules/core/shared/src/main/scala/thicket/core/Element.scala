@@ -206,6 +206,13 @@ object dsl {
     * it — Escape, a tap outside, a back gesture — which is not the same as the user
     * choosing a cancel button, and an app that conflates them will eventually be wrong
     * about whether the user declined or merely looked away.
+    *
+    * **Every handler must take the alert down**, `onDismiss` included. A platform
+    * dismissal removes the native dialog without touching your signal, so an `onDismiss`
+    * that only records what happened leaves the signal `true` with nothing on screen — and
+    * the alert can then never be reopened, because setting a signal to the value it
+    * already holds propagates nothing. This is the one sharp edge of presenting by signal,
+    * and it is sharp in exactly one direction: forgetting is silent.
     */
   def Alert(title: String, message: String = "")(
     actions:       AlertAction*

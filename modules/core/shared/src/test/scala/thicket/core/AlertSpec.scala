@@ -19,6 +19,46 @@ object AlertSpec extends ZIOSpecDefault {
       chk.no(WidgetKind.Scroll.presented, "a Scroll is a container, not a presentation")
       chk.result
     },
+    test("a presented widget anchors nothing that follows it") {
+      val o = Owner(); given Owner = o
+      val chk        = Checks()
+      val r          = TestRenderer()
+      val confirming = Var(true)
+
+      // The Alert sits *between* two labels. Its placeholder was never attached, so if it
+      // leaked into the anchor chain the label after it would be positioned against a
+      // non-child: Android's indexOfChild answers -1 and inserts at the front, GTK emits a
+      // critical. Neither fails loudly, so the order here is the only thing that catches it.
+      val m = Reconciler.mount(
+        r,
+        Column()(
+          Label("before"),
+          Show(confirming)(Alert("Careful")(AlertAction("OK")(()))()),
+          Label("after")
+        )
+      )
+
+      chk.eq(r.childrenOf(m.handle).map(r.text), Seq("before", "after"))
+      // And it still holds when the alert comes and goes underneath them.
+      confirming.set(false)
+      chk.eq(r.childrenOf(m.handle).map(r.text), Seq("before", "after"))
+      confirming.set(true)
+      chk.eq(r.childrenOf(m.handle).map(r.text), Seq("before", "after"))
+      chk.eq(r.presentedNow.length, 1)
+
+      o.dispose()
+      chk.result
+    },
+    test("a single presented widget is still reachable as Mounted.handle") {
+      val o = Owner(); given Owner = o
+      val chk = Checks()
+      val r   = TestRenderer()
+      // It anchors nothing, but a host mounting one directly still needs its handle back.
+      val m = Reconciler.mount(r, Alert("Standalone")(AlertAction("OK")(()))())
+      chk.eq(r.kind(m.handle), WidgetKind.Alert)
+      o.dispose()
+      chk.result
+    },
     test("mounting presents it and unmounting dismisses it") {
       val o = Owner(); given Owner = o
       val chk       = Checks()

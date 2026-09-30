@@ -89,7 +89,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   renderer stays on the platform.** `android.app.AlertDialog` and `android.widget.TabHost`
   both carry class-level deprecation flags in android-36; the replacements live in AndroidX
   and Material, not in the platform. The Alert uses the platform class anyway: scalac does
-  not even warn on it, it still draws correctly, and the reason this APK is 168 KB is that
+  not even warn on it, it still draws correctly, and the reason this APK is 165 KB is that
   it depends on nothing. `TabView` is a harder case and is not built — see §12.2a, this is
   the same question `Radio` and `Stepper` raised.
 

@@ -490,7 +490,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * The class carries a deprecation flag in android-36's bytecode, though scalac does not
     * warn on it. Taking the AndroidX dependency to get the undeprecated one would add a
     * library this renderer otherwise does not need, for a dialog the platform still draws
-    * correctly — and the reason this APK is 166 KB is that it depends on nothing. Revisit
+    * correctly — and the reason this APK is 165 KB is that it depends on nothing. Revisit
     * if it is ever actually removed rather than merely discouraged.
     */
   override def present(handle: View): Unit = {
