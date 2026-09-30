@@ -69,6 +69,23 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-29 — **`thicket_apple.h` and `Shim.scala` are generated artefacts, checked in**
+  (GitHub #3). Both are now written by `sbt shimGen/run` from
+  `tools/shim-gen/.../Abi.scala` and carry a "GENERATED — edit Abi.scala" header;
+  `GenerateSpec` compares them to the generator's output byte for byte, so `sbt test` fails on
+  a hand edit or a missed regeneration (`sbt "shimGen/run --check"` is the same check as an
+  exit code). They stay checked in so that building `rendererApple` needs nothing but the
+  repository. Also decided:
+  (a) **Per-platform widget choice lives in `Abi.kinds`**: each `sui_create` code names the
+  Swift construction each toolkit uses (`NSButton(checkboxWithTitle:` vs `UISwitch(`), and
+  `ConsistencySpec` reads both shims' `sui_create` to check it — and that no shim handles a code
+  the table does not declare. The Scala codes are generated as `ShimKind` next to the externs.
+  (b) **Swift bodies stay hand-written**, and so do the two `@_cdecl` signatures per function:
+  per function that is 1 description entry + 2 checked Swift signatures, down from 4 unchecked
+  declarations. Generating Swift *files* would mean generating bodies, which the phase-1
+  measurement (14 of 34 genuinely different) rules out.
+  (c) The generated Scala binds `const uint8_t *` as `Ptr[Byte]`, not `Ptr[UByte]` — the
+  renderer allocates the buffer as `Byte`, and the two are the same register (`Abi.Repr`).
 - 2026-09-30 — **A test's `UiThread` must actually marshal; `install(f => f())` is the wrong
   stub.** The effect-zio suite installed a UiThread that runs the post *inline on the ZIO
   fibre's thread*, so `Var.set` happened off the test thread while the test spun on

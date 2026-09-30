@@ -348,7 +348,11 @@ lazy val shimGen = project
     // The suite reads the checked-in shim artefacts, so it needs the repository root
     // rather than the subproject's base directory.
     Test / javaOptions += s"-Dthicket.root=${(ThisBuild / baseDirectory).value}",
-    Test / fork := true
+    Test / fork := true,
+    // `shimGen/run` writes the generated header and Scala externs into the repository, so it
+    // gets the same root; forked, so the property reaches it.
+    Compile / run / javaOptions += s"-Dthicket.root=${(ThisBuild / baseDirectory).value}",
+    Compile / run / fork := true
   )
 
 lazy val root = project

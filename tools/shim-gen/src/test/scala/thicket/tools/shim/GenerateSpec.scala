@@ -6,13 +6,10 @@ import scala.jdk.CollectionConverters.*
 
 /** The round trip: does generating from [[Abi]] reproduce what is checked in?
   *
-  * Compared as *declarations*, not as text. A byte diff would be a test of the formatter — it would fail on a comment
-  * reflow or a scalafmt alignment and say nothing about whether the ABI was preserved. What has to hold is that the
-  * generated artefact declares exactly the same functions, with the same types, in the same order as the file it would
-  * replace.
-  *
-  * Passing this is what makes adopting the generator safe: it says the switch from hand-written to generated changes no
-  * declaration.
+  * Since the header and `Shim.scala` were adopted as generated artefacts, the first test compares them as *text*: they
+  * have no hand-written formatting left to protect, so any difference at all is a hand edit or a missed regeneration.
+  * The declaration-level tests that follow predate adoption — they are what proved the swap changed no declaration —
+  * and stay because they also prove [[Parse]] reads the generator's own output, which the consistency checks depend on.
   */
 object GenerateSpec extends ZIOSpecDefault {
 
@@ -24,14 +21,26 @@ object GenerateSpec extends ZIOSpecDefault {
 
   def spec =
     suite("generating from Abi")(
-      test("the generated C header declares exactly what the hand-written one declares") {
+      // The adoption check. The header and Shim.scala are generated artefacts, so here the
+      // comparison *is* textual: any byte of difference means someone edited the output
+      // instead of Abi.scala, or edited Abi.scala and did not regenerate. Either way the fix
+      // is `sbt shimGen/run`, and the message says so.
+      test("the checked-in generated files are exactly what Abi generates") {
+        val stale = Main.generated.collect {
+          case (rel, text) if !Files.exists(root.resolve(rel)) || Files.readString(root.resolve(rel)) != text() => rel
+        }
+        assertTrue(stale.isEmpty).label(
+          s"stale: ${stale.mkString(", ")} — edit Abi.scala, not the generated file, then run `sbt shimGen/run`"
+        )
+      },
+      test("the generated C header declares exactly what the checked-in one declares") {
         val generated = Parse.cHeader(Emit.cHeader())
         val existing = Parse.cHeader(read(shim.resolve("include/thicket_apple.h")))
         // Order too: the header is read by humans and diffed by reviewers, so a generator
         // that shuffled the declarations would be correct and useless.
         assertTrue(generated.unparsed == Nil, generated.decls == existing.decls)
       },
-      test("the generated Scala externs declare exactly what the hand-written ones declare") {
+      test("the generated Scala externs declare exactly what the checked-in ones declare") {
         import Abi.repr
         val generated = Parse.scalaExterns(Emit.scalaExterns())
         val existing = Parse.scalaExterns(read(scala.resolve("Shim.scala")))
