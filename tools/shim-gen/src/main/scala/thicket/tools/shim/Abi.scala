@@ -58,6 +58,9 @@ object Abi {
       */
     case RowCb
 
+    /** A slider's value, in the app's own units. */
+    case ValueCb
+
   }
 
   /** What a type is *at the ABI*, as opposed to what it is called.
@@ -81,8 +84,8 @@ object Abi {
         case CType.I64  => Repr.I64
         case CType.F64  => Repr.F64
 
-        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle    => Repr.Pointer
-        case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb => Repr.FnPointer
+        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle                    => Repr.Pointer
+        case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb | CType.ValueCb => Repr.FnPointer
       }
 
   }
@@ -168,7 +171,7 @@ object Abi {
   private def reserved(
     code: Int,
     name: String,
-    why:  String = "#4"
+    why:  String
   ) = Kind(code, name, None, None, s"reserved, not built yet ($why)")
 
   val kinds: List[Kind] = List(
@@ -181,12 +184,12 @@ object Abi {
     built(6, "Scroll", "NSScrollView(", "UIScrollView(", "vertical"),
     built(7, "Divider", "NSBox(", "UIView(", "the shims' default: branch"),
     built(8, "Image", "ImageView(", "UIImageView("),
-    reserved(9, "Toggle"),
-    reserved(10, "Spacer"),
-    reserved(11, "ProgressBar"),
-    reserved(12, "ActivityIndicator"),
-    reserved(13, "Slider"),
-    reserved(14, "SecureField"),
+    built(9, "Toggle", "NSSwitch(", "UISwitch(", "no label: the caption is a sibling"),
+    built(10, "Spacer", "NSView(", "UIView(", "grows through Prop.Grow"),
+    built(11, "ProgressBar", "NSProgressIndicator(", "UIProgressView("),
+    built(12, "ActivityIndicator", "NSProgressIndicator(", "UIActivityIndicatorView(", "spins while mounted"),
+    built(13, "Slider", "NSSlider(", "UISlider("),
+    built(14, "SecureField", "NSSecureTextField(", "UITextField(", "isSecureTextEntry on UIKit"),
     built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create"),
     reserved(16, "Alert", "phase 3; NSAlert / UIAlertController"),
     reserved(17, "Sheet", "phase 3; a sheet on AppKit, a presented view controller on UIKit")
@@ -234,13 +237,24 @@ object Abi {
     setter("sui_set_image_file", "path"  -> Str),
     setter("sui_set_image_bytes", "data" -> Bytes, "length" -> I32),
     setter("sui_clear_image"),
-    setter("sui_set_content_fit", "fit" -> I32).copy(doc = "fit: 0 Contain, 1 Cover, 2 Fill")
+    setter("sui_set_content_fit", "fit" -> I32).copy(doc = "fit: 0 Contain, 1 Cover, 2 Fill"),
+    setter("sui_set_progress", "has" -> I32, "fraction" -> F64).copy(
+      doc = "has 0 means indeterminate, which is deliberately not the same as a fraction of 0.0.\n" +
+        "   The fraction is 0.0-1.0; the shim scales it for NSProgressIndicator's 0-100."
+    ),
+    setter("sui_set_range", "min" -> F64, "max" -> F64)
+      .copy(doc = "A slider's bounds, in the app's own units. Always arrives before sui_set_value."),
+    setter("sui_set_value", "value" -> F64).copy(
+      doc = "A slider's value, in the app's own units. Written only when it differs, so an\n" +
+        "   app writing back what the user dragged to does not fight the drag."
+    )
   )
 
   val events: List[Fn] = List(
-    setter("sui_on_tap", "cb"            -> VoidCb, "ctx" -> I64),
-    setter("sui_on_text_change", "cb"    -> TextCb, "ctx" -> I64),
-    setter("sui_on_checked_change", "cb" -> BoolCb, "ctx" -> I64)
+    setter("sui_on_tap", "cb"            -> VoidCb, "ctx"  -> I64),
+    setter("sui_on_text_change", "cb"    -> TextCb, "ctx"  -> I64),
+    setter("sui_on_checked_change", "cb" -> BoolCb, "ctx"  -> I64),
+    setter("sui_on_value_change", "cb"   -> ValueCb, "ctx" -> I64)
   )
 
   val tree: List[Fn] = List(
@@ -319,7 +333,23 @@ object Abi {
       doc = "Returns NULL when the view carries no text. The buffer is owned by the shim and\n" +
         "   valid until the next call, so Scala must copy before calling again."
     ),
-    Fn("sui_is_text_bearing", I32, List(p("h", Handle)))
+    Fn("sui_is_text_bearing", I32, List(p("h", Handle))),
+    Fn(
+      "sui_class_name",
+      Str,
+      List(p("h", Handle)),
+      doc = "The platform class of the view, e.g. NSSwitch. What the platform built, not what\n" +
+        "   the renderer asked for. Same buffer rule as sui_get_text."
+    ),
+    Fn(
+      "sui_get_progress",
+      F64,
+      List(p("h", Handle)),
+      doc = "A determinate fraction 0.0-1.0; -1 when indeterminate (a spinner, or a bar given\n" +
+        "   no fraction); -2 when the view shows no progress at all."
+    ),
+    Fn("sui_get_value", F64, List(p("h", Handle)), doc = "A slider's value, in the app's own units."),
+    Fn("sui_is_secure", I32, List(p("h", Handle)), doc = "1 when the field masks what is typed into it.")
   )
 
   /** `doc`, when set, is emitted as a comment under the group's rule in the header. */

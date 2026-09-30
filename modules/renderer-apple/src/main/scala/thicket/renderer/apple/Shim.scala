@@ -24,6 +24,9 @@ object Shim {
     */
   type RowCb = CFuncPtr3[Long, CInt, Handle, Handle]
 
+  /** A slider's value, in the app's own units. */
+  type ValueCb = CFuncPtr2[Long, Double, Unit]
+
   def sui_app_start(width: CInt, height: CInt, title: CString, ready: VoidCb, ctx: Long): Unit = extern
   def sui_root_view(): Handle = extern
   def sui_window_set_title(title: CString): Unit = extern
@@ -46,9 +49,13 @@ object Shim {
   def sui_set_image_bytes(h: Handle, data: Ptr[Byte], length: CInt): Unit = extern
   def sui_clear_image(h: Handle): Unit = extern
   def sui_set_content_fit(h: Handle, fit: CInt): Unit = extern
+  def sui_set_progress(h: Handle, has: CInt, fraction: CDouble): Unit = extern
+  def sui_set_range(h: Handle, min: CDouble, max: CDouble): Unit = extern
+  def sui_set_value(h: Handle, value: CDouble): Unit = extern
   def sui_on_tap(h: Handle, cb: VoidCb, ctx: Long): Unit = extern
   def sui_on_text_change(h: Handle, cb: TextCb, ctx: Long): Unit = extern
   def sui_on_checked_change(h: Handle, cb: BoolCb, ctx: Long): Unit = extern
+  def sui_on_value_change(h: Handle, cb: ValueCb, ctx: Long): Unit = extern
   def sui_insert_after(parent: Handle, child: Handle, after: Handle): Unit = extern
   def sui_remove_child(parent: Handle, child: Handle): Unit = extern
   def sui_measure(h: Handle, maxW: CDouble, maxH: CDouble, outMinW: Ptr[CDouble], outMinH: Ptr[CDouble], outNatW: Ptr[CDouble], outNatH: Ptr[CDouble]): Unit = extern
@@ -62,6 +69,10 @@ object Shim {
   def sui_child_at(h: Handle, index: CInt): Handle = extern
   def sui_get_text(h: Handle): CString = extern
   def sui_is_text_bearing(h: Handle): CInt = extern
+  def sui_class_name(h: Handle): CString = extern
+  def sui_get_progress(h: Handle): CDouble = extern
+  def sui_get_value(h: Handle): CDouble = extern
+  def sui_is_secure(h: Handle): CInt = extern
 }
 
 /** `sui_create` kind codes, from Abi.kinds. A code whose view is "-" on a toolkit is

@@ -20,6 +20,7 @@ final class AppleRenderer extends Renderer {
   private val tapIds = mutable.Map.empty[Handle, Long]
   private val editIds = mutable.Map.empty[Handle, Long]
   private val boolIds = mutable.Map.empty[Handle, Long]
+  private val valueIds = mutable.Map.empty[Handle, Long]
   private val rowIds = mutable.Map.empty[Handle, Long]
 
   /** The scrollers created horizontally. The renderer is the only thing that knows: the axis is folded into the kind
@@ -60,19 +61,20 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.Divider   => ShimKind.Divider
       case WidgetKind.Image     => ShimKind.Image
 
+      case WidgetKind.Toggle            => ShimKind.Toggle
+      case WidgetKind.Spacer            => ShimKind.Spacer
+      case WidgetKind.ProgressBar       => ShimKind.ProgressBar
+      case WidgetKind.ActivityIndicator => ShimKind.ActivityIndicator
+      case WidgetKind.Slider            => ShimKind.Slider
+      case WidgetKind.SecureField       => ShimKind.SecureField
+
       // Reserved, and not yet built by either shim. `sui_create`'s `default:` branch
-      // returns a *separator*, so passing one of these through would silently render a
-      // slider as a hairline rule — a wrong widget that looks like a layout bug and sends
-      // whoever hits it looking in the wrong place entirely. Failing loudly with the name
-      // of the missing case is the honest behaviour until the Swift lands. Forgejo #9.
-      case WidgetKind.Toggle            => unimplemented("Toggle", ShimKind.Toggle)
-      case WidgetKind.Spacer            => unimplemented("Spacer", ShimKind.Spacer)
-      case WidgetKind.ProgressBar       => unimplemented("ProgressBar", ShimKind.ProgressBar)
-      case WidgetKind.ActivityIndicator => unimplemented("ActivityIndicator", ShimKind.ActivityIndicator)
-      case WidgetKind.Slider            => unimplemented("Slider", ShimKind.Slider)
-      case WidgetKind.SecureField       => unimplemented("SecureField", ShimKind.SecureField)
-      case WidgetKind.Alert             => unimplemented("Alert", ShimKind.Alert)
-      case WidgetKind.Sheet             => unimplemented("Sheet", ShimKind.Sheet)
+      // returns a *separator*, so passing it through would silently render an alert as a
+      // hairline rule — a wrong widget that looks like a layout bug and sends whoever hits it
+      // looking in the wrong place entirely. Failing loudly with the name of the missing case
+      // is the honest behaviour until the Swift lands.
+      case WidgetKind.Alert => unimplemented("Alert", ShimKind.Alert)
+      case WidgetKind.Sheet => unimplemented("Sheet", ShimKind.Sheet)
     }
 
   private def unimplemented(
@@ -81,7 +83,7 @@ final class AppleRenderer extends Renderer {
   ): Nothing =
     throw new UnsupportedOperationException(
       s"$name is not implemented in the Apple shim yet (kind code $reservedCode reserved). " +
-        "See Forgejo #9."
+        "Presented widgets are phase 3 on Apple."
     )
 
   private def isHorizontal(props: Seq[Prop]): Boolean =
@@ -232,15 +234,26 @@ final class AppleRenderer extends Renderer {
       // `create` via `kindCode`, exactly as GTK and Android do it.
       case Prop.Axis(_) => ()
 
-      // Unreachable while ProgressBar cannot be created at all (see kindCode), and present
-      // so this renderer keeps compiling as the catalogue grows. Forgejo #9.
-      case Prop.Progress(_) => ()
+      // `None` is indeterminate, which is deliberately not the same as `Some(0.0)`.
+      case Prop.Progress(value) =>
+        value match {
+          case Some(f) => Shim.sui_set_progress(handle, 1, f)
+          case None    => Shim.sui_set_progress(handle, 0, 0.0)
+        }
 
-      // Likewise unreachable while Slider cannot be created. NSSlider and UISlider both
-      // take the app's own units, so these are near-direct once the shim lands.
-      case Prop.Range(_, _)      => ()
-      case Prop.Value(_)         => ()
-      case Prop.OnValueChange(_) => ()
+      // In the app's own units. `Range` always arrives before `Value` (CatalogueSpec), so the
+      // value is never clamped against the control's default bounds.
+      case Prop.Range(min, max) => Shim.sui_set_range(handle, min, max)
+      case Prop.Value(v)        => Shim.sui_set_value(handle, v)
+
+      case Prop.OnValueChange(f) =>
+        valueIds.get(handle) match {
+          case Some(id) => Handles.replaceValue(id, f)
+          case None =>
+            val id = Handles.registerValue(f)
+            valueIds(handle) = id
+            Shim.sui_on_value_change(handle, Handles.valueTrampoline, id)
+        }
 
       // Alert's props. Unreachable while Alert cannot be created; present here so this
       // renderer keeps compiling as the catalogue grows. NSAlert and UIAlertController
@@ -269,6 +282,7 @@ final class AppleRenderer extends Renderer {
     tapIds.remove(handle).foreach(Handles.release)
     editIds.remove(handle).foreach(Handles.release)
     boolIds.remove(handle).foreach(Handles.release)
+    valueIds.remove(handle).foreach(Handles.release)
     // The row closure captures the whole RowSource graph, so an unreleased id keeps every
     // unmounted list alive. A table asking for a row after this gets null, which it treats as
     // no view.
