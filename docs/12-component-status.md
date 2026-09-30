@@ -4,7 +4,7 @@
 renderer lands — unlike `docs/01`–`docs/09`, which are frozen. The target is the v1
 catalogue in `docs/07` §7.10.
 
-**Last updated:** 2026-09-30 (the phase 2 widgets on Apple, #4).
+**Last updated:** 2026-09-30 (Alert and Sheet on Apple, #18).
 
 ## 12.1 Scoreboard
 
@@ -12,15 +12,16 @@ catalogue in `docs/07` §7.10.
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
 | Widgets implemented on at least one renderer | **17** |
-| Widgets implemented on **every** renderer that exists | **15** |
+| Widgets implemented on **every** renderer that exists | **17** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **25** |
-| Props implemented on every renderer | **22** — `Message`, `Actions` and `OnDismiss` are no-ops on Apple, because they belong to `Alert`, which it cannot present yet |
+| Props implemented on every renderer | **25** — all of them |
 
-**Fifteen of thirty-two**, and this time on every renderer: the six phase 2 widgets landed
-on AppKit and UIKit (#4), measured by the same self-test checks GTK and Android run —
-**43/43** on macOS and **42/42** on the iOS simulator, progress bar **0.750** on both.
-`Alert` is the one widget still on two renderers only.
+**Seventeen of thirty-two, every one on every renderer.** The six phase 2 widgets landed on
+AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18. The Apple
+self-test is **68/68** on macOS and **64/64** on the iOS simulator; the four iOS does not run
+are the three that choose an alert action from code (UIKit offers no way to) and one
+overflow check a phone is too wide to exercise, and each says so rather than passing.
 
 The first nine were, deliberately, the ones that forced the contract to be right: a
 tappable container, a two-way-bound field, a recycling list and a viewport between them
@@ -43,12 +44,12 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
 
-### Added in phase 3 — GTK and Android done, Apple pending
+### Added in phase 3 — done on all four (#18 for Apple)
 
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
-| `Alert` | `WidgetKind.Alert` | done | done | — | — | `GtkAlertDialog` / `AlertDialog`. **Presented, not inserted** — see below |
-| `Sheet` | `WidgetKind.Sheet` | done | done | — | — | A modal window / `AlertDialog` with a custom view. Presented **and** a container |
+| `Alert` | `WidgetKind.Alert` | done | done | done | done | `GtkAlertDialog` / `AlertDialog` / `NSAlert` / `UIAlertController`. **Presented, not inserted** — see below |
+| `Sheet` | `WidgetKind.Sheet` | done | done | done | done | A modal window / `AlertDialog` with a custom view / a sheet window / a view controller in a navigation controller. Presented **and** a container |
 
 **The first presented widget, and it changed the contract.** An alert is not a child of
 anything on any of the four toolkits, and GTK says so in its types: `GtkAlertDialog` is a
@@ -72,6 +73,14 @@ still drive the model, but not the presented content itself. Anything about what
 *shows* is asserted at the renderer boundary in `SheetSpec`. Both renderers routed a title
 only for `Alert`, so a `Sheet`'s title went nowhere — and no automated check caught it,
 because none of them could see it. A screenshot did.
+
+**On Apple the self-test does see it**, because the shim can be asked what the platform is
+*showing* for a presented handle: `sui_presented_title` reads the sheet's heading (AppKit;
+a sheet has no title bar, so the title is drawn as its heading rather than set on a window
+nobody sees) or its navigation bar (UIKit), and the alert's own text and buttons. Whether
+anything is up at all is `sui_presented_count`, the platform's answer rather than the
+renderer's bookkeeping. Control: routing the title for `Alert` only — the GTK/Android bug —
+fails "the sheet shows its title" with an empty string.
 
 Two things the platforms disagree about, both resolved in favour of stating *roles* and
 letting each platform place them:
@@ -175,9 +184,9 @@ the point of doing this in Scala.
 `OnCheckedChange`, `Style`, `Grow`, `Align`, `Tint`, `Fill`, `Picture`, `Fit`,
 `TextEmphasis`, `Axis`, `Progress`, `Value`, `Range`, `OnValueChange`.
 
-**"Handled" is not "honoured."** Twenty-two are honoured everywhere. The remaining three —
-`Message`, `Actions`, `OnDismiss` — are no-ops on Apple, but only because they belong to
-`Alert`, which its shim cannot present yet; they are unreachable rather than ignored.
+**"Handled" is not "honoured."** All twenty-five are now honoured everywhere: `Message`,
+`Actions` and `OnDismiss` were the last, unreachable on Apple until `Alert` could be presented
+(#18).
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
 until Forgejo **#4**.
 
@@ -200,8 +209,8 @@ depends on it until `Grid` or absolute positioning does.
 
 **Division of labour.** Apple work is done on the macOS laptop, so anything AppKit/UIKit is
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
-rows), **#2** (`ContentFit.Cover`), **#3** (shim generation) and **#4** (the phase 2
-widgets) are done; `Alert` on Apple is next. Everything else is built and measured on the
+rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
+widgets) and **#18** (`Alert`, `Sheet`) are done; context menus (#19) are next. Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:
@@ -228,7 +237,7 @@ someone and watch. It implies five things, roughly in dependency order.
 |---|---|---|
 | 1 | **Shim generation** (Forgejo **#7**, phase 1 — *adopted 2026-09-29, GitHub #3; Swift bodies deliberately stay hand-written*) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
-| 3 | **Apple parity** — `Alert`; the phase 2 widgets, virtualised rows, horizontal `Scroll` and `ContentFit.Cover` are done | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
+| 3 | **Apple parity** — context menus (#19); everything else in the catalogue is on all four | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |
 | 5 | **Published artefacts and a getting-started** | Without these, "an outside developer" is not a thing that can be tested. |
 

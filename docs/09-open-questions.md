@@ -361,3 +361,15 @@ should not be made until M1.
 - Testing story for app authors (headless renderer? snapshot tests on the dev canvas?).
 - Distribution of the shims: SwiftPM package + prebuilt XCFramework vs source.
 - Wasm as a fourth Scala backend, should Scala.js's Wasm output mature.
+
+## 9.5 Opened by #18 (2026-09-30)
+
+- **Hot-looping `postToUi` crashes the iOS app.** A self-test wait that re-posted itself
+  immediately, thousands of times over a few seconds, killed the simulator app twice: once
+  with a bad access at a main-thread stack address, once with a bad access inside the posted
+  closure (`scala.Function0.apply`, called from `_dispatch_main_queue_drain`). Paced to one
+  post per frame it is fine, and 200 immediate posts always were. It is the same territory as
+  S9's finding that `Handles` under load leaks main-thread stack. It matters beyond tests:
+  `UiThread` marshalling from a busy background producer is exactly this pattern. Needs a
+  minimal repro (a post loop and nothing else) and a count at which it fails, before a fix.
+

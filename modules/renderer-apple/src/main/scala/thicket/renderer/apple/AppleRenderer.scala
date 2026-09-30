@@ -21,6 +21,13 @@ final class AppleRenderer extends Renderer {
   private val editIds = mutable.Map.empty[Handle, Long]
   private val boolIds = mutable.Map.empty[Handle, Long]
   private val valueIds = mutable.Map.empty[Handle, Long]
+  private val actionIds = mutable.Map.empty[Handle, Seq[Long]]
+  private val dismissIds = mutable.Map.empty[Handle, Long]
+
+  /** What is on screen *over* the app, in the order it was presented. A presented widget is by definition not in the
+    * root's tree, so this is how a test finds one without walking a tree that cannot contain it.
+    */
+  private val presentedNow = mutable.LinkedHashMap.empty[Handle, WidgetKind]
   private val rowIds = mutable.Map.empty[Handle, Long]
 
   /** The scrollers created horizontally. The renderer is the only thing that knows: the axis is folded into the kind
@@ -68,23 +75,12 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.Slider            => ShimKind.Slider
       case WidgetKind.SecureField       => ShimKind.SecureField
 
-      // Reserved, and not yet built by either shim. `sui_create`'s `default:` branch
-      // returns a *separator*, so passing it through would silently render an alert as a
-      // hairline rule — a wrong widget that looks like a layout bug and sends whoever hits it
-      // looking in the wrong place entirely. Failing loudly with the name of the missing case
-      // is the honest behaviour until the Swift lands.
-      case WidgetKind.Alert => unimplemented("Alert", ShimKind.Alert)
-      case WidgetKind.Sheet => unimplemented("Sheet", ShimKind.Sheet)
+      // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
+      // placeholder holding its configuration, the sheet's a real container its children
+      // mount into. `present` is what puts either on screen.
+      case WidgetKind.Alert => ShimKind.Alert
+      case WidgetKind.Sheet => ShimKind.Sheet
     }
-
-  private def unimplemented(
-    name:         String,
-    reservedCode: Int
-  ): Nothing =
-    throw new UnsupportedOperationException(
-      s"$name is not implemented in the Apple shim yet (kind code $reservedCode reserved). " +
-        "Presented widgets are phase 3 on Apple."
-    )
 
   private def isHorizontal(props: Seq[Prop]): Boolean =
     props.exists {
@@ -255,13 +251,32 @@ final class AppleRenderer extends Renderer {
             Shim.sui_on_value_change(handle, Handles.valueTrampoline, id)
         }
 
-      // Alert's props. Unreachable while Alert cannot be created; present here so this
-      // renderer keeps compiling as the catalogue grows. NSAlert and UIAlertController
-      // both take title, message and an ordered list of buttons, so these map directly
-      // once the shim lands.
-      case Prop.Message(_)   => ()
-      case Prop.Actions(_)   => ()
-      case Prop.OnDismiss(_) => ()
+      // The title is Prop.Text, routed by the shim for *both* presented kinds — GTK and
+      // Android both shipped with it reaching Alert only, and a Sheet's title went nowhere.
+      case Prop.Message(v) => Zone(Shim.sui_set_message(handle, toCString(v)))
+
+      // Data, not child widgets. Each action's closure gets its own tap id; replacing the
+      // list releases the old ones, so a re-rendered alert does not accumulate them.
+      case Prop.Actions(as) =>
+        actionIds.remove(handle).foreach(_.foreach(Handles.release))
+        Shim.sui_alert_clear_actions(handle)
+        val ids = as.map { a =>
+          val id = Handles.register(() => a.onSelect())
+          val role = if a.cancel then 2 else if a.destructive then 1 else 0
+          Zone(Shim.sui_alert_add_action(handle, toCString(a.label), role, Handles.tapTrampoline, id))
+          id
+        }
+        actionIds(handle) = ids
+
+      // The platform closing it without a choice. Never fired for the app's own dismiss.
+      case Prop.OnDismiss(f) =>
+        dismissIds.get(handle) match {
+          case Some(id) => Handles.replace(id, f)
+          case None =>
+            val id = Handles.register(f)
+            dismissIds(handle) = id
+            Shim.sui_on_dismiss(handle, Handles.tapTrampoline, id)
+        }
     }
 
   def insertAfter(
@@ -283,6 +298,8 @@ final class AppleRenderer extends Renderer {
     editIds.remove(handle).foreach(Handles.release)
     boolIds.remove(handle).foreach(Handles.release)
     valueIds.remove(handle).foreach(Handles.release)
+    actionIds.remove(handle).foreach(_.foreach(Handles.release))
+    dismissIds.remove(handle).foreach(Handles.release)
     // The row closure captures the whole RowSource graph, so an unreleased id keeps every
     // unmounted list alive. A table asking for a row after this gets null, which it treats as
     // no view.
@@ -293,6 +310,23 @@ final class AppleRenderer extends Renderer {
     // releasing, and the reconciler destroys depth-first.
     Shim.sui_destroy(handle)
   }
+
+  /** Called after the widget's children are mounted into it, so a sheet is shown with its content in place. */
+  override def present(handle: Handle): Unit = {
+    presentedNow(handle) = kinds.getOrElse(handle, WidgetKind.Alert)
+    Shim.sui_present(handle)
+  }
+
+  /** Called before `destroy`. Only takes it off screen; `destroy` releases it, so nothing the presentation held can be
+    * freed while the reconciler still has the handle.
+    */
+  override def dismiss(handle: Handle): Unit = {
+    Shim.sui_dismiss(handle)
+    val _ = presentedNow.remove(handle)
+  }
+
+  /** The presented widgets currently on screen, oldest first, with their kinds. */
+  def presented: List[(Handle, WidgetKind)] = presentedNow.toList
 
   /** Whether a handle is a `Scroll` that was created with [[Orientation.Horizontal]]. */
   def isHorizontalScroll(handle: Handle): Boolean = horizontalScrolls.contains(handle)

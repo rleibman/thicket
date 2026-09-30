@@ -21,8 +21,8 @@ object AppleApp {
     */
   var rootHandle: Shim.Handle = null
 
-  /** The renderer that mounted the tree. The demo's self-test asks it what a handle was
-    * created as; nothing in the framework needs it.
+  /** The renderer that mounted the tree. The demo's self-test asks it what a handle was created as; nothing in the
+    * framework needs it.
     */
   var renderer: AppleRenderer = null
 
@@ -30,6 +30,10 @@ object AppleApp {
     * Scala-created thread, never a GCD worker (S1).
     */
   def postToUi(f: () => Unit): Unit = Shim.sui_run_on_main(Handles.tapTrampoline, Handles.registerOneShot(f))
+
+  /** [[postToUi]], after at least `delayMs`. */
+  def postToUiAfter(delayMs: Int)(f: () => Unit): Unit =
+    Shim.sui_run_on_main_after(delayMs, Handles.tapTrampoline, Handles.registerOneShot(f))
 
   /** Fired by the shim from `applicationDidFinishLaunching`, so the window and its root view exist by the time the tree
     * is mounted.

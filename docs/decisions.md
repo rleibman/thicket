@@ -69,6 +69,33 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-30 — **UIKit presentations go through a serial queue in the shim** (#18). UIKit
+  presents and dismisses asynchronously even with `animated: false` — the transition ends on
+  a later turn of the run loop — and a present or dismiss requested before the previous one
+  finished is **dropped**, silently apart from a console warning. `Show(flag)` toggled twice
+  in one turn does exactly that. The self-test found it: a sheet opened and closed in one
+  turn stayed on screen (the same `UINavigationController` was still presented a turn later),
+  and the alert opened next was configured but never shown. Each change now starts only when
+  the previous one's completion has run; the handle's own state updates at once, so the
+  renderer never waits on UIKit. AppKit's `beginSheet`/`endSheet` needed nothing.
+- 2026-09-30 — **"Is it on screen?" is asked of the platform, not the renderer.** The first
+  version of the sheet check passed on the renderer's own list of presented handles while
+  UIKit was still showing the sheet — a check that could not fail, which is what #18 warned
+  about. `sui_presented_count` reads the window's attached sheets (AppKit) or the presented
+  view-controller chain (UIKit), and the self-test waits for it, bounded by time and paced a
+  frame at a time (`sui_run_on_main_after`), because a few hundred back-to-back run-loop
+  turns can all fall inside one frame.
+- 2026-09-30 — **`OnDismiss` on Apple, per platform.** An `NSAlert` has no way to close
+  without a choice: Escape activates the button marked as cancel, so on AppKit a cancel action
+  arrives as a *choice* (as on GTK). A `UIAlertController` in `.alert` style cannot be
+  dismissed by tapping outside either. So **an Apple alert never reports `OnDismiss`**. A
+  sheet does: Escape on an AppKit sheet (`cancelOperation`) and a swipe down on a UIKit one
+  (`presentationControllerDidDismiss`, which UIKit calls only for a user dismissal). Neither
+  gesture is driven by the self-test; they are wired, not measured. An app-initiated dismiss
+  reports nothing on any of the four, and that *is* checked. **No lifetime hazard of the GTK
+  kind:** every Apple handle holds its own retain until `sui_destroy`, so a presentation
+  dropping its reference in `sui_dismiss` cannot free content the reconciler still holds.
+
 - 2026-09-30 — **The Apple self-test finds widgets by *platform class*, read back from the
   shim, not by the renderer's own bookkeeping** (#4). Four inspection functions were added
   for it — `sui_class_name`, `sui_get_progress`, `sui_get_value`, `sui_is_secure` — so a

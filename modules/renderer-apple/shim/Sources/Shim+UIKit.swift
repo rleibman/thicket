@@ -78,6 +78,38 @@ private final class Proxy: NSObject {
 
 private let proxy = Proxy()
 
+/// An alert's handle. `UIAlertController` is a view *controller*, presented rather than
+/// attached, so the handle is a placeholder holding its configuration until `sui_present`.
+private final class AlertView: UIView {
+  var title = ""
+  var message = ""
+  var actions: [(label: String, role: Int32, tap: Tap)] = []
+  var onDismiss: Tap?
+  /// Non-nil exactly while it is on screen; cleared before the app's own dismissal.
+  var controller: UIAlertController?
+}
+
+/// A sheet's handle: an ordinary vertical stack, so its children mount by the ordinary
+/// path. `sui_present` puts it in a view controller inside a navigation controller, whose
+/// bar is where UIKit shows a sheet's title.
+private final class SheetView: UIStackView {
+  var title = ""
+  var onDismiss: Tap?
+  var host: UINavigationController?
+}
+
+/// A swipe down on a sheet is the platform closing it, which is what OnDismiss reports.
+/// UIKit calls this only for a *user* dismissal, never for `dismiss(animated:)` from code —
+/// the distinction the contract wants, made by the platform itself.
+private final class SheetDelegate: NSObject, UIAdaptivePresentationControllerDelegate {
+  weak var sheet: SheetView?
+  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+    guard let s = sheet, let d = s.onDismiss else { return }
+    d.cb(d.ctx)
+  }
+}
+private var sheetDelegates: [ObjectIdentifier: SheetDelegate] = [:]
+
 // MARK: - application lifecycle
 
 // Unlike AppKit, the shim does not start the application here. On iOS the *host* bundle
@@ -229,6 +261,16 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.addTarget(proxy, action: #selector(Proxy.slid(_:)), for: .valueChanged)
     return retained(s)
 
+  case 16:
+    return retained(AlertView())
+
+  case 17:
+    let s = SheetView()
+    s.axis = .vertical
+    s.alignment = .fill
+    s.spacing = 8
+    return retained(s)
+
   case 14:
     // Only construction differs from a TextField; text, placeholder and edits are shared.
     let f = UITextField()
@@ -257,6 +299,8 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   toggles.removeValue(forKey: id)
   valueChanges.removeValue(forKey: id)
   indeterminate.remove(id)
+  sheetDelegates.removeValue(forKey: id)
+  if let sheet = v as? SheetView { sheet.host = nil }
   // A virtual list's source is owned here (the table's references to it are weak), so it
   // goes with the view; keyed by the handle, which is the same object `sui_create_table`
   // keyed it by.
@@ -274,6 +318,13 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
 public func sui_set_text(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CChar>) {
   let s = String(cString: text)
   switch view(h) {
+  // A presented widget's title arrives as Prop.Text, for *both* presented kinds.
+  case let a as AlertView:
+    a.title = s
+    a.controller?.title = s
+  case let sheet as SheetView:
+    sheet.title = s
+    sheet.host?.topViewController?.title = s
   case let l as UILabel:
     l.text = s
   case let f as UITextField:
@@ -689,6 +740,11 @@ public func sui_run_on_main(_ cb: @escaping sui_void_cb, _ ctx: Int64) {
   DispatchQueue.main.async { cb(ctx) }
 }
 
+@_cdecl("sui_run_on_main_after")
+public func sui_run_on_main_after(_ delayMs: Int32, _ cb: @escaping sui_void_cb, _ ctx: Int64) {
+  DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(delayMs))) { cb(ctx) }
+}
+
 // MARK: - inspection
 
 private func arranged(_ v: UIView) -> [UIView] {
@@ -762,4 +818,211 @@ public func sui_get_value(_ h: UnsafeMutableRawPointer) -> Double {
 @_cdecl("sui_is_secure")
 public func sui_is_secure(_ h: UnsafeMutableRawPointer) -> Int32 {
   ((view(h) as? UITextField)?.isSecureTextEntry ?? false) ? 1 : 0
+}
+
+// MARK: - presentation
+
+/// The controller to present from: the window's root, or whatever it is already presenting.
+private func presenter() -> UIViewController? {
+  var top = rootView?.window?.rootViewController
+  while let next = top?.presentedViewController { top = next }
+  return top
+}
+
+/// UIKit presents and dismisses asynchronously even with `animated: false`: the transition
+/// completes on a later turn of the run loop, and a present or dismiss requested before the
+/// previous one finished is dropped — silently, apart from a console warning. `Show(flag)`
+/// toggled twice in one turn does exactly that. The self-test found it: a sheet closed in
+/// the same turn it opened stayed on screen, and the alert opened next was never shown.
+///
+/// So every presentation change goes through this queue and starts only when the previous
+/// one's completion has run. The handle's own state (`controller`, `host`) is updated at
+/// once, so the renderer's view of what is up never waits on UIKit.
+private var presentationQueue: [(@escaping () -> Void) -> Void] = []
+private var presentationBusy = false
+
+private func enqueuePresentation(_ op: @escaping (@escaping () -> Void) -> Void) {
+  presentationQueue.append(op)
+  runNextPresentation()
+}
+
+private func runNextPresentation() {
+  guard !presentationBusy, !presentationQueue.isEmpty else { return }
+  presentationBusy = true
+  let op = presentationQueue.removeFirst()
+  op {
+    presentationBusy = false
+    runNextPresentation()
+  }
+}
+
+@_cdecl("sui_present")
+public func sui_present(_ h: UnsafeMutableRawPointer) {
+  switch view(h) {
+  case let a as AlertView:
+    let c = UIAlertController(title: a.title, message: a.message, preferredStyle: .alert)
+    var cancelTaken = false
+    for action in a.actions {
+      // Roles map directly. UIKit allows one cancel action and raises on a second, so a
+      // second is shown as a plain one rather than crashing the app.
+      let style: UIAlertAction.Style
+      switch action.role {
+      case 1: style = .destructive
+      case 2 where !cancelTaken: style = .cancel; cancelTaken = true
+      default: style = .default
+      }
+      let tap = action.tap
+      c.addAction(UIAlertAction(title: action.label, style: style) { [weak a, weak c] _ in
+        guard let a = a, let c = c, a.controller === c else { return }
+        a.controller = nil
+        tap.cb(tap.ctx)
+      })
+    }
+    a.controller = c
+    enqueuePresentation { done in
+      guard let from = presenter() else { return done() }
+      from.present(c, animated: false, completion: done)
+    }
+
+  case let s as SheetView:
+    let vc = UIViewController()
+    vc.title = s.title
+    vc.view.backgroundColor = .systemBackground
+    s.translatesAutoresizingMaskIntoConstraints = false
+    vc.view.addSubview(s)
+    let g = vc.view.layoutMarginsGuide
+    NSLayoutConstraint.activate([
+      s.leadingAnchor.constraint(equalTo: g.leadingAnchor),
+      s.trailingAnchor.constraint(equalTo: g.trailingAnchor),
+      s.topAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.topAnchor, constant: 16)
+    ])
+    let nav = UINavigationController(rootViewController: vc)
+    let d = SheetDelegate()
+    d.sheet = s
+    sheetDelegates[ObjectIdentifier(s)] = d
+    nav.presentationController?.delegate = d
+    s.host = nav
+    enqueuePresentation { done in
+      guard let from = presenter() else { return done() }
+      from.present(nav, animated: false, completion: done)
+    }
+
+  default:
+    break
+  }
+}
+
+@_cdecl("sui_dismiss")
+public func sui_dismiss(_ h: UnsafeMutableRawPointer) {
+  switch view(h) {
+  case let a as AlertView:
+    guard let c = a.controller else { return }
+    a.controller = nil
+    enqueuePresentation { done in
+      guard c.presentingViewController != nil else { return done() }
+      c.dismiss(animated: false, completion: done)
+    }
+  case let s as SheetView:
+    // Only take it off screen. The view controller keeps the stack until `sui_destroy`,
+    // and the handle's own retain is what keeps it alive regardless.
+    guard let nav = s.host else { return }
+    enqueuePresentation { done in
+      guard nav.presentingViewController != nil else { return done() }
+      nav.dismiss(animated: false, completion: done)
+    }
+  default:
+    break
+  }
+}
+
+@_cdecl("sui_set_message")
+public func sui_set_message(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CChar>) {
+  guard let a = view(h) as? AlertView else { return }
+  a.message = String(cString: text)
+  a.controller?.message = a.message
+}
+
+@_cdecl("sui_alert_clear_actions")
+public func sui_alert_clear_actions(_ h: UnsafeMutableRawPointer) {
+  (view(h) as? AlertView)?.actions = []
+}
+
+@_cdecl("sui_alert_add_action")
+public func sui_alert_add_action(
+  _ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>, _ role: Int32,
+  _ cb: @escaping sui_void_cb, _ ctx: Int64
+) {
+  (view(h) as? AlertView)?.actions.append((String(cString: label), role, Tap(cb: cb, ctx: ctx)))
+}
+
+@_cdecl("sui_on_dismiss")
+public func sui_on_dismiss(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_void_cb, _ ctx: Int64) {
+  switch view(h) {
+  case let a as AlertView: a.onDismiss = Tap(cb: cb, ctx: ctx)
+  case let s as SheetView: s.onDismiss = Tap(cb: cb, ctx: ctx)
+  default: break
+  }
+}
+
+@_cdecl("sui_is_presented")
+public func sui_is_presented(_ h: UnsafeMutableRawPointer) -> Int32 {
+  switch view(h) {
+  case let a as AlertView: return (a.controller?.presentingViewController != nil) ? 1 : 0
+  case let s as SheetView: return (s.host?.presentingViewController != nil) ? 1 : 0
+  default: return 0
+  }
+}
+
+@_cdecl("sui_presented_title")
+public func sui_presented_title(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  switch view(h) {
+  case let a as AlertView: return a.controller.flatMap { $0.title }.flatMap { scratch($0) }
+  case let s as SheetView:
+    guard let nav = s.host, nav.presentingViewController != nil else { return nil }
+    // What the navigation bar is showing, not what the renderer was told.
+    return nav.navigationBar.topItem?.title.flatMap { scratch($0) }
+  default: return nil
+  }
+}
+
+@_cdecl("sui_presented_message")
+public func sui_presented_message(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  (view(h) as? AlertView)?.controller?.message.flatMap { scratch($0) }
+}
+
+@_cdecl("sui_alert_action_count")
+public func sui_alert_action_count(_ h: UnsafeMutableRawPointer) -> Int32 {
+  Int32((view(h) as? AlertView)?.controller?.actions.count ?? 0)
+}
+
+@_cdecl("sui_alert_action_label")
+public func sui_alert_action_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> UnsafePointer<CChar>? {
+  guard let actions = (view(h) as? AlertView)?.controller?.actions, index >= 0, Int(index) < actions.count
+  else { return nil }
+  return actions[Int(index)].title.flatMap { scratch($0) }
+}
+
+@_cdecl("sui_perform_click")
+public func sui_perform_click(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let b = view(h) as? UIButton else { return 0 }
+  b.sendActions(for: .touchUpInside)
+  return 1
+}
+
+/// UIKit offers no public way to trigger a `UIAlertAction` from code. Calling the stored
+/// callback here would pass without exercising UIKit at all, so this says it cannot.
+@_cdecl("sui_alert_choose")
+public func sui_alert_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
+  0
+}
+
+@_cdecl("sui_presented_count")
+public func sui_presented_count() -> Int32 {
+  var n: Int32 = 0
+  var top = rootView?.window?.rootViewController
+  while let next = top?.presentedViewController {
+    n += 1
+    top = next
+  }
+  return n
 }

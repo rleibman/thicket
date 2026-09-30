@@ -56,4 +56,32 @@ object AppleInspect {
   /** Whether a field masks what is typed into it. */
   def isSecure(h: Shim.Handle): Boolean = Shim.sui_is_secure(h) != 0
 
+  private def str(p: CString): Option[String] = if p == null then None else Some(fromCString(p))
+
+  /** Whether an Alert or Sheet is on screen, as the platform reports it. */
+  def isPresented(h: Shim.Handle): Boolean = Shim.sui_is_presented(h) != 0
+
+  /** The title the platform is *showing* — the alert's text, the sheet's heading or navigation bar — not what the
+    * renderer was told. `None` when it is not presented.
+    */
+  def presentedTitle(h: Shim.Handle): Option[String] = str(Shim.sui_presented_title(h))
+
+  def presentedMessage(h: Shim.Handle): Option[String] = str(Shim.sui_presented_message(h))
+
+  /** An alert's actions, in the order the platform holds them. */
+  def alertActions(h: Shim.Handle): List[String] =
+    (0 until Shim.sui_alert_action_count(h)).toList.flatMap(i => str(Shim.sui_alert_action_label(h, i)))
+
+  /** Clicks a button through its own action, as a user would. False if `h` is not a button. */
+  def click(h: Shim.Handle): Boolean = Shim.sui_perform_click(h) != 0
+
+  /** Chooses an alert action through the platform's response path. False where the platform offers no way to. */
+  def chooseAlert(
+    h:     Shim.Handle,
+    index: Int
+  ): Boolean = Shim.sui_alert_choose(h, index) != 0
+
+  /** How many things the platform has presented over the app right now — its answer, not the renderer's. */
+  def presentedCount: Int = Shim.sui_presented_count()
+
 }
