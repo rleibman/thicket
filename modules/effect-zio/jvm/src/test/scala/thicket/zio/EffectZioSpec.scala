@@ -24,11 +24,8 @@ object EffectZioSpec extends ZIOSpecDefault {
     * `java.lang.System` spelled out because `import zio.*` brings `zio.System` into scope and shadows it — S8 finding
     * 2, met in the wild.
     */
-  private def eventually(what: String)(cond: => Boolean): Unit = {
-    val deadline = java.lang.System.currentTimeMillis() + 3000
-    while (!cond && java.lang.System.currentTimeMillis() < deadline) Thread.sleep(2)
-    if !cond then throw new AssertionError(s"timed out waiting for: $what")
-  }
+  private def eventually(what: String)(cond: => Boolean): Unit =
+    TestUiThread.eventually(what)(cond)
 
   private val bridge = zio.test.suite("Bridge")(
     test("a succeeding effect goes Loading -> Done") {
@@ -159,7 +156,7 @@ object EffectZioSpec extends ZIOSpecDefault {
       bridge,
       RemoteScreenTests.suite
     ) @@ TestAspect.sequential @@ TestAspect.before(ZIO.succeed {
-      UiThread.install(f => f())
+      TestUiThread.install()
       // `ThreadGuard` is process-global, and sbt runs several projects' suites in one JVM, so
       // a guard another module's tests installed would reject the bridge's signal writes from
       // a ZIO fibre. A suite has to establish the global state it depends on, not assume it.

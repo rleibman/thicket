@@ -143,7 +143,7 @@ every remaining entry before it is built, not after.
 | Fine-grained signals | `modules/signals` | done — glitch-free, property-tested on JVM/JS/Native |
 | Keyed reconciliation | `Reconciler` | done — `Show`, `Switch`, `ForEach`, `Fragment`, in-place `moveAfter` |
 | Virtualised list | `LazyColumn` + `RowSource` | **partial** — GTK and Android recycle; **Apple does not** and silently mounts every row — Forgejo **#5** |
-| Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title and Up chrome work; no *native* navigation container |
+| Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title, Up and **toolbar actions** work as native chrome; no *native* navigation container |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide`; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread` | done |
@@ -245,7 +245,10 @@ Three rules the migration established, each paid for by a failure rather than gu
 2. **Suites sharing process-global state must be one spec.** `sequential` orders tests
    within a spec and promises nothing between specs, which zio-test runs concurrently.
    `EffectZioSpec` holds both the bridge and the remote-screen suites for this reason.
-3. **Never compare a stringified number.** Scala.js renders `7.0` as `"7"`. `TestRenderer`
+3. **A test's `UiThread` must marshal, not run inline.** `install(f => f())` runs the post
+   on whatever thread called it — a ZIO fibre, typically — so signal writes land off the
+   test thread and a spin-wait races on memory visibility. `TestUiThread` queues and drains.
+4. **Never compare a stringified number.** Scala.js renders `7.0` as `"7"`. `TestRenderer`
    keeps numeric props in `nums: Map[String, Double]`, not in the string map.
 
 And the process rule behind all three: **run the cross-built modules on all three

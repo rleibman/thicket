@@ -49,11 +49,8 @@ object RemoteScreenTests {
     )
   }
 
-  private def eventually(what: String)(cond: => Boolean): Unit = {
-    val deadline = java.lang.System.currentTimeMillis() + 3000
-    while (!cond && java.lang.System.currentTimeMillis() < deadline) Thread.sleep(2)
-    if !cond then throw new AssertionError(s"timed out waiting for: $what")
-  }
+  private def eventually(what: String)(cond: => Boolean): Unit =
+    TestUiThread.eventually(what)(cond)
 
   private def texts(
     r:    TestRenderer,
