@@ -69,6 +69,20 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-29 — **`ContentFit.Cover` is drawn by hand on AppKit, and rendering is verified by
+  measuring pixels rather than asserting on the property that was set** (Forgejo #6).
+  `NSImageView.imageScaling` has no mode that crops: `.scaleProportionallyUpOrDown` is
+  Contain, `.scaleAxesIndependently` is Fill, and Cover had been mapped to the latter — so
+  Cover distorted, which is the one thing it must not do. It is now an `NSImageView` subclass
+  that draws the image into an aspect-fill rect under a clip; a layer's `contentsGravity`
+  would fight the view, which draws its own image. UIKit needed no change: `.scaleAspectFill`
+  is exactly Cover, **confirmed by measurement, not assumed**.
+  The verification is the point worth keeping: a 400x100 image with a centred circular marker
+  is rendered into a 200x200 frame through the real `@_cdecl` entry points, and the marker's
+  bounding box is measured. Contain 1.00, Cover 1.00, Fill 0.25 — and a distorting Cover
+  reads 0.25, indistinguishable from Fill, which is how the defect stayed invisible in logs.
+  Harness: `modules/renderer-apple/shim/run-fit-harness.sh` (AppKit natively, UIKit headless
+  under `simctl spawn`, no app bundle). Picture: `docs/screenshots/content-fit-appkit.png`.
 - 2026-09-29 — **A scroll view must pin its document view on the cross axis, on both Apple
   toolkits** (Forgejo #4). The vertical `Scroll` had been left on AppKit's defaults with the
   note that it laid out correctly without constraints. It did — until something inside it

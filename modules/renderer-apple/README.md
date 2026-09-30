@@ -124,7 +124,7 @@ inside function bodies would have been the wrong shape:
 | control events | one target/action pair | `addTarget(_:action:for:)` + a `UIControl.Event` mask |
 | container tap | `NSView` target/action | a `UITapGestureRecognizer`, as GTK needs `GtkGestureClick` |
 | font sizing | a point size | `UIFont.preferredFont(forTextStyle:)`, so it follows Dynamic Type |
-| `ContentFit.Cover` | no equivalent; approximated | `.scaleAspectFill` does exactly this |
+| `ContentFit.Cover` | no scaling mode crops; drawn by hand in an `NSImageView` subclass | `.scaleAspectFill` does exactly this |
 | measurement | `fittingSize` | `systemLayoutSizeFitting`, same zero-for-a-sized-container trap |
 
 **The one asymmetry that is not cosmetic: who owns `main`.** On macOS `sui_app_start` calls
