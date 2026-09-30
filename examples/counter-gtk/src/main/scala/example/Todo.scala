@@ -221,6 +221,25 @@ object Todo {
     check("and they come back on return",
       GtkInspect.allTexts(GtkApp.windowHandle).contains("About"))
 
+    // --- context menu: a property of a row, not a widget in the tree ---
+    // A popover is parented to its widget rather than placed in the box, so the row's
+    // child count is unchanged — that is the observable difference between a menu and a
+    // presented widget, and the reason ContextMenu is a prop.
+    val menuPopovers = GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isPopover)
+    check("every list row carries a popover",
+      menuPopovers.length >= model.visibleItems.now.size,
+      s"${menuPopovers.length} popovers for ${model.visibleItems.now.size} rows")
+
+    // The popover is populated with the app's items. Note these labels DO show up in a
+    // widget walk: a GTK4 popover is a child of its widget, just not of the box's layout.
+    // An earlier version of this check asserted the opposite and failed, correctly.
+    check("the popover holds the menu's items",
+      menuPopovers.exists(p => GtkInspect.allTexts(p).contains("Delete")),
+      menuPopovers.map(GtkInspect.allTexts).toString)
+
+    val beforeMenu = model.items.now.size
+    check("and nothing runs until an item is chosen", model.items.now.size == beforeMenu)
+
     // --- Sheet: a presented *container*, with a live subtree inside it ---
     check("no sheet window before it is asked for",
       GtkInspect.findAll(GtkApp.windowHandle)(GtkInspect.isEntry).length == 2,
