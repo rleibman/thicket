@@ -4,25 +4,33 @@ import thicket.tools.shim.Abi.CType
 
 /** Reads the declarations back out of the three hand-written artefacts.
   *
-  * This exists so that [[Abi]] can be checked against reality rather than asserted to match
-  * it. Until the artefacts are actually generated, the check is the whole value: a
-  * disagreement between the C header, a `@_cdecl` signature and a Scala `extern` is not a
-  * compile error on either side — it is a silent ABI mismatch that reads the wrong register
-  * at runtime.
+  * This exists so that [[Abi]] can be checked against reality rather than asserted to match it. Until the artefacts are
+  * actually generated, the check is the whole value: a disagreement between the C header, a `@_cdecl` signature and a
+  * Scala `extern` is not a compile error on either side — it is a silent ABI mismatch that reads the wrong register at
+  * runtime.
   *
-  * These are regex parsers, not C or Swift parsers, and they are allowed to be: the three
-  * files are flat lists of declarations in a deliberately small type vocabulary, and a
-  * declaration this cannot parse is reported as unparsed rather than silently skipped.
+  * These are regex parsers, not C or Swift parsers, and they are allowed to be: the three files are flat lists of
+  * declarations in a deliberately small type vocabulary, and a declaration this cannot parse is reported as unparsed
+  * rather than silently skipped.
   */
 object Parse {
 
-  final case class Decl(name: String, ret: CType, params: List[CType])
+  final case class Decl(
+    name:   String,
+    ret:    CType,
+    params: List[CType]
+  )
 
   object Decl {
+
     def of(fn: Abi.Fn): Decl = Decl(fn.name, fn.ret, fn.params.map(_.tpe))
+
   }
 
-  final case class Result(decls: List[Decl], unparsed: List[String])
+  final case class Result(
+    decls:    List[Decl],
+    unparsed: List[String]
+  )
 
   // -- C header ------------------------------------------------------------
 
@@ -41,15 +49,15 @@ object Parse {
     "sui_row_cb"      -> CType.RowCb
   )
 
-  /** Splits `const char *title` into its type and drops the parameter name. C puts the `*`
-    * with the name, so the type is everything up to the last identifier, `*` included.
+  /** Splits `const char *title` into its type and drops the parameter name. C puts the `*` with the name, so the type
+    * is everything up to the last identifier, `*` included.
     */
   private def cParamType(decl: String): Option[CType] = {
     val s = decl.trim.replaceAll("\\s+", " ")
     if s == "void" then None
     else {
-      val i    = s.lastIndexWhere(c => c == ' ' || c == '*')
-      val tpe  = s.substring(0, i + 1).trim
+      val i = s.lastIndexWhere(c => c == ' ' || c == '*')
+      val tpe = s.substring(0, i + 1).trim
       val norm = if s.contains('*') then s"${tpe.stripSuffix("*").trim} *" else tpe
       cTypes.get(norm)
     }
@@ -58,8 +66,8 @@ object Parse {
   private val cFn = """^\s*(.+?)\s*\**\s*\b(sui_\w+)\s*\((.*)\)\s*;\s*$""".r
 
   def cHeader(source: String): Result = {
-    val joined   = joinWrapped(source, ";", _ => true)
-    val decls    = List.newBuilder[Decl]
+    val joined = joinWrapped(source, ";", _ => true)
+    val decls = List.newBuilder[Decl]
     val unparsed = List.newBuilder[String]
     joined.foreach { line =>
       line match {
@@ -69,11 +77,10 @@ object Parse {
             else retRaw.trim
           )
           val args = splitArgs(argsRaw).map(cParamType)
-          if ret.isDefined && args.forall(_.isDefined) then
-            decls += Decl(name, ret.get, args.flatten)
+          if ret.isDefined && args.forall(_.isDefined) then decls += Decl(name, ret.get, args.flatten)
           else unparsed += line
         case l if l.contains("sui_") && l.contains("(") && l.endsWith(";") => unparsed += l
-        case _                                                            => ()
+        case _                                                             => ()
       }
     }
     Result(decls.result(), unparsed.result())
@@ -82,33 +89,33 @@ object Parse {
   // -- Swift @_cdecl -------------------------------------------------------
 
   private val swiftTypes: Map[String, CType] = Map(
-    "Int32"                            -> CType.I32,
-    "Int64"                            -> CType.I64,
-    "Double"                           -> CType.F64,
-    "UnsafePointer<CChar>"             -> CType.Str,
-    "UnsafePointer<UInt8>"             -> CType.Bytes,
-    "UnsafeMutablePointer<Double>"     -> CType.OutF64,
-    "UnsafeMutableRawPointer"          -> CType.Handle,
-    "sui_void_cb"                      -> CType.VoidCb,
-    "sui_text_cb"                      -> CType.TextCb,
-    "sui_bool_cb"                      -> CType.BoolCb,
-    "sui_row_cb"                       -> CType.RowCb
+    "Int32"                        -> CType.I32,
+    "Int64"                        -> CType.I64,
+    "Double"                       -> CType.F64,
+    "UnsafePointer<CChar>"         -> CType.Str,
+    "UnsafePointer<UInt8>"         -> CType.Bytes,
+    "UnsafeMutablePointer<Double>" -> CType.OutF64,
+    "UnsafeMutableRawPointer"      -> CType.Handle,
+    "sui_void_cb"                  -> CType.VoidCb,
+    "sui_text_cb"                  -> CType.TextCb,
+    "sui_bool_cb"                  -> CType.BoolCb,
+    "sui_row_cb"                   -> CType.RowCb
   )
 
-  /** A trailing `?` is Swift's optional, which is the same C pointer — `sui_get_text`
-    * returns `UnsafePointer<CChar>?` because it returns NULL for a view with no text. It
-    * carries no ABI difference, so it is normalised away rather than given its own type.
+  /** A trailing `?` is Swift's optional, which is the same C pointer — `sui_get_text` returns `UnsafePointer<CChar>?`
+    * because it returns NULL for a view with no text. It carries no ABI difference, so it is normalised away rather
+    * than given its own type.
     */
   private def swiftType(s: String): Option[CType] =
     swiftTypes.get(s.trim.stripPrefix("@escaping").trim.stripSuffix("?"))
 
-  private val cdecl  = """^@_cdecl\("(\w+)"\)\s*$""".r
-  private val swFn   = """^\s*public func \w+\s*\((.*)\)\s*(?:->\s*(\S+)\s*)?\{?\s*$""".r
-  private val swArg  = """^\s*_\s+\w+:\s*(.+?)\s*$""".r
+  private val cdecl = """^@_cdecl\("(\w+)"\)\s*$""".r
+  private val swFn = """^\s*public func \w+\s*\((.*)\)\s*(?:->\s*(\S+)\s*)?\{?\s*$""".r
+  private val swArg = """^\s*_\s+\w+:\s*(.+?)\s*$""".r
 
   def swiftShim(source: String): Result = {
-    val lines    = source.split("\n", -1).toList
-    val decls    = List.newBuilder[Decl]
+    val lines = source.split("\n", -1).toList
+    val decls = List.newBuilder[Decl]
     val unparsed = List.newBuilder[String]
 
     var i = 0
@@ -117,19 +124,19 @@ object Parse {
         case cdecl(name) =>
           // The signature may wrap over several lines; join to the opening brace.
           val start = i + 1
-          var end   = start
+          var end = start
           while end < lines.length && !lines(end).trim.endsWith("{") do end += 1
-          val sig = lines.slice(start, math.min(end + 1, lines.length)).mkString(" ")
+          val sig = lines
+            .slice(start, math.min(end + 1, lines.length)).mkString(" ")
             .replaceAll("\\s+", " ").trim
           sig match {
             case swFn(argsRaw, retRaw) =>
-              val ret  = Option(retRaw).fold(Option(CType.Void))(r => swiftType(r.stripSuffix("{")))
+              val ret = Option(retRaw).fold(Option(CType.Void))(r => swiftType(r.stripSuffix("{")))
               val args = splitArgs(argsRaw).map {
                 case swArg(t) => swiftType(t)
                 case _        => None
               }
-              if ret.isDefined && args.forall(_.isDefined) then
-                decls += Decl(name, ret.get, args.flatten)
+              if ret.isDefined && args.forall(_.isDefined) then decls += Decl(name, ret.get, args.flatten)
               else unparsed += s"$name: $sig"
             case _ => unparsed += s"$name: $sig"
           }
@@ -143,14 +150,14 @@ object Parse {
   // -- Scala @extern -------------------------------------------------------
 
   private val scalaTypes: Map[String, CType] = Map(
-    "Unit"        -> CType.Void,
-    "CInt"        -> CType.I32,
-    "Long"        -> CType.I64,
-    "CDouble"     -> CType.F64,
-    "Double"      -> CType.F64,
-    "CString"     -> CType.Str,
-    "Ptr[Byte]"   -> CType.Handle,
-    "Handle"      -> CType.Handle,
+    "Unit"         -> CType.Void,
+    "CInt"         -> CType.I32,
+    "Long"         -> CType.I64,
+    "CDouble"      -> CType.F64,
+    "Double"       -> CType.F64,
+    "CString"      -> CType.Str,
+    "Ptr[Byte]"    -> CType.Handle,
+    "Handle"       -> CType.Handle,
     "Ptr[CDouble]" -> CType.OutF64,
     "Ptr[Double]"  -> CType.OutF64,
     "Ptr[UByte]"   -> CType.Bytes,
@@ -163,8 +170,8 @@ object Parse {
   private val scFn = """^\s*def\s+(sui_\w+)\s*\((.*)\)\s*:\s*(\S+?)\s*=\s*extern\s*$""".r
 
   def scalaExterns(source: String): Result = {
-    val joined   = joinWrapped(source, "= extern", _.startsWith("def "))
-    val decls    = List.newBuilder[Decl]
+    val joined = joinWrapped(source, "= extern", _.startsWith("def "))
+    val decls = List.newBuilder[Decl]
     val unparsed = List.newBuilder[String]
     joined.foreach {
       case l @ scFn(name, argsRaw, retRaw) =>
@@ -183,8 +190,8 @@ object Parse {
 
   // -- shared helpers ------------------------------------------------------
 
-  /** Joins declarations that wrap over several lines into one line each, so the regexes
-    * above can stay single-line. `terminator` is what ends a declaration in that language.
+  /** Joins declarations that wrap over several lines into one line each, so the regexes above can stay single-line.
+    * `terminator` is what ends a declaration in that language.
     */
   private def joinWrapped(
     source:     String,
@@ -217,13 +224,13 @@ object Parse {
 
   /** Removes C block comments, including multi-line ones, and `//` tails.
     *
-    * A block comment that *ends* on the same line as a declaration is what made the first
-    * version of this parser fail: the tail of the `sui_create` kind-code comment stayed
-    * glued to the declaration, and a real function was reported as unparsed.
+    * A block comment that *ends* on the same line as a declaration is what made the first version of this parser fail:
+    * the tail of the `sui_create` kind-code comment stayed glued to the declaration, and a real function was reported
+    * as unparsed.
     */
   private def stripComments(source: String): String = {
-    val sb    = new StringBuilder
-    var i     = 0
+    val sb = new StringBuilder
+    var i = 0
     var block = false
     while i < source.length do {
       if block then {
@@ -240,14 +247,14 @@ object Parse {
     sb.toString
   }
 
-  /** Splits an argument list on top-level commas — `Ptr[CFuncPtr2[Long, CString, Unit]]`
-    * contains commas that are not separators.
+  /** Splits an argument list on top-level commas — `Ptr[CFuncPtr2[Long, CString, Unit]]` contains commas that are not
+    * separators.
     */
   private def splitArgs(s: String): List[String] = {
     if s.trim.isEmpty || s.trim == "void" then Nil
     else {
-      val out   = List.newBuilder[String]
-      val buf   = new StringBuilder
+      val out = List.newBuilder[String]
+      val buf = new StringBuilder
       var depth = 0
       s.foreach { c =>
         if c == '[' || c == '<' || c == '(' then { depth += 1; buf.append(c) }
@@ -259,4 +266,5 @@ object Parse {
       out.result().map(_.trim).filter(_.nonEmpty)
     }
   }
+
 }

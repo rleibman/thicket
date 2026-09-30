@@ -4,36 +4,34 @@ import thicket.tools.shim.Abi.{CType, Fn, Group, Param}
 
 /** Emits the declaration layer of the Apple shim from [[Abi]].
   *
-  * Three of the four declarations per function are mechanical and are emitted here: the C
-  * header, the Scala `@extern` bindings, and the Swift `@_cdecl` signature. The fourth —
-  * the Swift function *body* — is not, and [[swiftSignatures]] deliberately emits
-  * signatures with a `fatalError` placeholder rather than a guess: measured on the two
-  * shims that exist, only 7 of 34 bodies are byte-identical across AppKit and UIKit, and
-  * the rest are real platform differences (`placeholderString` vs `placeholder`,
-  * `imageScaling` vs `contentMode`).
+  * Three of the four declarations per function are mechanical and are emitted here: the C header, the Scala `@extern`
+  * bindings, and the Swift `@_cdecl` signature. The fourth — the Swift function *body* — is not, and
+  * [[swiftSignatures]] deliberately emits signatures with a `fatalError` placeholder rather than a guess: measured on
+  * the two shims that exist, only 7 of 34 bodies are byte-identical across AppKit and UIKit, and the rest are real
+  * platform differences (`placeholderString` vs `placeholder`, `imageScaling` vs `contentMode`).
   *
-  * So this is a scaffolding and consistency tool, not a code-writing one. That is the
-  * honest scope, and it is the scope that removes the failure that actually hurts: a silent
-  * disagreement between the three declarations.
+  * So this is a scaffolding and consistency tool, not a code-writing one. That is the honest scope, and it is the scope
+  * that removes the failure that actually hurts: a silent disagreement between the three declarations.
   */
 object Emit {
 
   // -- C header ------------------------------------------------------------
 
-  private def cType(t: CType): String = t match {
-    case CType.Void   => "void"
-    case CType.I32    => "int32_t"
-    case CType.I64    => "int64_t"
-    case CType.F64    => "double"
-    case CType.Str    => "const char *"
-    case CType.Bytes  => "const uint8_t *"
-    case CType.OutF64 => "double *"
-    case CType.Handle => "sui_handle"
-    case CType.VoidCb => "sui_void_cb"
-    case CType.TextCb => "sui_text_cb"
-    case CType.BoolCb => "sui_bool_cb"
-    case CType.RowCb  => "sui_row_cb"
-  }
+  private def cType(t: CType): String =
+    t match {
+      case CType.Void   => "void"
+      case CType.I32    => "int32_t"
+      case CType.I64    => "int64_t"
+      case CType.F64    => "double"
+      case CType.Str    => "const char *"
+      case CType.Bytes  => "const uint8_t *"
+      case CType.OutF64 => "double *"
+      case CType.Handle => "sui_handle"
+      case CType.VoidCb => "sui_void_cb"
+      case CType.TextCb => "sui_text_cb"
+      case CType.BoolCb => "sui_bool_cb"
+      case CType.RowCb  => "sui_row_cb"
+    }
 
   private def cParam(p: Param): String = {
     val t = cType(p.tpe)
@@ -41,10 +39,10 @@ object Emit {
   }
 
   private def cDecl(fn: Fn): String = {
-    val ret  = cType(fn.ret)
+    val ret = cType(fn.ret)
     val args = if fn.params.isEmpty then "void" else fn.params.map(cParam).mkString(", ")
     val head = if ret.endsWith("*") then s"$ret${fn.name}" else s"$ret ${fn.name}"
-    val one  = s"$head($args);"
+    val one = s"$head($args);"
     if one.length <= 100 then one
     else {
       // Wrap on the argument list, aligned under the open paren, the way the hand-written
@@ -91,20 +89,21 @@ object Emit {
 
   // -- Scala @extern -------------------------------------------------------
 
-  private def scalaType(t: CType): String = t match {
-    case CType.Void   => "Unit"
-    case CType.I32    => "CInt"
-    case CType.I64    => "Long"
-    case CType.F64    => "CDouble"
-    case CType.Str    => "CString"
-    case CType.Bytes  => "Ptr[UByte]"
-    case CType.OutF64 => "Ptr[CDouble]"
-    case CType.Handle => "Handle"
-    case CType.VoidCb => "VoidCb"
-    case CType.TextCb => "TextCb"
-    case CType.BoolCb => "BoolCb"
-    case CType.RowCb  => "RowCb"
-  }
+  private def scalaType(t: CType): String =
+    t match {
+      case CType.Void   => "Unit"
+      case CType.I32    => "CInt"
+      case CType.I64    => "Long"
+      case CType.F64    => "CDouble"
+      case CType.Str    => "CString"
+      case CType.Bytes  => "Ptr[UByte]"
+      case CType.OutF64 => "Ptr[CDouble]"
+      case CType.Handle => "Handle"
+      case CType.VoidCb => "VoidCb"
+      case CType.TextCb => "TextCb"
+      case CType.BoolCb => "BoolCb"
+      case CType.RowCb  => "RowCb"
+    }
 
   def scalaExterns(fns: List[Fn] = Abi.all): String = {
     val sb = new StringBuilder
@@ -139,25 +138,26 @@ object Shim {
 
   // -- Swift signatures ----------------------------------------------------
 
-  private def swiftType(t: CType): String = t match {
-    case CType.I32    => "Int32"
-    case CType.I64    => "Int64"
-    case CType.F64    => "Double"
-    case CType.Str    => "UnsafePointer<CChar>"
-    case CType.Bytes  => "UnsafePointer<UInt8>"
-    case CType.OutF64 => "UnsafeMutablePointer<Double>"
-    case CType.Handle => "UnsafeMutableRawPointer"
-    case CType.VoidCb => "@escaping sui_void_cb"
-    case CType.TextCb => "@escaping sui_text_cb"
-    case CType.BoolCb => "@escaping sui_bool_cb"
-    case CType.RowCb  => "@escaping sui_row_cb"
-    case CType.Void   => "Void"
-  }
+  private def swiftType(t: CType): String =
+    t match {
+      case CType.I32    => "Int32"
+      case CType.I64    => "Int64"
+      case CType.F64    => "Double"
+      case CType.Str    => "UnsafePointer<CChar>"
+      case CType.Bytes  => "UnsafePointer<UInt8>"
+      case CType.OutF64 => "UnsafeMutablePointer<Double>"
+      case CType.Handle => "UnsafeMutableRawPointer"
+      case CType.VoidCb => "@escaping sui_void_cb"
+      case CType.TextCb => "@escaping sui_text_cb"
+      case CType.BoolCb => "@escaping sui_bool_cb"
+      case CType.RowCb  => "@escaping sui_row_cb"
+      case CType.Void   => "Void"
+    }
 
   /** Swift `@_cdecl` signatures with placeholder bodies.
     *
-    * For scaffolding a new shim, and for checking an existing one. The body is
-    * `fatalError`, never a guess: see the object comment.
+    * For scaffolding a new shim, and for checking an existing one. The body is `fatalError`, never a guess: see the
+    * object comment.
     */
   def swiftSignatures(fns: List[Fn] = Abi.all): String = {
     val sb = new StringBuilder
@@ -167,7 +167,7 @@ object Shim {
 """)
     fns.foreach { fn =>
       val args = fn.params.map(p => s"_ ${p.name}: ${swiftType(p.tpe)}").mkString(", ")
-      val ret  = if fn.ret == CType.Void then "" else s" -> ${swiftType(fn.ret)}"
+      val ret = if fn.ret == CType.Void then "" else s" -> ${swiftType(fn.ret)}"
       sb.append(s"""@_cdecl("${fn.name}")\n""")
       sb.append(s"public func ${fn.name}($args)$ret {\n")
       sb.append(s"""  fatalError("${fn.name} is not implemented in this shim")\n""")
@@ -175,4 +175,5 @@ object Shim {
     }
     sb.toString
   }
+
 }

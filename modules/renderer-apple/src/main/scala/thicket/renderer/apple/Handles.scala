@@ -109,9 +109,8 @@ object Handles {
         }
     )
 
-  /** The only trampoline that returns a value, because a table asks for a row rather than
-    * being told about one. Returning `null` means "no view", which both shims treat as
-    * "leave the row empty" rather than crashing.
+  /** The only trampoline that returns a value, because a table asks for a row rather than being told about one.
+    * Returning `null` means "no view", which both shims treat as "leave the row empty" rather than crashing.
     */
   val rowTrampoline: Shim.RowCb =
     CFuncPtr3.fromScalaFunction(

@@ -19,8 +19,8 @@ object Shim {
   type TextCb = CFuncPtr2[Long, CString, Unit]
   type BoolCb = CFuncPtr2[Long, CInt, Unit]
 
-  /** The only callback that returns a value. A returned pointer is one register; what
-    * S4 and S3 found silently broken was a returned small struct.
+  /** The only callback that returns a value. A returned pointer is one register; what S4 and S3 found silently broken
+    * was a returned small struct.
     */
   type RowCb = CFuncPtr3[Long, CInt, Handle, Handle]
 
@@ -166,7 +166,7 @@ object Shim {
     count: CInt
   ): Unit = extern
   def sui_table_materialised(h: Handle): CInt = extern
-  def sui_table_live(): CInt = extern
+  def sui_table_live():                  CInt = extern
 
   def sui_child_count(h: Handle): CInt = extern
   def sui_child_at(

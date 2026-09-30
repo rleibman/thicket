@@ -22,10 +22,9 @@ final class AppleRenderer extends Renderer {
   private val boolIds = mutable.Map.empty[Handle, Long]
   private val rowIds = mutable.Map.empty[Handle, Long]
 
-  /** The scrollers created horizontally. The renderer is the only thing that knows: the axis
-    * is folded into the kind code at `create` and nothing on the Swift side is asked about
-    * it afterwards. Exposed for [[isHorizontalScroll]] so a test can tell the two scrollers
-    * in a screen apart without a tree-order guess.
+  /** The scrollers created horizontally. The renderer is the only thing that knows: the axis is folded into the kind
+    * code at `create` and nothing on the Swift side is asked about it afterwards. Exposed for [[isHorizontalScroll]] so
+    * a test can tell the two scrollers in a screen apart without a tree-order guess.
     */
   private val horizontalScrolls = mutable.Set.empty[Handle]
 
@@ -36,13 +35,12 @@ final class AppleRenderer extends Renderer {
     */
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
 
-  /** The axis has to be folded into the kind code because `create` reaches Swift as a single
-    * int and the axis is read at create, not at update. 15 is a horizontal `Scroll`; 6 stays
-    * the vertical one. `NSScrollView` and `UIScrollView` each do both directions, so unlike
-    * Android this is one class configured two ways rather than two classes.
+  /** The axis has to be folded into the kind code because `create` reaches Swift as a single int and the axis is read
+    * at create, not at update. 15 is a horizontal `Scroll`; 6 stays the vertical one. `NSScrollView` and `UIScrollView`
+    * each do both directions, so unlike Android this is one class configured two ways rather than two classes.
     *
-    * 15 rather than 9 because phase 2 reserved 9-14 for the widgets it added; an axis is not
-    * worth renumbering six pending widgets over.
+    * 15 rather than 9 because phase 2 reserved 9-14 for the widgets it added; an axis is not worth renumbering six
+    * pending widgets over.
     */
   private def kindCode(
     kind:  WidgetKind,
@@ -73,7 +71,10 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.Alert             => unimplemented("Alert", 16)
     }
 
-  private def unimplemented(name: String, reservedCode: Int): Nothing =
+  private def unimplemented(
+    name:         String,
+    reservedCode: Int
+  ): Nothing =
     throw new UnsupportedOperationException(
       s"$name is not implemented in the Apple shim yet (kind code $reservedCode reserved). " +
         "See Forgejo #9."
@@ -233,8 +234,8 @@ final class AppleRenderer extends Renderer {
 
       // Likewise unreachable while Slider cannot be created. NSSlider and UISlider both
       // take the app's own units, so these are near-direct once the shim lands.
-      case Prop.Range(_, _)     => ()
-      case Prop.Value(_)        => ()
+      case Prop.Range(_, _)      => ()
+      case Prop.Value(_)         => ()
       case Prop.OnValueChange(_) => ()
 
       // Alert's props. Unreachable while Alert cannot be created; present here so this
@@ -278,18 +279,21 @@ final class AppleRenderer extends Renderer {
   /** Whether a handle is a `Scroll` that was created with [[Orientation.Horizontal]]. */
   def isHorizontalScroll(handle: Handle): Boolean = horizontalScrolls.contains(handle)
 
-  /** `NSTableView` and `UITableView` both recycle, so the contract's `RowSource` is a direct
-    * fit and needed no change — the third toolkit in a row for which that is true, after
-    * `GtkListView` and Android's `ListView`.
+  /** `NSTableView` and `UITableView` both recycle, so the contract's `RowSource` is a direct fit and needed no change —
+    * the third toolkit in a row for which that is true, after `GtkListView` and Android's `ListView`.
     */
   override def supportsVirtualRows: Boolean = true
 
   override def createVirtualList(source: RowSource[Handle]): Handle = {
     // The id, not the closure, is what crosses to Swift: a C function pointer cannot close
     // over state (S4), so one static trampoline serves every table.
-    val id = Handles.registerRow((index, recycled) =>
-      if index >= 0 && index < source.count then source.bind(index, recycled)
-      else null.asInstanceOf[Handle]
+    val id = Handles.registerRow(
+      (
+        index,
+        recycled
+      ) =>
+        if index >= 0 && index < source.count then source.bind(index, recycled)
+        else null.asInstanceOf[Handle]
     )
     val table = Shim.sui_create_table(Handles.rowTrampoline, id)
     rowIds(table) = id
@@ -299,8 +303,8 @@ final class AppleRenderer extends Renderer {
     table
   }
 
-  /** How many row views the table has actually built. The number that says virtualisation is
-    * working: without it a 10 000-row list silently materialises 10 000 rows.
+  /** How many row views the table has actually built. The number that says virtualisation is working: without it a 10
+    * 000-row list silently materialises 10 000 rows.
     */
   def materialisedRows(handle: Handle): Int = Shim.sui_table_materialised(handle)
 

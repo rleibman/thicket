@@ -7,11 +7,10 @@ import thicket.signals.Var
 
 /** A 10 000-row screen and nothing else, for measuring virtualisation (Forgejo #5).
   *
-  * Separate from [[AppleSelfTest]] on purpose. The shared `TodoApp` uses `Toggle`, `Spacer`,
-  * `ProgressBar`, `Spinner`, `Slider` and `SecureField`, all of which `AppleRenderer` throws
-  * on until Forgejo #9, so the demo cannot start on Apple at all and the measurement this
-  * issue asks for would be unreachable behind an unrelated gap. This uses only `Column`,
-  * `Label` and `LazyColumn`, which the Apple shim has had since phase 0.
+  * Separate from [[AppleSelfTest]] on purpose. The shared `TodoApp` uses `Toggle`, `Spacer`, `ProgressBar`, `Spinner`,
+  * `Slider` and `SecureField`, all of which `AppleRenderer` throws on until Forgejo #9, so the demo cannot start on
+  * Apple at all and the measurement this issue asks for would be unreachable behind an unrelated gap. This uses only
+  * `Column`, `Label` and `LazyColumn`, which the Apple shim has had since phase 0.
   *
   * Run with `THICKET_LAZYTEST=1`.
   */
@@ -21,8 +20,8 @@ object LazyProbe {
 
   val items: Var[Seq[Int]] = Var((0 until rowCount).toSeq)
 
-  /** Unmounting the list is the second half of the probe: a table that is destroyed must take
-    * its Swift source and its Scala row closure with it.
+  /** Unmounting the list is the second half of the probe: a table that is destroyed must take its Swift source and its
+    * Scala row closure with it.
     */
   val mounted: Var[Boolean] = Var(true)
 
@@ -50,9 +49,8 @@ object LazyProbe {
 
   /** The number that decides the issue: how many row views the table actually built.
     *
-    * Counted on the Swift side, because the Scala side cannot see what the table chose to
-    * recycle. Android reports ~66 and GTK ~205; any number far below 10 000 means the
-    * platform is recycling, and 10 000 means it is not.
+    * Counted on the Swift side, because the Scala side cannot see what the table chose to recycle. Android reports ~66
+    * and GTK ~205; any number far below 10 000 means the platform is recycling, and 10 000 means it is not.
     */
   private def measure(): Unit = {
     val renderer = AppleApp.renderer
@@ -81,9 +79,9 @@ object LazyProbe {
     unmount()
   }
 
-  /** Counted on both sides, because each side owns something the other cannot see: the shim
-    * owns the table's source (the table's own references to it are weak), and the renderer
-    * owns the row closure, which captures the whole `RowSource` graph.
+  /** Counted on both sides, because each side owns something the other cannot see: the shim owns the table's source
+    * (the table's own references to it are weak), and the renderer owns the row closure, which captures the whole
+    * `RowSource` graph.
     */
   private def unmount(): Unit = {
     val liveBefore = Shim.sui_table_live()
