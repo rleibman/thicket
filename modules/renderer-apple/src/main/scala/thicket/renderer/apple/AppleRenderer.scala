@@ -70,6 +70,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.ActivityIndicator => unimplemented("ActivityIndicator", 12)
       case WidgetKind.Slider            => unimplemented("Slider", 13)
       case WidgetKind.SecureField       => unimplemented("SecureField", 14)
+      case WidgetKind.Alert             => unimplemented("Alert", 16)
     }
 
   private def unimplemented(name: String, reservedCode: Int): Nothing =
@@ -235,6 +236,14 @@ final class AppleRenderer extends Renderer {
       case Prop.Range(_, _)     => ()
       case Prop.Value(_)        => ()
       case Prop.OnValueChange(_) => ()
+
+      // Alert's props. Unreachable while Alert cannot be created; present here so this
+      // renderer keeps compiling as the catalogue grows. NSAlert and UIAlertController
+      // both take title, message and an ordered list of buttons, so these map directly
+      // once the shim lands.
+      case Prop.Message(_)   => ()
+      case Prop.Actions(_)   => ()
+      case Prop.OnDismiss(_) => ()
     }
 
   def insertAfter(

@@ -8,6 +8,7 @@ import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.*
 import sn.gnome.glib.internal.{gchar, gpointer}
 import sn.gnome.glib.internal.{g_idle_add, GSourceFunc}
+import sn.gnome.gio.internal.{GAsyncReadyCallback, GCancellable, g_cancellable_cancel, g_cancellable_new}
 
 /** GTK4 implementation of [[Renderer]]. */
 final class GtkRenderer extends Renderer {
@@ -18,6 +19,19 @@ final class GtkRenderer extends Renderer {
   private val editIds  = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val toggleIds = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val valueIds  = mutable.Map.empty[Ptr[GtkWidget], Long]
+
+  // An Alert's state, keyed by its placeholder handle. The GtkAlertDialog itself does not
+  // exist until `present`, because GtkAlertDialog is a GObject and cannot be a Handle.
+  private val alertTitle   = mutable.Map.empty[Ptr[GtkWidget], String]
+  private val alertDetail  = mutable.Map.empty[Ptr[GtkWidget], String]
+  private val alertActions = mutable.Map.empty[Ptr[GtkWidget], Seq[AlertAction]]
+  private val alertDismiss = mutable.Map.empty[Ptr[GtkWidget], () => Unit]
+
+  /** The cancellable behind a showing alert. Cancelling it is the only way GTK offers to
+    * take one down without the user choosing, so `dismiss` needs it — and it also tells the
+    * response callback apart from a user dismissal, since both arrive as index -1.
+    */
+  private val alertCancel  = mutable.Map.empty[Ptr[GtkWidget], Ptr[GCancellable]]
 
   /** True while the renderer is writing a value into a widget, so the widget's own change
     * signal can tell an app-driven update from a user edit and stay silent for the former.
@@ -136,6 +150,11 @@ final class GtkRenderer extends Renderer {
         // which makes a Spacer in a Row quietly taller than the row needs to be.
         case WidgetKind.Spacer => gtk_box_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0)
 
+        // A placeholder widget, never shown: an Alert is presented (WidgetKind.presented)
+        // and GtkAlertDialog is a GObject rather than a GtkWidget, so it cannot be a
+        // handle. The dialog itself is built in `present`.
+        case WidgetKind.Alert => gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+
         case WidgetKind.ProgressBar => gtk_progress_bar_new()
 
         case WidgetKind.ActivityIndicator =>
@@ -162,6 +181,8 @@ final class GtkRenderer extends Renderer {
               gtk_button_set_label(handle.asInstanceOf[Ptr[GtkButton]], toCString(v))
             case Some(WidgetKind.Checkbox) =>
               gtk_check_button_set_label(handle.asInstanceOf[Ptr[GtkCheckButton]], toCString(v))
+            // An Alert's title arrives as Prop.Text on its placeholder handle.
+            case Some(WidgetKind.Alert) => alertTitle(handle) = v
             case Some(WidgetKind.TextField) | Some(WidgetKind.SecureField) =>
               // Only write when the value actually differs. Setting the text unconditionally
               // would move the caret to the end on every keystroke, because the app writes
@@ -442,6 +463,10 @@ final class GtkRenderer extends Renderer {
       // Create-only: the contract says a renderer may ignore a later axis change, and
       // re-policying a live scroller mid-scroll is worse than ignoring it.
       case Prop.Axis(_) => ()
+
+      case Prop.Message(v)   => alertDetail(handle) = v
+      case Prop.Actions(as)  => alertActions(handle) = as
+      case Prop.OnDismiss(f) => alertDismiss(handle) = f
     }
 
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
@@ -512,6 +537,64 @@ final class GtkRenderer extends Renderer {
       case None =>
         if gtk_widget_get_parent(handle) != null then gtk_widget_unparent(handle)
     }
+  }
+
+  override def present(handle: Handle): Unit = Zone {
+    val actions = alertActions.getOrElse(handle, Nil)
+    // An empty format, not "%s" and not null. `gtk_alert_dialog_new` is printf-style
+    // variadic: "%s" declares a conversion with no argument pushed, so g_strdup_vprintf
+    // reads a register that was never set — undefined behaviour that happens to work.
+    // `null` is not the fix; GTK hands the format straight to g_strdup_vprintf and
+    // segfaults. An empty string declares no conversions, so nothing is read, and the
+    // message it produces is overwritten by set_message on the next line anyway.
+    val dialog  = gtk_alert_dialog_new(toCString(""))
+
+    gtk_alert_dialog_set_message(dialog, toCString(alertTitle.getOrElse(handle, "")))
+    alertDetail.get(handle).filter(_.nonEmpty).foreach { d =>
+      gtk_alert_dialog_set_detail(dialog, toCString(d))
+    }
+
+    // GTK takes the labels as one NULL-terminated array and answers with an index, so the
+    // order given is the order shown — unlike Android, which has three fixed slots.
+    if actions.nonEmpty then {
+      val labels = alloc[CString](actions.length + 1)
+      actions.zipWithIndex.foreach((a, i) => labels(i) = toCString(a.label))
+      labels(actions.length) = null
+      gtk_alert_dialog_set_buttons(dialog, labels)
+      // Escape and the window-close button both activate the cancel button when one is
+      // declared, which is why a cancel action arrives as a *choice* here and as a
+      // dismissal on Android. Declaring it is what makes Escape do the expected thing.
+      actions.indexWhere(_.cancel) match {
+        case -1 => ()
+        case i  => gtk_alert_dialog_set_cancel_button(dialog, i)
+      }
+    }
+
+    val cancellable = g_cancellable_new()
+    alertCancel(handle) = cancellable
+
+    val dismissed = alertDismiss.get(handle)
+    val id = Handles.registerChosen { index =>
+      // -1 is "no choice": either our own `dismiss` cancelled it, or GTK closed it without
+      // a cancel button to activate. The first is not the app's business; the second is
+      // exactly what OnDismiss is for.
+      if index >= 0 && index < actions.length then actions(index).onSelect()
+      else if alertCancel.contains(handle) then dismissed.foreach(_())
+    }
+
+    gtk_alert_dialog_choose(
+      dialog,
+      GtkApp.window,
+      cancellable,
+      GAsyncReadyCallback.fromPtr(Handles.alertChosenPtr),
+      Handles.idToPointer(id)
+    )
+  }
+
+  override def dismiss(handle: Handle): Unit = {
+    // Removing it first is what tells the response callback this was us rather than the
+    // user, so OnDismiss does not fire for a dismissal the app itself asked for.
+    alertCancel.remove(handle).foreach(g_cancellable_cancel)
   }
 
   def measure(handle: Handle, constraints: Constraints): Measurement = {

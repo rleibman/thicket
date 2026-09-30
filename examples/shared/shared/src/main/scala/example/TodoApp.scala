@@ -2,7 +2,7 @@ package example
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{Alignment, Emphasis, Orientation, TextRole}
+import thicket.renderer.{Alignment, AlertAction, Emphasis, Orientation, TextRole}
 import thicket.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -60,6 +60,12 @@ object TodoApp {
 
     /** Drives the `Spinner`, which has no prop of its own: it spins while it is mounted. */
     val busy: Var[Boolean] = Var(false)
+
+    /** Drives the confirmation `Alert`. Presented while true; there is no `show()`. */
+    val confirmingDrop: Var[Boolean] = Var(false)
+
+    /** Set by the alert's actions, so a test can tell which branch ran. */
+    val lastAlertChoice: Var[String] = Var("")
 
     /** A slider in the app's own units — 0 to 11, not 0.0 to 1.0. */
     val volume: Var[Double] = Var(7.0)
@@ -166,7 +172,8 @@ object TodoApp {
           Row(spacing = 8)(
             Button("Add")(model.add()),
             Button("Rotate")(model.rotate()),
-            Button("Drop")(model.dropLast()),
+            // Goes through the confirmation alert rather than dropping outright.
+            Button("Drop")(model.confirmingDrop.set(true)),
             Button("About")(nav.push(Route.About)),
             Button("10 000 rows")(nav.push(Route.Big))
           )
@@ -209,7 +216,29 @@ object TodoApp {
 
         // Same shape as TextField; a separate widget only because NSSecureTextField is a
         // separate class.
-        SecureField(model.secret, placeholder = "Passphrase")(model.secret.set)
+        SecureField(model.secret, placeholder = "Passphrase")(model.secret.set),
+
+        // A modal alert, presented by a signal rather than by a call. Flipping
+        // `confirmingDrop` off is the whole of dismissing it.
+        Show(model.confirmingDrop) {
+          Alert("Drop the last item?", "This cannot be undone.")(
+            AlertAction("Drop", destructive = true) {
+              model.dropLast()
+              model.lastAlertChoice.set("drop")
+              model.confirmingDrop.set(false)
+            },
+            AlertAction("Cancel", cancel = true) {
+              model.lastAlertChoice.set("cancel")
+              model.confirmingDrop.set(false)
+            }
+          ) {
+            // A platform dismissal - back gesture, tap outside - does not unmount the
+            // alert, so the app has to take it down itself. Without this the signal stays
+            // true, the native dialog is already gone, and `Drop` can never reopen it.
+            model.lastAlertChoice.set("dismissed")
+            model.confirmingDrop.set(false)
+          }
+        }
       ))
     )
 
