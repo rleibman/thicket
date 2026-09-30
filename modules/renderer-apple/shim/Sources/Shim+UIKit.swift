@@ -205,6 +205,10 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   taps.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
+  // A virtual list's source is owned here (the table's references to it are weak), so it
+  // goes with the view; keyed by the handle, which is the same object `sui_create_table`
+  // keyed it by.
+  tableSources.removeValue(forKey: id)
   suppressed.remove(id)
   // Detaching is part of destroying, not a separate step the caller performs first.
   if let stack = v.superview as? UIStackView { stack.removeArrangedSubview(v) }
@@ -544,6 +548,11 @@ public func sui_table_reload(_ h: UnsafeMutableRawPointer, _ count: Int32) {
 public func sui_table_materialised(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let (_, s) = table(of: h) else { return 0 }
   return Int32(s.materialised.count)
+}
+
+@_cdecl("sui_table_live")
+public func sui_table_live() -> Int32 {
+  Int32(tableSources.count)
 }
 
 @_cdecl("sui_remove_child")

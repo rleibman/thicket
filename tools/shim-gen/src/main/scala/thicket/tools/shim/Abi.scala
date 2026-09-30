@@ -211,6 +211,13 @@ object Abi {
       List(p("h", Handle)),
       doc = "How many row views the table has actually created. The measurement that says" + "\n" +
         "   virtualisation is working, so it is part of the ABI rather than the self-test."
+    ),
+    Fn(
+      "sui_table_live",
+      I32,
+      Nil,
+      doc = "How many table sources the shim still owns. Falls back to zero once every" + "\n" +
+        "   virtual list is destroyed; the measurement that says destroying one frees it."
     )
   )
 

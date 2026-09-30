@@ -166,6 +166,7 @@ object Shim {
     count: CInt
   ): Unit = extern
   def sui_table_materialised(h: Handle): CInt = extern
+  def sui_table_live(): CInt = extern
 
   def sui_child_count(h: Handle): CInt = extern
   def sui_child_at(

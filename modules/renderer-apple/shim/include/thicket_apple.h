@@ -88,6 +88,9 @@ void sui_table_reload(sui_handle h, int32_t count);
 /* How many row views the table has actually created. The measurement that says
    virtualisation is working, so it is part of the ABI rather than the self-test. */
 int32_t sui_table_materialised(sui_handle h);
+/* How many table sources the shim still owns. Falls back to zero once every
+   virtual list is destroyed; the measurement that says destroying one frees it. */
+int32_t sui_table_live(void);
 
 /* --- inspection, for the self-test ------------------------------------------------ */
 int32_t sui_child_count(sui_handle h);

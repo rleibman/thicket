@@ -116,7 +116,7 @@ every remaining entry before it is built, not after.
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, one accent role; no per-subtree `Provide`; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread` | done |
-| Apple ABI description + consistency check | `tools/shim-gen` | done — 37 functions described; the four hand-written declarations per function are checked to agree, on any machine |
+| Apple ABI description + consistency check | `tools/shim-gen` | done — 38 functions described; the four hand-written declarations per function are checked to agree, on any machine |
 
 ## 12.4 Props
 

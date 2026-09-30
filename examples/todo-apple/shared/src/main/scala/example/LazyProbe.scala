@@ -2,7 +2,7 @@ package example
 
 import thicket.core.AppRoot
 import thicket.core.dsl.*
-import thicket.renderer.apple.{AppleApp, AppleInspect}
+import thicket.renderer.apple.{AppleApp, AppleInspect, Handles, Shim}
 import thicket.signals.Var
 
 /** A 10 000-row screen and nothing else, for measuring virtualisation (Forgejo #5).
@@ -21,6 +21,11 @@ object LazyProbe {
 
   val items: Var[Seq[Int]] = Var((0 until rowCount).toSeq)
 
+  /** Unmounting the list is the second half of the probe: a table that is destroyed must take
+    * its Swift source and its Scala row closure with it.
+    */
+  val mounted: Var[Boolean] = Var(true)
+
   private var failures = 0
 
   private def check(
@@ -38,7 +43,7 @@ object LazyProbe {
     AppRoot(
       "10 000 rows",
       Column(spacing = 0)(
-        LazyColumn(items, key = (i: Int) => i)(row => Label(row.map(i => s"Row $i")))
+        Show(mounted)(LazyColumn(items, key = (i: Int) => i)(row => Label(row.map(i => s"Row $i"))))
       )
     )
   }
@@ -73,10 +78,28 @@ object LazyProbe {
     check("the materialised rows carry their text", texts.nonEmpty, s"${texts.size} row labels")
     println(s"[lazytest] ${texts.size} row labels readable in the tree")
 
-    println(
-      if failures == 0 then "[lazytest] ALL CHECKS PASSED"
-      else s"[lazytest] $failures CHECK(S) FAILED"
-    )
+    unmount()
+  }
+
+  /** Counted on both sides, because each side owns something the other cannot see: the shim
+    * owns the table's source (the table's own references to it are weak), and the renderer
+    * owns the row closure, which captures the whole `RowSource` graph.
+    */
+  private def unmount(): Unit = {
+    val liveBefore = Shim.sui_table_live()
+    val rowsBefore = Handles.rowCount
+    mounted.set(false)
+    AppleApp.postToUi { () =>
+      val liveAfter = Shim.sui_table_live()
+      val rowsAfter = Handles.rowCount
+      println(s"[lazytest] unmounted: table sources $liveBefore -> $liveAfter, row callbacks $rowsBefore -> $rowsAfter")
+      check("unmounting frees the table's source", liveBefore == 1 && liveAfter == 0, s"$liveBefore -> $liveAfter")
+      check("unmounting releases the row callback", rowsAfter == rowsBefore - 1, s"$rowsBefore -> $rowsAfter")
+      println(
+        if failures == 0 then "[lazytest] ALL CHECKS PASSED"
+        else s"[lazytest] $failures CHECK(S) FAILED"
+      )
+    }
   }
 
   /** Depth-first; the table is the only handle the renderer made through `createVirtualList`. */

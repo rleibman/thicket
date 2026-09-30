@@ -82,6 +82,11 @@ object Handles {
 
   def count: Int = taps.size + texts.size + bools.size + rows.size
 
+  /** Row callbacks alone. `count` also moves with every `postToUi` one-shot, which is noise when the question is
+    * whether an unmounted virtual list let go of its `RowSource`.
+    */
+  def rowCount: Int = rows.size
+
   // One static trampoline per callback shape: a CFuncPtr cannot close over state, so the
   // id is the only thing that distinguishes one handler from another (S4).
   val tapTrampoline: Shim.VoidCb =

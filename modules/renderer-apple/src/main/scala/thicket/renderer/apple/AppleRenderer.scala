@@ -20,6 +20,7 @@ final class AppleRenderer extends Renderer {
   private val tapIds = mutable.Map.empty[Handle, Long]
   private val editIds = mutable.Map.empty[Handle, Long]
   private val boolIds = mutable.Map.empty[Handle, Long]
+  private val rowIds = mutable.Map.empty[Handle, Long]
 
   /** The scrollers created horizontally. The renderer is the only thing that knows: the axis
     * is folded into the kind code at `create` and nothing on the Swift side is asked about
@@ -254,6 +255,10 @@ final class AppleRenderer extends Renderer {
     tapIds.remove(handle).foreach(Handles.release)
     editIds.remove(handle).foreach(Handles.release)
     boolIds.remove(handle).foreach(Handles.release)
+    // The row closure captures the whole RowSource graph, so an unreleased id keeps every
+    // unmounted list alive. A table asking for a row after this gets null, which it treats as
+    // no view.
+    rowIds.remove(handle).foreach(Handles.release)
     kinds.remove(handle)
     horizontalScrolls.remove(handle)
     // Detaching is part of destroying; the shim removes from the superview before
@@ -278,6 +283,7 @@ final class AppleRenderer extends Renderer {
       else null.asInstanceOf[Handle]
     )
     val table = Shim.sui_create_table(Handles.rowTrampoline, id)
+    rowIds(table) = id
     kinds(table) = WidgetKind.Scroll
     Shim.sui_table_reload(table, source.count)
     source.onInvalidate(() => Shim.sui_table_reload(table, source.count))
