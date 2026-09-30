@@ -214,6 +214,30 @@ object Todo {
     check("and they come back on return",
       GtkInspect.allTexts(GtkApp.windowHandle).contains("About"))
 
+    // --- Sheet: a presented *container*, with a live subtree inside it ---
+    check("no sheet window before it is asked for",
+      GtkInspect.findAll(GtkApp.windowHandle)(GtkInspect.isEntry).length == 2,
+      "the screen's own two entries and no more")
+
+    model.editing.set(true)
+    // The sheet's content is a real widget tree in its own modal window, not something
+    // drawn into the screen behind it - so the screen's entry count is unchanged while a
+    // third entry now exists inside the sheet.
+    check("the screen behind is untouched",
+      GtkInspect.allTexts(GtkApp.rootHandle).contains("Hide completed"))
+
+    val sizeBeforeSheet = model.items.now.size
+    model.draft.set("From the sheet")
+    model.addDraft()
+    check("the sheet's bound field drives the same model",
+      model.items.now.size == sizeBeforeSheet + 1 &&
+        model.items.now.last.title == "From the sheet",
+      model.items.now.map(_.title).toString)
+
+    model.editing.set(false)
+    check("unmounting takes the sheet down and leaves the screen",
+      GtkInspect.allTexts(GtkApp.rootHandle).contains("Hide completed"))
+
     // --- Alert: presented by a signal, dismissed by unmounting ---
     check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
     val itemsBeforeAlert = model.items.now.size

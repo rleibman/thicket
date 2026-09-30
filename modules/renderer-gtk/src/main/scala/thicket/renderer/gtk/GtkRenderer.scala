@@ -33,6 +33,10 @@ final class GtkRenderer extends Renderer {
     */
   private val alertCancel  = mutable.Map.empty[Ptr[GtkWidget], Ptr[GCancellable]]
 
+  /** The modal window carrying a showing sheet, and the close-request callback id. */
+  private val sheetWindow  = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWindow]]
+  private val sheetCloseId = mutable.Map.empty[Ptr[GtkWidget], Long]
+
   /** True while the renderer is writing a value into a widget, so the widget's own change
     * signal can tell an app-driven update from a user edit and stay silent for the former.
     * Without this, binding a signal to a text field is an infinite loop.
@@ -153,6 +157,10 @@ final class GtkRenderer extends Renderer {
         // A placeholder widget, never shown: an Alert is presented (WidgetKind.presented)
         // and GtkAlertDialog is a GObject rather than a GtkWidget, so it cannot be a
         // handle. The dialog itself is built in `present`.
+        // The sheet's *content* container. The modal window that carries it does not
+        // exist until `present`, the same split Alert uses.
+        case WidgetKind.Sheet => gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+
         case WidgetKind.Alert => gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
 
         case WidgetKind.ProgressBar => gtk_progress_bar_new()
@@ -182,7 +190,7 @@ final class GtkRenderer extends Renderer {
             case Some(WidgetKind.Checkbox) =>
               gtk_check_button_set_label(handle.asInstanceOf[Ptr[GtkCheckButton]], toCString(v))
             // An Alert's title arrives as Prop.Text on its placeholder handle.
-            case Some(WidgetKind.Alert) => alertTitle(handle) = v
+            case Some(WidgetKind.Alert) | Some(WidgetKind.Sheet) => alertTitle(handle) = v
             case Some(WidgetKind.TextField) | Some(WidgetKind.SecureField) =>
               // Only write when the value actually differs. Setting the text unconditionally
               // would move the caret to the end on every keystroke, because the app writes
@@ -531,15 +539,61 @@ final class GtkRenderer extends Renderer {
     // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
     val _ = cssProviders.remove(handle)
     val _ = cssClasses.remove(handle)
-    setterParent.remove(handle) match {
-      case Some(scroll) =>
-        gtk_scrolled_window_set_child(scroll.asInstanceOf[Ptr[GtkScrolledWindow]], null)
+    sheetWindow.remove(handle) match {
+      // A sheet's content is attached through `gtk_window_set_child`, so it is detached
+      // the same way — the rule the Scroll case already encodes. That call also drops the
+      // window's reference, which is the only one, so it *is* the release: doing it in
+      // `dismiss` instead would free the widget before the reconciler destroyed it, and
+      // `destroy` would then run `gtk_widget_get_parent` on freed memory. It did, and GTK
+      // said so: "assertion 'GTK_IS_WIDGET (widget)' failed".
+      case Some(win) =>
+        gtk_window_set_child(win, null)
+        gtk_window_destroy(win)
       case None =>
-        if gtk_widget_get_parent(handle) != null then gtk_widget_unparent(handle)
+        setterParent.remove(handle) match {
+          case Some(scroll) =>
+            gtk_scrolled_window_set_child(scroll.asInstanceOf[Ptr[GtkScrolledWindow]], null)
+          case None =>
+            if gtk_widget_get_parent(handle) != null then gtk_widget_unparent(handle)
+        }
     }
   }
 
-  override def present(handle: Handle): Unit = Zone {
+  override def present(handle: Handle): Unit =
+    if kinds.get(handle).contains(WidgetKind.Sheet) then presentSheet(handle)
+    else presentAlert(handle)
+
+  private def presentSheet(handle: Handle): Unit = Zone {
+    val win = gtk_window_new().asInstanceOf[Ptr[GtkWindow]]
+    gtk_window_set_modal(win, gbool(true))
+    gtk_window_set_transient_for(win, GtkApp.window)
+    alertTitle.get(handle).filter(_.nonEmpty).foreach(t => gtk_window_set_title(win, toCString(t)))
+    gtk_window_set_child(win, handle)
+
+    // The window manager's close button and Escape both arrive as close-request. Let the
+    // close proceed and report it: the app owns the signal that mounted this, so it is the
+    // app that has to take it down — exactly as with Alert.
+    alertDismiss.get(handle).foreach { f =>
+      val id = Handles.register { () =>
+        val _ = sheetWindow.remove(handle)
+        f()
+      }
+      sheetCloseId(handle) = id
+      val _ = g_signal_connect_data(
+        win.asInstanceOf[gpointer],
+        toCString("close-request").asInstanceOf[Ptr[gchar]],
+        GCallback.fromPtr(Handles.closeRequestPtr),
+        Handles.idToPointer(id),
+        null.asInstanceOf[GClosureNotify],
+        GConnectFlags.define(0)
+      )
+    }
+
+    sheetWindow(handle) = win
+    gtk_window_present(win)
+  }
+
+  private def presentAlert(handle: Handle): Unit = Zone {
     val actions = alertActions.getOrElse(handle, Nil)
     // An empty format, not "%s" and not null. `gtk_alert_dialog_new` is printf-style
     // variadic: "%s" declares a conversion with no argument pushed, so g_strdup_vprintf
@@ -595,6 +649,11 @@ final class GtkRenderer extends Renderer {
     // Removing it first is what tells the response callback this was us rather than the
     // user, so OnDismiss does not fire for a dismissal the app itself asked for.
     alertCancel.remove(handle).foreach(g_cancellable_cancel)
+
+    // Only hide it. Tearing the window down here would free the content with it, and the
+    // reconciler destroys the content immediately afterwards — `destroy` owns that, above.
+    sheetWindow.get(handle).foreach(win => gtk_widget_set_visible(win.asInstanceOf[Ptr[GtkWidget]], gbool(false)))
+    sheetCloseId.remove(handle).foreach(Handles.release)
   }
 
   def measure(handle: Handle, constraints: Constraints): Measurement = {

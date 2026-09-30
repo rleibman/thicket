@@ -70,6 +70,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.Slider            => unimplemented("Slider", 13)
       case WidgetKind.SecureField       => unimplemented("SecureField", 14)
       case WidgetKind.Alert             => unimplemented("Alert", 16)
+      case WidgetKind.Sheet             => unimplemented("Sheet", 17)
     }
 
   private def unimplemented(name: String, reservedCode: Int): Nothing =

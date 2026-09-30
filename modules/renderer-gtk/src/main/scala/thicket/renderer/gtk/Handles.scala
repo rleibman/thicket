@@ -197,6 +197,21 @@ private[gtk] object Handles {
 
   def alertChosenPtr: CVoidPtr = CFuncPtr.toPtr(alertChosen)
 
+  /** `GtkWindow::close-request`: (window, user_data) -> gboolean.
+    *
+    * Returns FALSE, meaning "go ahead and close". Its own arity is needed because a handler
+    * declared as returning Unit would leave whatever happened to be in the return register
+    * for GTK to read as the answer — and TRUE there would veto the close, silently and
+    * intermittently.
+    */
+  private val closeRequest: CFuncPtr2[Ptr[Byte], gpointer, gboolean] =
+    CFuncPtr2.fromScalaFunction { (_: Ptr[Byte], data: gpointer) =>
+      GcState.guarded(invoke(pointerToId(data)))
+      0.asInstanceOf[gboolean]
+    }
+
+  def closeRequestPtr: CVoidPtr = CFuncPtr.toPtr(closeRequest)
+
   /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not
     * shed entries at UI rates is a leak with a clock on it (S8).
     */

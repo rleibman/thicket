@@ -61,6 +61,9 @@ object TodoApp {
     /** Drives the `Spinner`, which has no prop of its own: it spins while it is mounted. */
     val busy: Var[Boolean] = Var(false)
 
+    /** Drives the edit `Sheet` — a presented *container*, unlike the alert. */
+    val editing: Var[Boolean] = Var(false)
+
     /** Drives the confirmation `Alert`. Presented while true; there is no `show()`. */
     val confirmingDrop: Var[Boolean] = Var(false)
 
@@ -138,6 +141,7 @@ object TodoApp {
       // users expect rather than where this file happens to list them.
       actions = Seq(
         Action("Add")(model.add()),
+        Action("Note")(model.editing.set(true)),
         Action("About")(nav.push(Route.About))
       ),
       // No title label in the content: `Screen.title` already drives the platform's own
@@ -224,6 +228,21 @@ object TodoApp {
         // Same shape as TextField; a separate widget only because NSSecureTextField is a
         // separate class.
         SecureField(model.secret, placeholder = "Passphrase")(model.secret.set),
+
+        // A modal sheet: the app's own content, presented over the app. Same lifecycle as
+        // the alert below, but it holds an element subtree rather than a list of buttons.
+        Show(model.editing) {
+          Sheet("Quick note")(
+            TextField(model.draft, placeholder = "What needs doing?")(model.draft.set),
+            Row(spacing = 8)(
+              Button("Save") {
+                model.addDraft()
+                model.editing.set(false)
+              },
+              Button("Close")(model.editing.set(false))
+            )
+          )(model.editing.set(false))
+        },
 
         // A modal alert, presented by a signal rather than by a call. Flipping
         // `confirmingDrop` off is the whole of dismissing it.

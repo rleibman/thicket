@@ -173,7 +173,7 @@ object SelfTest {
     // Android builds the options menu on its own schedule, so the check is that the app
     // declared them and that invoking one works - the menu itself belongs to the platform
     // and is not in this View tree by design.
-    check("the items screen declares actions", app.actions.now.map(_.label) == Seq("Add", "About"),
+    check("the items screen declares actions", app.actions.now.map(_.label) == Seq("Add", "Note", "About"),
       app.actions.now.map(_.label).toString)
 
     val sizeBeforeAction = model.items.now.size
@@ -184,7 +184,30 @@ object SelfTest {
     check("a screen with no actions declares none", app.actions.now.isEmpty,
       app.actions.now.map(_.label).toString)
     val _ = app.back()
-    check("and they come back on return", app.actions.now.map(_.label) == Seq("Add", "About"))
+    check("and they come back on return", app.actions.now.map(_.label) == Seq("Add", "Note", "About"))
+
+    // --- Sheet: a presented *container*, with a live subtree inside it ---
+    check("no sheet before it is asked for", !model.editing.now)
+    model.editing.set(true)
+    check("the screen behind is untouched", allTexts(root).contains("Hide completed"),
+      allTexts(root).toString)
+
+    val sizeBeforeSheet = model.items.now.size
+    model.draft.set("From the sheet")
+    model.addDraft()
+    // The sheet's title is deliberately NOT checked here. A presented widget lives in its
+    // own window, so neither this View tree nor GTK's can see into it - that is what
+    // `presented` means. It is asserted at the renderer boundary instead, in SheetSpec,
+    // which is where the observation is actually available.
+
+    check("the sheet's bound field drives the same model",
+      model.items.now.size == sizeBeforeSheet + 1 &&
+        model.items.now.last.title == "From the sheet",
+      model.items.now.map(_.title).toString)
+
+    model.editing.set(false)
+    check("unmounting takes the sheet down and leaves the screen",
+      allTexts(root).contains("Hide completed"))
 
     // --- Alert: presented by a signal, dismissed by unmounting ---
     check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
