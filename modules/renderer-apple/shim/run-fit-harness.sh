@@ -20,6 +20,8 @@ OUT="${1:-build/fit}"
 DEVICE="${2:-iPhone 17}"
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
+# A binary left over from an earlier run must never stand in for one that failed to build.
+rm -f "$OUT/fitharness-macos" "$OUT/fitharness-ios"
 
 echo "=== AppKit ==="
 xcrun swiftc -O \
@@ -31,12 +33,13 @@ xcrun swiftc -O \
 echo
 echo "=== UIKit (simulator, headless) ==="
 # The sysroot warning is swiftc's ClangImporter not inheriting -sdk for -Xcc; cosmetic, as
-# the bridging header is types-only. Same note as ios-app/build-app.sh.
+# the bridging header is types-only. Same note as ios-app/build-app.sh. Only stderr is
+# filtered, so swiftc's own exit status still reaches `set -e`.
 xcrun swiftc -O \
   -target arm64-apple-ios17.0-simulator -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
   -module-name FitHarness -import-objc-header include/scalaui_apple_types.h \
-  Sources/Shim+UIKit.swift Tests/FitHarness+UIKit.swift -o "$OUT/fitharness-ios" 2>&1 \
-  | grep -v "Wincompatible-sysroot" || true
+  Sources/Shim+UIKit.swift Tests/FitHarness+UIKit.swift -o "$OUT/fitharness-ios" \
+  2> >(grep -v "Wincompatible-sysroot" >&2 || true)
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null 2>&1 || true
 xcrun simctl spawn "$DEVICE" "$OUT/fitharness-ios" "$OUT"
