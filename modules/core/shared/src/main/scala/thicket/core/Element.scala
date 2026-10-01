@@ -6,6 +6,7 @@ import thicket.renderer.{
   ContentFit,
   Emphasis,
   ImageSource,
+  MenuItem,
   Orientation,
   Prop,
   Rgb as RRgb,
@@ -470,6 +471,17 @@ object dsl {
 
     /** Absorb spare space along the parent's main axis. */
     def grow: Element = withAttr(Static(Prop.Grow(true)))
+
+    /** Attach a context menu, opened by whatever gesture the platform uses for one.
+      *
+      * {{{
+      * Row()(Label(item.title)).contextMenu(
+      *   MenuItem("Rename")(model.rename(item.id)),
+      *   MenuItem("Delete")(model.delete(item.id))
+      * )
+      * }}}
+      */
+    def contextMenu(items: MenuItem*): Element = withAttr(Static(Prop.ContextMenu(items)))
 
     def padding(dp: Int): Element = withAttr(Static(Prop.Padding(dp)))
 

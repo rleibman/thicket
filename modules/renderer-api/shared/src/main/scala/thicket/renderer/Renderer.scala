@@ -297,6 +297,18 @@ enum Prop {
     */
   case OnDismiss(handler: () => Unit)
 
+  /** A context menu the widget *has*, shown by the platform's own gesture.
+    *
+    * A prop rather than a widget kind, because that is how all four toolkits model it: `NSView.menu`,
+    * `UIContextMenuInteraction`, a `GtkPopover` parented to the widget, a `PopupMenu` anchored at the view. None of
+    * them is a sibling you place; each is a property of something already on screen.
+    *
+    * Which gesture opens it is the platform's business and deliberately not the app's: secondary click on a desktop,
+    * long press on a phone. An app that hard-coded "right-click" would be wrong on Android and an app that hard-coded
+    * "long press" would be wrong on GTK.
+    */
+  case ContextMenu(items: Seq[MenuItem])
+
   /** How prominent text should be, relative to the platform's own foreground colours.
     *
     * Not a colour. There is deliberately no way to say "grey #767676": a theme that pushes its own palette at every
@@ -340,6 +352,21 @@ enum Alignment {
 enum Orientation {
 
   case Vertical, Horizontal
+
+}
+
+/** One entry in a [[Prop.ContextMenu]].
+  *
+  * By-name body, re-evaluated per invocation, like `Button` and `AlertAction`.
+  */
+final case class MenuItem(
+  label:   String,
+  enabled: Boolean = true
+)(
+  body: => Unit
+) {
+
+  def onSelect(): Unit = body
 
 }
 

@@ -37,6 +37,12 @@ final class GtkRenderer extends Renderer {
   private val sheetWindow  = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWindow]]
   private val sheetCloseId = mutable.Map.empty[Ptr[GtkWidget], Long]
 
+  /** A widget's context-menu popover and the callback ids behind its items, so `destroy`
+    * can unparent the popover and release them rather than leaking one per menu.
+    */
+  private val menuPopover = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
+  private val menuIds     = mutable.Map.empty[Ptr[GtkWidget], mutable.ArrayBuffer[Long]]
+
   /** True while the renderer is writing a value into a widget, so the widget's own change
     * signal can tell an app-driven update from a user edit and stay silent for the former.
     * Without this, binding a signal to a text field is an infinite loop.
@@ -373,6 +379,64 @@ final class GtkRenderer extends Renderer {
             }
         }
 
+      case Prop.ContextMenu(items) =>
+        // A GtkPopover of buttons, not a GtkPopoverMenu. The latter is the more "menu-ish"
+        // widget, but it is driven by a GMenuModel whose items address GActions by *name*
+        // through an action group — an indirection that does not fit an API where each item
+        // carries its own closure. A popover with the `menu` style class gets Adwaita's
+        // menu appearance without inventing an action-name namespace. Worth revisiting if
+        // keyboard navigation or accessibility differs in practice.
+        val popover = gtk_popover_new()
+        val box     = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+        Zone {
+          gtk_widget_add_css_class(popover, toCString("menu"))
+          gtk_popover_set_has_arrow(popover.asInstanceOf[Ptr[GtkPopover]], gbool(false))
+        }
+
+        items.foreach { item =>
+          val button = Zone(gtk_button_new_with_label(toCString(item.label)))
+          Zone(gtk_widget_add_css_class(button, toCString("flat")))
+          gtk_widget_set_sensitive(button, gbool(item.enabled))
+          val itemId = Handles.register { () =>
+            gtk_popover_popdown(popover.asInstanceOf[Ptr[GtkPopover]])
+            item.onSelect()
+          }
+          menuIds.getOrElseUpdate(handle, mutable.ArrayBuffer.empty) += itemId
+          Zone {
+            val _ = g_signal_connect_data(
+              button.asInstanceOf[gpointer],
+              toCString("clicked").asInstanceOf[Ptr[gchar]],
+              GCallback.fromPtr(Handles.clickedPtr),
+              Handles.idToPointer(itemId),
+              null.asInstanceOf[GClosureNotify],
+              GConnectFlags.define(0)
+            )
+          }
+          gtk_box_append(box.asInstanceOf[Ptr[GtkBox]], button)
+        }
+
+        gtk_popover_set_child(popover.asInstanceOf[Ptr[GtkPopover]], box)
+        gtk_widget_set_parent(popover, handle)
+        menuPopover(handle) = popover
+
+        // Secondary click, which is the desktop gesture — Android uses long press. Button 3
+        // rather than any button, or an ordinary left click would open the menu too.
+        val gesture = gtk_gesture_click_new()
+        gtk_gesture_single_set_button(gesture.asInstanceOf[Ptr[GtkGestureSingle]], toGuint(3))
+        val openId = Handles.register(() => gtk_popover_popup(popover.asInstanceOf[Ptr[GtkPopover]]))
+        menuIds.getOrElseUpdate(handle, mutable.ArrayBuffer.empty) += openId
+        Zone {
+          val _ = g_signal_connect_data(
+            gesture.asInstanceOf[gpointer],
+            toCString("pressed").asInstanceOf[Ptr[gchar]],
+            GCallback.fromPtr(Handles.releasedPtr),
+            Handles.idToPointer(openId),
+            null.asInstanceOf[GClosureNotify],
+            GConnectFlags.define(0)
+          )
+        }
+        gtk_widget_add_controller(handle, gesture.asInstanceOf[Ptr[GtkEventController]])
+
       case Prop.Style(role) =>
         // GTK's own type scale, via the style classes Adwaita defines, rather than a pixel
         // size chosen by us.
@@ -539,6 +603,12 @@ final class GtkRenderer extends Renderer {
     // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
     val _ = cssProviders.remove(handle)
     val _ = cssClasses.remove(handle)
+    // A popover is parented to its widget, so it must be unparented before the widget
+    // goes — GTK4 frees a widget's children with it, and the popover is not in the child
+    // list the box knows about.
+    menuPopover.remove(handle).foreach(gtk_widget_unparent)
+    menuIds.remove(handle).foreach(_.foreach(Handles.release))
+
     sheetWindow.remove(handle) match {
       // A sheet's content is attached through `gtk_window_set_child`, so it is detached
       // the same way — the rule the Scroll case already encodes. That call also drops the
