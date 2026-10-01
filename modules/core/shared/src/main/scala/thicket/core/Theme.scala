@@ -87,4 +87,19 @@ object Theme {
   def install(theme: Theme): Unit = current = theme
   def active:                Theme = current
 
+  /** Run `body` with `theme` as the active one, then restore whatever was active before.
+    *
+    * Roles are resolved to colours when an *element is built*, not when it is rendered, so this is the window that
+    * matters. It is a stack rather than a set-and-forget because `Provide` nests: an app can brand a section and brand
+    * a card inside it, and the card's siblings must not inherit the card's theme.
+    *
+    * Single-threaded like the rest of the graph — see `ThreadGuard`.
+    */
+  def withActive[A](theme: Theme)(body: => A): A = {
+    val previous = current
+    current = theme
+    try body
+    finally current = previous
+  }
+
 }
