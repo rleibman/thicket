@@ -237,8 +237,20 @@ object Todo {
       menuPopovers.exists(p => GtkInspect.allTexts(p).contains("Delete")),
       menuPopovers.map(GtkInspect.allTexts).toString)
 
+    // Drive a real menu item. The previous version of this check compared the item count
+    // against itself with nothing in between - a check that could not fail, which is the
+    // exact sin the issue descriptions warn about, written while removing a different bad
+    // check. Emitting `clicked` on the popover's own button runs the item's closure through
+    // the handle table the way a user's click does.
+    val targetRow  = model.visibleItems.now.head
     val beforeMenu = model.items.now.size
-    check("and nothing runs until an item is chosen", model.items.now.size == beforeMenu)
+    val popoverFor = menuPopovers.find(p => GtkInspect.allTexts(p).contains("Delete"))
+    check("a menu item can be activated",
+      popoverFor.exists(p => GtkApp.clickMenuItem(p, "Delete")),
+      "no Delete button found inside any popover")
+    check("choosing Delete removes that row, and only that one",
+      model.items.now.size == beforeMenu - 1 && !model.items.now.exists(_.id == targetRow.id),
+      s"was $beforeMenu, now ${model.items.now.size}: ${model.items.now.map(_.title)}")
 
     // --- Sheet: a presented *container*, with a live subtree inside it ---
     check("no sheet window before it is asked for",

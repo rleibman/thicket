@@ -15,7 +15,7 @@ catalogue in `docs/07` §7.10.
 | Widgets implemented on **every** renderer that exists | **15** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **26** |
-| Props implemented on every renderer | **22** — `Message`, `Actions` and `OnDismiss` are no-ops on Apple, because they belong to `Alert`, which it cannot present yet |
+| Props implemented on every renderer | **22** — four are no-ops on Apple: `Message`, `Actions` and `OnDismiss` belong to `Alert` and `Sheet`, which it cannot present yet (#18), and `ContextMenu` needs `NSView.menu` / `UIContextMenuInteraction` (#19) |
 
 **Fifteen of thirty-two**, and this time on every renderer: the six phase 2 widgets landed
 on AppKit and UIKit (#4), measured by the same self-test checks GTK and Android run —
