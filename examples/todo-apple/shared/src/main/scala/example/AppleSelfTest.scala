@@ -278,9 +278,9 @@ object AppleSelfTest {
     *
     * Bounded by *time*, not by turns: a UIKit transition finishes a frame or two later, and a few hundred back-to-back
     * turns can all run inside one frame — on the simulator, 200 turns was not enough for a non-animated dismissal.
-    * Paced by a timer rather than by re-posting at once: hot-looping `postToUi` for a few seconds crashed the iOS app
-    * outright (twice, a bad access inside the posted closure), which is its own finding, not something to paper over
-    * here. A completion that never comes still fails rather than hangs.
+    * Paced by a timer rather than by re-posting at once, which spins the run loop for nothing. (Re-posting at once did
+    * crash the iOS app while this was written; #22 traced that to where the host initialised Scala Native, not to the
+    * loop.) A completion that never comes still fails rather than hangs.
     */
   private def eventually(timeoutMs: Long)(cond: => Boolean)(k: Boolean => Unit): Unit = {
     val deadline = System.nanoTime() + timeoutMs * 1000000L

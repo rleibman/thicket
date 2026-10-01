@@ -105,7 +105,7 @@ void sui_set_frame(sui_handle h, double x, double y, double w, double height);
 /* --- threading --------------------------------------------------------------- */
 void sui_run_on_main(sui_void_cb cb, int64_t ctx);
 /* The same, after at least `delay_ms`. For waiting on the platform a frame at a time
-   rather than hot-looping sui_run_on_main, which crashes the iOS app under load. */
+   rather than spinning the run loop with sui_run_on_main. */
 void sui_run_on_main_after(int32_t delay_ms, sui_void_cb cb, int64_t ctx);
 
 /* --- virtual rows ------------------------------------------------------------ */

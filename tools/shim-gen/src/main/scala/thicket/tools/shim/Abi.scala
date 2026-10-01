@@ -286,7 +286,7 @@ object Abi {
       Void,
       List(p("delay_ms", I32), p("cb", VoidCb), p("ctx", I64)),
       doc = "The same, after at least `delay_ms`. For waiting on the platform a frame at a time\n" +
-        "   rather than hot-looping sui_run_on_main, which crashes the iOS app under load."
+        "   rather than spinning the run loop with sui_run_on_main."
     )
   )
 
