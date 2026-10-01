@@ -69,6 +69,33 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-30 — **The iOS host initialises Scala Native at the top of `main`, before
+  `UIApplicationMain`, not in scene setup** (#22). Scala Native's collector records a
+  thread's stack base as the address of a local inside its own initialisation and scans
+  from the current stack pointer up to it. The host called `ScalaNativeInit` from
+  `scene(_:willConnectTo:)`, deep inside UIKit's launch, and every later entry into Scala —
+  from the run loop — runs *nearer the true base* (448 bytes higher, measured), outside the
+  scanned range. So **objects referenced only from the main thread's stack were invisible to
+  the collector**, freed while live, and their memory reused. Measured with `PostProbe`, a
+  `postToUi` loop whose posted closure carries a heap canary: on the iOS simulator, **18, 18
+  and 14** canary mismatches per 200 000 hops before; **0 in 4 of 4 runs** after. macOS was
+  0 throughout — Scala owns `main` there, so the base is right. This is what crashed the
+  #18 self-test, and it was latent in every iOS run of this host. Mismatches appeared only
+  when a collection was triggered from inside `postToUi`'s own allocation; forcing
+  `System.gc()` every hop did not show it, because at that point nothing live was held only
+  by the stack. The spike hosts (S1, S3, S6, S8, S9) initialise the same way; see
+  `docs/09` §9.6.
+- 2026-09-30 — **A `SIMCTL_CHILD_` variable keeps its first value for the whole simulator
+  boot session.** Relaunching with a different value — even after uninstalling and
+  reinstalling the app — still delivered the first one; rebooting the simulator did not.
+  Found because `PostProbe` printed `mode=chain` for every mode. Any iOS measurement that
+  varies an environment variable between launches must reboot the simulator between them, or
+  it silently measures the wrong thing.
+- 2026-09-30 — **Correction to the #4 entry: the Apple self-test was 42/42 on macOS and
+  41/41 on iOS, not 43/43 and 42/42.** Counted from the logs (`grep -c '] ok '`) while
+  checking #22; the earlier figures were written down rather than counted. The #18 figures
+  (68 and 64) were counted and stand.
+
 - 2026-09-30 — **The Apple self-test finds widgets by *platform class*, read back from the
   shim, not by the renderer's own bookkeeping** (#4). Four inspection functions were added
   for it — `sui_class_name`, `sui_get_progress`, `sui_get_value`, `sui_is_secure` — so a

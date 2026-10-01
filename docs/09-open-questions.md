@@ -361,3 +361,17 @@ should not be made until M1.
 - Testing story for app authors (headless renderer? snapshot tests on the dev canvas?).
 - Distribution of the shims: SwiftPM package + prebuilt XCFramework vs source.
 - Wasm as a fourth Scala backend, should Scala.js's Wasm output mature.
+
+## 9.6 Opened by #22 (2026-09-30)
+
+- **Were S8's and S9's iOS constraints this bug?** #22 found the iOS host initialised Scala
+  Native from scene setup, so the collector's recorded stack base sat below every later
+  entry into Scala and the main thread's stack was not scanned at all. All five iOS spike
+  hosts (S1, S3, S6, S8, S9) initialise the same way. S8 concluded that Scala must never run
+  on a GCD queue because it "segfaults in the GC allocator"; S9 that a monitor-guarded handle
+  table "leaks main-thread stack until the process dies". Both are what a collector that
+  cannot see the main thread's stack would produce, and both were measured on such a host.
+  They may still be true — a GCD worker has its own stack and its own registration problem —
+  but they should be re-measured with `ScalaNativeInit` at the top of `main` before they are
+  treated as properties of Scala Native rather than of the host. Until then, keep the rules.
+
