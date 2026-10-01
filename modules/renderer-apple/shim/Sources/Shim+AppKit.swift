@@ -94,6 +94,31 @@ private final class TapView: NSStackView {
 ///
 /// Drawn rather than done with a layer's `contentsGravity`: `NSImageView` draws its own
 /// image, so setting layer contents underneath it fights the view instead of replacing it.
+private final class ImageView: NSImageView {
+  var cover = false
+
+  override func draw(_ dirtyRect: NSRect) {
+    let b = bounds
+    guard cover, let img = image, img.size.width > 0, img.size.height > 0, b.width > 0, b.height > 0
+    else {
+      super.draw(dirtyRect)
+      return
+    }
+    // The one line that is the whole fit: `max` covers and crops, `min` would contain and
+    // letterbox.
+    let scale = max(b.width / img.size.width, b.height / img.size.height)
+    let size = NSSize(width: img.size.width * scale, height: img.size.height * scale)
+    let rect = NSRect(
+      x: b.midX - size.width / 2, y: b.midY - size.height / 2,
+      width: size.width, height: size.height
+    )
+    NSGraphicsContext.saveGraphicsState()
+    NSBezierPath(rect: b).setClip()
+    img.draw(in: rect)
+    NSGraphicsContext.restoreGraphicsState()
+  }
+}
+
 /// An alert's handle. `NSAlert` is not a view and cannot be one, so the handle is a
 /// placeholder that holds the alert's configuration until `sui_present` builds the real
 /// thing — the same split GTK needs for `GtkAlertDialog`, which is not a widget either.
@@ -126,31 +151,6 @@ private final class SheetView: NSStackView {
 private final class SheetWindow: NSWindow {
   var onCancel: (() -> Void)?
   override func cancelOperation(_ sender: Any?) { onCancel?() }
-}
-
-private final class ImageView: NSImageView {
-  var cover = false
-
-  override func draw(_ dirtyRect: NSRect) {
-    let b = bounds
-    guard cover, let img = image, img.size.width > 0, img.size.height > 0, b.width > 0, b.height > 0
-    else {
-      super.draw(dirtyRect)
-      return
-    }
-    // The one line that is the whole fit: `max` covers and crops, `min` would contain and
-    // letterbox.
-    let scale = max(b.width / img.size.width, b.height / img.size.height)
-    let size = NSSize(width: img.size.width * scale, height: img.size.height * scale)
-    let rect = NSRect(
-      x: b.midX - size.width / 2, y: b.midY - size.height / 2,
-      width: size.width, height: size.height
-    )
-    NSGraphicsContext.saveGraphicsState()
-    NSBezierPath(rect: b).setClip()
-    img.draw(in: rect)
-    NSGraphicsContext.restoreGraphicsState()
-  }
 }
 
 // MARK: - application lifecycle
@@ -1041,7 +1041,10 @@ public func sui_is_presented(_ h: UnsafeMutableRawPointer) -> Int32 {
 public func sui_presented_title(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
   switch view(h) {
   case let a as AlertView: return a.alert.flatMap { scratch($0.messageText) }
-  case let s as SheetView: return s.sheetWindow == nil ? nil : s.heading.flatMap { scratch($0.stringValue) }
+  // Gated the same way as `sui_is_presented`: the window outlives an app dismissal until
+  // `sui_destroy`, so its existence is not the question; being attached as a sheet is.
+  case let s as SheetView:
+    return s.sheetWindow?.sheetParent == nil ? nil : s.heading.flatMap { scratch($0.stringValue) }
   default: return nil
   }
 }
