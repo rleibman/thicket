@@ -38,6 +38,12 @@ object GtkInspect {
 
   def isScale(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_scale_get_type())
 
+  /** A context menu's popover. Parented to its widget but not in the parent box's child
+    * list, so it is reachable by walking and invisible to a child count — which is the
+    * distinction a `ContextMenu` prop is meant to have.
+    */
+  def isPopover(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_popover_get_type())
+
   def scaleValue(widget: Ptr[GtkWidget]): Double =
     gtk_range_get_value(widget.asInstanceOf[Ptr[GtkRange]])
 

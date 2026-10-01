@@ -50,6 +50,30 @@ object GtkApp {
         }
         true
       }
+  /** Activate a context-menu item by label, inside the given popover.
+    *
+    * Emits `clicked` on the real `GtkButton` the renderer built, so the item's own closure
+    * runs through the handle table exactly as a user's click would — rather than the test
+    * reaching past the renderer and calling the callback directly, which would prove
+    * nothing about the wiring.
+    */
+  def clickMenuItem(popover: Ptr[GtkWidget], label: String): Boolean =
+    GtkInspect
+      .findAll(popover)(w => GtkInspect.allTexts(w).contains(label) && isButton(w))
+      .headOption
+      .exists { b =>
+        Zone {
+          g_signal_emit_by_name(b.asInstanceOf[gpointer], toCString("clicked").asInstanceOf[Ptr[gchar]])
+        }
+        true
+      }
+
+  private def isButton(w: Ptr[GtkWidget]): Boolean =
+    g_type_check_instance_is_a(
+      w.asInstanceOf[Ptr[GTypeInstance]],
+      gtk_button_get_type()
+    ).asInstanceOf[CInt] != 0
+
   private var build: Owner ?=> AppRoot        =
     (_: Owner) ?=> throw IllegalStateException("GtkApp.run was not given a UI")
 

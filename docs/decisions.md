@@ -69,6 +69,19 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-09-30 — **A context menu is a *prop*, not a widget kind.** All four toolkits model it
+  as something a view has — `NSView.menu`, `UIContextMenuInteraction`, a `GtkPopover`
+  parented to the widget, a `PopupMenu` anchored at the view — so `Prop.ContextMenu` and a
+  `.contextMenu(...)` modifier, adding no node to the tree. This is the §12.2a question
+  asked a third time, after `Radio`/`Stepper` and `TabView`, and the first time the answer
+  was "it belongs in the catalogue, but not as a widget".
+  **Which gesture opens it is the platform's business**: secondary click on GTK, long press
+  on Android. An app that hard-coded either would be wrong on the other, so the API names
+  neither.
+  GTK uses a popover of flat buttons with the `menu` style class rather than a
+  `GtkPopoverMenu`, because the latter is driven by a `GMenuModel` addressing `GAction`s by
+  *name* through an action group — an indirection that does not fit an API where each item
+  carries its own closure.
 - 2026-09-30 — **`Provide` scopes a theme to a subtree, and takes its child by name.** Roles
   resolve to colours when an element is *built*, not when it is rendered, so a `Provide` is
   the theme in scope during construction — which means a by-value child would be evaluated
