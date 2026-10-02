@@ -119,6 +119,40 @@ private final class ImageView: NSImageView {
   }
 }
 
+/// An alert's handle. `NSAlert` is not a view and cannot be one, so the handle is a
+/// placeholder that holds the alert's configuration until `sui_present` builds the real
+/// thing — the same split GTK needs for `GtkAlertDialog`, which is not a widget either.
+private final class AlertView: NSView {
+  var title = ""
+  var message = ""
+  var actions: [(label: String, role: Int32, tap: Tap)] = []
+  var onDismiss: Tap?
+  /// Non-nil exactly while it is on screen. Cleared *before* the app's own dismissal ends
+  /// the sheet, which is how the completion handler tells that apart from a user's choice.
+  var alert: NSAlert?
+  /// The actions in the order NSAlert holds its buttons.
+  var shown: [(label: String, role: Int32, tap: Tap)] = []
+}
+
+/// A sheet's handle: an ordinary vertical stack, so its children mount by the ordinary
+/// `sui_insert_after` path. `sui_present` puts it inside a sheet window.
+private final class SheetView: NSStackView {
+  var title = ""
+  var onDismiss: Tap?
+  var sheetWindow: SheetWindow?
+  /// A sheet has no title bar on macOS, so the title is drawn as the sheet's own heading —
+  /// otherwise `Sheet("Quick note")` would set a window title nobody can see, which is the
+  /// exact bug GTK and Android shipped.
+  var heading: NSTextField?
+}
+
+/// Escape on a sheet arrives as `cancelOperation`. That is the platform closing it without
+/// a choice, which is what `OnDismiss` reports; the app then takes it down by unmounting.
+private final class SheetWindow: NSWindow {
+  var onCancel: (() -> Void)?
+  override func cancelOperation(_ sender: Any?) { onCancel?() }
+}
+
 // MARK: - application lifecycle
 
 private var window: NSWindow?
@@ -278,6 +312,16 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.action = #selector(Proxy.slid(_:))
     return retained(s)
 
+  case 16:
+    return retained(AlertView())
+
+  case 17:
+    let s = SheetView()
+    s.orientation = .vertical
+    s.alignment = .leading
+    s.spacing = 8
+    return retained(s)
+
   case 14:
     // A separate class on AppKit, which is why SecureField is a kind rather than a prop.
     let f = NSSecureTextField(string: "")
@@ -368,6 +412,13 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   // keyed it by.
   tableSources.removeValue(forKey: id)
   suppressed.remove(id)
+  if let sheet = v as? SheetView {
+    // The window held the stack as its content; the handle's own retain is what keeps the
+    // view alive until here, so dropping the window now frees nothing early.
+    sheet.sheetWindow?.onCancel = nil
+    sheet.sheetWindow?.contentView = nil
+    sheet.sheetWindow = nil
+  }
   // Detaching is part of destroying, not a separate step the caller performs first — the
   // contract says so, and the reconciler destroys depth-first.
   v.removeFromSuperview()
@@ -381,6 +432,13 @@ public func sui_set_text(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CCh
   let v = view(h)
   let s = String(cString: text)
   switch v {
+  // A presented widget's title arrives as Prop.Text, for *both* presented kinds.
+  case let a as AlertView:
+    a.title = s
+    a.alert?.messageText = s
+  case let sheet as SheetView:
+    sheet.title = s
+    sheet.heading?.stringValue = s
   case let f as NSTextField:
     // Only write when it actually differs. Writing unconditionally moves the caret to the
     // end on every keystroke, because the app writes back what the user just typed.
@@ -771,6 +829,11 @@ public func sui_run_on_main(_ cb: @escaping sui_void_cb, _ ctx: Int64) {
   DispatchQueue.main.async { cb(ctx) }
 }
 
+@_cdecl("sui_run_on_main_after")
+public func sui_run_on_main_after(_ delayMs: Int32, _ cb: @escaping sui_void_cb, _ ctx: Int64) {
+  DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(delayMs))) { cb(ctx) }
+}
+
 // MARK: - inspection
 
 private func arranged(_ v: NSView) -> [NSView] {
@@ -846,4 +909,187 @@ public func sui_get_value(_ h: UnsafeMutableRawPointer) -> Double {
 @_cdecl("sui_is_secure")
 public func sui_is_secure(_ h: UnsafeMutableRawPointer) -> Int32 {
   view(h) is NSSecureTextField ? 1 : 0
+}
+
+// MARK: - presentation
+
+private func appWindow() -> NSWindow? { window ?? NSApp.mainWindow ?? NSApp.windows.first }
+
+@_cdecl("sui_present")
+public func sui_present(_ h: UnsafeMutableRawPointer) {
+  guard let parent = appWindow() else { return }
+  switch view(h) {
+  case let a as AlertView: presentAlert(a, over: parent)
+  case let s as SheetView: presentSheet(s, over: parent)
+  default: break
+  }
+}
+
+private func presentAlert(_ a: AlertView, over parent: NSWindow) {
+  let alert = NSAlert()
+  alert.messageText = a.title
+  alert.informativeText = a.message
+  // NSAlert has no cancel *role*, only a convention: the cancel button goes leftmost, which
+  // is the last one added, and answers Escape. A destructive button is marked as such and
+  // coloured by AppKit, not here.
+  let ordered = a.actions.filter { $0.role != 2 } + a.actions.filter { $0.role == 2 }
+  for action in ordered {
+    let b = alert.addButton(withTitle: action.label)
+    if action.role == 1 { b.hasDestructiveAction = true }
+    if action.role == 2 { b.keyEquivalent = "\u{1b}" }
+  }
+  a.shown = ordered
+  a.alert = alert
+  alert.beginSheetModal(for: parent) { [weak a] response in
+    // Nil means the app dismissed it first: not the user's choice, and not reported.
+    guard let a = a, a.alert === alert else { return }
+    a.alert = nil
+    let i = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+    if i >= 0 && i < a.shown.count {
+      let t = a.shown[i].tap
+      t.cb(t.ctx)
+    } else if let d = a.onDismiss {
+      d.cb(d.ctx)
+    }
+  }
+}
+
+private func presentSheet(_ s: SheetView, over parent: NSWindow) {
+  let heading = NSTextField(labelWithString: s.title)
+  heading.font = NSFont.preferredFont(forTextStyle: .headline)
+  s.heading = heading
+  let content = NSStackView(views: [heading, s])
+  content.orientation = .vertical
+  content.alignment = .leading
+  content.spacing = 12
+  content.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+
+  let win = SheetWindow(
+    contentRect: NSRect(x: 0, y: 0, width: 360, height: 10),
+    styleMask: [.titled],
+    backing: .buffered,
+    defer: false
+  )
+  win.contentView = content
+  win.setContentSize(NSSize(width: max(360, content.fittingSize.width), height: content.fittingSize.height))
+  win.onCancel = { [weak s] in
+    guard let s = s, let d = s.onDismiss else { return }
+    d.cb(d.ctx)
+  }
+  s.sheetWindow = win
+  parent.beginSheet(win)
+}
+
+@_cdecl("sui_dismiss")
+public func sui_dismiss(_ h: UnsafeMutableRawPointer) {
+  switch view(h) {
+  case let a as AlertView:
+    // Cleared first, so the completion handler sees an app dismissal and stays silent.
+    guard let alert = a.alert else { return }
+    a.alert = nil
+    appWindow()?.endSheet(alert.window)
+  case let s as SheetView:
+    // Only take it off screen. `sui_destroy` owns the teardown.
+    guard let win = s.sheetWindow else { return }
+    win.onCancel = nil
+    win.sheetParent?.endSheet(win)
+    win.orderOut(nil)
+  default:
+    break
+  }
+}
+
+@_cdecl("sui_set_message")
+public func sui_set_message(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CChar>) {
+  guard let a = view(h) as? AlertView else { return }
+  a.message = String(cString: text)
+  a.alert?.informativeText = a.message
+}
+
+@_cdecl("sui_alert_clear_actions")
+public func sui_alert_clear_actions(_ h: UnsafeMutableRawPointer) {
+  (view(h) as? AlertView)?.actions = []
+}
+
+@_cdecl("sui_alert_add_action")
+public func sui_alert_add_action(
+  _ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>, _ role: Int32,
+  _ cb: @escaping sui_void_cb, _ ctx: Int64
+) {
+  (view(h) as? AlertView)?.actions.append((String(cString: label), role, Tap(cb: cb, ctx: ctx)))
+}
+
+@_cdecl("sui_on_dismiss")
+public func sui_on_dismiss(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_void_cb, _ ctx: Int64) {
+  switch view(h) {
+  case let a as AlertView: a.onDismiss = Tap(cb: cb, ctx: ctx)
+  case let s as SheetView: s.onDismiss = Tap(cb: cb, ctx: ctx)
+  default: break
+  }
+}
+
+@_cdecl("sui_is_presented")
+public func sui_is_presented(_ h: UnsafeMutableRawPointer) -> Int32 {
+  switch view(h) {
+  case let a as AlertView: return a.alert != nil ? 1 : 0
+  case let s as SheetView: return (s.sheetWindow?.sheetParent != nil) ? 1 : 0
+  default: return 0
+  }
+}
+
+@_cdecl("sui_presented_title")
+public func sui_presented_title(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  switch view(h) {
+  case let a as AlertView: return a.alert.flatMap { scratch($0.messageText) }
+  // Gated the same way as `sui_is_presented`: the window outlives an app dismissal until
+  // `sui_destroy`, so its existence is not the question; being attached as a sheet is.
+  case let s as SheetView:
+    return s.sheetWindow?.sheetParent == nil ? nil : s.heading.flatMap { scratch($0.stringValue) }
+  default: return nil
+  }
+}
+
+@_cdecl("sui_presented_message")
+public func sui_presented_message(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  (view(h) as? AlertView)?.alert.flatMap { scratch($0.informativeText) }
+}
+
+@_cdecl("sui_alert_action_count")
+public func sui_alert_action_count(_ h: UnsafeMutableRawPointer) -> Int32 {
+  Int32((view(h) as? AlertView)?.alert?.buttons.count ?? 0)
+}
+
+@_cdecl("sui_alert_action_label")
+public func sui_alert_action_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> UnsafePointer<CChar>? {
+  guard let buttons = (view(h) as? AlertView)?.alert?.buttons, index >= 0, Int(index) < buttons.count
+  else { return nil }
+  return scratch(buttons[Int(index)].title)
+}
+
+@_cdecl("sui_perform_click")
+public func sui_perform_click(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let b = view(h) as? NSButton else { return 0 }
+  b.performClick(nil)
+  return 1
+}
+
+@_cdecl("sui_alert_choose")
+public func sui_alert_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
+  guard let buttons = (view(h) as? AlertView)?.alert?.buttons, index >= 0, Int(index) < buttons.count
+  else { return 0 }
+  // The alert's own button, so the choice travels NSAlert's response path to the
+  // completion handler exactly as a click does.
+  buttons[Int(index)].performClick(nil)
+  return 1
+}
+
+@_cdecl("sui_presented_count")
+public func sui_presented_count() -> Int32 {
+  var n: Int32 = 0
+  var w = appWindow()
+  while let sheet = w?.attachedSheet {
+    n += 1
+    w = sheet
+  }
+  return n
 }

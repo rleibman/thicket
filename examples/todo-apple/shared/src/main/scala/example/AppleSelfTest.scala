@@ -171,11 +171,16 @@ object AppleSelfTest {
       println(s"[selftest]   first child measured ${m.natW.toInt} x ${m.natH.toInt}")
     }
 
+    // Presented widgets last: choosing an alert action completes asynchronously on AppKit,
+    // so the summary is printed from the continuation.
+    presentedWidgets(() => summary())
+  }
+
+  private def summary(): Unit =
     println(
       if failures == 0 then "[selftest] ALL CHECKS PASSED"
       else s"[selftest] $failures CHECK(S) FAILED"
     )
-  }
 
   /** Every view in the mounted screen whose platform class is one of `classes`. */
   private def viewsOf(classes: String*): List[Shim.Handle] =
@@ -267,6 +272,148 @@ object AppleSelfTest {
       masked.headOption.flatMap(AppleInspect.text).contains("hunter2"),
       "the value must round-trip even though it is not drawn"
     )
+  }
+
+  /** Re-checks `cond` about once a frame until it holds or `timeoutMs` passes, then continues.
+    *
+    * Bounded by *time*, not by turns: a UIKit transition finishes a frame or two later, and a few hundred back-to-back
+    * turns can all run inside one frame — on the simulator, 200 turns was not enough for a non-animated dismissal.
+    * Paced by a timer rather than by re-posting at once, which spins the run loop for nothing. (Re-posting at once did
+    * crash the iOS app while this was written; #22 traced that to where the host initialised Scala Native, not to the
+    * loop.) A completion that never comes still fails rather than hangs.
+    */
+  private def eventually(timeoutMs: Long)(cond: => Boolean)(k: Boolean => Unit): Unit = {
+    val deadline = System.nanoTime() + timeoutMs * 1000000L
+    def loop(): Unit =
+      if cond then k(true)
+      else if System.nanoTime() > deadline then k(false)
+      else AppleApp.postToUiAfter(16)(() => loop())
+    loop()
+  }
+
+  /** Alert and Sheet, checked at the renderer boundary.
+    *
+    * A presented widget is not in the root's tree — that is what presented means — so a walk from the root can never
+    * see into it, and a check written that way cannot fail. GTK and Android both shipped a Sheet whose title went
+    * nowhere, with every check green. So these read what the *platform* shows for the presented handle — the sheet's
+    * heading or navigation-bar title, the alert's text and buttons — and whether something is up is asked of the
+    * platform (`presentedCount`), not of the renderer's own bookkeeping.
+    *
+    * UIKit presents and dismisses on a later turn of the run loop even when not animated, so each step waits for the
+    * platform to settle before checking; on AppKit the waits resolve at once.
+    */
+  private def presentedWidgets(done: () => Unit): Unit = {
+    val renderer = AppleApp.renderer
+    def presentedOf(kind: thicket.renderer.WidgetKind) = renderer.presented.collect { case (h, `kind`) => h }
+    def settled(n:        Int)(k: Boolean => Unit): Unit = eventually(3000)(AppleInspect.presentedCount == n)(k)
+
+    // --- Sheet: a presented container with a live subtree ---
+    check("nothing is presented before it is asked for", AppleInspect.presentedCount == 0)
+    model.editing.set(true)
+    val sheets = presentedOf(thicket.renderer.WidgetKind.Sheet)
+    check("opening the note presents one sheet", sheets.length == 1, sheets.length.toString)
+    settled(1) { up =>
+      check("the platform shows it", up, s"${AppleInspect.presentedCount} presented")
+      sheets.headOption.foreach { sheet =>
+        check("the platform reports the sheet itself on screen", AppleInspect.isPresented(sheet))
+        check(
+          "the sheet shows its title",
+          AppleInspect.presentedTitle(sheet).contains("Quick note"),
+          s"showing ${AppleInspect.presentedTitle(sheet)}"
+        )
+        check("the sheet is not in the screen's tree", !AppleInspect.all(AppleApp.rootHandle).contains(sheet))
+        check("the screen behind is untouched", screenTexts.contains("Hide completed"), screenTexts.toString)
+
+        model.draft.set("From the sheet")
+        check(
+          "the sheet's own field shows the bound value",
+          AppleInspect.allTexts(sheet).contains("From the sheet"),
+          AppleInspect.allTexts(sheet).toString
+        )
+      }
+
+      // Its own Save button, clicked through the control's action: the closure that runs is
+      // the one mounted inside the sheet, which is what a check on the model alone cannot show.
+      val sizeBeforeSheet = model.items.now.size
+      val save = sheets.headOption.flatMap(s => AppleInspect.all(s).find(h => AppleInspect.text(h).contains("Save")))
+      check("the sheet has its Save button", save.isDefined)
+      save.foreach(b => check("the Save button can be clicked", AppleInspect.click(b)))
+      check(
+        "saving from the sheet adds the item",
+        model.items.now.size == sizeBeforeSheet + 1 && model.items.now.last.title == "From the sheet",
+        model.items.now.map(_.title).toString
+      )
+      check("saving unmounts the sheet", !model.editing.now && renderer.presented.isEmpty)
+      settled(0) { gone =>
+        check("and the platform takes it down", gone, s"${AppleInspect.presentedCount} still presented")
+        alertChecks(done)
+      }
+    }
+  }
+
+  private def alertChecks(done: () => Unit): Unit = {
+    val renderer = AppleApp.renderer
+    def alerts = renderer.presented.collect { case (h, thicket.renderer.WidgetKind.Alert) => h }
+    def settled(n: Int)(k: Boolean => Unit): Unit = eventually(3000)(AppleInspect.presentedCount == n)(k)
+
+    check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
+    val itemsBeforeAlert = model.items.now.size
+    model.confirmingDrop.set(true)
+    check("confirming presents one alert", alerts.length == 1, alerts.length.toString)
+    settled(1) { up =>
+      check("the platform shows it", up, s"${AppleInspect.presentedCount} presented")
+      alerts.headOption.foreach { alert =>
+        check("the platform reports the alert itself on screen", AppleInspect.isPresented(alert))
+        check(
+          "the alert shows its title and message",
+          AppleInspect.presentedTitle(alert).contains("Drop the last item?") &&
+            AppleInspect.presentedMessage(alert).contains("This cannot be undone."),
+          s"${AppleInspect.presentedTitle(alert)} / ${AppleInspect.presentedMessage(alert)}"
+        )
+        val labels = AppleInspect.alertActions(alert)
+        println(s"[selftest]   alert buttons, in the platform's order: $labels")
+        check("the alert holds the app's actions", labels.sorted == List("Cancel", "Drop"), labels.toString)
+        check("presenting an alert leaves the screen intact", screenTexts.contains("Hide completed"))
+      }
+
+      // Unmounting is the whole of dismissing, and it must NOT report a user dismissal.
+      model.confirmingDrop.set(false)
+      settled(0) { gone =>
+        check("an app dismissal takes it down", gone, s"${AppleInspect.presentedCount} still presented")
+        check(
+          "and is not reported as a user dismissal",
+          model.lastAlertChoice.now.isEmpty,
+          s"choice was '${model.lastAlertChoice.now}'"
+        )
+        check("and nothing was dropped", model.items.now.size == itemsBeforeAlert)
+
+        // Choosing through the platform's own response path, where the platform allows it.
+        model.confirmingDrop.set(true)
+        settled(1) { _ =>
+          val chosen = alerts.headOption.exists { alert =>
+            val cancel = AppleInspect.alertActions(alert).indexOf("Cancel")
+            cancel >= 0 && AppleInspect.chooseAlert(alert, cancel)
+          }
+          if !chosen then {
+            println("[selftest]   (this platform offers no way to choose an alert action from code; not exercised)")
+            model.confirmingDrop.set(false)
+            settled(0)(_ => done())
+          } else
+            eventually(3000)(model.lastAlertChoice.now.nonEmpty) { arrived =>
+              check(
+                "choosing Cancel runs the app's cancel action",
+                arrived && model.lastAlertChoice.now == "cancel",
+                s"choice was '${model.lastAlertChoice.now}'"
+              )
+              settled(0) { gone =>
+                check("and the alert is gone", gone && !model.confirmingDrop.now)
+                check("and nothing was dropped", model.items.now.size == itemsBeforeAlert)
+                done()
+              }
+            }
+        }
+      }
+    }
   }
 
 }

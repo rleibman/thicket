@@ -362,6 +362,15 @@ should not be made until M1.
 - Distribution of the shims: SwiftPM package + prebuilt XCFramework vs source.
 - Wasm as a fourth Scala backend, should Scala.js's Wasm output mature.
 
+## 9.5 Opened by #18 (2026-09-30)
+
+- **A self-test wait that re-posted itself immediately crashed the iOS app** — twice, both
+  bad accesses (one inside the posted closure, called from `_dispatch_main_queue_drain`).
+  Paced to one post per frame it ran clean. **Answered by #22: not `postToUi`.** The iOS host
+  initialised Scala Native from scene setup, so the collector's recorded stack base sat below
+  every later entry into Scala and the main thread's stack went unscanned; a busy post loop
+  just made a collection mid-callback likely. See #22's decision-log entry and §9.6.
+
 ## 9.6 Opened by #22 (2026-09-30)
 
 - **Were S8's and S9's iOS constraints this bug?** #22 found the iOS host initialised Scala

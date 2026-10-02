@@ -47,8 +47,8 @@ void sui_window_set_title(const char *title);
      13 Slider             NSSlider()                     UISlider()
      14 SecureField        NSSecureTextField()            UITextField()     isSecureTextEntry on UIKit
      15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create
-     16 Alert              -                              -                 reserved, not built yet (phase 3; NSAlert / UIAlertController)
-     17 Sheet              -                              -                 reserved, not built yet (phase 3; a sheet on AppKit, a presented view controller on UIKit) */
+     16 Alert              AlertView()                    AlertView()       a placeholder; NSAlert / UIAlertController at present
+     17 Sheet              SheetView()                    SheetView()       a container; a sheet window / a presented controller */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -104,6 +104,9 @@ void sui_set_frame(sui_handle h, double x, double y, double w, double height);
 
 /* --- threading --------------------------------------------------------------- */
 void sui_run_on_main(sui_void_cb cb, int64_t ctx);
+/* The same, after at least `delay_ms`. For waiting on the platform a frame at a time
+   rather than spinning the run loop with sui_run_on_main. */
+void sui_run_on_main_after(int32_t delay_ms, sui_void_cb cb, int64_t ctx);
 
 /* --- virtual rows ------------------------------------------------------------ */
 /* The one place control is inverted: everywhere else Scala builds a tree and the shim
@@ -119,6 +122,22 @@ int32_t sui_table_materialised(sui_handle h);
 /* How many table sources the shim still owns. Falls back to zero once every
    virtual list is destroyed; the measurement that says destroying one frees it. */
 int32_t sui_table_live(void);
+
+/* --- presentation ------------------------------------------------------------ */
+/* Shows an Alert or a Sheet over the app. Called after its children are mounted. */
+void sui_present(sui_handle h);
+/* Takes it down because the app asked. Never reported through sui_on_dismiss, which is
+   for the platform closing it. Does not release the handle: sui_destroy does. */
+void sui_dismiss(sui_handle h);
+/* An alert's secondary text. */
+void sui_set_message(sui_handle h, const char *text);
+void sui_alert_clear_actions(sui_handle h);
+/* role: 0 plain, 1 destructive, 2 cancel. Roles, not styling: each platform decides what
+   they look like and where they go. */
+void sui_alert_add_action(sui_handle h, const char *label, int32_t role,
+                          sui_void_cb cb, int64_t ctx);
+/* The platform closed it without a choice: Escape, a swipe down. */
+void sui_on_dismiss(sui_handle h, sui_void_cb cb, int64_t ctx);
 
 /* --- inspection, for the self-test ------------------------------------------- */
 int32_t sui_child_count(sui_handle h);
@@ -137,5 +156,24 @@ double sui_get_progress(sui_handle h);
 double sui_get_value(sui_handle h);
 /* 1 when the field masks what is typed into it. */
 int32_t sui_is_secure(sui_handle h);
+/* 1 while an Alert or Sheet is on screen, as the platform reports it. */
+int32_t sui_is_presented(sui_handle h);
+/* The title the platform is *showing* for a presented widget, read from the alert or the
+   sheet's own chrome rather than from what the renderer was told. NULL when not presented. */
+const char *sui_presented_title(sui_handle h);
+/* An alert's secondary text, as shown. */
+const char *sui_presented_message(sui_handle h);
+/* How many things the platform has presented over the app right now — sheets attached to
+   the window, or the chain of presented view controllers. The platform's answer, so a
+   widget the renderer believes it dismissed but UIKit is still showing counts. */
+int32_t sui_presented_count(void);
+int32_t sui_alert_action_count(sui_handle h);
+/* In the order the platform holds them, which need not be the order declared. */
+const char *sui_alert_action_label(sui_handle h, int32_t index);
+/* Clicks a button the way a user would, through the control's own action. 0 if not a button. */
+int32_t sui_perform_click(sui_handle h);
+/* Chooses action `index` through the platform's own response path. 0 where the platform
+   offers no way to do that from code (UIKit), rather than a simulation that would pass. */
+int32_t sui_alert_choose(sui_handle h, int32_t index);
 
 #endif
