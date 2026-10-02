@@ -61,10 +61,17 @@ object Shim {
   def sui_measure(h: Handle, maxW: CDouble, maxH: CDouble, outMinW: Ptr[CDouble], outMinH: Ptr[CDouble], outNatW: Ptr[CDouble], outNatH: Ptr[CDouble]): Unit = extern
   def sui_set_frame(h: Handle, x: CDouble, y: CDouble, w: CDouble, height: CDouble): Unit = extern
   def sui_run_on_main(cb: VoidCb, ctx: Long): Unit = extern
+  def sui_run_on_main_after(delay_ms: CInt, cb: VoidCb, ctx: Long): Unit = extern
   def sui_create_table(cb: RowCb, ctx: Long): Handle = extern
   def sui_table_reload(h: Handle, count: CInt): Unit = extern
   def sui_table_materialised(h: Handle): CInt = extern
   def sui_table_live(): CInt = extern
+  def sui_present(h: Handle): Unit = extern
+  def sui_dismiss(h: Handle): Unit = extern
+  def sui_set_message(h: Handle, text: CString): Unit = extern
+  def sui_alert_clear_actions(h: Handle): Unit = extern
+  def sui_alert_add_action(h: Handle, label: CString, role: CInt, cb: VoidCb, ctx: Long): Unit = extern
+  def sui_on_dismiss(h: Handle, cb: VoidCb, ctx: Long): Unit = extern
   def sui_child_count(h: Handle): CInt = extern
   def sui_child_at(h: Handle, index: CInt): Handle = extern
   def sui_get_text(h: Handle): CString = extern
@@ -73,6 +80,14 @@ object Shim {
   def sui_get_progress(h: Handle): CDouble = extern
   def sui_get_value(h: Handle): CDouble = extern
   def sui_is_secure(h: Handle): CInt = extern
+  def sui_is_presented(h: Handle): CInt = extern
+  def sui_presented_title(h: Handle): CString = extern
+  def sui_presented_message(h: Handle): CString = extern
+  def sui_presented_count(): CInt = extern
+  def sui_alert_action_count(h: Handle): CInt = extern
+  def sui_alert_action_label(h: Handle, index: CInt): CString = extern
+  def sui_perform_click(h: Handle): CInt = extern
+  def sui_alert_choose(h: Handle, index: CInt): CInt = extern
 }
 
 /** `sui_create` kind codes, from Abi.kinds. A code whose view is "-" on a toolkit is

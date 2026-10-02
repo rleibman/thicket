@@ -149,8 +149,8 @@ object Abi {
     * to check it does. So a shim that quietly builds a different widget, or handles a code this table does not know,
     * fails on any machine.
     *
-    * `None` is a code that is reserved and not built by that shim; Scala refuses to create it rather than let it reach
-    * the shim's `default:` branch.
+    * `None` is a code that is reserved and not built by that shim (write it as `Kind(code, name, None, None, why)`);
+    * Scala refuses to create it rather than let it reach the shim's `default:` branch. Since #18 every code is built.
     */
   final case class Kind(
     code:    Int,
@@ -167,12 +167,6 @@ object Abi {
     uiKit:   String,
     comment: String = ""
   ) = Kind(code, name, Some(appKit), Some(uiKit), comment)
-
-  private def reserved(
-    code: Int,
-    name: String,
-    why:  String
-  ) = Kind(code, name, None, None, s"reserved, not built yet ($why)")
 
   val kinds: List[Kind] = List(
     built(0, "Column", "TapView(", "UIStackView("),
@@ -191,8 +185,8 @@ object Abi {
     built(13, "Slider", "NSSlider(", "UISlider("),
     built(14, "SecureField", "NSSecureTextField(", "UITextField(", "isSecureTextEntry on UIKit"),
     built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create"),
-    reserved(16, "Alert", "phase 3; NSAlert / UIAlertController"),
-    reserved(17, "Sheet", "phase 3; a sheet on AppKit, a presented view controller on UIKit")
+    built(16, "Alert", "AlertView(", "AlertView(", "a placeholder; NSAlert / UIAlertController at present"),
+    built(17, "Sheet", "SheetView(", "SheetView(", "a container; a sheet window / a presented controller")
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of
@@ -286,7 +280,14 @@ object Abi {
   )
 
   val threading: List[Fn] = List(
-    Fn("sui_run_on_main", Void, List(p("cb", VoidCb), p("ctx", I64)))
+    Fn("sui_run_on_main", Void, List(p("cb", VoidCb), p("ctx", I64))),
+    Fn(
+      "sui_run_on_main_after",
+      Void,
+      List(p("delay_ms", I32), p("cb", VoidCb), p("ctx", I64)),
+      doc = "The same, after at least `delay_ms`. For waiting on the platform a frame at a time\n" +
+        "   rather than spinning the run loop with sui_run_on_main."
+    )
   )
 
   /** The one place control is inverted: everywhere else Scala builds a tree and the shim obeys, but a table asks for
@@ -323,6 +324,25 @@ object Abi {
     )
   )
 
+  /** Widgets shown *over* the app rather than attached to it (`WidgetKind.presented`). The handle is created and
+    * configured like any other, and its children mount into it by the ordinary path; only the attachment differs.
+    */
+  val presentation: List[Fn] = List(
+    setter("sui_present").copy(doc = "Shows an Alert or a Sheet over the app. Called after its children are mounted."),
+    setter("sui_dismiss").copy(
+      doc = "Takes it down because the app asked. Never reported through sui_on_dismiss, which is\n" +
+        "   for the platform closing it. Does not release the handle: sui_destroy does."
+    ),
+    setter("sui_set_message", "text" -> Str).copy(doc = "An alert's secondary text."),
+    setter("sui_alert_clear_actions"),
+    setter("sui_alert_add_action", "label" -> Str, "role" -> I32, "cb" -> VoidCb, "ctx" -> I64).copy(
+      doc = "role: 0 plain, 1 destructive, 2 cancel. Roles, not styling: each platform decides what\n" +
+        "   they look like and where they go."
+    ),
+    setter("sui_on_dismiss", "cb" -> VoidCb, "ctx" -> I64)
+      .copy(doc = "The platform closed it without a choice: Escape, a swipe down.")
+  )
+
   val inspection: List[Fn] = List(
     Fn("sui_child_count", I32, List(p("h", Handle))),
     Fn("sui_child_at", Handle, List(p("h", Handle), p("index", I32))),
@@ -349,7 +369,49 @@ object Abi {
         "   no fraction); -2 when the view shows no progress at all."
     ),
     Fn("sui_get_value", F64, List(p("h", Handle)), doc = "A slider's value, in the app's own units."),
-    Fn("sui_is_secure", I32, List(p("h", Handle)), doc = "1 when the field masks what is typed into it.")
+    Fn("sui_is_secure", I32, List(p("h", Handle)), doc = "1 when the field masks what is typed into it."),
+    Fn(
+      "sui_is_presented",
+      I32,
+      List(p("h", Handle)),
+      doc = "1 while an Alert or Sheet is on screen, as the platform reports it."
+    ),
+    Fn(
+      "sui_presented_title",
+      Str,
+      List(p("h", Handle)),
+      doc = "The title the platform is *showing* for a presented widget, read from the alert or the\n" +
+        "   sheet's own chrome rather than from what the renderer was told. NULL when not presented."
+    ),
+    Fn("sui_presented_message", Str, List(p("h", Handle)), doc = "An alert's secondary text, as shown."),
+    Fn(
+      "sui_presented_count",
+      I32,
+      Nil,
+      doc = "How many things the platform has presented over the app right now — sheets attached to\n" +
+        "   the window, or the chain of presented view controllers. The platform's answer, so a\n" +
+        "   widget the renderer believes it dismissed but UIKit is still showing counts."
+    ),
+    Fn("sui_alert_action_count", I32, List(p("h", Handle))),
+    Fn(
+      "sui_alert_action_label",
+      Str,
+      List(p("h", Handle), p("index", I32)),
+      doc = "In the order the platform holds them, which need not be the order declared."
+    ),
+    Fn(
+      "sui_perform_click",
+      I32,
+      List(p("h", Handle)),
+      doc = "Clicks a button the way a user would, through the control's own action. 0 if not a button."
+    ),
+    Fn(
+      "sui_alert_choose",
+      I32,
+      List(p("h", Handle), p("index", I32)),
+      doc = "Chooses action `index` through the platform's own response path. 0 where the platform\n" +
+        "   offers no way to do that from code (UIKit), rather than a simulation that would pass."
+    )
   )
 
   /** `doc`, when set, is emitted as a comment under the group's rule in the header. */
@@ -373,6 +435,7 @@ object Abi {
       doc = "The one place control is inverted: everywhere else Scala builds a tree and the shim" + "\n" +
         "   obeys, but a table asks for the row it is about to show and recycles the ones it is not."
     ),
+    Group("presentation", presentation),
     Group("inspection, for the self-test", inspection)
   )
 
