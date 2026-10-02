@@ -4,7 +4,7 @@
 renderer lands — unlike `docs/01`–`docs/09`, which are frozen. The target is the v1
 catalogue in `docs/07` §7.10.
 
-**Last updated:** 2026-09-30 (Alert and Sheet on Apple, #18).
+**Last updated:** 2026-10-02 (context menus on Apple, #19).
 
 ## 12.1 Scoreboard
 
@@ -15,13 +15,14 @@ catalogue in `docs/07` §7.10.
 | Widgets implemented on **every** renderer that exists | **17** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **26** |
-| Props implemented on every renderer | **25** — `ContextMenu` is a no-op on Apple: it needs `NSView.menu` / `UIContextMenuInteraction` (#19) |
+| Props implemented on every renderer | **26** — all of them |
 
 **Seventeen of thirty-two, every one on every renderer.** The six phase 2 widgets landed on
-AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18. The Apple
-self-test is **68/68** on macOS and **64/64** on the iOS simulator; the four iOS does not run
-are the three that choose an alert action from code (UIKit offers no way to) and one
-overflow check a phone is too wide to exercise, and each says so rather than passing.
+AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
+menus followed in #19. The Apple self-test is **77/77** on macOS and **71/71** on the iOS
+simulator; the six iOS does not run are the three that choose an alert action and the two
+that choose a menu item from code (UIKit offers no public way to do either) and one overflow
+check a phone is too wide to exercise, and each says so rather than passing.
 
 The first nine were, deliberately, the ones that forced the contract to be right: a
 tappable container, a two-way-bound field, a recycling list and a viewport between them
@@ -68,7 +69,26 @@ a `PopupMenu` anchored at the view. So it is `Prop.ContextMenu(Seq[MenuItem])` a
 `.contextMenu(...)` modifier, and it adds no node to the tree.
 
 Which gesture opens it is the platform's and deliberately not the app's: **secondary click
-on GTK, long press on Android**. An app that hard-coded either would be wrong on the other.
+on GTK and AppKit, long press on Android and UIKit**. An app that hard-coded either would be
+wrong on the others.
+
+On Apple (#19) it is `NSView.menu` — AppKit opens it on secondary click with no gesture
+installed, and a click on a label inside the row reaches the row's menu through the
+responder chain — and a `UIContextMenuInteraction` whose delegate builds the `UIMenu` when
+UIKit asks. Neither adds a subview: a row with a menu still reports exactly its two
+children, and unlike GTK's popover the labels do not appear in a tree walk, both checked.
+Choosing **Delete** through `NSMenu.performActionForItem(at:)` removes that row and only
+that row (control: dispatching to the first item instead fails the check). UIKit has no
+public way to perform a `UIAction` from code, so that check is not run on iOS and says so.
+
+**Lifetime is measured, not assumed.** Both shims count live menu items in `init`/`deinit`.
+Once the run loop turns there are exactly two per mounted row, and a removed row's two go
+with it. On AppKit "once the run loop turns" matters: a destroyed view and its menu are freed
+when the autorelease pool drains, so mid-way through the synchronous self-test 24 items were
+alive for 5 rows, settling to 10. UIKit's interaction holds its delegate weakly; the shim
+owns it, and the self-test reads menus back *through* the interaction's `delegate`. Controls,
+each failing as it should: a delegate held only weakly reads as no menus at all; a source
+kept past `sui_destroy`, or an `NSMenu` kept in a global, leaves the count at 24.
 
 GTK uses a `GtkPopover` of flat buttons with the `menu` style class rather than a
 `GtkPopoverMenu`. The latter is the more menu-ish widget but is driven by a `GMenuModel`
@@ -199,10 +219,9 @@ the point of doing this in Scala.
 `OnCheckedChange`, `Style`, `Grow`, `Align`, `Tint`, `Fill`, `Picture`, `Fit`,
 `TextEmphasis`, `Axis`, `Progress`, `Value`, `Range`, `OnValueChange`.
 
-**"Handled" is not "honoured."** Twenty-five of the twenty-six are honoured everywhere:
-`Message`, `Actions` and `OnDismiss` were unreachable on Apple until `Alert` could be presented
-(#18). The remaining one, `ContextMenu`, is a no-op on Apple until #19 — a known gap rather
-than a silent one.
+**"Handled" is not "honoured."** All twenty-six are honoured everywhere. `Message`, `Actions`
+and `OnDismiss` were unreachable on Apple until `Alert` could be presented (#18), and
+`ContextMenu` was the last, until #19.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
 until Forgejo **#4**.
 
@@ -226,7 +245,8 @@ depends on it until `Grid` or absolute positioning does.
 **Division of labour.** Apple work is done on the macOS laptop, so anything AppKit/UIKit is
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
-widgets) and **#18** (`Alert`, `Sheet`) are done; context menus (#19) are next. Everything else is built and measured on the
+widgets), **#18** (`Alert`, `Sheet`) and **#19** (context menus) are done; `AppRoot.pages`
+(#25) is next. Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:
@@ -253,7 +273,7 @@ someone and watch. It implies five things, roughly in dependency order.
 |---|---|---|
 | 1 | **Shim generation** (Forgejo **#7**, phase 1 — *adopted 2026-09-29, GitHub #3; Swift bodies deliberately stay hand-written*) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
-| 3 | **Apple parity** — context menus (#19); everything else in the catalogue is on all four | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
+| 3 | **Apple parity** — `AppRoot.pages` (#25); everything else in the catalogue is on all four | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |
 | 5 | **Published artefacts and a getting-started** | Without these, "an outside developer" is not a thing that can be tested. |
 
