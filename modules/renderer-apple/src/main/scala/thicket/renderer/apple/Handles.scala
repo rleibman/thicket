@@ -17,6 +17,7 @@ object Handles {
   private val texts = new ConcurrentHashMap[java.lang.Long, String => Unit]()
   private val bools = new ConcurrentHashMap[java.lang.Long, Boolean => Unit]()
   private val values = new ConcurrentHashMap[java.lang.Long, Double => Unit]()
+  private val ints = new ConcurrentHashMap[java.lang.Long, Int => Unit]()
   private val rows = new ConcurrentHashMap[java.lang.Long, (Int, Option[Shim.Handle]) => Shim.Handle]()
   private val nextId = new AtomicLong(1L)
 
@@ -41,6 +42,12 @@ object Handles {
   def registerValue(f: Double => Unit): Long = {
     val id = nextId.getAndIncrement()
     values.put(id, f)
+    id
+  }
+
+  def registerInt(f: Int => Unit): Long = {
+    val id = nextId.getAndIncrement()
+    ints.put(id, f)
     id
   }
 
@@ -75,6 +82,7 @@ object Handles {
     val _ = texts.remove(id)
     val _ = bools.remove(id)
     val _ = values.remove(id)
+    val _ = ints.remove(id)
     val _ = rows.remove(id)
   }
 
@@ -161,6 +169,18 @@ object Handles {
       ) =>
         GcState.guarded {
           val f = values.get(id)
+          if f != null then f(value)
+        }
+    )
+
+  val intTrampoline: Shim.IntCb =
+    CFuncPtr2.fromScalaFunction(
+      (
+        id:    Long,
+        value: CInt
+      ) =>
+        GcState.guarded {
+          val f = ints.get(id)
           if f != null then f(value)
         }
     )

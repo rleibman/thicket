@@ -27,6 +27,9 @@ object Shim {
   /** A slider's value, in the app's own units. */
   type ValueCb = CFuncPtr2[Long, Double, Unit]
 
+  /** A small integer, such as the depth a navigation stack was popped to. */
+  type IntCb = CFuncPtr2[Long, CInt, Unit]
+
   def sui_app_start(width: CInt, height: CInt, title: CString, ready: VoidCb, ctx: Long): Unit = extern
   def sui_root_view(): Handle = extern
   def sui_window_set_title(title: CString): Unit = extern
@@ -74,6 +77,10 @@ object Shim {
   def sui_on_dismiss(h: Handle, cb: VoidCb, ctx: Long): Unit = extern
   def sui_menu_clear(h: Handle): Unit = extern
   def sui_menu_add_item(h: Handle, label: CString, enabled: CInt, cb: VoidCb, ctx: Long): Unit = extern
+  def sui_pages_begin(): Unit = extern
+  def sui_pages_add(id: Long, content: Handle, title: CString): Unit = extern
+  def sui_pages_commit(): Unit = extern
+  def sui_on_pages_popped(cb: IntCb, ctx: Long): Unit = extern
   def sui_child_count(h: Handle): CInt = extern
   def sui_child_at(h: Handle, index: CInt): Handle = extern
   def sui_get_text(h: Handle): CString = extern
@@ -87,6 +94,11 @@ object Shim {
   def sui_presented_message(h: Handle): CString = extern
   def sui_menu_item_count(h: Handle): CInt = extern
   def sui_menu_item_label(h: Handle, index: CInt): CString = extern
+  def sui_pages_depth(): CInt = extern
+  def sui_page_title(index: CInt): CString = extern
+  def sui_pages_shown(): CInt = extern
+  def sui_pages_back_offered(): CInt = extern
+  def sui_pages_back(): CInt = extern
   def sui_menu_live(): CInt = extern
   def sui_menu_activate(h: Handle, index: CInt): CInt = extern
   def sui_presented_count(): CInt = extern
