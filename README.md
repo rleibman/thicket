@@ -48,15 +48,29 @@ This is early. It is real software with measured numbers, not a prototype — bu
 | For | You need |
 |---|---|
 | Everything | JDK 21+, [sbt 2](https://www.scala-sbt.org/) (`cs install sbt`), [coursier](https://get-coursier.io/) |
-| Linux/GTK4 | `libgtk-4-dev`, `libunwind-dev`, clang |
+| Linux desktop | the apt packages below |
 | Android | Android SDK (platform 36 + build-tools), an emulator or device |
 | macOS / iOS | Xcode, on a Mac — see [spikes/MAC-SETUP.md](spikes/MAC-SETUP.md) |
 
-Scala Native needs `clang`, `libunwind-dev` and GTK's development headers; on Ubuntu:
+### Linux
 
 ```bash
-sudo apt install clang libunwind-dev libgtk-4-dev
+sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev
 ```
+
+| Package | Needed for | Verified against |
+|---|---|---|
+| `clang` | Scala Native compiles and links through it | 21.1.6 |
+| `libunwind-dev` | Scala Native's unwinder — the runtime will not link without it | 1.8.3 |
+| `pkg-config` | `build.sbt` runs `pkg-config --cflags gtk4 libadwaita-1` and the matching `--libs` to get the compile and link flags, so a missing `pkg-config` fails the *build*, not just the link | 2.5.1 |
+| `libgtk-4-dev` | the GTK4 renderer | 4.22.4 |
+| `libadwaita-1-dev` | `AdwNavigationView`, for native navigation containers. GTK core has no equivalent — `GtkStack` gives transitions but no back-gesture semantics | 1.9.1 |
+| `python3` | `bin/coverage.sh` reads the scoverage report with it | any 3.x |
+
+The `-dev` packages are the point: the runtime libraries alone are not enough, because
+Scala Native compiles against the C headers.
+
+Everything else is fetched by coursier and needs nothing installed.
 
 ### Run the demo in one command
 
