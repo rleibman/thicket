@@ -87,6 +87,7 @@ object Shim {
   def sui_presented_message(h: Handle): CString = extern
   def sui_menu_item_count(h: Handle): CInt = extern
   def sui_menu_item_label(h: Handle, index: CInt): CString = extern
+  def sui_menu_live(): CInt = extern
   def sui_menu_activate(h: Handle, index: CInt): CInt = extern
   def sui_presented_count(): CInt = extern
   def sui_alert_action_count(h: Handle): CInt = extern

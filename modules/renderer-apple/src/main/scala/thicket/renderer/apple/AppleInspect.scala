@@ -94,4 +94,7 @@ object AppleInspect {
     index: Int
   ): Boolean = Shim.sui_menu_activate(h, index) != 0
 
+  /** Menu items the shim still holds, counted as they are freed. */
+  def liveMenuItems: Int = Shim.sui_menu_live()
+
 }

@@ -19,7 +19,7 @@ catalogue in `docs/07` §7.10.
 
 **Seventeen of thirty-two, every one on every renderer.** The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
-menus followed in #19. The Apple self-test is **75/75** on macOS and **69/69** on the iOS
+menus followed in #19. The Apple self-test is **77/77** on macOS and **71/71** on the iOS
 simulator; the six iOS does not run are the three that choose an alert action and the two
 that choose a menu item from code (UIKit offers no public way to do either) and one overflow
 check a phone is too wide to exercise, and each says so rather than passing.
@@ -80,6 +80,15 @@ children, and unlike GTK's popover the labels do not appear in a tree walk, both
 Choosing **Delete** through `NSMenu.performActionForItem(at:)` removes that row and only
 that row (control: dispatching to the first item instead fails the check). UIKit has no
 public way to perform a `UIAction` from code, so that check is not run on iOS and says so.
+
+**Lifetime is measured, not assumed.** Both shims count live menu items in `init`/`deinit`.
+Once the run loop turns there are exactly two per mounted row, and a removed row's two go
+with it. On AppKit "once the run loop turns" matters: a destroyed view and its menu are freed
+when the autorelease pool drains, so mid-way through the synchronous self-test 24 items were
+alive for 5 rows, settling to 10. UIKit's interaction holds its delegate weakly; the shim
+owns it, and the self-test reads menus back *through* the interaction's `delegate`. Controls,
+each failing as it should: a delegate held only weakly reads as no menus at all; a source
+kept past `sui_destroy`, or an `NSMenu` kept in a global, leaves the count at 24.
 
 GTK uses a `GtkPopover` of flat buttons with the `menu` style class rather than a
 `GtkPopoverMenu`. The latter is the more menu-ish widget but is driven by a `GMenuModel`

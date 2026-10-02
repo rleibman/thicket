@@ -1096,14 +1096,24 @@ public func sui_presented_count() -> Int32 {
 
 // MARK: - context menus
 
+/// Menu items alive right now, counted in `init` and `deinit` so that "the menu went with
+/// its view" is a number rather than an assumption.
+private var liveMenuItems: Int32 = 0
+
 /// An item's callback, carried on the `NSMenuItem` itself. `representedObject` needs an
-/// object, and `Tap` is a struct.
+/// object, and `Tap` is a struct. Owned by the item, which the menu owns, which the view
+/// owns: nothing here outlives the view, and the count says so.
 private final class MenuChoice: NSObject {
   let tap: Tap
-  init(_ tap: Tap) { self.tap = tap }
+  init(_ tap: Tap) {
+    self.tap = tap
+    liveMenuItems += 1
+  }
+  deinit { liveMenuItems -= 1 }
 }
 
-/// NSMenuItem target/action needs an ObjC object, as every AppKit control does here.
+/// `NSMenuItem.target` is weak; this one is a global and lives for the process.
+
 private final class MenuTarget: NSObject {
   @objc func chosen(_ sender: NSMenuItem) {
     guard let c = sender.representedObject as? MenuChoice else { return }
@@ -1161,4 +1171,9 @@ public func sui_menu_activate(_ h: UnsafeMutableRawPointer, _ index: Int32) -> I
   else { return 0 }
   menu.performActionForItem(at: Int(index))
   return 1
+}
+
+@_cdecl("sui_menu_live")
+public func sui_menu_live() -> Int32 {
+  liveMenuItems
 }

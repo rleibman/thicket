@@ -173,6 +173,9 @@ const char *sui_presented_message(sui_handle h);
 /* How many items the platform's menu for this view holds; 0 when it has none. */
 int32_t sui_menu_item_count(sui_handle h);
 const char *sui_menu_item_label(sui_handle h, int32_t index);
+/* How many menu items the shim still holds, counted as they are freed. Falls by a
+   row's items when the row is destroyed, or the menu leaked with its view. */
+int32_t sui_menu_live(void);
 /* Chooses item `index` through the platform's own menu path. 0 where the platform offers
    no way to do that from code (UIKit), rather than a simulation that would pass. */
 int32_t sui_menu_activate(sui_handle h, int32_t index);

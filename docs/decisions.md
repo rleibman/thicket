@@ -78,9 +78,13 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   destroy. Measured: every row has a menu of the app's two items, a row with a menu still has
   exactly its two children, and the labels are absent from a tree walk (on GTK they are
   present — checked, not assumed). Choosing Delete through `NSMenu`'s own dispatch removes
-  that row only; control: dispatching to the first item fails it. Self-test **75/75** macOS,
-  **69/69** iOS; UIKit offers no public way to perform a `UIAction`, so the Delete check is
-  not run on iOS and the test says so.
+  that row only; control: dispatching to the first item fails it. Self-test **77/77** macOS,
+  **71/71** iOS; UIKit offers no public way to perform a `UIAction`, so the Delete check is
+  not run on iOS and the test says so. Lifetime, after review: both shims count live items in
+  `init`/`deinit` — exactly two per mounted row once the run loop turns, and a removed row's
+  two are freed. AppKit frees them when the autorelease pool drains, not at `sui_destroy`
+  (24 live for 5 rows mid-test, then 10). Controls: a UIKit delegate held only weakly reads
+  as no menus; a source kept past destroy, or an `NSMenu` kept in a global, stays at 24.
 
 - 2026-09-30 — **The iOS host initialises Scala Native at the top of `main`, before
   `UIApplicationMain`, not in scene setup** (#22). Scala Native's collector records a

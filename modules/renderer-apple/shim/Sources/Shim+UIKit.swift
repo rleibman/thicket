@@ -1030,11 +1030,33 @@ public func sui_presented_count() -> Int32 {
 
 // MARK: - context menus
 
+/// Menu items alive right now, counted in `init` and `deinit` so that "the menu went with
+/// its view" is a number rather than an assumption.
+private var liveMenuItems: Int32 = 0
+
+private final class MenuChoice {
+  let label: String
+  let enabled: Bool
+  let tap: Tap
+  init(_ label: String, _ enabled: Bool, _ tap: Tap) {
+    self.label = label
+    self.enabled = enabled
+    self.tap = tap
+    liveMenuItems += 1
+  }
+  deinit { liveMenuItems -= 1 }
+}
+
 /// A view's menu items, and the delegate its `UIContextMenuInteraction` asks for them. The
 /// menu is built when UIKit asks — on a long press — from whatever the items are then, so
 /// replacing the items needs no new interaction.
+///
+/// The interaction holds its delegate **weakly**, so `menuSources` is what keeps this alive,
+/// and `sui_destroy` is what lets it go. Inspection reads the menu back through the
+/// interaction's own `delegate`, so a delegate that had been freed early would read as no
+/// menu at all rather than being papered over by the dictionary.
 private final class MenuSource: NSObject, UIContextMenuInteractionDelegate {
-  var items: [(label: String, enabled: Bool, tap: Tap)] = []
+  var items: [MenuChoice] = []
 
   func makeMenu() -> UIMenu {
     UIMenu(children: items.map { item in
@@ -1075,16 +1097,15 @@ public func sui_menu_add_item(
     v.addInteraction(UIContextMenuInteraction(delegate: source))
     v.isUserInteractionEnabled = true
   }
-  source.items.append((String(cString: label), enabled != 0, Tap(cb: cb, ctx: ctx)))
+  source.items.append(MenuChoice(String(cString: label), enabled != 0, Tap(cb: cb, ctx: ctx)))
 }
 
 /// Read from the menu UIKit would be given — `makeMenu()` is what the interaction's
-/// configuration returns — and only when an interaction is actually attached to the view.
+/// configuration returns — reached through the attached interaction's own weak `delegate`,
+/// not through `menuSources`, so this sees exactly what UIKit would see.
 private func attachedMenu(_ h: UnsafeMutableRawPointer) -> UIMenu? {
-  let v = view(h)
-  guard v.interactions.contains(where: { $0 is UIContextMenuInteraction }),
-        let source = menuSources[ObjectIdentifier(v)], !source.items.isEmpty
-  else { return nil }
+  let interaction = view(h).interactions.compactMap { $0 as? UIContextMenuInteraction }.first
+  guard let source = interaction?.delegate as? MenuSource, !source.items.isEmpty else { return nil }
   return source.makeMenu()
 }
 
@@ -1104,4 +1125,9 @@ public func sui_menu_item_label(_ h: UnsafeMutableRawPointer, _ index: Int32) ->
 @_cdecl("sui_menu_activate")
 public func sui_menu_activate(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
   0
+}
+
+@_cdecl("sui_menu_live")
+public func sui_menu_live() -> Int32 {
+  liveMenuItems
 }

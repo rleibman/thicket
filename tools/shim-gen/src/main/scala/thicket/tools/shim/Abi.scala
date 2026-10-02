@@ -402,6 +402,13 @@ object Abi {
     ),
     Fn("sui_menu_item_label", Str, List(p("h", Handle), p("index", I32))),
     Fn(
+      "sui_menu_live",
+      I32,
+      Nil,
+      doc = "How many menu items the shim still holds, counted as they are freed. Falls by a\n" +
+        "   row's items when the row is destroyed, or the menu leaked with its view."
+    ),
+    Fn(
       "sui_menu_activate",
       I32,
       List(p("h", Handle), p("index", I32)),
