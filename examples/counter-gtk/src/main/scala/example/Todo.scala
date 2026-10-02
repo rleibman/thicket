@@ -221,6 +221,37 @@ object Todo {
     check("and they come back on return",
       GtkInspect.allTexts(GtkApp.windowHandle).contains("About"))
 
+    // --- context menu: a property of a row, not a widget in the tree ---
+    // A popover is parented to its widget rather than placed in the box, so the row's
+    // child count is unchanged — that is the observable difference between a menu and a
+    // presented widget, and the reason ContextMenu is a prop.
+    val menuPopovers = GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isPopover)
+    check("every list row carries a popover",
+      menuPopovers.length >= model.visibleItems.now.size,
+      s"${menuPopovers.length} popovers for ${model.visibleItems.now.size} rows")
+
+    // The popover is populated with the app's items. Note these labels DO show up in a
+    // widget walk: a GTK4 popover is a child of its widget, just not of the box's layout.
+    // An earlier version of this check asserted the opposite and failed, correctly.
+    check("the popover holds the menu's items",
+      menuPopovers.exists(p => GtkInspect.allTexts(p).contains("Delete")),
+      menuPopovers.map(GtkInspect.allTexts).toString)
+
+    // Drive a real menu item. The previous version of this check compared the item count
+    // against itself with nothing in between - a check that could not fail, which is the
+    // exact sin the issue descriptions warn about, written while removing a different bad
+    // check. Emitting `clicked` on the popover's own button runs the item's closure through
+    // the handle table the way a user's click does.
+    val targetRow  = model.visibleItems.now.head
+    val beforeMenu = model.items.now.size
+    val popoverFor = menuPopovers.find(p => GtkInspect.allTexts(p).contains("Delete"))
+    check("a menu item can be activated",
+      popoverFor.exists(p => GtkApp.clickMenuItem(p, "Delete")),
+      "no Delete button found inside any popover")
+    check("choosing Delete removes that row, and only that one",
+      model.items.now.size == beforeMenu - 1 && !model.items.now.exists(_.id == targetRow.id),
+      s"was $beforeMenu, now ${model.items.now.size}: ${model.items.now.map(_.title)}")
+
     // --- Sheet: a presented *container*, with a live subtree inside it ---
     check("no sheet window before it is asked for",
       GtkInspect.findAll(GtkApp.windowHandle)(GtkInspect.isEntry).length == 2,

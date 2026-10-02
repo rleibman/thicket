@@ -186,6 +186,15 @@ object SelfTest {
     val _ = app.back()
     check("and they come back on return", app.actions.now.map(_.label) == Seq("Add", "Note", "About"))
 
+    // --- context menu: a property of a row, not a widget in the tree ---
+    // Android's PopupMenu is built on demand inside the long-press handler, so there is
+    // nothing in the view tree to find before the gesture. What is observable here is that
+    // the rows are long-clickable at all - the renderer set a listener - and the real
+    // gesture is driven from adb in the build script's screenshot pass.
+    val longClickable = findAll(root)(v => v.isLongClickable)
+    check("list rows are long-clickable", longClickable.nonEmpty,
+      "a row with a ContextMenu must accept the platform's gesture for one")
+
     // --- Sheet: a presented *container*, with a live subtree inside it ---
     check("no sheet before it is asked for", !model.editing.now)
     model.editing.set(true)

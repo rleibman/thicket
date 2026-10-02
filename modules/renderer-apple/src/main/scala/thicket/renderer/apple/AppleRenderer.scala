@@ -277,6 +277,12 @@ final class AppleRenderer extends Renderer {
             dismissIds(handle) = id
             Shim.sui_on_dismiss(handle, Handles.tapTrampoline, id)
         }
+
+      // Not yet honoured. `NSView.menu` and `UIContextMenuInteraction` both model this the
+      // way the prop does, so it is a small addition once the shim carries menu items —
+      // but a menu that silently never opens is worse than one that is known missing, so
+      // it is tracked rather than half-built. Issue #19.
+      case Prop.ContextMenu(_) => ()
     }
 
   def insertAfter(

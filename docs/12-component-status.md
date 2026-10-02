@@ -14,8 +14,8 @@ catalogue in `docs/07` §7.10.
 | Widgets implemented on at least one renderer | **17** |
 | Widgets implemented on **every** renderer that exists | **17** |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **25** |
-| Props implemented on every renderer | **25** — all of them |
+| Props in the contract | **26** |
+| Props implemented on every renderer | **25** — `ContextMenu` is a no-op on Apple: it needs `NSView.menu` / `UIContextMenuInteraction` (#19) |
 
 **Seventeen of thirty-two, every one on every renderer.** The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18. The Apple
@@ -60,6 +60,21 @@ would need the same special case in three methods — twelve places to keep in s
 
 Mounting presents, unmounting dismisses: `Show(confirming)(Alert(...))` is the whole API.
 That is the same mechanism `Spinner` uses, rather than a second imperative way to say it.
+
+**`Menu` is a prop, not a widget kind — and that is the §12.2a question answered a third
+time.** All four toolkits model a context menu as something a view *has*, never a sibling
+you place: `NSView.menu`, `UIContextMenuInteraction`, a `GtkPopover` parented to the widget,
+a `PopupMenu` anchored at the view. So it is `Prop.ContextMenu(Seq[MenuItem])` and an
+`.contextMenu(...)` modifier, and it adds no node to the tree.
+
+Which gesture opens it is the platform's and deliberately not the app's: **secondary click
+on GTK, long press on Android**. An app that hard-coded either would be wrong on the other.
+
+GTK uses a `GtkPopover` of flat buttons with the `menu` style class rather than a
+`GtkPopoverMenu`. The latter is the more menu-ish widget but is driven by a `GMenuModel`
+whose items address `GAction`s *by name* through an action group — an indirection that does
+not fit an API where each item carries its own closure. Worth revisiting if keyboard
+navigation or accessibility turns out to differ.
 
 **`Sheet` is what proved the seam generalises.** It is presented *and* a container, so its
 children mount into its handle by the ordinary `insertAfter` path while only the attachment
@@ -128,7 +143,7 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 |---|---|
 | Layout | `Stack`/`ZStack`, `SafeArea`, `Grid` |
 | Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `Picker`, `DatePicker`, `Link` |
-| Containers | `TabView`, `Sheet`/`Modal`, `Menu`/`ContextMenu`, `Toolbar` |
+| Containers | `TabView` |
 
 `IconButton` and `Link` are held back on purpose: the first needs an icon/resource system
 and the second needs platform URL opening, and neither should be improvised inside a widget.
@@ -184,9 +199,10 @@ the point of doing this in Scala.
 `OnCheckedChange`, `Style`, `Grow`, `Align`, `Tint`, `Fill`, `Picture`, `Fit`,
 `TextEmphasis`, `Axis`, `Progress`, `Value`, `Range`, `OnValueChange`.
 
-**"Handled" is not "honoured."** All twenty-five are now honoured everywhere: `Message`,
-`Actions` and `OnDismiss` were the last, unreachable on Apple until `Alert` could be presented
-(#18).
+**"Handled" is not "honoured."** Twenty-five of the twenty-six are honoured everywhere:
+`Message`, `Actions` and `OnDismiss` were unreachable on Apple until `Alert` could be presented
+(#18). The remaining one, `ContextMenu`, is a no-op on Apple until #19 — a known gap rather
+than a silent one.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
 until Forgejo **#4**.
 

@@ -8,7 +8,7 @@ import android.view.{Gravity, View, ViewGroup}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, ProgressBar, ScrollView, SeekBar, Switch, TextView}
+import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, ScrollView, SeekBar, Switch, TextView}
 import scala.collection.mutable
 import thicket.renderer.*
 
@@ -366,6 +366,28 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.OnDismiss(f) => alertDismiss(handle) = f
 
       case Prop.Actions(as) => alertActions(handle) = as
+
+      case Prop.ContextMenu(items) =>
+        // Long press, which is Android's gesture for this — not right-click, which the
+        // desktop renderers use. The app says "this widget has a menu" and each platform
+        // decides how it is summoned.
+        handle.setOnLongClickListener { (v: View) =>
+          val menu = PopupMenu(context, v)
+          items.zipWithIndex.foreach { (item, i) =>
+            val mi = menu.getMenu.add(_root_.android.view.Menu.NONE, i, i, item.label)
+            mi.setEnabled(item.enabled)
+          }
+          // `_root_.` because this file's own package is `thicket.renderer.android`, so a bare
+          // `android.view` resolves to the wrong thing — the same trap as `_root_.android.R`.
+          menu.setOnMenuItemClickListener { (mi: _root_.android.view.MenuItem) =>
+            items.lift(mi.getItemId) match {
+              case Some(item) => item.onSelect(); true
+              case None       => false
+            }
+          }
+          menu.show()
+          true
+        }
 
       case Prop.Progress(value) =>
         handle match {

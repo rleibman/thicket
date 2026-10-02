@@ -22,6 +22,7 @@ final class TestRenderer extends Renderer {
     var onValueChange:   Option[Double => Unit] = None,
     var onDismiss:       Option[() => Unit] = None,
     var actions:         Seq[thicket.renderer.AlertAction] = Nil,
+    var menu:            Seq[thicket.renderer.MenuItem] = Nil,
     // Numbers are kept as numbers, never stringified. Scala.js has no int/double
     // distinction, so `7.0.toString` is "7" there and "7.0" on the JVM — a test that
     // compares the rendered string passes on one backend and fails on the other.
@@ -184,6 +185,9 @@ final class TestRenderer extends Renderer {
       case Prop.OnValueChange(f) => n.onValueChange = Some(f)
       case Prop.Message(v)       => n.props("message") = v
       case Prop.OnDismiss(f)     => n.onDismiss = Some(f)
+      case Prop.ContextMenu(items) =>
+        n.menu = items
+        n.props("menu") = items.map(_.label).mkString(",")
       case Prop.Actions(as) =>
         n.actions = as
         n.props("actions") = as.map(_.label).mkString(",")
