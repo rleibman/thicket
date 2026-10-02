@@ -69,6 +69,19 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-01 — **libadwaita is a dependency of the Linux renderer, and the full apt list is
+  in the README.** GTK core has no navigation container: `GtkStack` gives transitions but no
+  back-gesture semantics, and `AdwNavigationView` is the thing GNOME apps actually use.
+  `libadwaita-1-dev` 1.9.1 and the matching `com.indoorvivants.gnome:adwaita_native0.5_3`
+  0.2.6 bindings — the same version as the GTK4 bindings already in the build — make it
+  viable without generating bindings by hand.
+  The README now lists every Linux package with what it is for and the version it was
+  verified against, including two that were implicit before: **`pkg-config`**, which
+  `build.sbt` shells out to for GTK's compile *and* link flags, so missing it fails the
+  build rather than the link; and `python3`, which `bin/coverage.sh` uses. The `-dev`
+  suffixes matter — Scala Native compiles against the C headers, so runtime libraries alone
+  do not suffice.
+
 - 2026-09-30 — **A context menu is a *prop*, not a widget kind.** All four toolkits model it
   as something a view has — `NSView.menu`, `UIContextMenuInteraction`, a `GtkPopover`
   parented to the widget, a `PopupMenu` anchored at the view — so `Prop.ContextMenu` and a
