@@ -1093,3 +1093,87 @@ public func sui_presented_count() -> Int32 {
   }
   return n
 }
+
+// MARK: - context menus
+
+/// Menu items alive right now, counted in `init` and `deinit` so that "the menu went with
+/// its view" is a number rather than an assumption.
+private var liveMenuItems: Int32 = 0
+
+/// An item's callback, carried on the `NSMenuItem` itself. `representedObject` needs an
+/// object, and `Tap` is a struct. Owned by the item, which the menu owns, which the view
+/// owns: nothing here outlives the view, and the count says so.
+private final class MenuChoice: NSObject {
+  let tap: Tap
+  init(_ tap: Tap) {
+    self.tap = tap
+    liveMenuItems += 1
+  }
+  deinit { liveMenuItems -= 1 }
+}
+
+/// `NSMenuItem.target` is weak; this one is a global and lives for the process.
+
+private final class MenuTarget: NSObject {
+  @objc func chosen(_ sender: NSMenuItem) {
+    guard let c = sender.representedObject as? MenuChoice else { return }
+    c.tap.cb(c.tap.ctx)
+  }
+}
+private let menuTarget = MenuTarget()
+
+@_cdecl("sui_menu_clear")
+public func sui_menu_clear(_ h: UnsafeMutableRawPointer) {
+  view(h).menu = nil
+}
+
+/// `NSView.menu` is all AppKit needs: a secondary click on the view — or on a subview that
+/// has no menu of its own, through the responder chain — opens it. No gesture is installed.
+@_cdecl("sui_menu_add_item")
+public func sui_menu_add_item(
+  _ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>, _ enabled: Int32,
+  _ cb: @escaping sui_void_cb, _ ctx: Int64
+) {
+  let v = view(h)
+  let menu: NSMenu
+  if let m = v.menu {
+    menu = m
+  } else {
+    menu = NSMenu()
+    // Otherwise AppKit enables items itself by asking the target, and `enabled` is ignored.
+    menu.autoenablesItems = false
+    v.menu = menu
+  }
+  let item = NSMenuItem(title: String(cString: label), action: #selector(MenuTarget.chosen(_:)), keyEquivalent: "")
+  item.target = menuTarget
+  item.isEnabled = enabled != 0
+  item.representedObject = MenuChoice(Tap(cb: cb, ctx: ctx))
+  menu.addItem(item)
+}
+
+@_cdecl("sui_menu_item_count")
+public func sui_menu_item_count(_ h: UnsafeMutableRawPointer) -> Int32 {
+  Int32(view(h).menu?.items.count ?? 0)
+}
+
+@_cdecl("sui_menu_item_label")
+public func sui_menu_item_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> UnsafePointer<CChar>? {
+  guard let items = view(h).menu?.items, index >= 0, Int(index) < items.count else { return nil }
+  return scratch(items[Int(index)].title)
+}
+
+/// `performActionForItem(at:)` is NSMenu's own dispatch — the path a click on the item
+/// takes once the menu is open — so the item's closure runs through AppKit, not around it.
+@_cdecl("sui_menu_activate")
+public func sui_menu_activate(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
+  guard let menu = view(h).menu, index >= 0, Int(index) < menu.items.count,
+        menu.items[Int(index)].isEnabled
+  else { return 0 }
+  menu.performActionForItem(at: Int(index))
+  return 1
+}
+
+@_cdecl("sui_menu_live")
+public func sui_menu_live() -> Int32 {
+  liveMenuItems
+}

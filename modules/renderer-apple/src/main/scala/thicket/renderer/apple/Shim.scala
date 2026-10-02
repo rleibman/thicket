@@ -72,6 +72,8 @@ object Shim {
   def sui_alert_clear_actions(h: Handle): Unit = extern
   def sui_alert_add_action(h: Handle, label: CString, role: CInt, cb: VoidCb, ctx: Long): Unit = extern
   def sui_on_dismiss(h: Handle, cb: VoidCb, ctx: Long): Unit = extern
+  def sui_menu_clear(h: Handle): Unit = extern
+  def sui_menu_add_item(h: Handle, label: CString, enabled: CInt, cb: VoidCb, ctx: Long): Unit = extern
   def sui_child_count(h: Handle): CInt = extern
   def sui_child_at(h: Handle, index: CInt): Handle = extern
   def sui_get_text(h: Handle): CString = extern
@@ -83,6 +85,10 @@ object Shim {
   def sui_is_presented(h: Handle): CInt = extern
   def sui_presented_title(h: Handle): CString = extern
   def sui_presented_message(h: Handle): CString = extern
+  def sui_menu_item_count(h: Handle): CInt = extern
+  def sui_menu_item_label(h: Handle, index: CInt): CString = extern
+  def sui_menu_live(): CInt = extern
+  def sui_menu_activate(h: Handle, index: CInt): CInt = extern
   def sui_presented_count(): CInt = extern
   def sui_alert_action_count(h: Handle): CInt = extern
   def sui_alert_action_label(h: Handle, index: CInt): CString = extern

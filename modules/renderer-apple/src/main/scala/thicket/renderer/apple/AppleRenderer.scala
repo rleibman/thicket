@@ -23,6 +23,7 @@ final class AppleRenderer extends Renderer {
   private val valueIds = mutable.Map.empty[Handle, Long]
   private val actionIds = mutable.Map.empty[Handle, Seq[Long]]
   private val dismissIds = mutable.Map.empty[Handle, Long]
+  private val menuIds = mutable.Map.empty[Handle, Seq[Long]]
 
   /** What is on screen *over* the app, in the order it was presented. A presented widget is by definition not in the
     * root's tree, so this is how a test finds one without walking a tree that cannot contain it.
@@ -278,11 +279,27 @@ final class AppleRenderer extends Renderer {
             Shim.sui_on_dismiss(handle, Handles.tapTrampoline, id)
         }
 
-      // Not yet honoured. `NSView.menu` and `UIContextMenuInteraction` both model this the
-      // way the prop does, so it is a small addition once the shim carries menu items —
-      // but a menu that silently never opens is worse than one that is known missing, so
-      // it is tracked rather than half-built. Issue #19.
-      case Prop.ContextMenu(_) => ()
+      // A property of the view, not a widget: `NSView.menu` on AppKit, a
+      // `UIContextMenuInteraction` on UIKit, and nothing added to the tree on either. The
+      // platform picks the gesture. Each item's closure gets its own tap id; replacing the
+      // menu releases the previous set.
+      case Prop.ContextMenu(items) =>
+        menuIds.remove(handle).foreach(_.foreach(Handles.release))
+        Shim.sui_menu_clear(handle)
+        val ids = items.map { item =>
+          val id = Handles.register(() => item.onSelect())
+          Zone(
+            Shim.sui_menu_add_item(
+              handle,
+              toCString(item.label),
+              if item.enabled then 1 else 0,
+              Handles.tapTrampoline,
+              id
+            )
+          )
+          id
+        }
+        if ids.nonEmpty then menuIds(handle) = ids
     }
 
   def insertAfter(
@@ -306,6 +323,7 @@ final class AppleRenderer extends Renderer {
     valueIds.remove(handle).foreach(Handles.release)
     actionIds.remove(handle).foreach(_.foreach(Handles.release))
     dismissIds.remove(handle).foreach(Handles.release)
+    menuIds.remove(handle).foreach(_.foreach(Handles.release))
     // The row closure captures the whole RowSource graph, so an unreleased id keeps every
     // unmounted list alive. A table asking for a row after this gets null, which it treats as
     // no view.

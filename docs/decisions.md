@@ -69,6 +69,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+<<<<<<< HEAD
 - 2026-10-01 — **A navigation container is host-level, not a widget kind — §12.2a's fourth
   answer.** The test is whether every toolkit models the thing as a view you *place*, and
   navigation fails it three ways out of four: `UINavigationController` is a view *controller*
@@ -114,6 +115,25 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   build rather than the link; and `python3`, which `bin/coverage.sh` uses. The `-dev`
   suffixes matter — Scala Native compiles against the C headers, so runtime libraries alone
   do not suffice.
+=======
+- 2026-10-02 — **On Apple a context menu is `NSView.menu` and a `UIContextMenuInteraction`,
+  with items carried by the tap trampoline** (#19). Each item is a label, an enabled flag and
+  an ordinary `sui_void_cb` with its own handle-table id — the alert's shape exactly, so no
+  new callback machinery. AppKit needs `autoenablesItems = false` or it decides enablement
+  itself and `enabled` is ignored. UIKit's interaction holds its delegate weakly, so the shim
+  owns it and drops it in `sui_destroy`; the renderer releases the item ids on replace and on
+  destroy. Measured: every row has a menu of the app's two items, a row with a menu still has
+  exactly its two children, and the labels are absent from a tree walk (on GTK they are
+  present — checked, not assumed). Choosing Delete through `NSMenu`'s own dispatch removes
+  that row only; control: dispatching to the first item fails it. Self-test **77/77** macOS,
+  **71/71** iOS; UIKit offers no public way to perform a `UIAction`, so the Delete check is
+  not run on iOS and the test says so. Lifetime, after review: both shims count live items in
+  `init`/`deinit` — exactly two per mounted row once the run loop turns, and a removed row's
+  two are freed. AppKit frees them when the autorelease pool drains, not at `sui_destroy`
+  (24 live for 5 rows mid-test, then 10). Controls: a UIKit delegate held only weakly reads
+  as no menus; a source kept past destroy, or an `NSMenu` kept in a global, stays at 24.
+
+>>>>>>> origin/main
 - 2026-09-30 — **The iOS host initialises Scala Native at the top of `main`, before
   `UIApplicationMain`, not in scene setup** (#22). Scala Native's collector records a
   thread's stack base as the address of a local inside its own initialisation and scans
