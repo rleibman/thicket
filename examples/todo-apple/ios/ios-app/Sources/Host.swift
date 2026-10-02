@@ -7,6 +7,20 @@ import UIKit
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
+  /// Scala Native is initialised here, before UIKit runs, and not later in scene setup.
+  ///
+  /// Its collector records the main thread's stack base as the address of a local inside
+  /// its own initialisation, and scans only from there down to the current stack pointer.
+  /// Called from scene setup, that base sat deep inside UIKit's launch — and every later
+  /// entry into Scala, from the run loop, runs nearer the true base of the stack, outside
+  /// the range scanned. Objects referenced only from the main thread's stack were then
+  /// invisible to the collector, freed while live, and their memory reused (#22). The top
+  /// of `main` is the shallowest frame the host owns, so everything after it is in range.
+  static func main() {
+    ScalaNativeInit()
+    UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
+  }
+
   func application(
     _ application: UIApplication,
     configurationForConnecting connectingSceneSession: UISceneSession,
@@ -39,7 +53,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     window = w
 
     sui_set_root_view(Unmanaged.passUnretained(vc.view!).toOpaque())
-    ScalaNativeInit()
 
     // Deferred a run-loop turn so mounting does not happen inside scene setup, where the
     // launch watchdog is counting. Still the main thread, which is the only non-Scala
