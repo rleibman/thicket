@@ -69,6 +69,32 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-01 — **libadwaita works under Scala Native, and `adw_init()` is not optional.**
+  Spiked before designing around it: `com.indoorvivants.gnome:adwaita_native0.5_3` 0.2.6
+  compiles, links against `libadwaita-1` and runs, with `adw_navigation_view_new()`
+  returning a live pointer. The dependency and the `pkg-config` flags are wired in
+  `build.sbt`.
+  **Calling any `adw_*` constructor before `adw_init()` segfaults** — `Unhandled signal 11`
+  then `free(): invalid size`, with no hint that initialisation is what is missing. Worth
+  knowing before it costs someone an afternoon. `adw_init()` is deliberately *not* called
+  yet: it installs libadwaita's stylesheet, which changes how every existing widget looks,
+  so it belongs in the commit that introduces `AdwNavigationView` rather than one that
+  silently restyles the app.
+  Why libadwaita at all: GTK core has no navigation container. `GtkStack` gives transitions
+  and no back-gesture semantics, and `AdwNavigationView` is what GNOME apps actually use.
+
+- 2026-10-01 — **libadwaita is a dependency of the Linux renderer, and the full apt list is
+  in the README.** GTK core has no navigation container: `GtkStack` gives transitions but no
+  back-gesture semantics, and `AdwNavigationView` is the thing GNOME apps actually use.
+  `libadwaita-1-dev` 1.9.1 and the matching `com.indoorvivants.gnome:adwaita_native0.5_3`
+  0.2.6 bindings — the same version as the GTK4 bindings already in the build — make it
+  viable without generating bindings by hand.
+  The README now lists every Linux package with what it is for and the version it was
+  verified against, including two that were implicit before: **`pkg-config`**, which
+  `build.sbt` shells out to for GTK's compile *and* link flags, so missing it fails the
+  build rather than the link; and `python3`, which `bin/coverage.sh` uses. The `-dev`
+  suffixes matter — Scala Native compiles against the C headers, so runtime libraries alone
+  do not suffice.
 - 2026-09-30 — **The iOS host initialises Scala Native at the top of `main`, before
   `UIApplicationMain`, not in scene setup** (#22). Scala Native's collector records a
   thread's stack base as the address of a local inside its own initialisation and scans
