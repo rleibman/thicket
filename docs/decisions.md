@@ -69,6 +69,25 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-01 — **A navigation container is host-level, not a widget kind — §12.2a's fourth
+  answer.** The test is whether every toolkit models the thing as a view you *place*, and
+  navigation fails it three ways out of four: `UINavigationController` is a view *controller*
+  that owns the screen, `FragmentManager` is a manager rather than a view, and **AppKit has
+  no push idiom at all** — a Mac app uses a sidebar or separate windows. Only
+  `AdwNavigationView` is a widget. One out of four is not a catalogue entry, so there is no
+  `WidgetKind.NavigationStack`.
+  Instead `AppRoot` gains `pages: Signal[Seq[NavPage]]`, bottom first, beside the existing
+  `element`. A host with a native container pushes and pops real pages; a host without one
+  mounts `element` and nothing else, which is today's behaviour. The two are alternative
+  renderings of one stack and a host must not mount both. This is what `NavHost`'s own
+  doc comment promised: *"a renderer change behind this same API — the app-facing shape does
+  not move."*
+  `NavPage.content` is built **once per entry id** and returned unchanged afterwards, which
+  is the point: a host can mount it once and leave it mounted, so the screen below a push
+  keeps its scroll position and in-flight requests. The cache is keyed on the id rather than
+  the route because two visits to one route are two screens. Falsified by removing the
+  memoisation — exactly the two identity tests fail and nothing else.
+
 - 2026-10-01 — **libadwaita works under Scala Native, and `adw_init()` is not optional.**
   Spiked before designing around it: `com.indoorvivants.gnome:adwaita_native0.5_3` 0.2.6
   compiles, links against `libadwaita-1` and runs, with `adw_navigation_view_new()`

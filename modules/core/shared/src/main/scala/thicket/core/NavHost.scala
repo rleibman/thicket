@@ -29,6 +29,37 @@ final class NavHost[R] private (
       }
     )
 
+  /** Built content, keyed on entry id.
+    *
+    * `pages` is a signal, so it recomputes on every push and pop. Rebuilding a screen's element each time would defeat
+    * the exercise twice over: the host could no longer tell "same page", and each rebuild would create a fresh set of
+    * signals and effects for a screen already on display. So content is built once per id and pruned when the id leaves
+    * the stack.
+    */
+  private val built = scala.collection.mutable.LinkedHashMap.empty[Long, NavPage]
+
+  /** The live stack, bottom first — see `AppRoot.pages`. */
+  val pages: Signal[Seq[NavPage]] =
+    nav.stack.map { entries =>
+      val live = entries.view.map(_.id).toSet
+      built.filterInPlace(
+        (
+          id,
+          _
+        ) => live(id)
+      )
+      // Reversed: `Nav` keeps the top first, because that is what an app asks about, while a
+      // navigation container stacks from the root upwards.
+      entries.reverse.map { e =>
+        built.getOrElseUpdate(
+          e.id, {
+            val s = screenFor(e.route)
+            NavPage(e.id, s, s.content)
+          }
+        )
+      }
+    }
+
   /** The current screen, for the host to apply chrome from. */
   val screen: Signal[Screen] = nav.stack.map(es => screenFor(es.head.route))
 
