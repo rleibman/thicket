@@ -97,4 +97,15 @@ object AppleInspect {
   /** Menu items the shim still holds, counted as they are freed. */
   def liveMenuItems: Int = Shim.sui_menu_live()
 
+  /** The platform's own navigation stack: depth, the title shown for each page bottom first, and which is on screen. */
+  def pagesDepth: Int = Shim.sui_pages_depth()
+  def pageTitles: List[String] = (0 until pagesDepth).toList.flatMap(i => str(Shim.sui_page_title(i)))
+  def pageShown:  Int = Shim.sui_pages_shown()
+
+  /** Whether the platform's own chrome offers going back. */
+  def backOffered: Boolean = Shim.sui_pages_back_offered() != 0
+
+  /** Goes back one page through the platform's own path, as a user would. */
+  def platformBack(): Boolean = Shim.sui_pages_back() != 0
+
 }

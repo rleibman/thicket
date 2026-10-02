@@ -174,7 +174,7 @@ object AppleSelfTest {
     // Presented widgets last: choosing an alert action completes asynchronously on AppKit,
     // so the summary is printed from the continuation.
     // Presented widgets, then context menus, each of which waits on the platform at points.
-    presentedWidgets(() => contextMenus(() => summary()))
+    presentedWidgets(() => contextMenus(() => navigation(() => summary())))
   }
 
   private def summary(): Unit =
@@ -499,6 +499,56 @@ object AppleSelfTest {
           )
           done()
         }
+    }
+  }
+
+  /** `AppRoot.pages`, rendered the platform's way and read back from the platform: a navigation controller on iOS, a
+    * sidebar on macOS. The two things worth proving are that the page below a push stays mounted — the reason `pages`
+    * exists — and that the sync is two-way: a back gesture the *platform* performs must pop `Nav` too.
+    */
+  private def navigation(done: () => Unit): Unit = {
+    def settled(cond: => Boolean)(k: Boolean => Unit): Unit = eventually(3000)(cond)(k)
+
+    check("one page to begin with", AppleInspect.pagesDepth == 1, AppleInspect.pagesDepth.toString)
+    check("and nothing to go back to", !AppleInspect.backOffered)
+    val bottomBefore = AppleApp.pageHandles.headOption
+
+    app.push(TodoApp.Route.Detail(1))
+    settled(AppleInspect.pagesDepth == 2 && AppleInspect.pageShown == 1) { pushed =>
+      check("a push becomes a page on the platform's own stack", pushed, s"depth ${AppleInspect.pagesDepth}")
+      check(
+        "each page shows its own title",
+        AppleInspect.pageTitles == List("Todo", "Item"),
+        AppleInspect.pageTitles.toString
+      )
+      check("the platform offers going back", AppleInspect.backOffered)
+      val bottom = AppleApp.pageHandles.headOption
+      check(
+        "the page below is the same mounted view, not a rebuilt one",
+        bottom.isDefined && bottom == bottomBefore
+      )
+      check(
+        "and it still holds its content",
+        bottom.exists(h => AppleInspect.allTexts(h).contains("Hide completed")),
+        bottom.map(AppleInspect.allTexts).toString
+      )
+
+      // Back through the platform's own path: the navigation controller's pop, or choosing the
+      // earlier sidebar entry. Nav was not asked; it has to follow.
+      check("the platform can go back", AppleInspect.platformBack())
+      settled(AppleInspect.pagesDepth == 1 && !app.canGoBack.now) { popped =>
+        check(
+          "a back gesture by the platform pops Nav too",
+          popped && app.title.now == "Todo",
+          s"platform depth ${AppleInspect.pagesDepth}, Nav title ${app.title.now}, canGoBack ${app.canGoBack.now}"
+        )
+        check("and back is no longer offered", !AppleInspect.backOffered)
+        check(
+          "the page left on screen is the bottom one",
+          AppleInspect.pageShown == 0 && AppleApp.pageHandles.headOption == bottomBefore
+        )
+        done()
+      }
     }
   }
 

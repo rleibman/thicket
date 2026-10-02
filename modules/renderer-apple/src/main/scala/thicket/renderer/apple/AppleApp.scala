@@ -1,7 +1,7 @@
 package thicket.renderer.apple
 
 import scala.scalanative.unsafe.*
-import thicket.core.{AppRoot, Reconciler}
+import thicket.core.{AppRoot, Mounted, NavPage, Reconciler}
 import thicket.signals.{Owner, Signal, ThreadGuard}
 
 /** Hosts an element tree in an AppKit window.
@@ -45,15 +45,62 @@ object AppleApp {
         given Owner = rootOwner
         val root = build
 
-        val mounted = Reconciler.mount(renderer, root.element)
-        rootHandle = mounted.handle
-        Shim.sui_insert_after(Shim.sui_root_view(), mounted.handle, null.asInstanceOf[Shim.Handle])
+        // The stack is rendered the platform's way (`AppRoot.pages`): a navigation
+        // controller on iOS, a sidebar on macOS. Each page is mounted once and stays mounted
+        // while it is covered, which is what keeps the screen below a push alive.
+        Signal.effect {
+          val ps = root.pages()
+          Signal.untracked(showPages(ps))
+        }
+
+        // The platform popped its own stack — a swipe, a back button, a sidebar choice.
+        // `Nav` follows, or the two stacks diverge and the chrome starts lying.
+        Shim.sui_on_pages_popped(
+          Handles.intTrampoline,
+          Handles.registerInt { depth =>
+            while root.pages.now.size > depth && root.back() do ()
+          }
+        )
 
         // Native chrome, driven from AppRoot rather than drawn into the element tree: the
         // window title follows the top screen.
         Signal.effect(Zone(Shim.sui_window_set_title(toCString(root.title()))))
       }
     )
+
+  /** The mounted content of each live page, by entry id, with the owner its effects belong to. */
+  private val pageMounts = scala.collection.mutable.LinkedHashMap.empty[Long, (Owner, Mounted[Shim.Handle])]
+
+  /** The mounted root of each page on the stack, bottom first. */
+  def pageHandles: List[Shim.Handle] = pageMounts.values.map(_._2.handle).toList
+
+  private def showPages(ps: Seq[NavPage]): Unit = {
+    ps.foreach { p =>
+      if !pageMounts.contains(p.id) then {
+        // Owned by the root, not by the effect that noticed the page: re-running the effect on
+        // the next push must not dispose the pages it already mounted.
+        val o = Owner.child(using rootOwner)
+        pageMounts(p.id) = (o, Reconciler.mount(renderer, p.content)(using o))
+      }
+    }
+    Shim.sui_pages_begin()
+    ps.foreach(p => Zone(Shim.sui_pages_add(p.id, pageMounts(p.id)._2.handle, toCString(p.screen.title))))
+    Shim.sui_pages_commit()
+
+    // Only after the platform has let go of them.
+    val live = ps.map(_.id).toSet
+    pageMounts.keys.filterNot(live).toList.foreach { id =>
+      pageMounts.remove(id).foreach {
+        (
+          o,
+          m
+        ) =>
+          m.dispose()
+          o.dispose()
+      }
+    }
+    ps.lastOption.foreach(top => rootHandle = pageMounts(top.id)._2.handle)
+  }
 
   def run(
     title:  String,
