@@ -2,7 +2,7 @@ package example
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{Alignment, AlertAction, ContentFit, Emphasis, ImageSource, Orientation, TextRole}
+import thicket.renderer.{Alignment, AlertAction, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
 import thicket.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -109,6 +109,8 @@ object TodoApp {
 
     def dropLast(): Unit = items.update(_.dropRight(1))
 
+    def remove(id: Int): Unit = items.update(_.filterNot(_.id == id))
+
     def itemSignal(id: Int): Signal[Option[Item]] = items.map(_.find(_.id == id))
 
     /** What the list actually shows. A derived view, so flicking the switch re-renders the
@@ -179,7 +181,13 @@ object TodoApp {
                   align = Alignment.End,
                   emphasis = Emphasis.Secondary
                 )
-              ).onTap(nav.push(Route.Detail(item.now.id))),
+              ).onTap(nav.push(Route.Detail(item.now.id)))
+                // Secondary click on a desktop, long press on a phone — the platform's own
+                // gesture, which is why the app does not say which.
+                .contextMenu(
+                  MenuItem("Toggle done")(model.toggle(item.now.id)),
+                  MenuItem("Delete")(model.remove(item.now.id))
+                ),
               Divider()
             )
           }
