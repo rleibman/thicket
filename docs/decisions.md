@@ -134,6 +134,18 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   `GtkPopoverMenu`, because the latter is driven by a `GMenuModel` addressing `GAction`s by
   *name* through an action group — an indirection that does not fit an API where each item
   carries its own closure.
+- 2026-09-30 — **`Provide` scopes a theme to a subtree, and takes its child by name.** Roles
+  resolve to colours when an element is *built*, not when it is rendered, so a `Provide` is
+  the theme in scope during construction — which means a by-value child would be evaluated
+  by the caller *before* `Provide` ran, outside the scope it is meant to be inside. That is
+  exactly how it first failed, and the symptom was worth noting: the **static** cases failed
+  while the **region** cases passed, because regions build later and went through the
+  reconciler's scope correctly.
+  The second half is that a region must rebuild under the theme in scope where it was
+  *declared*, not whatever is active when its signal fires. `RegionSlot` captures
+  `Theme.active` once at construction — the only moment an enclosing `Provide` is still on
+  the stack — so a row appended to a themed list an hour later is still themed.
+  `Provide` contributes no node; the renderers never see it.
 
 - 2026-09-30 — **The Apple self-test finds widgets by *platform class*, read back from the
   shim, not by the renderer's own bookkeeping** (#4). Four inspection functions were added

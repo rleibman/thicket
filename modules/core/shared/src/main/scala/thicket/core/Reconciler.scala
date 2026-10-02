@@ -92,6 +92,11 @@ private[core] object Slot {
       case s: Element.Show          => region(renderer, parent, anchor, ShowSource(s))
       case f: Element.ForEach[?, ?] => region(renderer, parent, anchor, ForEachSource(f))
       case Element.Fragment(kids) => fragment(renderer, kids, parent, anchor)
+
+      // Contributes no node: it only changes which theme is in scope while its child is
+      // built, because roles resolve to colours at build time.
+      case Element.Provide(theme, child) =>
+        Theme.withActive(theme)(build(renderer, child, parent, anchor))
       case l: Element.LazyColumn[?, ?] =>
         if renderer.supportsVirtualRows then virtualList(renderer, l, parent, anchor)
         else
@@ -405,6 +410,14 @@ final private class RegionSlot[H](
   source:   RegionSource
 ) extends Slot[H] {
 
+  /** The theme in scope where this region was declared.
+    *
+    * Captured once, at construction, because that is the only moment a `Provide` enclosing this region is still on the
+    * stack. Every later rebuild — a `Show` flipping, a row appended an hour from now — restores it, so a themed list
+    * stays themed.
+    */
+  private val declaredTheme: Theme = Theme.active
+
   private var entries: Vector[RegionEntry[H]] = Vector.empty
 
   def handles: Vector[H] = entries.flatMap(_.slot.handles)
@@ -439,7 +452,10 @@ final private class RegionSlot[H](
     val v = Var[Any](value)
     val slot = Signal.untracked {
       given Owner = childOwner
-      Slot.build(renderer, source.build(v), Some(parent), () => at)
+      // `declaredTheme`, not `Theme.active`: a region rebuilds its entries whenever its
+      // signal fires, which is long after the `Provide` that enclosed it has returned. A
+      // row added to a themed list an hour later must still be themed.
+      Theme.withActive(declaredTheme)(Slot.build(renderer, source.build(v), Some(parent), () => at))
     }
     RegionEntry(key, v, childOwner, slot, after = at)
   }

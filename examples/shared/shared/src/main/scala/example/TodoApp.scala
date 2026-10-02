@@ -201,8 +201,11 @@ object TodoApp {
           Row(spacing = 8)(
             Button("Add")(model.add()),
             Button("Rotate")(model.rotate()),
-            // Goes through the confirmation alert rather than dropping outright.
-            Button("Drop")(model.confirmingDrop.set(true)),
+            // One destructive button branded red, without restyling anything else. The
+            // theme is scoped to this subtree; its siblings keep the app's green accent.
+            Provide(Theme.platform.withColor(ColorRole.Accent, Rgb(0xB0, 0x30, 0x30))) {
+              Button("Drop")(model.confirmingDrop.set(true))
+            },
             Button("About")(nav.push(Route.About)),
             Button("10 000 rows")(nav.push(Route.Big))
           )

@@ -78,6 +78,17 @@ object Element {
     */
   final case class Fragment(children: Seq[Element]) extends Element
 
+  /** A theme scoped to a subtree.
+    *
+    * Not a widget: it contributes no node and the renderers never see it. Roles resolve to colours as an element is
+    * *built*, so this is simply the theme in effect while `child` is built — including later, when a region inside it
+    * rebuilds, because a region captures the theme in scope where it was declared.
+    */
+  final case class Provide(
+    theme: Theme,
+    child: Element
+  ) extends Element
+
   /** A long list, where only the visible rows need to exist.
     *
     * Semantically identical to [[ForEach]] — same keying, same `Signal[A]` per row — but it asks the renderer for a
@@ -450,6 +461,26 @@ object dsl {
 
   /** Group elements without introducing a widget. */
   def Fragment(children: Element*): Element = Element.Fragment(children)
+
+  /** Apply a theme to one subtree, leaving the rest of the app alone.
+    *
+    * {{{
+    * Provide(Theme.platform.withColor(ColorRole.Accent, Rgb(0xB0, 0x30, 0x30))) {
+    *   Column()(Button("Delete")(model.delete()))
+    * }
+    * }}}
+    *
+    * Nests: an inner `Provide` wins inside its own subtree and nowhere else. The theme is whole, not merged with the
+    * outer one — `Theme.platform.withColor(...)` to start from the platform, or `Theme.active.withColor(...)` to extend
+    * what is already in scope.
+    */
+  def Provide(theme: Theme)(child: => Element): Element =
+    // By-name, and built here under the theme. Roles resolve to colours as an element is
+    // *constructed*, so a by-value parameter would be evaluated by the caller before this
+    // function ran — outside the scope it is meant to be inside. The static cases failed
+    // exactly that way while the region cases passed, which is a strange enough inversion
+    // to be worth remembering.
+    Element.Provide(theme, Theme.withActive(theme)(child))
 
   /** Nothing. Useful as the `else` of a `Show`-like conditional. */
   val Empty: Element = Element.Fragment(Nil)
