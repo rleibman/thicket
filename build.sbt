@@ -116,8 +116,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   */
 lazy val gtkNativeSettings = Seq(
   nativeConfig ~= { c =>
-    val cflags  = "pkg-config --cflags gtk4".!!.trim.split(" ").filter(_.nonEmpty).toSeq
-    val ldflags = "pkg-config --libs gtk4".!!.trim.split(" ").filter(_.nonEmpty).toSeq
+    val cflags  = "pkg-config --cflags gtk4 libadwaita-1".!!.trim.split(" ").filter(_.nonEmpty).toSeq
+    val ldflags = "pkg-config --libs gtk4 libadwaita-1".!!.trim.split(" ").filter(_.nonEmpty).toSeq
     c.withLTO(scala.scalanative.build.LTO.none)
       .withMode(scala.scalanative.build.Mode.debug)
       .withCompileOptions(c.compileOptions ++ cflags)
@@ -137,7 +137,10 @@ lazy val rendererGtk = project
       "com.indoorvivants.gnome" % "gtk4_native0.5_3" % "0.2.6",
       // GCancellable and GAsyncResult: GtkAlertDialog reports the chosen button through
       // an async callback, and cancelling is the only way to dismiss one programmatically.
-      "com.indoorvivants.gnome" % "gio_native0.5_3"  % "0.2.6"
+      "com.indoorvivants.gnome" % "gio_native0.5_3"  % "0.2.6",
+      // AdwNavigationView: GTK core has no navigation container. GtkStack gives transitions
+      // but no back-gesture semantics, and GNOME apps use libadwaita for this.
+      "com.indoorvivants.gnome" % "adwaita_native0.5_3" % "0.2.6"
     )
   )
   .settings(gtkNativeSettings)

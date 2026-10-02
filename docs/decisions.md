@@ -69,6 +69,53 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+<<<<<<< HEAD
+- 2026-10-01 — **A navigation container is host-level, not a widget kind — §12.2a's fourth
+  answer.** The test is whether every toolkit models the thing as a view you *place*, and
+  navigation fails it three ways out of four: `UINavigationController` is a view *controller*
+  that owns the screen, `FragmentManager` is a manager rather than a view, and **AppKit has
+  no push idiom at all** — a Mac app uses a sidebar or separate windows. Only
+  `AdwNavigationView` is a widget. One out of four is not a catalogue entry, so there is no
+  `WidgetKind.NavigationStack`.
+  Instead `AppRoot` gains `pages: Signal[Seq[NavPage]]`, bottom first, beside the existing
+  `element`. A host with a native container pushes and pops real pages; a host without one
+  mounts `element` and nothing else, which is today's behaviour. The two are alternative
+  renderings of one stack and a host must not mount both. This is what `NavHost`'s own
+  doc comment promised: *"a renderer change behind this same API — the app-facing shape does
+  not move."*
+  `NavPage.content` is built **once per entry id** and returned unchanged afterwards, which
+  is the point: a host can mount it once and leave it mounted, so the screen below a push
+  keeps its scroll position and in-flight requests. The cache is keyed on the id rather than
+  the route because two visits to one route are two screens. Falsified by removing the
+  memoisation — exactly the two identity tests fail and nothing else.
+
+- 2026-10-01 — **libadwaita works under Scala Native, and `adw_init()` is not optional.**
+  Spiked before designing around it: `com.indoorvivants.gnome:adwaita_native0.5_3` 0.2.6
+  compiles, links against `libadwaita-1` and runs, with `adw_navigation_view_new()`
+  returning a live pointer. The dependency and the `pkg-config` flags are wired in
+  `build.sbt`.
+  **Calling any `adw_*` constructor before `adw_init()` segfaults** — `Unhandled signal 11`
+  then `free(): invalid size`, with no hint that initialisation is what is missing. Worth
+  knowing before it costs someone an afternoon. `adw_init()` is deliberately *not* called
+  yet: it installs libadwaita's stylesheet, which changes how every existing widget looks,
+  so it belongs in the commit that introduces `AdwNavigationView` rather than one that
+  silently restyles the app.
+  Why libadwaita at all: GTK core has no navigation container. `GtkStack` gives transitions
+  and no back-gesture semantics, and `AdwNavigationView` is what GNOME apps actually use.
+
+- 2026-10-01 — **libadwaita is a dependency of the Linux renderer, and the full apt list is
+  in the README.** GTK core has no navigation container: `GtkStack` gives transitions but no
+  back-gesture semantics, and `AdwNavigationView` is the thing GNOME apps actually use.
+  `libadwaita-1-dev` 1.9.1 and the matching `com.indoorvivants.gnome:adwaita_native0.5_3`
+  0.2.6 bindings — the same version as the GTK4 bindings already in the build — make it
+  viable without generating bindings by hand.
+  The README now lists every Linux package with what it is for and the version it was
+  verified against, including two that were implicit before: **`pkg-config`**, which
+  `build.sbt` shells out to for GTK's compile *and* link flags, so missing it fails the
+  build rather than the link; and `python3`, which `bin/coverage.sh` uses. The `-dev`
+  suffixes matter — Scala Native compiles against the C headers, so runtime libraries alone
+  do not suffice.
+=======
 - 2026-10-02 — **On Apple a context menu is `NSView.menu` and a `UIContextMenuInteraction`,
   with items carried by the tap trampoline** (#19). Each item is a label, an enabled flag and
   an ordinary `sui_void_cb` with its own handle-table id — the alert's shape exactly, so no
@@ -86,6 +133,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   (24 live for 5 rows mid-test, then 10). Controls: a UIKit delegate held only weakly reads
   as no menus; a source kept past destroy, or an `NSMenu` kept in a global, stays at 24.
 
+>>>>>>> origin/main
 - 2026-09-30 — **The iOS host initialises Scala Native at the top of `main`, before
   `UIApplicationMain`, not in scene setup** (#22). Scala Native's collector records a
   thread's stack base as the address of a local inside its own initialisation and scans

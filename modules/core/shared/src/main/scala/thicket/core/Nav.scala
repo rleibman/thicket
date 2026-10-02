@@ -123,3 +123,15 @@ object Nav {
   def apply[R](home: R): Nav[R] = new Nav(home)
 
 }
+
+/** One live entry on the stack, for a host that has a native navigation container.
+  *
+  * `content` is built **once per `id`** and handed back unchanged on every later read, so a host can mount it once and
+  * leave it mounted. That is the whole point of keeping the stack alive: the screen below a push keeps its scroll
+  * position and its in-flight requests.
+  */
+final case class NavPage(
+  id:      Long,
+  screen:  Screen,
+  content: Element
+)
