@@ -343,6 +343,16 @@ object Abi {
       .copy(doc = "The platform closed it without a choice: Escape, a swipe down.")
   )
 
+  /** A context menu is something a view *has* (`NSView.menu`, `UIContextMenuInteraction`), so it is set on the view's
+    * own handle and adds nothing to the tree. Items are data — a label, an enabled flag and a callback each — like an
+    * alert's actions. Which gesture opens it is the platform's business, so nothing here names one.
+    */
+  val contextMenus: List[Fn] = List(
+    setter("sui_menu_clear").copy(doc = "Removes the view's menu items. A view with none has no menu."),
+    setter("sui_menu_add_item", "label" -> Str, "enabled" -> I32, "cb" -> VoidCb, "ctx" -> I64)
+      .copy(doc = "Appends one item. Order is the order given.")
+  )
+
   val inspection: List[Fn] = List(
     Fn("sui_child_count", I32, List(p("h", Handle))),
     Fn("sui_child_at", Handle, List(p("h", Handle), p("index", I32))),
@@ -384,6 +394,20 @@ object Abi {
         "   sheet's own chrome rather than from what the renderer was told. NULL when not presented."
     ),
     Fn("sui_presented_message", Str, List(p("h", Handle)), doc = "An alert's secondary text, as shown."),
+    Fn(
+      "sui_menu_item_count",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many items the platform's menu for this view holds; 0 when it has none."
+    ),
+    Fn("sui_menu_item_label", Str, List(p("h", Handle), p("index", I32))),
+    Fn(
+      "sui_menu_activate",
+      I32,
+      List(p("h", Handle), p("index", I32)),
+      doc = "Chooses item `index` through the platform's own menu path. 0 where the platform offers\n" +
+        "   no way to do that from code (UIKit), rather than a simulation that would pass."
+    ),
     Fn(
       "sui_presented_count",
       I32,
@@ -436,6 +460,7 @@ object Abi {
         "   obeys, but a table asks for the row it is about to show and recycles the ones it is not."
     ),
     Group("presentation", presentation),
+    Group("context menus", contextMenus),
     Group("inspection, for the self-test", inspection)
   )
 

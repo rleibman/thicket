@@ -139,6 +139,13 @@ void sui_alert_add_action(sui_handle h, const char *label, int32_t role,
 /* The platform closed it without a choice: Escape, a swipe down. */
 void sui_on_dismiss(sui_handle h, sui_void_cb cb, int64_t ctx);
 
+/* --- context menus ----------------------------------------------------------- */
+/* Removes the view's menu items. A view with none has no menu. */
+void sui_menu_clear(sui_handle h);
+/* Appends one item. Order is the order given. */
+void sui_menu_add_item(sui_handle h, const char *label, int32_t enabled,
+                       sui_void_cb cb, int64_t ctx);
+
 /* --- inspection, for the self-test ------------------------------------------- */
 int32_t sui_child_count(sui_handle h);
 sui_handle sui_child_at(sui_handle h, int32_t index);
@@ -163,6 +170,12 @@ int32_t sui_is_presented(sui_handle h);
 const char *sui_presented_title(sui_handle h);
 /* An alert's secondary text, as shown. */
 const char *sui_presented_message(sui_handle h);
+/* How many items the platform's menu for this view holds; 0 when it has none. */
+int32_t sui_menu_item_count(sui_handle h);
+const char *sui_menu_item_label(sui_handle h, int32_t index);
+/* Chooses item `index` through the platform's own menu path. 0 where the platform offers
+   no way to do that from code (UIKit), rather than a simulation that would pass. */
+int32_t sui_menu_activate(sui_handle h, int32_t index);
 /* How many things the platform has presented over the app right now — sheets attached to
    the window, or the chain of presented view controllers. The platform's answer, so a
    widget the renderer believes it dismissed but UIKit is still showing counts. */

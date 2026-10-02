@@ -84,4 +84,14 @@ object AppleInspect {
   /** How many things the platform has presented over the app right now — its answer, not the renderer's. */
   def presentedCount: Int = Shim.sui_presented_count()
 
+  /** The labels of the platform's context menu for this view, in order; empty when it has none. */
+  def menuItems(h: Shim.Handle): List[String] =
+    (0 until Shim.sui_menu_item_count(h)).toList.flatMap(i => str(Shim.sui_menu_item_label(h, i)))
+
+  /** Chooses a menu item through the platform's own menu path. False where the platform offers no way to. */
+  def activateMenu(
+    h:     Shim.Handle,
+    index: Int
+  ): Boolean = Shim.sui_menu_activate(h, index) != 0
+
 }

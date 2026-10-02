@@ -108,6 +108,9 @@ object AppleSelfTest {
     // --- the widgets phase 2 added, read back out of AppKit / UIKit ---
     phase2Widgets()
 
+    // --- context menus: a property of a row, not a widget in the tree ---
+    contextMenus()
+
     // --- Row overflow: five buttons that do not fit, inside a horizontal Scroll ---
     val actionTexts = screenTexts
     check(
@@ -412,6 +415,56 @@ object AppleSelfTest {
               }
             }
         }
+      }
+    }
+  }
+
+  /** The checks GTK and Android run for `Prop.ContextMenu`, read back from the platform.
+    *
+    * A menu is something a view *has* — `NSView.menu`, a `UIContextMenuInteraction` — so a row with one must have no
+    * extra child, and the menu's labels are read from the platform's menu for that row, not from the tree. GTK found
+    * its popover's labels *do* appear in a tree walk; that is checked here rather than assumed either way.
+    */
+  private def contextMenus(): Unit = {
+    def caption = screenTexts.find(_.matches("""\d+ of \d+ done"""))
+    val withMenus = AppleInspect.all(AppleApp.rootHandle).filter(h => AppleInspect.menuItems(h).nonEmpty)
+    val visible = model.visibleItems.now
+    check(
+      "every list row has a context menu",
+      withMenus.length == visible.size,
+      s"${withMenus.length} menus for ${visible.size} rows"
+    )
+    check(
+      "the menu holds the app's items, in order",
+      withMenus.forall(h => AppleInspect.menuItems(h) == List("Toggle done", "Delete")),
+      withMenus.map(AppleInspect.menuItems).distinct.toString
+    )
+    // Each row declares two children, a title and a status label; the menu must not be a third.
+    val childCounts = withMenus.map(h => AppleInspect.children(h).size).distinct
+    check("a row with a menu has only its own two children", childCounts == List(2), childCounts.toString)
+    val inTree = screenTexts.filter(t => t == "Toggle done" || t == "Delete")
+    check("the menu adds nothing to the view tree", inTree.isEmpty, s"found $inTree in the tree walk")
+
+    // Choosing Delete on one row through the platform's menu: the closure that runs must be
+    // that row's, which is what a keyed list makes easy to get wrong.
+    visible.headOption.foreach { target =>
+      val row = withMenus.find(h => AppleInspect.allTexts(h).contains(target.title))
+      check("the target row has a menu", row.isDefined, target.title)
+      val before = model.items.now
+      val captionBefore = caption
+      val chose = row.exists(r => AppleInspect.activateMenu(r, AppleInspect.menuItems(r).indexOf("Delete")))
+      if !chose then
+        println("[selftest]   (this platform offers no way to choose a menu item from code; not exercised)")
+      else {
+        check(
+          "choosing Delete removes that row, and only that one",
+          model.items.now.size == before.size - 1 && !model.items.now.exists(_.id == target.id),
+          s"was ${before.map(_.title)}, now ${model.items.now.map(_.title)}"
+        )
+        val xs = model.items.now
+        val expected = s"${xs.count(_.done)} of ${xs.size} done"
+        println(s"[selftest]   caption: ${captionBefore.getOrElse("?")} -> ${caption.getOrElse("?")}")
+        check("and the caption follows", caption.contains(expected), s"$caption vs $expected")
       }
     }
   }
