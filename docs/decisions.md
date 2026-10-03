@@ -70,6 +70,29 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 ## Decision log
 
 <<<<<<< HEAD
+- 2026-10-02 — **In GTK, detaching is releasing: whoever removes a widget owns its teardown.**
+  Second time this has cost real debugging, so it is a rule now rather than an anecdote.
+  `Sheet` taught it first — `gtk_window_set_child(win, null)` drops the window's only
+  reference, so detaching the child *was* destroying it, and `dismiss` had to stop at hiding.
+  `AdwNavigationView` is the same shape: `adw_navigation_view_pop` releases the page, which
+  destroys the subtree underneath, so calling `Mounted.dispose()` afterwards is a double
+  destroy. GTK says nothing at the time; it corrupts quietly and kills an **unrelated**
+  widget several operations later. The symptom here was a list losing one row, with the
+  destroying call three navigations earlier.
+  The rule: after handing a widget to a GTK container that takes ownership, our teardown is
+  the `Owner` only — the effects that were driving the widgets the toolkit has taken away.
+  Diagnosing it meant asking whether the widget was *destroyed* or *reparented*, which one
+  line settled: count the subtree under the whole window, not under the page. Reparented
+  keeps the count; destroyed does not.
+
+- 2026-10-02 — **A host's bookkeeping is not evidence about the toolkit.**
+  The GTK navigation self-test first asked `GtkApp.pageHandles` — the host's own map — how
+  many pages were live. Deliberately breaking the pop logic left that map correct while
+  `AdwNavigationView` had silently lost a page, so the check passed twice against code known
+  to be wrong. It now asks the container, via
+  `adw_navigation_view_get_visible_page`, and the demo stack is three deep because a two-deep
+  stack hides an extra pop entirely: Adw refuses to pop its root. A check that cannot
+  distinguish the states it is written to distinguish is not a weak check, it is not a check.
 - 2026-10-01 — **A navigation container is host-level, not a widget kind — §12.2a's fourth
   answer.** The test is whether every toolkit models the thing as a view you *place*, and
   navigation fails it three ways out of four: `UINavigationController` is a view *controller*

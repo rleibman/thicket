@@ -2,11 +2,12 @@ package thicket.renderer.gtk
 
 import scala.scalanative.unsafe.*
 import thicket.core.{AppRoot, Reconciler}
-import thicket.signals.{Owner, Signal, ThreadGuard}
+import thicket.signals.{Owner, Signal, ThreadGuard, Tracking}
 import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.*
 import sn.gnome.gio.internal.*
 import sn.gnome.glib.internal.{gchar, gpointer}
+import sn.gnome.adwaita.internal.*
 
 /** Hosts an [[Element]] tree in a GTK application window.
   *
@@ -30,6 +31,17 @@ object GtkApp {
     */
   private val actionIds = scala.collection.mutable.Map.empty[Ptr[GtkWidget], Long]
   private[gtk] def window: Ptr[GtkWindow] = mainWindow
+
+  /** The header bar, once the window exists.
+    *
+    * Tests asking "what chrome does this screen have" must look here rather than at the
+    * whole window. With the stack kept alive, a walk of the window also finds the dormant
+    * pages beneath the top one, so a label belonging to a screen you navigated away from
+    * would answer for the header bar. That made a real check pass for the wrong reason.
+    */
+  private var headerBar: Ptr[GtkWidget] = null
+
+  def headerHandle: Ptr[GtkWidget] = headerBar
 
   /** The whole window, chrome included — the header bar is not part of `rootHandle`.
     *
@@ -83,8 +95,34 @@ object GtkApp {
 
   /** The mounted root widget, available once the window has been built. Demos and tests
     * use it with [[GtkInspect]] to read the tree back out of GTK.
+    *
+    * With a navigation container this is the **top** page's content, which is what a test
+    * asking "what is on screen" means. The pages below it stay mounted and inspectable
+    * through [[pageHandles]].
     */
   var rootHandle: Ptr[GtkWidget] = null
+
+  /** The `AdwNavigationView`, once the window exists. */
+  private var navView: Ptr[AdwNavigationView] = null
+
+  /** One mounted page per entry id, bottom first. Keyed on the id because that is what
+    * `AppRoot.pages` promises is stable; keyed on the route it would conflate two visits.
+    */
+  private val livePages =
+    scala.collection.mutable.LinkedHashMap.empty[Long, (Ptr[AdwNavigationPage], thicket.core.Mounted[Ptr[GtkWidget]], Owner)]
+
+  /** Every mounted page's content, bottom first. The point of a native container is that
+    * these stay alive, so a test can prove the screen below a push kept its state.
+    */
+  def pageHandles: Seq[Ptr[GtkWidget]] = livePages.valuesIterator.map(_._2.handle).toSeq
+
+  /** True while we are pushing or popping to match `Nav`.
+    *
+    * `adw_navigation_view_pop` emits `popped` just as a user's back gesture does, so without
+    * this the handler would call `back()` again and pop twice. The guard is what keeps one
+    * user gesture equal to one `Nav.pop()`.
+    */
+  private var syncingFromNav = false
 
   /** Runs `f` on the GTK main loop. Safe from any thread. */
   def postToUi(f: () => Unit): Unit = {
@@ -103,6 +141,7 @@ object GtkApp {
         mainWindow = w
         gtk_window_set_default_size(w, windowSize._1, windowSize._2)
         val header = gtk_header_bar_new()
+        headerBar = header
         gtk_window_set_titlebar(w, header)
 
         val renderer = GtkRenderer()
@@ -165,10 +204,141 @@ object GtkApp {
           }
         }
 
-        val mounted = Reconciler.mount(renderer, root.element)
-        rootHandle = mounted.handle
-        gtk_window_set_child(w, mounted.handle)
+        // Before any adw_* constructor, or it segfaults with "Unhandled signal 11" and no
+        // hint that initialisation is what was missing.
+        adw_init()
+
+        val nav = adw_navigation_view_new()
+        navView = nav.asInstanceOf[Ptr[AdwNavigationView]]
+        Zone {
+          val _ = g_signal_connect_data(
+            navView.asInstanceOf[gpointer],
+            toCString("popped").asInstanceOf[Ptr[gchar]],
+            GCallback.fromPtr(CFuncPtr.toPtr(onPopped)),
+            Handles.idToPointer(0L),
+            null.asInstanceOf[GClosureNotify],
+            GConnectFlags.define(0)
+          )
+        }
+        gtk_window_set_child(w, nav)
+
+        // `pages` rather than `element`: one AdwNavigationPage per entry, mounted once and
+        // left mounted, which is what preserves the scroll position and in-flight requests
+        // of the screen below a push.
+        Signal.effect(syncPages(renderer, root))
+
         gtk_window_present(w)
+      }
+    }
+
+  /** Bring the container in line with `AppRoot.pages`.
+    *
+    * Pops first, then pushes, so that replacing the top of the stack does not briefly show
+    * the new page beneath the old one. Pages already mounted are left completely alone —
+    * neither rebuilt nor re-pushed — which is the whole reason `NavPage.content` is stable
+    * per id.
+    */
+  private def syncPages(
+    renderer:     GtkRenderer,
+    root:         AppRoot
+  )(using Tracking
+  ): Unit = {
+    // Tracked: the stack is what this effect follows.
+    val pages = root.pages()
+    val live  = pages.view.map(_.id).toSet
+
+    // Everything else is untracked, and that is not an optimisation. Mounting a page reads
+    // whatever signals its content reads, so a tracked mount makes every one of them a
+    // dependency of *this* effect — and the next re-run then disposes the page's own inner
+    // effects, because they were created as this effect's children. The symptom was a list
+    // that lost a row: five visible items, four rendered. `Reconciler` carries the same
+    // warning for regions; it applies just as much to a host.
+    syncingFromNav = true
+    try Signal.untracked {
+      // Drop what left the stack, from the top down.
+      livePages.keys.toSeq.reverse.filterNot(live).foreach { id =>
+        livePages.remove(id).foreach { (_, _, owner) =>
+          // The pop owns the teardown. An AdwNavigationPage holds the only reference to its
+          // child, so popping it releases the page and destroys the subtree underneath —
+          // calling `mounted.dispose()` here as well is a double destroy. GTK does not
+          // complain at the time; it corrupts quietly and kills an unrelated widget several
+          // operations later. Exactly the lesson `Sheet` taught, where detaching a window's
+          // child *was* releasing it.
+          //
+          // Disposing the owner is still ours: it stops the effects that were driving the
+          // widgets the pop just took away.
+          adw_navigation_view_pop(navView)
+          owner.dispose()
+        }
+      }
+
+      pages.filterNot(p => livePages.contains(p.id)).foreach { p =>
+        val pageOwner = Owner()
+        val mounted = {
+          given Owner = pageOwner
+          Reconciler.mount(renderer, p.content)
+        }
+        val page = Zone(adw_navigation_page_new(mounted.handle, toCString(p.screen.title)))
+        livePages(p.id) = (page, mounted, pageOwner)
+        adw_navigation_view_push(navView, page)
+      }
+    }
+    finally syncingFromNav = false
+
+    // What "on screen" means, for tests and demos.
+    rootHandle = livePages.lastOption.map(_._2._2.handle).getOrElse(null)
+  }
+
+  /** The title of the page the **container** is actually showing.
+    *
+    * Deliberately asked of `AdwNavigationView` rather than of our own `livePages` map. A
+    * check against our bookkeeping cannot see the container and us disagreeing, which is
+    * the entire failure mode worth testing here — and the first version of that check did
+    * exactly that, so a deliberately broken sync passed it.
+    */
+  def visiblePageTitle: String =
+    if navView == null then ""
+    else {
+      val page = adw_navigation_view_get_visible_page(navView)
+      if page == null then ""
+      else fromCString(adw_navigation_page_get_title(page).asInstanceOf[CString])
+    }
+
+  /** Pop the way a user does — through the container, not through `Nav`.
+    *
+    * For self-tests. `AdwNavigationView` emits `popped` from this exactly as it does for a
+    * swipe or its own back button, so the two-way sync is what is under test: the container
+    * moved first and `Nav` has to follow. Calling `nav.pop()` instead would prove nothing
+    * about the wiring, which is the half that can silently rot.
+    */
+  def popByGesture(): Boolean =
+    navView != null && {
+      adw_navigation_view_pop(navView)
+      true
+    }
+
+  /** A user's back gesture or the container's own back button.
+    *
+    * Adw has already removed its top page by the time this runs, so this forgets our record
+    * of that page *before* telling `Nav`. Otherwise the sync that `Nav` triggers sees a page
+    * it still believes is mounted and pops a **second** one.
+    *
+    * A two-deep stack hides that bug, because `AdwNavigationView` will not pop its root — so
+    * the first version of this looked correct and the self-test agreed. Disabling the guard
+    * below changed nothing observable, which is how the extra pop came to light: a check
+    * that cannot fail is not evidence. The stack in the self-test is three deep now.
+    */
+  private val onPopped: CFuncPtr2[Ptr[Byte], Ptr[Byte], Unit] =
+    CFuncPtr2.fromScalaFunction { (_: Ptr[Byte], _: Ptr[Byte]) =>
+      GcState.guarded {
+        if !syncingFromNav then {
+          // The container moved first; match it, then let Nav catch up.
+          livePages.lastOption.foreach { (id, entry) =>
+            val _ = livePages.remove(id)
+            entry._3.dispose()
+          }
+          val _ = backHandler()
+        }
       }
     }
 
