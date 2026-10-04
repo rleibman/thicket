@@ -69,7 +69,46 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
-<<<<<<< HEAD
+- 2026-10-02 — **On Apple a context menu is `NSView.menu` and a `UIContextMenuInteraction`,
+  with items carried by the tap trampoline** (#19). Each item is a label, an enabled flag and
+  an ordinary `sui_void_cb` with its own handle-table id — the alert's shape exactly, so no
+  new callback machinery. AppKit needs `autoenablesItems = false` or it decides enablement
+  itself and `enabled` is ignored. UIKit's interaction holds its delegate weakly, so the shim
+  owns it and drops it in `sui_destroy`; the renderer releases the item ids on replace and on
+  destroy. Measured: every row has a menu of the app's two items, a row with a menu still has
+  exactly its two children, and the labels are absent from a tree walk (on GTK they are
+  present — checked, not assumed). Choosing Delete through `NSMenu`'s own dispatch removes
+  that row only; control: dispatching to the first item fails it. Self-test **77/77** macOS,
+  **71/71** iOS; UIKit offers no public way to perform a `UIAction`, so the Delete check is
+  not run on iOS and the test says so. Lifetime, after review: both shims count live items in
+  `init`/`deinit` — exactly two per mounted row once the run loop turns, and a removed row's
+  two are freed. AppKit frees them when the autorelease pool drains, not at `sui_destroy`
+  (24 live for 5 rows mid-test, then 10). Controls: a UIKit delegate held only weakly reads
+  as no menus; a source kept past destroy, or an `NSMenu` kept in a global, stays at 24.
+
+- 2026-10-02 — **In GTK, detaching is releasing: whoever removes a widget owns its teardown.**
+  Second time this has cost real debugging, so it is a rule now rather than an anecdote.
+  `Sheet` taught it first — `gtk_window_set_child(win, null)` drops the window's only
+  reference, so detaching the child *was* destroying it, and `dismiss` had to stop at hiding.
+  `AdwNavigationView` is the same shape: `adw_navigation_view_pop` releases the page, which
+  destroys the subtree underneath, so calling `Mounted.dispose()` afterwards is a double
+  destroy. GTK says nothing at the time; it corrupts quietly and kills an **unrelated**
+  widget several operations later. The symptom here was a list losing one row, with the
+  destroying call three navigations earlier.
+  The rule: after handing a widget to a GTK container that takes ownership, our teardown is
+  the `Owner` only — the effects that were driving the widgets the toolkit has taken away.
+  Diagnosing it meant asking whether the widget was *destroyed* or *reparented*, which one
+  line settled: count the subtree under the whole window, not under the page. Reparented
+  keeps the count; destroyed does not.
+
+- 2026-10-02 — **A host's bookkeeping is not evidence about the toolkit.**
+  The GTK navigation self-test first asked `GtkApp.pageHandles` — the host's own map — how
+  many pages were live. Deliberately breaking the pop logic left that map correct while
+  `AdwNavigationView` had silently lost a page, so the check passed twice against code known
+  to be wrong. It now asks the container, via
+  `adw_navigation_view_get_visible_page`, and the demo stack is three deep because a two-deep
+  stack hides an extra pop entirely: Adw refuses to pop its root. A check that cannot
+  distinguish the states it is written to distinguish is not a weak check, it is not a check.
 - 2026-10-01 — **A navigation container is host-level, not a widget kind — §12.2a's fourth
   answer.** The test is whether every toolkit models the thing as a view you *place*, and
   navigation fails it three ways out of four: `UINavigationController` is a view *controller*
@@ -115,25 +154,6 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   build rather than the link; and `python3`, which `bin/coverage.sh` uses. The `-dev`
   suffixes matter — Scala Native compiles against the C headers, so runtime libraries alone
   do not suffice.
-=======
-- 2026-10-02 — **On Apple a context menu is `NSView.menu` and a `UIContextMenuInteraction`,
-  with items carried by the tap trampoline** (#19). Each item is a label, an enabled flag and
-  an ordinary `sui_void_cb` with its own handle-table id — the alert's shape exactly, so no
-  new callback machinery. AppKit needs `autoenablesItems = false` or it decides enablement
-  itself and `enabled` is ignored. UIKit's interaction holds its delegate weakly, so the shim
-  owns it and drops it in `sui_destroy`; the renderer releases the item ids on replace and on
-  destroy. Measured: every row has a menu of the app's two items, a row with a menu still has
-  exactly its two children, and the labels are absent from a tree walk (on GTK they are
-  present — checked, not assumed). Choosing Delete through `NSMenu`'s own dispatch removes
-  that row only; control: dispatching to the first item fails it. Self-test **77/77** macOS,
-  **71/71** iOS; UIKit offers no public way to perform a `UIAction`, so the Delete check is
-  not run on iOS and the test says so. Lifetime, after review: both shims count live items in
-  `init`/`deinit` — exactly two per mounted row once the run loop turns, and a removed row's
-  two are freed. AppKit frees them when the autorelease pool drains, not at `sui_destroy`
-  (24 live for 5 rows mid-test, then 10). Controls: a UIKit delegate held only weakly reads
-  as no menus; a source kept past destroy, or an `NSMenu` kept in a global, stays at 24.
-
->>>>>>> origin/main
 - 2026-09-30 — **The iOS host initialises Scala Native at the top of `main`, before
   `UIApplicationMain`, not in scene setup** (#22). Scala Native's collector records a
   thread's stack base as the address of a local inside its own initialisation and scans

@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Roberto Leibman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package example
 
 import thicket.core.{ColorRole, Rgb, Theme}
@@ -202,7 +218,10 @@ object Todo {
     // GtkInspect walks the window, so the header bar's buttons are reachable the same way
     // the content is — which is the point: they are real GTK widgets in the platform's own
     // chrome, not something drawn into the tree.
-    val chrome = GtkInspect.allTexts(GtkApp.windowHandle)
+    // The header bar, not the whole window: with the navigation stack kept alive a window
+    // walk also finds the pages below the top one, so a button on a dormant screen could
+    // answer a question about this screen's chrome.
+    val chrome = GtkInspect.allTexts(GtkApp.headerHandle)
     check("the screen's actions are in the header bar",
       chrome.contains("Add") && chrome.contains("About"),
       chrome.toString)
@@ -210,16 +229,57 @@ object Todo {
     val sizeBeforeAction = model.items.now.size
     GtkApp.clickHeaderAction("Add")
     check("tapping a header action runs it", model.items.now.size == sizeBeforeAction + 1)
-
     // Actions are per screen, so navigating swaps them. The detail screen declares none.
     app.push(TodoApp.Route.Detail(1))
-    val onDetail2 = GtkInspect.allTexts(GtkApp.windowHandle)
+    val onDetail2 = GtkInspect.allTexts(GtkApp.headerHandle)
     check("a screen with no actions has none in the header bar",
       !onDetail2.contains("About"),
       onDetail2.toString)
     val _ = app.back()
     check("and they come back on return",
-      GtkInspect.allTexts(GtkApp.windowHandle).contains("About"))
+      GtkInspect.allTexts(GtkApp.headerHandle).contains("About"))
+
+    // --- the navigation container: the stack is kept alive ---
+    // The reason for a native container rather than swapping one subtree. Before this, a
+    // push unmounted the screen below and a pop rebuilt it from scratch, losing its scroll
+    // position and anything in flight.
+    val rowsBefore = GtkInspect.allTexts(GtkApp.rootHandle).count(_ == "Toggle done")
+    app.push(TodoApp.Route.Detail(1))
+    check("a push adds a page without removing the one below",
+      GtkApp.pageHandles.length == 2,
+      s"${GtkApp.pageHandles.length} live pages")
+    check("the screen below a push keeps its widgets",
+      GtkInspect.allTexts(GtkApp.pageHandles.head).count(_ == "Toggle done") == rowsBefore,
+      s"had $rowsBefore rows, now ${GtkInspect.allTexts(GtkApp.pageHandles.head).count(_ == "Toggle done")}")
+
+    // The container moved first; Nav has to follow. This is the half that rots silently —
+    // the two stacks diverge and the title bar starts describing a screen you cannot see.
+    //
+    // Three deep on purpose. With two, AdwNavigationView refuses to pop its root, which
+    // masks an extra pop entirely: the first version of this code popped twice on a gesture
+    // and every check still passed.
+    app.push(TodoApp.Route.About)
+    val depthBefore = app.navigator.stack.now.length
+    check("three pages, so an extra pop would show", depthBefore == 3 && GtkApp.pageHandles.length == 3,
+      s"stack $depthBefore, ${GtkApp.pageHandles.length} pages")
+
+    val _ = GtkApp.popByGesture()
+    check("a back gesture through the container pops Nav too",
+      app.navigator.stack.now.length == depthBefore - 1,
+      s"stack was $depthBefore, now ${app.navigator.stack.now.length}")
+    // Asked of the container, not of our own map. A gesture pop that we then "tidy up" with
+    // a second pop leaves our bookkeeping looking right while the container has lost a page
+    // — so this must read what AdwNavigationView is actually showing.
+    check("and it pops exactly one page, not two",
+      GtkApp.visiblePageTitle == "Item",
+      s"container shows '${GtkApp.visiblePageTitle}', expected 'Item': one gesture must not pop twice")
+    check("our bookkeeping agrees with the container",
+      GtkApp.pageHandles.length == 2,
+      s"${GtkApp.pageHandles.length} live pages")
+
+    val _ = app.back()
+    check("the stack is back to the list screen", app.navigator.stack.now.length == 1 && GtkApp.pageHandles.length == 1,
+      s"stack ${app.navigator.stack.now.length}, ${GtkApp.pageHandles.length} pages")
 
     // --- context menu: a property of a row, not a widget in the tree ---
     // A popover is parented to its widget rather than placed in the box, so the row's

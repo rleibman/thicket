@@ -372,3 +372,26 @@ through `core`'s tests either way.
 
 Related: the same disk cache does not notice a *deleted* source file (`decisions.md`,
 2026-09-29). It is worth suspecting early.
+
+## 12.10 Every new component goes in the gallery, in the same change
+
+`examples/gallery` is one screen holding every component the framework has, built for GTK,
+Android, macOS and iOS. It is a conformance surface, not a showcase, and the reason it is a
+rule rather than a nicety is what the test suite cannot see: `TestRenderer` answers for
+every widget, so a widget that renders on GTK and does nothing at all on Android passes the
+whole suite. Only a screen that uses everything, rendered by each real renderer, catches
+that.
+
+So a change that adds a component is not finished until the gallery shows it. Not a
+follow-up — a catalogue entry that appears on no screen is a claim nobody has checked, and
+"native everywhere" is the framework's central claim.
+
+Three conditions, spelled out in `examples/gallery/README.md`: it sits in a labelled
+section; something **observable** proves it is bound rather than merely drawn (a `Label`
+echoing a `TextField`, a `ProgressBar` driven by the `Slider` above it); and the states
+worth reviewing are visible at once, including the disabled ones, since a state reached only
+by interaction is a state no reviewer sees.
+
+Note what does *not* need saying here: `Prop` is an exhaustive `enum` under `-Werror`, so a
+new prop breaks every renderer until each handles it. The compiler enforces that. Nothing
+makes a widget *demonstrate* itself, which is why this is written down.
