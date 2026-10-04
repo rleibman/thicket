@@ -34,6 +34,11 @@ spike**, named in the prompt that started you. Do that spike, write its report, 
 - **Docs are frozen except:** append dated entries to `docs/decisions.md`
   ("Decision log") and to `docs/09-open-questions.md` when you learn something that
   changes the plan. Do not rewrite existing text.
+- **Every new component goes in `examples/gallery`, in the same change.** That project is
+  one screen with every component, built for all four platforms. `TestRenderer` answers for
+  every widget, so a widget that works on GTK and does nothing on Android passes the whole
+  test suite — the gallery is the only thing that catches it. Conditions in
+  `examples/gallery/README.md`; rule in `docs/12-component-status.md` §12.10.
 - **Measure, don't assert.** Every pass criterion in a brief is a number or an
   observable; put the number and how you got it in `REPORT.md`. "Works" without a
   measurement fails the spike.
