@@ -212,6 +212,17 @@ lazy val appleSharedExampleSources = Seq(
     (ThisBuild / baseDirectory).value / "examples" / "todo-apple" / "shared" / "src" / "main" / "scala"
 )
 
+/** The gallery's Apple-only sources, shared by the macOS and iOS hosts.
+  *
+  * The self-test lives here rather than in `galleryShared` because it imports
+  * `AppleInspect` — and `galleryShared` must stay free of renderer types, since it also
+  * compiles for the JVM (Android).
+  */
+lazy val galleryAppleSharedSources = Seq(
+  Compile / unmanagedSourceDirectories +=
+    (ThisBuild / baseDirectory).value / "examples" / "gallery" / "apple-shared" / "src" / "main" / "scala"
+)
+
 /** AppKit renderer (macOS). Scala Native only, and never aggregated: it links a Swift
   * static library and AppKit, so it can only build on a Mac.
   */
@@ -331,6 +342,75 @@ lazy val todoAndroid = project
     name := "todo-android",
     publish / skip := true,
     scalacOptions ++= Seq("-release", "17")
+  )
+
+/** The component gallery: every widget the framework has, on one screen, built for every
+  * platform.
+  *
+  * Separate from the todo example on purpose. That one is an *app*, shaped by what an app
+  * needs; this one is a conformance surface, shaped by the catalogue. Its job is to fail to
+  * build — or to look wrong — the moment a widget is added without a renderer honouring it
+  * everywhere. See `examples/gallery/README.md` and `docs/12-component-status.md` §12.10.
+  */
+lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("examples/gallery/shared"))
+  .dependsOn(core)
+  .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
+  .jvmSettings(scalacOptions ++= Seq("-release", "17"))
+
+lazy val galleryGtk = project
+  .in(file("examples/gallery/gtk"))
+  .enablePlugins(ScalaNativePlugin)
+  .dependsOn(rendererGtk, galleryShared.native)
+  .settings(commonSettings)
+  .settings(gtkNativeSettings)
+  .settings(
+    name := "gallery-gtk",
+    publish / skip := true,
+    Compile / mainClass := Some("example.gallery.GalleryGtk")
+  )
+
+/** The gallery for Android. JVM-side only, like `todoAndroid`: the APK is assembled by
+  * gradle under `examples/gallery/android`.
+  */
+lazy val galleryAndroid = project
+  .in(file("examples/gallery/android/scala"))
+  .dependsOn(rendererAndroid, galleryShared.jvm)
+  .settings(commonSettings)
+  .settings(
+    name := "gallery-android",
+    publish / skip := true,
+    scalacOptions ++= Seq("-release", "17")
+  )
+
+/** The macOS and iOS galleries. Not aggregated, for the same reason the Apple renderer is
+  * not: they need Xcode, so they are built on a Mac.
+  */
+lazy val galleryMacos = project
+  .in(file("examples/gallery/macos"))
+  .enablePlugins(ScalaNativePlugin)
+  .dependsOn(rendererApple, galleryShared.native)
+  .settings(commonSettings)
+  .settings(appleNativeSettings)
+  .settings(galleryAppleSharedSources)
+  .settings(
+    name := "gallery-macos",
+    publish / skip := true,
+    Compile / mainClass := Some("example.gallery.GalleryMac")
+  )
+
+lazy val galleryIos = project
+  .in(file("examples/gallery/ios"))
+  .enablePlugins(ScalaNativePlugin)
+  .dependsOn(rendererApple, galleryShared.native)
+  .settings(commonSettings)
+  .settings(appleNativeSettings)
+  .settings(galleryAppleSharedSources)
+  .settings(
+    name := "gallery-ios",
+    publish / skip := true,
+    Compile / mainClass := Some("example.gallery.GalleryIos")
   )
 
 /** The shim generator and, more importantly, the ABI consistency check.
