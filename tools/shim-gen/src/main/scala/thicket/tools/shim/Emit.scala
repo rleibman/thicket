@@ -32,6 +32,7 @@ object Emit {
       case CType.BoolCb  => "sui_bool_cb"
       case CType.RowCb   => "sui_row_cb"
       case CType.ValueCb => "sui_value_cb"
+      case CType.IntCb   => "sui_int_cb"
     }
 
   private def cParam(p: Param): String = {
@@ -110,6 +111,7 @@ object Emit {
       case CType.BoolCb  => "BoolCb"
       case CType.RowCb   => "RowCb"
       case CType.ValueCb => "ValueCb"
+      case CType.IntCb   => "IntCb"
     }
 
   /** The generated Scala file: the `@extern` bindings, then the kind codes.
@@ -151,6 +153,9 @@ object Shim {
   /** A slider's value, in the app's own units. */
   type ValueCb = CFuncPtr2[Long, Double, Unit]
 
+  /** A small integer, such as the depth a navigation stack was popped to. */
+  type IntCb = CFuncPtr2[Long, CInt, Unit]
+
 """)
     fns.foreach { fn =>
       val args = fn.params.map(p => s"${p.name}: ${scalaType(p.tpe)}").mkString(", ")
@@ -186,6 +191,7 @@ object ShimKind {
       case CType.BoolCb  => "@escaping sui_bool_cb"
       case CType.RowCb   => "@escaping sui_row_cb"
       case CType.ValueCb => "@escaping sui_value_cb"
+      case CType.IntCb   => "@escaping sui_int_cb"
       case CType.Void    => "Void"
     }
 

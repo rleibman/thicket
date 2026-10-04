@@ -499,12 +499,11 @@ lazy val galleryIos = project
   .settings(thicketBuildInfo("example.gallery.ios.buildinfo"))
   .dependsOn(rendererApple, galleryShared.native)
   .settings(commonSettings)
-  .settings(appleNativeSettings)
+  .settings(iosNativeSettings)
   .settings(galleryAppleSharedSources)
   .settings(
-    name                := "gallery-ios",
-    publish / skip      := true,
-    Compile / mainClass := Some("example.gallery.GalleryIos")
+    name           := "gallery-ios",
+    publish / skip := true
   )
 
 /** The shim generator and, more importantly, the ABI consistency check.

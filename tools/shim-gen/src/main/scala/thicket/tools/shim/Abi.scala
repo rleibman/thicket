@@ -61,6 +61,9 @@ object Abi {
     /** A slider's value, in the app's own units. */
     case ValueCb
 
+    /** A small integer — the depth the platform popped a navigation stack to. */
+    case IntCb
+
   }
 
   /** What a type is *at the ABI*, as opposed to what it is called.
@@ -84,8 +87,9 @@ object Abi {
         case CType.I64  => Repr.I64
         case CType.F64  => Repr.F64
 
-        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle                    => Repr.Pointer
-        case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb | CType.ValueCb => Repr.FnPointer
+        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle => Repr.Pointer
+        case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb | CType.ValueCb | CType.IntCb =>
+          Repr.FnPointer
       }
 
   }
@@ -353,6 +357,35 @@ object Abi {
       .copy(doc = "Appends one item. Order is the order given.")
   )
 
+  /** Navigation is host chrome, not a widget kind (`AppRoot.pages`): the shim is told the live stack, bottom first, and
+    * each page's already-mounted content, and renders it the platform's way — a `UINavigationController` on iOS, a
+    * sidebar on macOS. When the *platform* pops (a swipe, a back button, a sidebar selection) it reports the new depth,
+    * so the app's `Nav` and the platform's stack never diverge.
+    */
+  val navigation: List[Fn] = List(
+    Fn(
+      "sui_pages_begin",
+      Void,
+      Nil,
+      doc = "Starts describing the stack. Nothing changes on screen until sui_pages_commit."
+    ),
+    Fn(
+      "sui_pages_add",
+      Void,
+      List(p("id", I64), p("content", Handle), p("title", Str)),
+      doc = "The next page up. `id` is stable for as long as the page is on the stack, and so is its\n" +
+        "   `content`, which stays mounted while it is covered."
+    ),
+    Fn("sui_pages_commit", Void, Nil, doc = "Makes the platform's stack match what was described."),
+    Fn(
+      "sui_on_pages_popped",
+      Void,
+      List(p("cb", IntCb), p("ctx", I64)),
+      doc = "The platform popped the stack itself, to the depth given. Never called for a change\n" +
+        "   the app made through sui_pages_commit."
+    )
+  )
+
   val inspection: List[Fn] = List(
     Fn("sui_child_count", I32, List(p("h", Handle))),
     Fn("sui_child_at", Handle, List(p("h", Handle), p("index", I32))),
@@ -401,6 +434,28 @@ object Abi {
       doc = "How many items the platform's menu for this view holds; 0 when it has none."
     ),
     Fn("sui_menu_item_label", Str, List(p("h", Handle), p("index", I32))),
+    Fn("sui_pages_depth", I32, Nil, doc = "How many pages the platform's own stack holds."),
+    Fn(
+      "sui_page_title",
+      Str,
+      List(p("index", I32)),
+      doc = "The title the platform shows for page `index`, bottom first: the navigation item's\n" +
+        "   on iOS, the sidebar entry's on macOS."
+    ),
+    Fn("sui_pages_shown", I32, Nil, doc = "The index of the page on screen, bottom first."),
+    Fn(
+      "sui_pages_back_offered",
+      I32,
+      Nil,
+      doc = "1 when the platform's own chrome offers going back: a back button, or a sidebar to choose from."
+    ),
+    Fn(
+      "sui_pages_back",
+      I32,
+      Nil,
+      doc = "Goes back one page through the platform's own path — popping the navigation controller,\n" +
+        "   selecting the previous sidebar entry — exactly as a user would."
+    ),
     Fn(
       "sui_menu_live",
       I32,
@@ -468,6 +523,7 @@ object Abi {
     ),
     Group("presentation", presentation),
     Group("context menus", contextMenus),
+    Group("navigation", navigation),
     Group("inspection, for the self-test", inspection)
   )
 

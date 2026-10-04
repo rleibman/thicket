@@ -1177,3 +1177,162 @@ public func sui_menu_activate(_ h: UnsafeMutableRawPointer, _ index: Int32) -> I
 public func sui_menu_live() -> Int32 {
   liveMenuItems
 }
+
+// MARK: - navigation (AppRoot.pages)
+
+// macOS has no push idiom, so the stack is a sidebar: an NSSplitViewController with the live
+// pages as a source list and the selected page's content beside it. Every page stays
+// mounted, which is what `pages` exists for; only the selected one is in the detail view.
+// Choosing an earlier entry is going back to it, reported to the app like any platform pop.
+// With a single page there is nothing to choose between, so the sidebar is collapsed.
+
+private var pendingPages: [(id: Int64, content: NSView, title: String)] = []
+private var pageList: [(id: Int64, content: NSView, title: String)] = []
+private var applyingPages = false
+private var onPopped: (cb: sui_int_cb, ctx: Int64)?
+
+private final class PagesSidebar: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+  let table = NSTableView()
+
+  func numberOfRows(in tableView: NSTableView) -> Int { pageList.count }
+
+  func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
+    let cell = NSTableCellView()
+    let label = NSTextField(labelWithString: row < pageList.count ? pageList[row].title : "")
+    label.translatesAutoresizingMaskIntoConstraints = false
+    cell.addSubview(label)
+    cell.textField = label
+    NSLayoutConstraint.activate([
+      label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+      label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+      label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+    ])
+    return cell
+  }
+
+  /// A user choosing an earlier entry. The app's own commits select rows too, and are
+  /// suppressed by `applyingPages` so they are not echoed back as pops.
+  func tableViewSelectionDidChange(_ notification: Notification) {
+    let row = table.selectedRow
+    guard !applyingPages, row >= 0, row < pageList.count - 1, let p = onPopped else { return }
+    pageList = Array(pageList.prefix(row + 1))
+    p.cb(p.ctx, Int32(row + 1))
+  }
+}
+
+private let sidebar = PagesSidebar()
+private var splitController: NSSplitViewController?
+private var sidebarItem: NSSplitViewItem?
+private let detailView = NSView()
+
+private func ensureSplit() -> Bool {
+  if splitController != nil { return true }
+  guard let root = rootView else { return false }
+
+  let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("sui_page"))
+  sidebar.table.addTableColumn(column)
+  sidebar.table.headerView = nil
+  sidebar.table.style = .sourceList
+  sidebar.table.dataSource = sidebar
+  sidebar.table.delegate = sidebar
+  let scroll = NSScrollView()
+  scroll.documentView = sidebar.table
+  scroll.hasVerticalScroller = true
+  scroll.drawsBackground = false
+
+  let sidebarController = NSViewController()
+  sidebarController.view = scroll
+  let detailController = NSViewController()
+  detailController.view = detailView
+
+  let split = NSSplitViewController()
+  let item = NSSplitViewItem(sidebarWithViewController: sidebarController)
+  item.minimumThickness = 140
+  split.addSplitViewItem(item)
+  split.addSplitViewItem(NSSplitViewItem(viewController: detailController))
+
+  split.view.translatesAutoresizingMaskIntoConstraints = false
+  root.addSubview(split.view)
+  NSLayoutConstraint.activate([
+    split.view.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+    split.view.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+    split.view.topAnchor.constraint(equalTo: root.topAnchor),
+    split.view.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+  ])
+  splitController = split
+  sidebarItem = item
+  return true
+}
+
+@_cdecl("sui_pages_begin")
+public func sui_pages_begin() {
+  pendingPages = []
+}
+
+@_cdecl("sui_pages_add")
+public func sui_pages_add(_ id: Int64, _ content: UnsafeMutableRawPointer, _ title: UnsafePointer<CChar>) {
+  pendingPages.append((id, view(content), String(cString: title)))
+}
+
+@_cdecl("sui_pages_commit")
+public func sui_pages_commit() {
+  guard ensureSplit(), let top = pendingPages.last else { return }
+  pageList = pendingPages
+
+  // The detail view shows the top page. The others stay mounted, just not attached here.
+  for v in detailView.subviews where v !== top.content { v.removeFromSuperview() }
+  if top.content.superview !== detailView {
+    top.content.removeFromSuperview()
+    sui_insert_after(
+      Unmanaged.passUnretained(detailView).toOpaque(), Unmanaged.passUnretained(top.content).toOpaque(), nil
+    )
+  }
+
+  applyingPages = true
+  sidebar.table.reloadData()
+  sidebar.table.selectRowIndexes(IndexSet(integer: pageList.count - 1), byExtendingSelection: false)
+  applyingPages = false
+  sidebarItem?.isCollapsed = pageList.count <= 1
+}
+
+@_cdecl("sui_on_pages_popped")
+public func sui_on_pages_popped(_ cb: @escaping sui_int_cb, _ ctx: Int64) {
+  onPopped = (cb, ctx)
+}
+
+@_cdecl("sui_pages_depth")
+public func sui_pages_depth() -> Int32 {
+  Int32(sidebar.table.numberOfRows)
+}
+
+/// Read from the sidebar's own cell for that row, which is what the user sees.
+@_cdecl("sui_page_title")
+public func sui_page_title(_ index: Int32) -> UnsafePointer<CChar>? {
+  guard index >= 0, Int(index) < sidebar.table.numberOfRows,
+        let cell = sidebar.table.view(atColumn: 0, row: Int(index), makeIfNecessary: true) as? NSTableCellView,
+        let text = cell.textField?.stringValue
+  else { return nil }
+  return scratch(text)
+}
+
+/// Which page's content is actually in the detail view.
+@_cdecl("sui_pages_shown")
+public func sui_pages_shown() -> Int32 {
+  guard let i = pageList.firstIndex(where: { $0.content.superview === detailView }) else { return -1 }
+  return Int32(i)
+}
+
+@_cdecl("sui_pages_back_offered")
+public func sui_pages_back_offered() -> Int32 {
+  ((sidebarItem.map { !$0.isCollapsed } ?? false) && sidebar.table.numberOfRows > 1) ? 1 : 0
+}
+
+/// Selecting the previous sidebar entry, as a click on it would: the table's own selection
+/// notification then reports it like any platform pop.
+@_cdecl("sui_pages_back")
+public func sui_pages_back() -> Int32 {
+  let rows = sidebar.table.numberOfRows
+  guard rows > 1 else { return 0 }
+  sidebar.table.selectRowIndexes(IndexSet(integer: rows - 2), byExtendingSelection: false)
+  return 1
+}
