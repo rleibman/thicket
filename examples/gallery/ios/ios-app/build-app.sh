@@ -45,6 +45,11 @@ swiftc \
   -o "$APP/GalleryIos"
 
 cp Info.plist "$APP/Info.plist"
+# The gallery's images are repo-relative paths (`ImageSource.FromFile("docs/assets/...")`).
+# An iOS app's working directory is `/`, so the shim looks a relative path up in the bundle;
+# copy the assets in under the same relative path so it finds them there.
+mkdir -p "$APP/docs/assets"
+cp "$REPO/docs/assets/thicket-logo.png" "$APP/docs/assets/"
 echo "RESULT app_unstripped_bytes=$(stat -f%z "$APP/GalleryIos")"
 cp "$APP/GalleryIos" build/GalleryIos.unstripped
 strip -x "$APP/GalleryIos" 2>/dev/null || true
