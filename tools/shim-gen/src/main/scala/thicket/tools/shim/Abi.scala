@@ -414,6 +414,13 @@ object Abi {
     Fn("sui_get_value", F64, List(p("h", Handle)), doc = "A slider's value, in the app's own units."),
     Fn("sui_is_secure", I32, List(p("h", Handle)), doc = "1 when the field masks what is typed into it."),
     Fn(
+      "sui_scroll_offset",
+      F64,
+      List(p("h", Handle)),
+      doc = "How far a vertical scroller's visible area is from the top of its content, in points:\n" +
+        "   0 when it shows the top. -1 when `h` is not a scroller."
+    ),
+    Fn(
       "sui_is_presented",
       I32,
       List(p("h", Handle)),
