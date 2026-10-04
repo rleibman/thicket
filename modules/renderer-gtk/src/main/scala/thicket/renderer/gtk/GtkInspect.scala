@@ -42,6 +42,20 @@ object GtkInspect {
     * On a toolkit where a container owns its children, freeing a container frees its
     * descendants, so a renderer can be handed a pointer the toolkit has already reclaimed.
     */
+  /** How many stylesheets this renderer wrote that GTK could not parse. Should be zero.
+    *
+    * Exposed here rather than from `Handles`, which is `private[gtk]` and should stay that
+    * way: this is a question a self-test asks of the toolkit, which is what `GtkInspect` is
+    * for.
+    *
+    * Why it is a counter and not a log grep: GTK reports bad CSS with a `Gtk-WARNING` and
+    * then carries on with whatever parsed. The renderer asked for CSS nesting, which GTK4
+    * does not support, from the day theming landed — 26 warnings per run of the demo, the
+    * child rule silently discarded, and nothing failed, because the self-tests grep for
+    * `Gtk-CRITICAL` (#30).
+    */
+  def cssParseErrors: Long = Handles.cssParseErrors
+
   def isWidget(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_widget_get_type())
 
   def isLabel(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_label_get_type())

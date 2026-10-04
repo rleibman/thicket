@@ -69,6 +69,23 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-04 — **GTK4 has no `&` nesting selector, and a toolkit warning nobody reads is not
+  a test.** (#30) The renderer built `.cls { color: X; & > * { color: X; } }`; GTK stopped at
+  the `&`, discarded the rest of the block, and the rule meant to colour a tinted
+  container's children never applied. Fixed by emitting two flat rules —
+  `.cls { … } .cls > * { … }` — which GTK4 parses fine. 26 warnings per run of the demo
+  before, 0 after.
+  The bug dated from the day theming landed and survived because of *how* GTK complains: a
+  `Gtk-WARNING` on stderr, after which it carries on with whatever parsed. The self-tests
+  grep for `Gtk-CRITICAL`, so the output scrolled past in every run.
+  So the renderer now connects `parsing-error` on each `GtkCssProvider` and counts
+  failures, exposed as `GtkInspect.cssParseErrors`, and both GTK self-tests assert it is
+  zero. A number the renderer keeps is checkable; a warning on stderr is not.
+  Useful side effect, found while falsifying: with a handler connected GTK **stops printing
+  the warning** and reports through the signal instead. Reintroducing the bug produced 0
+  stderr warnings and 20 counted errors with the check failing — so the fix removes the
+  noise and makes the failure visible at the same time.
+
 - 2026-10-02 — **On Apple a context menu is `NSView.menu` and a `UIContextMenuInteraction`,
   with items carried by the tap trampoline** (#19). Each item is a label, an enabled flag and
   an ordinary `sui_void_cb` with its own handle-table id — the alert's shape exactly, so no

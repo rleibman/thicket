@@ -231,6 +231,38 @@ private[gtk] object Handles {
   /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not
     * shed entries at UI rates is a leak with a clock on it (S8).
     */
+  /** Malformed CSS, counted rather than logged.
+    *
+    * GTK reports a bad stylesheet by emitting `parsing-error` on the provider and writing a
+    * `Gtk-WARNING` to stderr — then carrying on with whatever it managed to parse. That is
+    * how a renderer bug survived from the day theming landed: the stylesheet asked for CSS
+    * nesting, which GTK4 does not support, so the rule for a tinted container's children was
+    * discarded and the colour silently never arrived. Twenty-six warnings per run of the
+    * demo, and nothing failed, because the self-tests look for `Gtk-CRITICAL`.
+    *
+    * A count the renderer keeps is checkable; a warning on stderr is not. The self-tests
+    * assert this is zero.
+    */
+  private val cssErrors = new AtomicLong(0L)
+
+  def cssParseErrors: Long = cssErrors.get()
+
+  /** `parsing-error` is `(GtkCssProvider*, GtkCssSection*, GError*, gpointer)`. None of the
+    * arguments are needed: that it fired at all is the failure.
+    */
+  private val cssParsingError: CFuncPtr4[Ptr[Byte], Ptr[Byte], Ptr[Byte], gpointer, Unit] =
+    CFuncPtr4.fromScalaFunction {
+      (
+        _:  Ptr[Byte],
+        _:  Ptr[Byte],
+        _:  Ptr[Byte],
+        _:  gpointer
+      ) =>
+        GcState.guarded { val _ = cssErrors.incrementAndGet() }
+    }
+
+  def cssParsingErrorPtr: CVoidPtr = CFuncPtr.toPtr(cssParsingError)
+
   val idle: CFuncPtr1[gpointer, gboolean] =
     CFuncPtr1.fromScalaFunction { (data: gpointer) =>
       val id = pointerToId(data)

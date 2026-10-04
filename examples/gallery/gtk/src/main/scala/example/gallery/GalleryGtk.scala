@@ -106,6 +106,12 @@ object GalleryGtk {
     check("no sheet or alert before it is asked for",
       !texts.contains("A presented container with a live subtree inside it."))
 
+    // The gallery styles more widgets than any other screen, so it is the best place to
+    // notice a stylesheet GTK cannot parse (#30).
+    check("no CSS the renderer wrote failed to parse",
+      GtkInspect.cssParseErrors == 0L,
+      s"${GtkInspect.cssParseErrors} CSS parse errors")
+
     if failures == 0 then println(s"[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
   }
