@@ -129,6 +129,41 @@ object Counter {
 Point `counterGtk`'s `Compile / mainClass` at `example.Counter` in `build.sbt`, then
 `nativeLink` and run it as above.
 
+### Your own project, outside this repo
+
+`templates/hello-thicket` is a complete standalone sbt project — copy it anywhere:
+
+```bash
+cp -r templates/hello-thicket ~/my-app && cd ~/my-app
+sbt nativeLink && ./target/out/native0.5/scala-3.9.0/hello-thicket/hello-thicket
+```
+
+It depends on published artefacts rather than on this repo. Until there is a tagged release
+you need a local publish first:
+
+```bash
+cd /path/to/thicket && sbt 'coreNative/publishLocal; rendererGtk/publishLocal'
+```
+
+The dependencies, with explicit artefact suffixes because **sbt 2 has no `%%%`**:
+
+```scala
+libraryDependencies ++= Seq(
+  "dev.thicket" % "thicket-core_native0.5_3"         % thicketVersion,
+  "dev.thicket" % "thicket-renderer-gtk_native0.5_3" % thicketVersion
+)
+```
+
+**One wart worth knowing before you hit it.** A GTK app also needs about a dozen lines of
+`nativeConfig` — the `pkg-config` flags, the GC, the LTO, the mode — and nothing publishes
+them, so the template carries a copy. Get the GC wrong and it fails at link time with
+nothing pointing at why. An `sbt-thicket` plugin to supply them is the intended fix and is
+tracked as an issue; the template is the honest interim answer.
+
+`./bin/verify-getting-started.sh` checks all of the above still works, by building the
+template outside the repo against a fresh local publish. See
+[docs/14-releasing.md](docs/14-releasing.md) for versions and the compatibility policy.
+
 **What is going on.** `count` is a `Var` — a signal. `count.map(...)` is a derived view, not
 a subscription, so it needs no lifetime management. `Label` takes either a `String` or a
 `Signal[String]`; given a signal, a change re-renders that one label and nothing else. There

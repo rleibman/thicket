@@ -69,6 +69,25 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-05 — **The getting-started is a script, not a paragraph.** Phase 5's exit
+  criterion is a person building an app in under thirty minutes, which only a person can
+  measure — but the half that does not need one is checkable, so
+  `bin/verify-getting-started.sh` checks it: publish locally, copy
+  `templates/hello-thicket` **outside** the repo, build against the published artefacts,
+  run. Outside is the point; building the template in place would resolve the modules as
+  project dependencies and prove nothing about what a stranger gets from a jar. PASS at
+  5.2 MB.
+  Doing it rather than describing it found the thing worth finding: a GTK app has to copy
+  about a dozen lines of our `nativeConfig` because **nothing publishes the build settings**
+  (#40). The artefacts are consumable; the build is not. `docs/14-releasing.md` §14.3 says
+  so plainly rather than leaving a stranger to discover it at link time, where a wrong GC
+  fails with nothing pointing at the cause.
+  Also: `versionScheme := early-semver`, and what counts as breaking here is wider than it
+  looks. `Prop` is an exhaustive `enum` under `-Werror` and `Renderer` is a trait an app may
+  implement, so *adding* a case or a member breaks downstream code. That pressure is
+  deliberate — it is what stops a widget silently doing nothing on one platform — but it
+  means "we only added something" is not automatically compatible.
+
 - 2026-10-04 — **On Apple, a relative `ImageSource.FromFile` path falls back to the app
   bundle** (#31). Used as given when it is absolute or exists from the working directory — a
   binary run from the repo, as the macOS examples are — and otherwise looked up under

@@ -38,6 +38,17 @@ ThisBuild / organizationName := "Roberto Leibman"
 ThisBuild / startYear        := Some(2026)
 ThisBuild / headerLicense    := Some(HeaderLicense.ALv2("2026", "Roberto Leibman"))
 
+// POM metadata. `scm` comes from sbt-git via the remote, and `licences`/`organizationName`
+// above fill the rest, so only these three were missing from a publishable POM.
+ThisBuild / homepage := Some(uri("https://github.com/rleibman/thicket"))
+ThisBuild / developers := List(
+  Developer("rleibman", "Roberto Leibman", "roberto@leibman.net", uri("https://github.com/rleibman"))
+)
+// Declared so coursier and sbt can tell an eviction from a breaking change rather than
+// guessing from the number. `early-semver` is the right one for a 0.x library that intends
+// to keep binary compatibility within a minor line once it reaches 1.0 — see docs/14.
+ThisBuild / versionScheme := Some("early-semver")
+
 val zioV = "2.1.26"
 
 /** Coverage settings, applied to every module that has JVM tests.
