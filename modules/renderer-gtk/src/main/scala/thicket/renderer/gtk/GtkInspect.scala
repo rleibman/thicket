@@ -37,6 +37,20 @@ object GtkInspect {
       g_type_check_instance_is_a(widget.asInstanceOf[Ptr[GTypeInstance]], tpe)
         .asInstanceOf[CInt] != 0
 
+  /** How many stylesheets this renderer wrote that GTK could not parse. Should be zero.
+    *
+    * Exposed here rather than from `Handles`, which is `private[gtk]` and should stay that
+    * way: this is a question a self-test asks of the toolkit, which is what `GtkInspect` is
+    * for.
+    *
+    * Why it is a counter and not a log grep: GTK reports bad CSS with a `Gtk-WARNING` and
+    * then carries on with whatever parsed. The renderer asked for CSS nesting, which GTK4
+    * does not support, from the day theming landed — 26 warnings per run of the demo, the
+    * child rule silently discarded, and nothing failed, because the self-tests grep for
+    * `Gtk-CRITICAL` (#30).
+    */
+  def cssParseErrors: Long = Handles.cssParseErrors
+
   /** Whether the pointer still refers to a live `GtkWidget`.
     *
     * On a toolkit where a container owns its children, freeing a container frees its

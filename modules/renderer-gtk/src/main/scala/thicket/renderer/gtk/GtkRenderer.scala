@@ -86,7 +86,26 @@ final class GtkRenderer extends Renderer {
   private val cssProviders = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkCssProvider]]
   private var nextCssClass = 0
 
-  private def applyCss(handle: Ptr[GtkWidget], declaration: String): Unit = {
+  /** Attach a stylesheet to one widget, and optionally to its direct children.
+    *
+    * `childDeclaration` is a *separate flat rule*, not CSS nesting. GTK4's parser has no `&`
+    * selector: the previous version emitted `.sui-1 { color: X; & > * { color: X; } }` and
+    * GTK answered
+    *
+    * {{{
+    * Gtk-WARNING: Theme parser error: <data>:1:26-27: Expected an identifier
+    * }}}
+    *
+    * — column 26 being the `&`. It then abandoned the rest of the block, so the child rule
+    * never applied and a tinted container's children kept the platform's colour. It had been
+    * doing that since theming landed, 26 times per run of the demo, and nothing noticed
+    * because the self-tests grep for `Gtk-CRITICAL` while this is a `Gtk-WARNING`.
+    */
+  private def applyCss(
+    handle:           Ptr[GtkWidget],
+    declaration:      String,
+    childDeclaration: String = ""
+  ): Unit = {
     val cls = cssProviders.get(handle) match {
       case Some(_) => cssClassOf(handle)
       case None =>
@@ -96,8 +115,29 @@ final class GtkRenderer extends Renderer {
         Zone(gtk_widget_add_css_class(handle, toCString(c)))
         c
     }
-    val provider = cssProviders.getOrElseUpdate(handle, gtk_css_provider_new())
-    Zone(gtk_css_provider_load_from_string(provider, toCString(s".$cls { $declaration }")))
+    val provider = cssProviders.getOrElseUpdate(
+      handle, {
+        val fresh = gtk_css_provider_new()
+        // Tell us when GTK rejects what we wrote. Connected once per provider, at creation,
+        // because a stylesheet this renderer generates is always a bug if it does not parse
+        // — and GTK's own response is a stderr warning nobody reads.
+        Zone {
+          val _ = g_signal_connect_data(
+            fresh.asInstanceOf[gpointer],
+            toCString("parsing-error").asInstanceOf[Ptr[gchar]],
+            GCallback.fromPtr(Handles.cssParsingErrorPtr),
+            Handles.idToPointer(0L),
+            null.asInstanceOf[GClosureNotify],
+            GConnectFlags.define(0)
+          )
+        }
+        fresh
+      }
+    )
+    val sheet =
+      if childDeclaration.isEmpty then s".$cls { $declaration }"
+      else s".$cls { $declaration } .$cls > * { $childDeclaration }"
+    Zone(gtk_css_provider_load_from_string(provider, toCString(sheet)))
     val display = gtk_widget_get_display(handle)
     gtk_style_context_add_provider_for_display(
       display,
@@ -470,8 +510,9 @@ final class GtkRenderer extends Renderer {
 
       case Prop.Tint(color) =>
         // `None` means "leave it to the platform" — deliberately not "use black".
-        // `> *` so a button's internal GtkLabel inherits it too.
-        color.foreach(c => applyCss(handle, s"color: ${hex(c)}; & > * { color: ${hex(c)}; }"))
+        // The second rule is for the children, so a button's internal GtkLabel inherits it;
+        // it is passed separately because GTK4 cannot parse a nested `&` selector.
+        color.foreach(c => applyCss(handle, s"color: ${hex(c)};", s"color: ${hex(c)};"))
 
       case Prop.Fill(color) =>
         color.foreach(c => applyCss(handle, s"background-image: none; background-color: ${hex(c)};"))
