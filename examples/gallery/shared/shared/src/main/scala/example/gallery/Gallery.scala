@@ -47,6 +47,7 @@ object Gallery {
     val checked:  Var[Boolean] = Var(false)
     val toggled:  Var[Boolean] = Var(true)
     val volume:   Var[Double]  = Var(4.0)
+    val picked:   Var[Int]     = Var(1)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
@@ -72,6 +73,9 @@ object Gallery {
     }
 
   }
+
+  /** The picker's options. On the object so the self-test can name them. */
+  val fruit: Seq[String] = Seq("Apple", "Banana", "Cherry")
 
   final case class Row_(
     id:    Int,
@@ -121,6 +125,16 @@ object Gallery {
               Toggle(model.toggled)(model.toggled.set)
             ),
             Label(model.toggled.map(b => if b then "on" else "off"))
+          ),
+          section("Picker — a choice from a fixed list")(
+            Picker(Gallery.fruit, model.picked)(model.picked.set),
+            // Observably bound, per the gallery's own rule: the label proves the selection
+            // round-tripped rather than the control merely being drawn.
+            Label(model.picked.map(i => Gallery.fruit.lift(i).fold("(nothing selected)")(f => s"Chose $f (index $i)"))),
+            Row(spacing = 8)(
+              Button("Select last")(model.picked.set(Gallery.fruit.length - 1)),
+              Button("Clear")(model.picked.set(-1))
+            )
           ),
           section("Slider, ProgressBar, ActivityIndicator")(
             Slider(model.volume, min = 0, max = 11)(model.volume.set),

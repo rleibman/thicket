@@ -37,6 +37,7 @@ final class AppleRenderer extends Renderer {
   private val editIds = mutable.Map.empty[Handle, Long]
   private val boolIds = mutable.Map.empty[Handle, Long]
   private val valueIds = mutable.Map.empty[Handle, Long]
+  private val selectIds = mutable.Map.empty[Handle, Long]
   private val actionIds = mutable.Map.empty[Handle, Seq[Long]]
   private val dismissIds = mutable.Map.empty[Handle, Long]
   private val menuIds = mutable.Map.empty[Handle, Seq[Long]]
@@ -91,6 +92,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.ActivityIndicator => ShimKind.ActivityIndicator
       case WidgetKind.Slider            => ShimKind.Slider
       case WidgetKind.SecureField       => ShimKind.SecureField
+      case WidgetKind.Picker            => ShimKind.Picker
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
@@ -258,6 +260,27 @@ final class AppleRenderer extends Renderer {
       // value is never clamped against the control's default bounds.
       case Prop.Range(min, max) => Shim.sui_set_range(handle, min, max)
       case Prop.Value(v)        => Shim.sui_set_value(handle, v)
+
+      case Prop.Options(values) =>
+        // Clear-then-add, the shape the ABI uses for an alert's actions. No handles to
+        // release here: options are strings, not callbacks.
+        Shim.sui_picker_clear_options(handle)
+        values.foreach(v => Zone(Shim.sui_picker_add_option(handle, toCString(v))))
+
+      case Prop.Selected(index) =>
+        // Read first and skip a no-op write, as the toggle does: setting the selection makes
+        // both AppKit and UIKit fire their action, which would report the app's own write
+        // back as a user choice.
+        if Shim.sui_get_selected(handle) != index then Shim.sui_set_selected(handle, index)
+
+      case Prop.OnSelect(f) =>
+        selectIds.get(handle) match {
+          case Some(id) => Handles.replaceInt(id, f)
+          case None =>
+            val id = Handles.registerInt(f)
+            selectIds(handle) = id
+            Shim.sui_on_select(handle, Handles.intTrampoline, id)
+        }
 
       case Prop.OnValueChange(f) =>
         valueIds.get(handle) match {

@@ -11,11 +11,11 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **17** |
-| Widgets implemented on **every** renderer that exists | **17** |
+| Widgets implemented on at least one renderer | **18** |
+| Widgets implemented on **every** renderer that exists | **18** (Apple's Swift is written but unrun — #45) |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **26** |
-| Props implemented on every renderer | **26** — all of them |
+| Props in the contract | **29** |
+| Props implemented on every renderer | **29** — all of them |
 
 **Seventeen of thirty-two, every one on every renderer.** The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context

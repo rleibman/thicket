@@ -61,6 +61,7 @@ object GalleryGtk {
       "Button — roles, and one disabled",
       "TextField and SecureField",
       "Checkbox and Toggle",
+      "Picker — a choice from a fixed list",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "Image — the three content fits",
@@ -93,6 +94,11 @@ object GalleryGtk {
 
     check("a GtkSwitch for Toggle", GtkInspect.findAll(root)(GtkInspect.isSwitch).nonEmpty)
     check("a GtkScale for Slider", GtkInspect.findAll(root)(GtkInspect.isScale).nonEmpty)
+    // The picker's options reach the real control, and the bound label proves the selection
+    // round-tripped rather than the drop-down just existing.
+    check("the Picker offers its options", texts.contains("Banana"), texts.filter(_.contains("an")).toString)
+    check("and the selection is bound", texts.exists(_.startsWith("Chose ")),
+      texts.filter(_.startsWith("Chose")).toString)
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)
 
     // The ForEach rows each carry a context menu, so there is one popover per row.

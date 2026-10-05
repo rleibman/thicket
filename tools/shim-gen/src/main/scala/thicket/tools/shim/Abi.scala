@@ -190,7 +190,14 @@ object Abi {
     built(14, "SecureField", "NSSecureTextField(", "UITextField(", "isSecureTextEntry on UIKit"),
     built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create"),
     built(16, "Alert", "AlertView(", "AlertView(", "a placeholder; NSAlert / UIAlertController at present"),
-    built(17, "Sheet", "SheetView(", "SheetView(", "a container; a sheet window / a presented controller")
+    built(17, "Sheet", "SheetView(", "SheetView(", "a container; a sheet window / a presented controller"),
+    built(
+      18,
+      "Picker",
+      "NSPopUpButton(",
+      "UIButton(",
+      "UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list"
+    )
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of
@@ -345,6 +352,24 @@ object Abi {
     ),
     setter("sui_on_dismiss", "cb" -> VoidCb, "ctx" -> I64)
       .copy(doc = "The platform closed it without a choice: Escape, a swipe down.")
+  )
+
+  /** A `Picker`'s choices.
+    *
+    * Clear-then-add-each, which is how an alert's actions already cross, rather than a second convention for passing a
+    * sequence over the boundary. The selection is an **index**: two options may share a label, and every toolkit's
+    * selection API is index-based underneath.
+    *
+    * `sui_get_selected` exists so a self-test can read the selection back out of the real control instead of trusting
+    * the setter — the same reason `sui_get_checked` does.
+    */
+  val picker: List[Fn] = List(
+    setter("sui_picker_clear_options"),
+    setter("sui_picker_add_option", "label" -> Str),
+    setter("sui_set_selected", "index" -> I32).copy(doc = "-1 for no selection."),
+    Fn("sui_get_selected", I32, List(p("h", Handle))),
+    setter("sui_on_select", "cb" -> IntCb, "ctx" -> I64)
+      .copy(doc = "The index the user chose.")
   )
 
   /** A context menu is something a view *has* (`NSView.menu`, `UIContextMenuInteraction`), so it is set on the view's
@@ -537,6 +562,7 @@ object Abi {
     ),
     Group("presentation", presentation),
     Group("context menus", contextMenus),
+    Group("picker", picker),
     Group("navigation", navigation),
     Group("inspection, for the self-test", inspection)
   )

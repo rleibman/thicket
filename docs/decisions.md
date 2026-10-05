@@ -69,6 +69,28 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-05 — **`Picker` is a widget, its selection is an index, and its options cross the
+  boundary clear-then-add.** The first new `WidgetKind` since the Apple shims were written,
+  so it is also the first real test of what adding one costs: three props, five ABI
+  functions, both Swift shims, three renderers, and **every renderer failing to compile with
+  six errors each** until they handled the new props. That pressure is the point and it
+  worked, but a widget is never a small change here.
+  An **index**, not the selected string: two options may share a label, and every toolkit's
+  selection API is index-based underneath. `-1` is "nothing", which is not `0`.
+  Options are applied **before** the selection, and that ordering is load bearing rather than
+  tidy — selecting index 2 of a list that is not there yet is ignored by GTK and throws on
+  Android. `TestRenderer` now records the order props arrive in per node, because a map
+  cannot express a sequence promise; falsified by swapping the two.
+  Per-platform choices, each for a reason: GTK a `GtkDropDown` over a **`GtkStringList`
+  model** rather than `gtk_drop_down_new_from_strings`, because options are a prop that
+  changes and a model refills in place; `splice` in one call, since remove-all-then-append
+  emits a change per item and flickers; `GTK_INVALID_LIST_POSITION` is unsigned `-1`, so a
+  raw `-1` would select item 4294967295. Android a `Spinner` whose **adapter contents** are
+  rebuilt rather than the adapter, since swapping the adapter resets the selection to 0.
+  UIKit a **menu-backed `UIButton`**, not `UIPickerView` — a wheel is for long or continuous
+  ranges — which means the selection has to be held beside the control, because a `UIMenu` is
+  immutable and has no `indexOfSelectedItem`.
+
 - 2026-10-05 — **`sbt-thicket` publishes the build, and the flags have exactly one
   definition** (#40). A GTK app was copying twelve lines of `nativeConfig` out of our
   `build.sbt`; now it says `addSbtPlugin("dev.thicket" % "sbt-thicket" % version)` and

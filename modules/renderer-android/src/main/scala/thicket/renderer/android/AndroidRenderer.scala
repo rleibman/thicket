@@ -24,7 +24,7 @@ import android.view.{Gravity, View, ViewGroup}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, ScrollView, SeekBar, Switch, TextView}
+import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, ScrollView, SeekBar, Spinner, Switch, TextView}
 import scala.collection.mutable
 import thicket.renderer.*
 
@@ -127,6 +127,18 @@ final class AndroidRenderer(context: Context) extends Renderer {
         e
 
       case WidgetKind.Slider => SeekBar(context)
+      case WidgetKind.Picker =>
+        val s = Spinner(context)
+        // simple_spinner_dropdown_item, not simple_spinner_item: the latter is the *closed*
+        // row's layout and renders the open list unreadably on a dark theme.
+        s.setAdapter(
+          new ArrayAdapter[String](
+            context,
+            _root_.android.R.layout.simple_spinner_dropdown_item,
+            new java.util.ArrayList[String]()
+          )
+        )
+        s
 
       case WidgetKind.Spacer =>
         val v = View(context)
@@ -358,6 +370,53 @@ final class AndroidRenderer(context: Context) extends Renderer {
               s.setProgress(clamped)
               suppress -= s
             }
+          case _ => ()
+        }
+
+      case Prop.Options(values) =>
+        handle match {
+          case s: Spinner =>
+            // Rebuild the adapter's contents rather than the adapter: a Spinner keeps its
+            // selection by index across a data change, so swapping the adapter would reset
+            // the selection to 0 every time the options were re-set with the same list.
+            val a = s.getAdapter.asInstanceOf[ArrayAdapter[String]]
+            suppress += handle
+            a.clear()
+            values.foreach(a.add)
+            a.notifyDataSetChanged()
+            suppress -= handle
+          case _ => ()
+        }
+
+      case Prop.Selected(index) =>
+        handle match {
+          case s: Spinner =>
+            // Android has no "nothing selected" for a Spinner - INVALID_POSITION is a read
+            // value, not something you can set - so a negative index leaves it alone rather
+            // than being coerced to 0, which would silently select the first option.
+            if index >= 0 && index < s.getCount && s.getSelectedItemPosition != index then {
+              suppress += handle
+              s.setSelection(index)
+              suppress -= handle
+            }
+          case _ => ()
+        }
+
+      case Prop.OnSelect(f) =>
+        handle match {
+          case s: Spinner =>
+            s.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener {
+
+              def onItemSelected(
+                parent:   AdapterView[?],
+                view:     View,
+                position: Int,
+                id:       Long
+              ): Unit = if !suppress.contains(s) then f(position)
+
+              def onNothingSelected(parent: AdapterView[?]): Unit = ()
+
+            })
           case _ => ()
         }
 

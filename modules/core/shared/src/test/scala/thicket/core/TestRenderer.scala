@@ -36,9 +36,15 @@ final class TestRenderer extends Renderer {
     var onTextChange:    Option[String => Unit] = None,
     var onCheckedChange: Option[Boolean => Unit] = None,
     var onValueChange:   Option[Double => Unit] = None,
-    var onDismiss:       Option[() => Unit] = None,
-    var actions:         Seq[thicket.renderer.AlertAction] = Nil,
-    var menu:            Seq[thicket.renderer.MenuItem] = Nil,
+    var onSelect:        Option[Int => Unit] = None,
+    var options:         Seq[String] = Nil,
+    /** Every prop applied to this node, in order. Some promises are about sequence — a `Picker`'s options must arrive
+      * before its selection — and a map cannot show that.
+      */
+    val applied:   mutable.Buffer[String] = mutable.Buffer.empty,
+    var onDismiss: Option[() => Unit] = None,
+    var actions:   Seq[thicket.renderer.AlertAction] = Nil,
+    var menu:      Seq[thicket.renderer.MenuItem] = Nil,
     // Numbers are kept as numbers, never stringified. Scala.js has no int/double
     // distinction, so `7.0.toString` is "7" there and "7.0" on the JVM — a test that
     // compares the rendered string passes on one backend and fails on the other.
@@ -162,6 +168,9 @@ final class TestRenderer extends Renderer {
     opCount += 1
     val n = nodes(handle)
     appliedProps ++= patch
+    // Per node, in order. `appliedProps` is build-wide, so it cannot answer "did this
+    // widget get its options before its selection".
+    n.applied ++= patch.map(_.getClass.getSimpleName.stripSuffix("$"))
     patch.foreach {
       case Prop.Text(v) =>
         if n.props.get("text").contains(v) then ()
@@ -199,8 +208,15 @@ final class TestRenderer extends Renderer {
         n.nums("rangeMin") = lo
         n.nums("rangeMax") = hi
       case Prop.OnValueChange(f) => n.onValueChange = Some(f)
-      case Prop.Message(v)       => n.props("message") = v
-      case Prop.OnDismiss(f)     => n.onDismiss = Some(f)
+
+      // Options as a list, not a joined string: a test that asserts on "a,b" cannot tell an
+      // option containing a comma from two options, and the whole point of an index-based
+      // selection is that labels are not identities.
+      case Prop.Options(vs)  => n.options = vs
+      case Prop.Selected(i)  => n.nums("selected") = i.toDouble
+      case Prop.OnSelect(f)  => n.onSelect = Some(f)
+      case Prop.Message(v)   => n.props("message") = v
+      case Prop.OnDismiss(f) => n.onDismiss = Some(f)
       case Prop.ContextMenu(items) =>
         n.menu = items
         n.props("menu") = items.map(_.label).mkString(",")

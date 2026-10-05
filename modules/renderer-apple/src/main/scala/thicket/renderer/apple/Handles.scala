@@ -93,6 +93,15 @@ object Handles {
     f:  Double => Unit
   ): Unit = values.put(id, f)
 
+  /** The `Int` counterpart, for a `Picker`'s selection. `registerInt` and `intTrampoline`
+    * already existed for the virtual-row callbacks; only the replace half was missing, which
+    * is what lets a re-render swap the handler without leaking a table entry per update.
+    */
+  def replaceInt(
+    id: Long,
+    f:  Int => Unit
+  ): Unit = ints.put(id, f)
+
   def release(id: Long): Unit = {
     val _ = taps.remove(id)
     val _ = texts.remove(id)
