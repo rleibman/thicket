@@ -69,6 +69,17 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-04 — **AppKit's `Column` and `Row` are flipped views** (#28). Top-left origin, as
+  on UIKit and in reading order. It matters where a stack is a scroll view's document:
+  AppKit keeps an unflipped document's *bottom* edge in view, so the todo screen — a
+  vertical `Scroll` taller than its window — opened **48 pt** from its top, the first row
+  under the title bar. Measured with a new `sui_scroll_offset` (distance from the top of the
+  content, whatever the document's coordinate system): **0 pt** after, on both toolkits;
+  UIKit was 0 before too. Stack layout is by constraints, so flipping moves nothing else:
+  the 87 existing todo checks pass unchanged, plus the new one (88/88 macOS, 83/83 iOS);
+  gallery 19/19 on both. Screenshot confirms the first field is visible. The bug predated
+  `AppRoot.pages`: the old `element` path showed it on the same build.
+
 - 2026-10-04 — **GTK4 has no `&` nesting selector, and a toolkit warning nobody reads is not
   a test.** (#30) The renderer built `.cls { color: X; & > * { color: X; } }`; GTK stopped at
   the `&`, discarded the rest of the block, and the rule meant to colour a tinted
@@ -85,6 +96,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   the warning** and reports through the signal instead. Reintroducing the bug produced 0
   stderr warnings and 20 counted errors with the check failing — so the fix removes the
   noise and makes the failure visible at the same time.
+
 - 2026-10-02 — **On macOS a navigation stack is a sidebar** (#25, decided by the project
   owner). macOS has no push idiom, so `AppRoot.pages` renders as an `NSSplitViewController`:
   the live pages as a source list, the selected page's content beside it, every page kept

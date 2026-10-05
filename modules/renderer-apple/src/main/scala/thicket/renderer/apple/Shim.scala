@@ -89,6 +89,7 @@ object Shim {
   def sui_get_progress(h: Handle): CDouble = extern
   def sui_get_value(h: Handle): CDouble = extern
   def sui_is_secure(h: Handle): CInt = extern
+  def sui_scroll_offset(h: Handle): CDouble = extern
   def sui_is_presented(h: Handle): CInt = extern
   def sui_presented_title(h: Handle): CString = extern
   def sui_presented_message(h: Handle): CString = extern

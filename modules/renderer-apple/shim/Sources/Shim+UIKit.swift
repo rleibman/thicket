@@ -1299,3 +1299,10 @@ public func sui_pages_back() -> Int32 {
   guard let nav = hostNavigation(), nav.viewControllers.count > 1 else { return 0 }
   return nav.popViewController(animated: false) != nil ? 1 : 0
 }
+
+/// UIKit scroll views are top-origin; the adjusted inset is where "the top" rests.
+@_cdecl("sui_scroll_offset")
+public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
+  guard let scroll = view(h) as? UIScrollView else { return -1 }
+  return Double(scroll.contentOffset.y + scroll.adjustedContentInset.top)
+}

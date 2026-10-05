@@ -124,4 +124,7 @@ object AppleInspect {
   /** Goes back one page through the platform's own path, as a user would. */
   def platformBack(): Boolean = Shim.sui_pages_back() != 0
 
+  /** How far a vertical scroller is from the top of its content; 0 at the top, -1 if `h` is not a scroller. */
+  def scrollOffset(h: Shim.Handle): Double = Shim.sui_scroll_offset(h)
+
 }
