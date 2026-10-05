@@ -16,6 +16,7 @@
 
 package example.gallery
 
+import thicket.renderer.WidgetKind
 import thicket.renderer.apple.{AppleApp, AppleInspect}
 
 /** The gallery's conformance check on AppKit and UIKit — the same questions the GTK host
@@ -90,6 +91,18 @@ object GallerySelfTest {
     check("the menus hold the menu's items",
       withMenus.exists(h => AppleInspect.menuItems(h).contains("Remove")),
       withMenus.map(AppleInspect.menuItems).toString)
+
+    // The Image section's heading being on screen says nothing about the pictures: an image
+    // view whose file did not load is an empty frame of the right size. So ask each image
+    // view whether it holds an image. The source is a repo-relative path, which a binary run
+    // from the repo resolves and an app bundle may not (#31).
+    //
+    // Only the framework's own Image widgets: a UIKit switch, slider or button contains
+    // image views of its own, and an unfiltered walk counted ten where the screen has two.
+    val imageWidgets = all.filter(h => AppleApp.renderer.kindOf(h).contains(WidgetKind.Image))
+    val images = imageWidgets.flatMap(h => AppleInspect.hasImage(h))
+    check("every Image shows its picture", images.size == 2 && images.forall(identity),
+      s"${images.count(identity)} of ${images.size} Image widgets hold an image")
 
     // Presented widgets must not be in the tree until asked for.
     check("nothing is presented before it is asked for",

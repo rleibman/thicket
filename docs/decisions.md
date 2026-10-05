@@ -69,6 +69,19 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-04 — **On Apple, a relative `ImageSource.FromFile` path falls back to the app
+  bundle** (#31). Used as given when it is absolute or exists from the working directory — a
+  binary run from the repo, as the macOS examples are — and otherwise looked up under
+  `Bundle.main.resourcePath`. An iOS app's working directory is `/`, and the bundle is the
+  only place its own files live. Found by a gallery check added for it: the iOS gallery
+  showed **0 of 2** images, macOS 2 of 2; after the fallback and copying the logo into the
+  bundle, 2 of 2 on both. The first version of that check counted *every* image view and
+  found ten on iOS — UIKit's switches, sliders and buttons contain their own — so it asks the
+  renderer which handles are the framework's `Image` widgets (`AppleRenderer.kindOf`) and
+  the platform whether each holds a picture (`sui_has_image`). Gallery **20/20** on macOS
+  and on the iOS simulator; the four checks #31 expected might need adjusting all pass as
+  written, each for the reason it states.
+
 - 2026-10-04 — **AppKit's `Column` and `Row` are flipped views** (#28). Top-left origin, as
   on UIKit and in reading order. It matters where a stack is a scroll view's document:
   AppKit keeps an unflipped document's *bottom* edge in view, so the todo screen — a
