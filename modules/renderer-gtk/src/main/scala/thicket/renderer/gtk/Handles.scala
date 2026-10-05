@@ -228,9 +228,6 @@ private[gtk] object Handles {
 
   def closeRequestPtr: CVoidPtr = CFuncPtr.toPtr(closeRequest)
 
-  /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not
-    * shed entries at UI rates is a leak with a clock on it (S8).
-    */
   /** Malformed CSS, counted rather than logged.
     *
     * GTK reports a bad stylesheet by emitting `parsing-error` on the provider and writing a
@@ -263,6 +260,9 @@ private[gtk] object Handles {
 
   def cssParsingErrorPtr: CVoidPtr = CFuncPtr.toPtr(cssParsingError)
 
+  /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not
+    * shed entries at UI rates is a leak with a clock on it (S8).
+    */
   val idle: CFuncPtr1[gpointer, gboolean] =
     CFuncPtr1.fromScalaFunction { (data: gpointer) =>
       val id = pointerToId(data)
