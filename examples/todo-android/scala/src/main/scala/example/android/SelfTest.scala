@@ -109,7 +109,25 @@ object SelfTest {
     val parsed = saved.flatMap(TodoApp.parseRoute)
     check("the back stack round-trips through strings", parsed == app.navigator.routes.now,
       s"saved=$saved parsed=$parsed")
+
+    // Restoring the stack must *mount* it, not merely set it.
+    //
+    // This is the one path the rest of the suite does not reach: `onCreate` restores from
+    // the Bundle before the page-syncing effect is created, so a process-death restore
+    // depends on ordering that nothing was checking. Reasoning about the line numbers is
+    // not the same as watching it happen, and it is exactly the kind of runtime behaviour a
+    // reviewer cannot confirm by reading the diff.
+    app.navigator.restore(List(TodoApp.Route.Detail(1), TodoApp.Route.Items))
+    val restored = allTexts(stack())
+    check("a restored stack mounts every page, not just the top",
+      restored.contains("Add") && restored.contains("Back"),
+      restored.toString)
+    check("and the restored top screen is the one on top", app.title.now == "Item")
+
     val _ = app.navigator.reset(TodoApp.Route.Items)
+    check("reset collapses the stack to one page",
+      !app.canGoBack.now && !allTexts(stack()).contains("Back"),
+      allTexts(stack()).toString)
 
     // --- the form: text field and checkbox bound both ways ---
     check("the draft starts empty", model.draft.now.isEmpty)
