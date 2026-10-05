@@ -142,7 +142,7 @@ It depends on published artefacts rather than on this repo. Until there is a tag
 you need a local publish first:
 
 ```bash
-cd /path/to/thicket && sbt 'coreNative/publishLocal; rendererGtk/publishLocal'
+cd /path/to/thicket && sbt 'signalsNative/publishLocal; rendererApiNative/publishLocal; coreNative/publishLocal; rendererGtk/publishLocal'
 ```
 
 The dependencies, with explicit artefact suffixes because **sbt 2 has no `%%%`**:
