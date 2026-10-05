@@ -239,6 +239,14 @@ object Todo {
     check("and they come back on return",
       GtkInspect.allTexts(GtkApp.headerHandle).contains("About"))
 
+    // Every stylesheet this renderer wrote parsed. Worth a check of its own rather than
+    // trusting stderr: the renderer emitted CSS GTK could not parse from the day theming
+    // landed, 26 warnings per run, and no test noticed because they grep for `Gtk-CRITICAL`
+    // and this was a `Gtk-WARNING` (#30).
+    check("no CSS the renderer wrote failed to parse",
+      GtkInspect.cssParseErrors == 0L,
+      s"${GtkInspect.cssParseErrors} CSS parse errors")
+
     // --- the navigation container: the stack is kept alive ---
     // The reason for a native container rather than swapping one subtree. Before this, a
     // push unmounted the screen below and a pop rebuilt it from scratch, losing its scroll

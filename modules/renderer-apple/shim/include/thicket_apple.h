@@ -178,6 +178,9 @@ int32_t sui_is_secure(sui_handle h);
 /* 1 when an image view holds a decoded image, 0 when it shows nothing, -1 when `h` is not
    an image view. The difference between a picture and an empty frame of the right size. */
 int32_t sui_has_image(sui_handle h);
+/* How far a vertical scroller's visible area is from the top of its content, in points:
+   0 when it shows the top. -1 when `h` is not a scroller. */
+double sui_scroll_offset(sui_handle h);
 /* 1 while an Alert or Sheet is on screen, as the platform reports it. */
 int32_t sui_is_presented(sui_handle h);
 /* The title the platform is *showing* for a presented widget, read from the alert or the

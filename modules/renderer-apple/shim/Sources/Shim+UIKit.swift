@@ -1319,3 +1319,10 @@ public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let iv = view(h) as? UIImageView else { return -1 }
   return iv.image != nil ? 1 : 0
 }
+
+/// UIKit scroll views are top-origin; the adjusted inset is where "the top" rests.
+@_cdecl("sui_scroll_offset")
+public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
+  guard let scroll = view(h) as? UIScrollView else { return -1 }
+  return Double(scroll.contentOffset.y + scroll.adjustedContentInset.top)
+}

@@ -79,6 +79,12 @@ private func isOn(_ v: NSView) -> Bool {
 /// Taps on a plain container: NSStackView emits no action, so a click recogniser is
 /// attached the way GTK needs a GtkGestureClick on a GtkBox.
 private final class TapView: NSStackView {
+  /// Top-left origin, as on UIKit and in reading order. It matters as a scroll view's document
+  /// view: AppKit keeps an unflipped document's *bottom* edge in view, so a Column taller than
+  /// its window opened scrolled to the bottom with its first row under the title bar — 48pt
+  /// from the top on the todo screen (#28). Layout is by constraints, so nothing else moves.
+  override var isFlipped: Bool { true }
+
   override func mouseDown(with event: NSEvent) {
     if let t = taps[ObjectIdentifier(self)] { t.cb(t.ctx) } else { super.mouseDown(with: event) }
   }
@@ -1355,4 +1361,13 @@ public func sui_pages_back() -> Int32 {
 public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let iv = view(h) as? NSImageView else { return -1 }
   return iv.image != nil ? 1 : 0
+}
+
+/// Measured from the *top* of the content whatever the document view's coordinate system: in
+/// an unflipped document the origin is bottom-left, so the top is at `frame.height`.
+@_cdecl("sui_scroll_offset")
+public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
+  guard let scroll = view(h) as? NSScrollView, let doc = scroll.documentView else { return -1 }
+  let visible = scroll.contentView.bounds
+  return Double(doc.isFlipped ? visible.minY : doc.frame.height - visible.maxY)
 }

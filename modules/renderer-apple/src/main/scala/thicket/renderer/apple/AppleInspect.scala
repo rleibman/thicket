@@ -134,4 +134,7 @@ object AppleInspect {
       case _ => None
     }
 
+  /** How far a vertical scroller is from the top of its content; 0 at the top, -1 if `h` is not a scroller. */
+  def scrollOffset(h: Shim.Handle): Double = Shim.sui_scroll_offset(h)
+
 }

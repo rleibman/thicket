@@ -421,6 +421,13 @@ object Abi {
         "   an image view. The difference between a picture and an empty frame of the right size."
     ),
     Fn(
+      "sui_scroll_offset",
+      F64,
+      List(p("h", Handle)),
+      doc = "How far a vertical scroller's visible area is from the top of its content, in points:\n" +
+        "   0 when it shows the top. -1 when `h` is not a scroller."
+    ),
+    Fn(
       "sui_is_presented",
       I32,
       List(p("h", Handle)),
