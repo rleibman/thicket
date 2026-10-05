@@ -283,6 +283,26 @@ lazy val rendererApple = project
   // which would otherwise have to know the licence text to keep the bytes matching.
   .settings(headerSources / excludeFilter := HiddenFileFilter || "Shim.scala")
   .settings(appleNativeSettings)
+  // The Swift shim travels in the published jar (#41). Without it an app outside this repository has the Scala half
+  // of the renderer and nothing to link its `sui_*` symbols against, because `libthicketapple.a` is built by a shell
+  // script here and was never published. Built at *package* time, not on every compile: it needs Xcode, and it is
+  // only wanted when a jar is being made. `sbt-thicket`'s Apple plugins unpack it from the resolved jar.
+  .settings(
+    Compile / packageBin / mappings ++= {
+      val shim = (ThisBuild / baseDirectory).value / "modules" / "renderer-apple" / "shim"
+      for target <- Seq("macos", "ios-sim") do {
+        val code = scala.sys.process.Process(Seq("bash", (shim / "build-shim.sh").getAbsolutePath, target), shim).!
+        if code != 0 then sys.error(s"build-shim.sh $target failed with exit $code")
+      }
+      val conv = fileConverter.value
+      Seq(
+        shim / "build" / "libthicketapple.a"       -> "thicket-apple/macos/libthicketapple.a",
+        shim / "build-ios" / "libthicketapple.a"   -> "thicket-apple/ios-sim/libthicketapple.a",
+        shim / "include" / "thicket_apple.h"       -> "thicket-apple/include/thicket_apple.h",
+        shim / "include" / "thicket_apple_types.h" -> "thicket-apple/include/thicket_apple_types.h"
+      ).map((f, path) => conv.toVirtualFile(f.toPath) -> path)
+    }
+  )
 
 /** The ZIO bridge: effects at the edges of an otherwise effect-free core (docs/07 §7.13).
   *

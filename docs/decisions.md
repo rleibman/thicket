@@ -69,6 +69,24 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-05 — **The Swift shim ships inside `thicket-renderer-apple`'s jar** (#41). An
+  Apple consumer needs `libthicketapple.a` as well as Scala artefacts, and it was built by a
+  shell script here and never published. Of #41's options — a classified artefact, an
+  XCFramework, the plugin running `build-shim.sh`, or "clone and build" — the jar is the one
+  that rides the dependency graph a consumer already resolves: no second coordinate to keep in
+  step, no build of Thicket's sources on their machine. Built at *package* time, so ordinary
+  compiles do not need Xcode; both slices (`macos`, `ios-sim`) plus the headers, about 540 KB.
+  `ThicketMacPlugin` / `ThicketIosPlugin` unpack it from the resolved jar and link it with the
+  same `ThicketNativeFlags` the repository uses. Measured by
+  `bin/verify-getting-started-apple.sh`, outside the repo against a local publish: the macOS
+  template owns a window titled "Hello Thicket" after 10 s, the iOS template is still running
+  in the simulator after 10 s; control: an iOS app that throws at start fails it. Three things
+  the first runs got wrong, each now handled and commented where it is: sbt's thin client
+  ends `print` with "[success]" and a terminal escape, so the version is the line that looks
+  like one; sbt 2 keeps `target` under `target/out/`, so the template asks
+  `print thicketAppleShim` for the path; and `launchctl list | grep -q` under `pipefail` fails
+  on a match, because launchctl dies of SIGPIPE.
+
 - 2026-10-05 — **`Picker` is a widget, its selection is an index, and its options cross the
   boundary clear-then-add.** The first new `WidgetKind` since the Apple shims were written,
   so it is also the first real test of what adding one costs: three props, five ABI
