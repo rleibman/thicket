@@ -1,6 +1,5 @@
 // Thicket — see docs/. Toolchain policy: latest stable Scala and sbt (docs/decisions.md).
 // sbt 2 has no `%%%`, so cross-platform test deps carry explicit artefact suffixes.
-import scala.sys.process.* // the `.!!` on a String below is this import's extension
 // sbt-git's autoImport is not in build.sbt scope here (hence the fully-qualified
 // `com.github.sbt.git.GitVersioning` on each project), so its keys need this alias.
 import com.github.sbt.git.SbtGit.GitKeys
@@ -194,19 +193,17 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(libraryDependencies ++= zioTestJs)
   .nativeSettings(libraryDependencies ++= zioTestNative)
 
-/** GTK's C glue (and that of its transitive bindings, e.g. graphene) is compiled by Scala Native in whichever project
-  * performs the link, so every downstream project needs these flags too — `nativeConfig` is not inherited through
-  * `dependsOn`.
+/** GTK's link settings, from the same definition the published `sbt-thicket` plugin uses.
+  *
+  * `ThicketNativeFlags` lives in `tools/sbt-thicket/shared/src/main/scala` and is compiled into this meta-build by
+  * `project/build.sbt` as well as into the plugin. There is one copy of these flags, not two, which is the point of
+  * #40: a plugin whose flags can disagree with the renderer's own build reproduces the failure it was meant to prevent.
+  *
+  * `GC.immix` is new here and was not in the copy this replaced. It is Scala Native's default *unless* `SCALANATIVE_GC`
+  * says otherwise, so it was a default the environment could change; the template already pinned it.
   */
 lazy val gtkNativeSettings = Seq(
-  nativeConfig ~= { c =>
-    val cflags = "pkg-config --cflags gtk4 libadwaita-1".!!.trim.split(" ").filter(_.nonEmpty).toSeq
-    val ldflags = "pkg-config --libs gtk4 libadwaita-1".!!.trim.split(" ").filter(_.nonEmpty).toSeq
-    c.withLTO(scala.scalanative.build.LTO.none)
-      .withMode(scala.scalanative.build.Mode.debug)
-      .withCompileOptions(c.compileOptions ++ cflags)
-      .withLinkingOptions(c.linkingOptions ++ ldflags)
-  }
+  nativeConfig ~= thicket.sbt.ThicketNativeFlags.gtk
 )
 
 /** GTK4 renderer (Linux). Scala Native only. */
@@ -233,65 +230,23 @@ lazy val rendererGtk = project
 /** AppKit's Swift shim is a separate static library, because Scala Native's own clang invocation knows nothing about
   * Swift. `modules/renderer-apple/shim/build-shim.sh` builds it; these flags link it and AppKit itself.
   *
-  * Computed inside `nativeConfig ~=` rather than at build-load time, so nothing here runs on a machine that is not a
-  * Mac — the same reason `gtkNativeSettings` shells out to pkg-config lazily.
+  * The flags are `ThicketNativeFlags.apple`, shared with the plugin like the GTK ones. The shim directories stay here
+  * because they are this repository's layout, and an app outside it has no `modules/` — which is why there is no Apple
+  * plugin yet (#41, and `tools/sbt-thicket/README.md`).
   */
 lazy val appleNativeSettings = Seq(
-  nativeConfig ~= { c =>
-    val shim = (file("modules") / "renderer-apple" / "shim" / "build").getAbsolutePath
-    c.withLTO(scala.scalanative.build.LTO.none)
-      .withMode(scala.scalanative.build.Mode.debug)
-      .withCompileOptions(
-        c.compileOptions ++ Seq("-I" + (file("modules") / "renderer-apple" / "shim" / "include").getAbsolutePath)
-      )
-      .withLinkingOptions(
-        c.linkingOptions ++ Seq(
-          "-L" + shim,
-          "-lthicketapple",
-          "-framework",
-          "AppKit",
-          "-framework",
-          "Foundation",
-          // Swift's own runtime, which the shim's objects need at link time.
-          "-L/usr/lib/swift",
-          "-Xlinker",
-          "-rpath",
-          "-Xlinker",
-          "/usr/lib/swift"
-        )
-      )
-  }
+  nativeConfig ~= thicket.sbt.ThicketNativeFlags.apple(
+    shimLibDir = file("modules") / "renderer-apple" / "shim" / "build",
+    shimIncludeDir = file("modules") / "renderer-apple" / "shim" / "include"
+  )
 )
 
-/** The iOS simulator variant. Three differences from the macOS one, each forced:
-  *
-  *   - `libraryStatic`, because the host owns `@main` (see `todoIos`);
-  *   - `GC.immix`, the only GC that builds for iOS (S1);
-  *   - `target.os -> "darwin"`. An iOS triple makes `target.os == "ios"`, javalib's `LinktimeInfo.isMac` accepts only
-  *     "darwin"/"macosx", and `PosixThread` then calls `pthread_condattr_setclock`, which no Apple platform has (S1).
-  *     Mandatory on every iOS target; without it the link fails.
-  *
-  * No linking options for the shim: a static archive is not linked, so the `sui_*` symbols stay undefined until
-  * `ios-app/build-app.sh` resolves them against the UIKit shim. `xcrun` runs inside `nativeConfig`, not at build-load
-  * time, so the Linux box is unaffected.
+/** The iOS simulator variant: `libraryStatic`, `GC.immix`, a target triple, an SDK path asked of the Xcode command-line
+  * tools, and the `target.os -> "darwin"` linktime property without which the link fails. All of it, and why, in
+  * `ThicketNativeFlags.ios`.
   */
 lazy val iosNativeSettings = Seq(
-  nativeConfig := {
-    val c = nativeConfig.value
-    val triple = "arm64-apple-ios17.0-simulator"
-    val sdk = scala.sys.process.Process(Seq("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path")).!!.trim
-    val flags = Seq("-target", triple, "-isysroot", sdk)
-    c.withBuildTarget(scala.scalanative.build.BuildTarget.libraryStatic)
-      .withGC(scala.scalanative.build.GC.immix)
-      .withMode(scala.scalanative.build.Mode.debug)
-      .withLTO(scala.scalanative.build.LTO.none)
-      .withTargetTriple(triple)
-      .withCompileOptions(c.compileOptions ++ flags)
-      .withLinkingOptions(c.linkingOptions ++ flags)
-      .withLinktimeProperties(
-        c.linktimeProperties + ("scala.scalanative.meta.linktimeinfo.target.os" -> "darwin")
-      )
-  }
+  nativeConfig ~= thicket.sbt.ThicketNativeFlags.ios()
 )
 
 /** Both Apple example hosts compile the same `examples/todo-apple/shared` sources. */
@@ -550,6 +505,42 @@ lazy val shimGen = project
     Compile / run / fork := true
   )
 
+/** `sbt-thicket`: the published sbt plugin that gives an app Thicket's Scala Native link settings, so it does not copy
+  * them out of this file (#40).
+  *
+  * Its flag definitions are **not** in `src/main`. They are in `shared/src/main`, which this project compiles *and*
+  * `project/build.sbt` adds to the meta-build — so `gtkNativeSettings` above and the plugin's `thicketGtkSettings` are
+  * the same method on the same bytes. The alternative, this build depending on the published plugin, is circular: the
+  * renderer could not be built until the plugin had been released.
+  *
+  * `scalaVersion` is pinned to the Scala **sbt itself** is built with, which `ThisBuild / scalaVersion := "3.9.0"`
+  * would otherwise override. Being straight about the evidence: I expected 3.9.0 to break the consumer's meta-build,
+  * because that is compiled by sbt's own Scala and a 3.8 compiler cannot read 3.9 TASTy. It did not — the template
+  * loaded and linked against a plugin compiled with 3.9.0. So this is a precaution, for a consumer on an sbt older
+  * than ours rather than a failure I reproduced, and it costs nothing: the plugin's sources compile under both.
+  */
+lazy val sbtThicket = project
+  .in(file("tools/sbt-thicket"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
+  .settings(thicketBuildInfo("thicket.sbt.buildinfo"))
+  .settings(commonSettings, zioTestFramework)
+  .settings(
+    name      := "sbt-thicket",
+    sbtPlugin := true,
+    // org.scala-sbt:main_3:2.0.9 depends on scala3-library_3 3.8.4. Raise this only together with sbt.
+    scalaVersion := "3.8.4",
+    // One copy of the flags, compiled twice. See `project/build.sbt`.
+    Compile / unmanagedSourceDirectories += baseDirectory.value / "shared" / "src" / "main" / "scala",
+    // The plugin needs `nativeConfig`, so it depends on the plugin that defines it — which also means a consumer's
+    // `project/plugins.sbt` no longer adds sbt-scala-native itself, and `enablePlugins(ThicketGtkPlugin)` enables
+    // `ScalaNativePlugin` too.
+    addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12"),
+    libraryDependencies ++= Seq(
+      "dev.zio" %% "zio-test"     % zioV % Test,
+      "dev.zio" %% "zio-test-sbt" % zioV % Test
+    )
+  )
+
 lazy val root = project
   .in(file("."))
   .aggregate(
@@ -564,6 +555,7 @@ lazy val root = project
     core.native,
     effectZio.jvm,
     effectZio.native,
-    shimGen
+    shimGen,
+    sbtThicket
   )
   .settings(publish / skip := true, name := "thicket")

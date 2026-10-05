@@ -71,7 +71,7 @@ sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev
 |---|---|---|
 | `clang` | Scala Native compiles and links through it | 21.1.6 |
 | `libunwind-dev` | Scala Native's unwinder — the runtime will not link without it | 1.8.3 |
-| `pkg-config` | `build.sbt` runs `pkg-config --cflags gtk4 libadwaita-1` and the matching `--libs` to get the compile and link flags, so a missing `pkg-config` fails the *build*, not just the link | 2.5.1 |
+| `pkg-config` | the build runs `pkg-config --cflags gtk4 libadwaita-1` and the matching `--libs` to get the compile and link flags, so a missing `pkg-config` fails the *build*, not just the link — and says which packages to install | 2.5.1 |
 | `libgtk-4-dev` | the GTK4 renderer | 4.22.4 |
 | `libadwaita-1-dev` | `AdwNavigationView`, for native navigation containers. GTK core has no equivalent — `GtkStack` gives transitions but no back-gesture semantics | 1.9.1 |
 | `python3` | `bin/coverage.sh` reads the scoverage report with it | any 3.x |
@@ -168,10 +168,29 @@ It depends on published artefacts rather than on this repo. Until there is a tag
 you need a local publish first:
 
 ```bash
-cd /path/to/thicket && sbt 'signalsNative/publishLocal; rendererApiNative/publishLocal; coreNative/publishLocal; rendererGtk/publishLocal'
+cd /path/to/thicket && sbt 'signalsNative/publishLocal; rendererApiNative/publishLocal; coreNative/publishLocal; rendererGtk/publishLocal; sbtThicket/publishLocal'
 ```
 
-The dependencies, with explicit artefact suffixes because **sbt 2 has no `%%%`**:
+The whole of the build configuration is one plugin:
+
+```scala
+// project/plugins.sbt
+addSbtPlugin("dev.thicket" % "sbt-thicket" % thicketVersion)
+
+// build.sbt
+lazy val app = project.in(file(".")).enablePlugins(ThicketGtkPlugin)
+```
+
+`ThicketGtkPlugin` brings `sbt-scala-native`, adds `thicket-core` and `thicket-renderer-gtk`
+at its own version, and sets the GTK `nativeConfig` — the `pkg-config` compile and link
+flags, `LTO.none`, `Mode.debug`, `GC.immix`. Before it existed an app copied about a dozen
+lines of that out of Thicket's own `build.sbt`, and got a link failure with nothing pointing
+at the cause if it got the GC wrong. The flags are not a second copy: `build.sbt` and the
+plugin compile the same source file. See
+[tools/sbt-thicket/README.md](tools/sbt-thicket/README.md).
+
+If you would rather name the artefacts yourself, the suffixes are explicit because **sbt 2
+has no `%%%`**:
 
 ```scala
 libraryDependencies ++= Seq(
@@ -180,11 +199,9 @@ libraryDependencies ++= Seq(
 )
 ```
 
-**One wart worth knowing before you hit it.** A GTK app also needs about a dozen lines of
-`nativeConfig` — the `pkg-config` flags, the GC, the LTO, the mode — and nothing publishes
-them, so the template carries a copy. Get the GC wrong and it fails at link time with
-nothing pointing at why. An `sbt-thicket` plugin to supply them is the intended fix and is
-tracked as an issue; the template is the honest interim answer.
+**Apple is not covered yet.** The plugin is GTK only — an Apple app also needs a Swift static
+library this repository builds with a shell script and does not publish, and on iOS no `main`
+of its own, so a plugin would not be enough. Tracked as #41.
 
 `./bin/verify-getting-started.sh` checks all of the above still works, by building the
 template outside the repo against a fresh local publish. See
