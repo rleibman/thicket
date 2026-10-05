@@ -34,6 +34,7 @@ final class GtkRenderer extends Renderer {
   private val tapIds   = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val editIds  = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val toggleIds = mutable.Map.empty[Ptr[GtkWidget], Long]
+  private val selectIds = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val valueIds  = mutable.Map.empty[Ptr[GtkWidget], Long]
 
   // An Alert's state, keyed by its placeholder handle. The GtkAlertDialog itself does not
@@ -184,7 +185,13 @@ final class GtkRenderer extends Renderer {
         // range, which is what a keyboard arrow moves.
         case WidgetKind.Slider =>
           gtk_scale_new_with_range(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.01)
-        case WidgetKind.Checkbox  => gtk_check_button_new()
+        case WidgetKind.Checkbox => gtk_check_button_new()
+        case WidgetKind.Picker =>
+          // A GtkStringList model rather than gtk_drop_down_new_from_strings: the options are
+          // a prop and can change, and a model can be refilled in place where a
+          // NULL-terminated array has to be rebuilt and re-handed every time.
+          val model = gtk_string_list_new(null)
+          gtk_drop_down_new(model.asInstanceOf[Ptr[sn.gnome.gio.internal.GListModel]], null)
         case WidgetKind.Scroll =>
           val sw = gtk_scrolled_window_new()
           // Policy is the whole of the axis on GTK: a scrolled window scrolls both ways
@@ -336,6 +343,60 @@ final class GtkRenderer extends Renderer {
                 handle.asInstanceOf[gpointer],
                 toCString(if sw then "notify::active" else "toggled").asInstanceOf[Ptr[gchar]],
                 GCallback.fromPtr(if sw then Handles.notifiedPtr else Handles.changedPtr),
+                Handles.idToPointer(id),
+                null.asInstanceOf[GClosureNotify],
+                GConnectFlags.define(0)
+              )
+            }
+        }
+
+      case Prop.Options(values) =>
+        // Refill the model in place. GtkStringList has no "clear", so splice removes the old
+        // range and inserts the new one in a single step; a remove-all-then-append loop
+        // would emit a change per item and make the drop-down flicker.
+        val model = gtk_drop_down_get_model(handle.asInstanceOf[Ptr[GtkDropDown]])
+        val list = model.asInstanceOf[Ptr[GtkStringList]]
+        val existing = toInt(sn.gnome.gio.internal.g_list_model_get_n_items(model))
+        Zone {
+          // NULL-terminated, which is what splice wants for "the strings to insert".
+          val arr = alloc[CString]((values.length + 1).toUInt)
+          values.zipWithIndex.foreach { (s, i) => arr(i) = toCString(s) }
+          arr(values.length) = null
+          gtk_string_list_splice(list, toGuint(0), toGuint(existing), arr)
+        }
+
+      case Prop.Selected(index) =>
+        // GTK_INVALID_LIST_POSITION for "nothing selected", which is unsigned -1 rather than
+        // a negative index: handing it a raw -1 would select item 4294967295 and crash.
+        val pos = if index < 0 then toGuint(-1) else toGuint(index)
+        val dd = handle.asInstanceOf[Ptr[GtkDropDown]]
+        // Guarded like the switch and the check button: writing the selection fires
+        // notify::selected, which would report the app's own write back to it as a user
+        // choice and, with a Var behind it, loop.
+        if toInt(gtk_drop_down_get_selected(dd)) != index then {
+          suppress += handle
+          gtk_drop_down_set_selected(dd, pos)
+          suppress -= handle
+        }
+
+      case Prop.OnSelect(f) =>
+        selectIds.get(handle) match {
+          case Some(id) => Handles.replaceValued(id, s => f(s.toInt))
+          case None =>
+            val id = Handles.registerValued(s => f(s.toInt))
+            selectIds(handle) = id
+            Handles.bindTextSource(
+              id,
+              () => toInt(gtk_drop_down_get_selected(handle.asInstanceOf[Ptr[GtkDropDown]])),
+              () => suppress.contains(handle)
+            )
+            Zone {
+              // Like GtkSwitch, a drop-down reports through GObject property notification
+              // rather than a signal of its own, so this needs the 3-argument trampoline.
+              val _ = g_signal_connect_data(
+                handle.asInstanceOf[gpointer],
+                toCString("notify::selected").asInstanceOf[Ptr[gchar]],
+                GCallback.fromPtr(Handles.notifiedPtr),
                 Handles.idToPointer(id),
                 null.asInstanceOf[GClosureNotify],
                 GConnectFlags.define(0)
@@ -653,6 +714,12 @@ final class GtkRenderer extends Renderer {
     tapIds.remove(handle).foreach(Handles.release)
     editIds.remove(handle).foreach(Handles.release)
     toggleIds.remove(handle).foreach(Handles.release)
+    // `valueIds` was missing here from the day `Slider` landed, so every destroyed slider
+    // left its handler and its two source closures in the table. A review caught the same
+    // omission for `selectIds`; both are the same mistake, and `Handles.liveCount` plus a
+    // self-test check is what stops a third.
+    valueIds.remove(handle).foreach(Handles.release)
+    selectIds.remove(handle).foreach(Handles.release)
     suppress -= handle
     kinds.remove(handle)
     // GTK4: a widget is owned by its parent, and unparenting drops that reference, which

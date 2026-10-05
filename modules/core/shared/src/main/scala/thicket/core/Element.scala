@@ -332,6 +332,38 @@ object dsl {
     )
   }
 
+  /** A choice from a fixed list.
+    *
+    * `selected` is an index into `options`, not one of the strings: two options may share a label, and every toolkit's
+    * selection API is index-based underneath. `-1` means nothing is selected, which is not the same as `0`.
+    *
+    * Both arguments take a plain value or a `Signal`, so a picker whose options are themselves loaded — a list of
+    * countries, say — needs no special case.
+    */
+  def Picker(
+    options:  Seq[String] | Signal[Seq[String]],
+    selected: Int | Signal[Int]
+  )(
+    onSelect: Int => Unit
+  ): Element = {
+    val optionsAttr = options match {
+      case s: Seq[String] @unchecked         => Static(Prop.Options(s))
+      case s: Signal[Seq[String]] @unchecked => Reactive(s, Prop.Options(_))
+    }
+    val selectedAttr = selected match {
+      case i: Int                    => Static(Prop.Selected(i))
+      case s: Signal[Int] @unchecked => Reactive(s, Prop.Selected(_))
+    }
+    Widget(
+      WidgetKind.Picker,
+      // Options before selection, for the same reason Range precedes Value: an index into a
+      // list that is not there yet means nothing, and a toolkit asked to select item 2 of an
+      // empty menu either ignores it or throws.
+      Seq(optionsAttr, selectedAttr, Static(Prop.OnSelect(onSelect))),
+      Nil
+    )
+  }
+
   /** Single-line text input that does not show what it holds.
     *
     * Same shape as [[TextField]] — it is a separate widget because `NSSecureTextField` is a separate class, not because

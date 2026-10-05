@@ -29,11 +29,22 @@ private struct Tap { let cb: sui_void_cb; let ctx: Int64 }
 private struct TextEdit { let cb: sui_text_cb; let ctx: Int64 }
 private struct Toggle { let cb: sui_bool_cb; let ctx: Int64 }
 private struct ValueChange { let cb: sui_value_cb; let ctx: Int64 }
+private struct Selection { let cb: sui_int_cb; let ctx: Int64 }
 
 private var taps: [ObjectIdentifier: Tap] = [:]
 private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
 private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
+private var selections: [ObjectIdentifier: Selection] = [:]
+
+/// A picker's options and selection, kept here rather than read back off the control.
+///
+/// UIKit has no `indexOfSelectedItem`: the state lives in the `UIMenu`'s elements, and the
+/// only way to answer "which index is chosen" is to find the one whose state is `.on`. That
+/// works, but rebuilding the menu on every option change makes it easy to lose, so the
+/// titles and the index are held alongside and the menu is rebuilt from them.
+private var pickerOptions: [ObjectIdentifier: [String]] = [:]
+private var pickerSelected: [ObjectIdentifier: Int] = [:]
 
 /// Progress views told `None`. UIProgressView has no indeterminate mode — there is no
 /// UIKit equivalent of an animating bar — so the state is recorded here, where
@@ -273,6 +284,17 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.alignment = .fill
     s.spacing = 8
     return retained(s)
+
+  case 18:
+    // A menu-backed button, not a UIPickerView: a picker wheel is for long or continuous
+    // ranges, and for a short list the platform idiom since iOS 14 is a button that shows
+    // the current choice and opens a menu. `changesSelectionAsPrimaryAction` is what makes
+    // it behave as a selector rather than a command.
+    let b = UIButton(type: .system)
+    b.showsMenuAsPrimaryAction = true
+    b.changesSelectionAsPrimaryAction = true
+    b.menu = UIMenu(children: [])
+    return retained(b)
 
   case 14:
     // Only construction differs from a TextField; text, placeholder and edits are shared.
@@ -549,6 +571,62 @@ public func sui_on_checked_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping 
 @_cdecl("sui_on_value_change")
 public func sui_on_value_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_value_cb, _ ctx: Int64) {
   valueChanges[ObjectIdentifier(view(h))] = ValueChange(cb: cb, ctx: ctx)
+}
+
+// MARK: - picker
+
+/// Rebuild the menu from the stored titles, marking the selected one.
+///
+/// A `UIMenu` is immutable, so there is no "add one item" — every change replaces it. That
+/// is why the titles are kept in `pickerOptions` rather than read back off the control.
+private func rebuildPickerMenu(_ b: UIButton) {
+  let id = ObjectIdentifier(b)
+  let titles = pickerOptions[id] ?? []
+  let chosen = pickerSelected[id] ?? -1
+  let actions = titles.enumerated().map { (i, title) in
+    UIAction(title: title, state: i == chosen ? .on : .off) { _ in
+      pickerSelected[id] = i
+      guard !suppressed.contains(id), let s = selections[id] else { return }
+      s.cb(s.ctx, Int32(i))
+    }
+  }
+  b.menu = UIMenu(children: actions)
+}
+
+@_cdecl("sui_picker_clear_options")
+public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
+  guard let b = view(h) as? UIButton else { return }
+  pickerOptions[ObjectIdentifier(b)] = []
+  rebuildPickerMenu(b)
+}
+
+@_cdecl("sui_picker_add_option")
+public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>?) {
+  guard let b = view(h) as? UIButton else { return }
+  pickerOptions[ObjectIdentifier(b), default: []].append(str(label))
+  rebuildPickerMenu(b)
+}
+
+@_cdecl("sui_set_selected")
+public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
+  guard let b = view(h) as? UIButton else { return }
+  let id = ObjectIdentifier(b)
+  guard (pickerSelected[id] ?? -1) != Int(index) else { return }
+  suppressed.insert(id)
+  pickerSelected[id] = Int(index)
+  rebuildPickerMenu(b)
+  suppressed.remove(id)
+}
+
+@_cdecl("sui_get_selected")
+public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let b = view(h) as? UIButton else { return -1 }
+  return Int32(pickerSelected[ObjectIdentifier(b)] ?? -1)
+}
+
+@_cdecl("sui_on_select")
+public func sui_on_select(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_cb, _ ctx: Int64) {
+  selections[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
 }
 
 // MARK: - tree

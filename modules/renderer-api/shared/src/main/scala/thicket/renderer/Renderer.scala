@@ -174,6 +174,12 @@ enum WidgetKind {
     */
   case ActivityIndicator
 
+  /** A choice from a fixed list: `GtkDropDown`, `Spinner`, `NSPopUpButton`, a menu-backed `UIButton`. Every toolkit has
+    * one, so unlike `Radio` and `SegmentedControl` it passes §12.2a — the platforms differ in how the list is shown,
+    * which is exactly what a native renderer is supposed to decide.
+    */
+  case Picker
+
   /** Whether this kind is *presented over* the app rather than placed in the tree.
     *
     * A framework-level fact rather than a per-renderer one: an alert is not a child of anything on any of the four
@@ -332,6 +338,18 @@ enum Prop {
     * contrast settings that the platform would otherwise handle. Roles map onto each platform's own tokens.
     */
   case TextEmphasis(value: Emphasis)
+
+  /** A `Picker`'s choices, in order. */
+  case Options(values: Seq[String])
+
+  /** Which choice is selected, as an index into [[Options]]. `-1` for none.
+    *
+    * An index rather than the string: two options may share a label, and every toolkit's selection API is index-based
+    * underneath.
+    */
+  case Selected(index: Int)
+
+  case OnSelect(handler: Int => Unit)
 
 }
 

@@ -77,6 +77,11 @@ object Shim {
   def sui_on_dismiss(h: Handle, cb: VoidCb, ctx: Long): Unit = extern
   def sui_menu_clear(h: Handle): Unit = extern
   def sui_menu_add_item(h: Handle, label: CString, enabled: CInt, cb: VoidCb, ctx: Long): Unit = extern
+  def sui_picker_clear_options(h: Handle): Unit = extern
+  def sui_picker_add_option(h: Handle, label: CString): Unit = extern
+  def sui_set_selected(h: Handle, index: CInt): Unit = extern
+  def sui_get_selected(h: Handle): CInt = extern
+  def sui_on_select(h: Handle, cb: IntCb, ctx: Long): Unit = extern
   def sui_pages_begin(): Unit = extern
   def sui_pages_add(id: Long, content: Handle, title: CString): Unit = extern
   def sui_pages_commit(): Unit = extern
@@ -132,4 +137,5 @@ object ShimKind {
   inline val ScrollHorizontal = 15
   inline val Alert = 16
   inline val Sheet = 17
+  inline val Picker = 18
 }

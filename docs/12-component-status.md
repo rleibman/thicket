@@ -11,13 +11,13 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **17** |
-| Widgets implemented on **every** renderer that exists | **17** |
+| Widgets implemented on at least one renderer | **18** |
+| Widgets implemented on **every** renderer that exists | **18** (Apple's Swift is written but unrun — #45) |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **26** |
-| Props implemented on every renderer | **26** — all of them |
+| Props in the contract | **29** |
+| Props implemented on every renderer | **29** — all of them |
 
-**Seventeen of thirty-two, every one on every renderer.** The six phase 2 widgets landed on
+**Eighteen of thirty-two, every one on every renderer** — though `Picker`'s Swift is written and unrun (#45), so on Apple it is eighteen on paper and seventeen measured. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
 menus followed in #19, and the Apple hosts render `AppRoot.pages` since #25. The Apple
 self-test is **87/87** on macOS and **82/82** on the iOS simulator; the five iOS does not
@@ -141,6 +141,7 @@ Slice 2:
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
 | `Slider` | `WidgetKind.Slider` | done | done | done | done | `GtkScale` / `SeekBar`. `Prop.Value` is in the **app's units**, not a fraction |
+| `Picker` | `WidgetKind.Picker` | done | done | written, unrun (#45) | written, unrun (#45) | `GtkDropDown` over a `GtkStringList` model / `Spinner` / `NSPopUpButton` / a menu-backed `UIButton` — **not** `UIPickerView`, which is a wheel. Selection is an **index**: two options may share a label |
 | `SecureField` | `WidgetKind.SecureField` | done | done | done | done | Entry visibility / password input type. A kind rather than a prop because `NSSecureTextField` is a separate class |
 
 Slice 1:
@@ -164,7 +165,7 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 | Group | Left to do |
 |---|---|
 | Layout | `Stack`/`ZStack`, `SafeArea`, `Grid` |
-| Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `Picker`, `DatePicker`, `Link` |
+| Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `DatePicker`, `Link` |
 | Containers | `TabView` |
 
 `IconButton` and `Link` are held back on purpose: the first needs an icon/resource system
@@ -221,7 +222,7 @@ the point of doing this in Scala.
 `OnCheckedChange`, `Style`, `Grow`, `Align`, `Tint`, `Fill`, `Picture`, `Fit`,
 `TextEmphasis`, `Axis`, `Progress`, `Value`, `Range`, `OnValueChange`.
 
-**"Handled" is not "honoured."** All twenty-six are honoured everywhere. `Message`, `Actions`
+**"Handled" is not "honoured."** All twenty-nine are honoured everywhere. `Message`, `Actions`
 and `OnDismiss` were unreachable on Apple until `Alert` could be presented (#18), and
 `ContextMenu` was the last, until #19.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,

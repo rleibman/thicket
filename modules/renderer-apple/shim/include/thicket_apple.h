@@ -48,7 +48,8 @@ void sui_window_set_title(const char *title);
      14 SecureField        NSSecureTextField()            UITextField()     isSecureTextEntry on UIKit
      15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create
      16 Alert              AlertView()                    AlertView()       a placeholder; NSAlert / UIAlertController at present
-     17 Sheet              SheetView()                    SheetView()       a container; a sheet window / a presented controller */
+     17 Sheet              SheetView()                    SheetView()       a container; a sheet window / a presented controller
+     18 Picker             NSPopUpButton()                UIButton()        UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -145,6 +146,15 @@ void sui_menu_clear(sui_handle h);
 /* Appends one item. Order is the order given. */
 void sui_menu_add_item(sui_handle h, const char *label, int32_t enabled,
                        sui_void_cb cb, int64_t ctx);
+
+/* --- picker ------------------------------------------------------------------ */
+void sui_picker_clear_options(sui_handle h);
+void sui_picker_add_option(sui_handle h, const char *label);
+/* -1 for no selection. */
+void sui_set_selected(sui_handle h, int32_t index);
+int32_t sui_get_selected(sui_handle h);
+/* The index the user chose. */
+void sui_on_select(sui_handle h, sui_int_cb cb, int64_t ctx);
 
 /* --- navigation -------------------------------------------------------------- */
 /* Starts describing the stack. Nothing changes on screen until sui_pages_commit. */

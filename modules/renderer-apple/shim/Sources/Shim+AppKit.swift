@@ -27,11 +27,13 @@ private struct Tap { let cb: sui_void_cb; let ctx: Int64 }
 private struct TextEdit { let cb: sui_text_cb; let ctx: Int64 }
 private struct Toggle { let cb: sui_bool_cb; let ctx: Int64 }
 private struct ValueChange { let cb: sui_value_cb; let ctx: Int64 }
+private struct Selection { let cb: sui_int_cb; let ctx: Int64 }
 
 private var taps: [ObjectIdentifier: Tap] = [:]
 private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
 private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
+private var selections: [ObjectIdentifier: Selection] = [:]
 
 /// True while the renderer is writing a value in, so a control's own change notification
 /// can tell an app-driven update from a user edit and stay silent for the former. Without
@@ -52,6 +54,12 @@ private final class Proxy: NSObject, NSTextFieldDelegate {
     let id = ObjectIdentifier(sender)
     guard !suppressed.contains(id), let t = toggles[id] else { return }
     t.cb(t.ctx, isOn(sender) ? 1 : 0)
+  }
+
+  @objc func chose(_ sender: NSPopUpButton) {
+    let id = ObjectIdentifier(sender)
+    guard !suppressed.contains(id), let s = selections[id] else { return }
+    s.cb(s.ctx, Int32(sender.indexOfSelectedItem))
   }
 
   @objc func slid(_ sender: NSSlider) {
@@ -328,6 +336,14 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.spacing = 8
     return retained(s)
 
+  case 18:
+    // pullsDown false: a pop-up shows the current selection and is what a Picker means.
+    // A pull-down menu would always show its title instead, which is a different control.
+    let b = NSPopUpButton(frame: .zero, pullsDown: false)
+    b.target = proxy
+    b.action = #selector(Proxy.chose(_:))
+    return retained(b)
+
   case 14:
     // A separate class on AppKit, which is why SecureField is a kind rather than a prop.
     let f = NSSecureTextField(string: "")
@@ -601,6 +617,43 @@ public func sui_on_checked_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping 
 @_cdecl("sui_on_value_change")
 public func sui_on_value_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_value_cb, _ ctx: Int64) {
   valueChanges[ObjectIdentifier(view(h))] = ValueChange(cb: cb, ctx: ctx)
+}
+
+// MARK: - picker
+
+@_cdecl("sui_picker_clear_options")
+public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
+  guard let b = view(h) as? NSPopUpButton else { return }
+  b.removeAllItems()
+}
+
+@_cdecl("sui_picker_add_option")
+public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>?) {
+  guard let b = view(h) as? NSPopUpButton else { return }
+  // addItem(withTitle:) silently refuses a duplicate title, which would make two options
+  // sharing a label collapse into one and shift every index after it. Build the item.
+  let item = NSMenuItem(title: str(label), action: nil, keyEquivalent: "")
+  b.menu?.addItem(item)
+}
+
+@_cdecl("sui_set_selected")
+public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
+  guard let b = view(h) as? NSPopUpButton, b.indexOfSelectedItem != Int(index) else { return }
+  let id = ObjectIdentifier(b)
+  suppressed.insert(id)
+  if index < 0 { b.select(nil) } else { b.selectItem(at: Int(index)) }
+  suppressed.remove(id)
+}
+
+@_cdecl("sui_get_selected")
+public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let b = view(h) as? NSPopUpButton else { return -1 }
+  return Int32(b.indexOfSelectedItem)
+}
+
+@_cdecl("sui_on_select")
+public func sui_on_select(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_cb, _ ctx: Int64) {
+  selections[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
 }
 
 // MARK: - tree

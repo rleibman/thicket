@@ -17,7 +17,9 @@
 package example
 
 import thicket.core.{ColorRole, Rgb, Theme}
-import thicket.renderer.gtk.{GtkApp, GtkInspect}
+import thicket.core.Reconciler
+import thicket.core.dsl.*
+import thicket.renderer.gtk.{GtkApp, GtkInspect, GtkRenderer}
 
 /** The GTK host for [[TodoApp]] — which knows nothing about GTK.
   *
@@ -246,6 +248,36 @@ object Todo {
     check("no CSS the renderer wrote failed to parse",
       GtkInspect.cssParseErrors == 0L,
       s"${GtkInspect.cssParseErrors} CSS parse errors")
+
+    // Mount a subtree, tear it down, and the handle table should be where it started.
+    //
+    // This is the check that was missing when `Slider`'s value handler leaked from the day it
+    // landed: `destroy` released taps, edits and toggles but not values, and nothing noticed
+    // because a leak is invisible until something runs out. A review found the same omission
+    // for `Picker`; the number is observable now so a third cannot hide.
+    val callbacksBefore = GtkInspect.liveCallbacks
+    locally {
+      val probeOwner = thicket.signals.Owner()
+      val probe = {
+        given thicket.signals.Owner = probeOwner
+        // A fresh renderer, deliberately: the handle table is process-global, so the count is
+        // the same question whichever instance registered, and this needs no new public
+        // surface on GtkApp.
+        Reconciler.mount(
+          GtkRenderer(),
+          Column()(
+            Button("probe")(()),
+            Slider(0.5, min = 0, max = 1)(_ => ()),
+            Picker(Seq("a", "b"), 0)(_ => ())
+          )
+        )
+      }
+      probe.dispose()
+      probeOwner.dispose()
+    }
+    check("mounting and destroying a subtree releases every callback it registered",
+      GtkInspect.liveCallbacks == callbacksBefore,
+      s"$callbacksBefore before, ${GtkInspect.liveCallbacks} after")
 
     // --- the navigation container: the stack is kept alive ---
     // The reason for a native container rather than swapping one subtree. Before this, a
