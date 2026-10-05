@@ -93,6 +93,24 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   gallery 19/19 on both. Screenshot confirms the first field is visible. The bug predated
   `AppRoot.pages`: the old `element` path showed it on the same build.
 
+- 2026-10-04 — **Android's navigation container is a `FrameLayout` plus
+  `android.transition.Slide`, not Fragments.** `android.app.Fragment` has been deprecated
+  since API 28, and the AndroidX one would be a new dependency for an app whose only
+  dependency is `scala3-library`. A FrameLayout holding one child per `NavPage`, with the
+  top visible and `TransitionManager` animating the change, is current platform API and
+  gives what the phase needed: the stack stays alive, and the transition is the platform's
+  own. Back was already native, through `OnBackInvokedDispatcher`.
+  Worth recording that an earlier check in this session reported
+  `android.app.Fragment` as *current* and I repeated that. It was wrong: I had looked only
+  for the class-level `Deprecated` attribute, which android.jar does not carry, and not for
+  the annotation, which it does. The right command is
+  `javap -v | grep -i 'java/lang/Deprecated'`.
+  Also: a self-test cannot cache "the screen". With one view per entry, a `View` captured
+  once goes stale as soon as the stack changes — and `navigator.reset` replaces the root
+  page outright, after which twelve checks were walking a disposed view and reporting an
+  empty tree. The root is a thunk now, and "is the screen below still mounted" is asked of
+  the *container*, since the top page rightly knows nothing about the one beneath it.
+
 - 2026-10-04 — **GTK4 has no `&` nesting selector, and a toolkit warning nobody reads is not
   a test.** (#30) The renderer built `.cls { color: X; & > * { color: X; } }`; GTK stopped at
   the `&`, discarded the rest of the block, and the rule meant to colour a tinted

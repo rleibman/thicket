@@ -19,10 +19,12 @@ package example.android
 import android.app.Activity
 import android.os.{Build, Bundle}
 import android.view.{Menu, MenuItem, View, WindowInsets}
+import android.widget.FrameLayout
+import android.transition.{Slide, TransitionManager}
 import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
 import scala.annotation.nowarn
 import example.TodoApp
-import thicket.core.{Action, ColorRole, NavHost, Reconciler, Rgb, Theme}
+import thicket.core.{Action, ColorRole, Mounted, NavHost, Reconciler, Rgb, Theme}
 import thicket.renderer.ImageSource
 import thicket.renderer.android.AndroidRenderer
 import thicket.signals.{Owner, Signal, ThreadGuard}
@@ -66,10 +68,20 @@ class MainActivity extends Activity {
       app.navigator.restore(saved.toList.flatMap(TodoApp.parseRoute))
 
     }
-    // No hand-rolled ScrollView any more: the app declares its own `Scroll`.
-    val mounted = Reconciler.mount(renderer, app.element)
-    setContentView(mounted.handle)
-    applySystemInsets(mounted.handle)
+    // `pages`, not `element`: one child view per entry, all of them kept mounted, so the
+    // screen below a push keeps its scroll position and anything in flight. See
+    // `AppRoot.pages` for why navigation is host-level rather than a widget kind.
+    //
+    // Not Fragments. `android.app.Fragment` has been deprecated since API 28 - the class
+    // file carries the annotation, though not the class-level `Deprecated` attribute, which
+    // is why a first look at it said "current" - and the AndroidX one would be a new
+    // dependency for an app that has none. A FrameLayout plus `android.transition` is
+    // platform API, current, and enough: the container keeps every page, and Slide is the
+    // platform's own transition.
+    val container = new FrameLayout(this)
+    setContentView(container)
+    applySystemInsets(container)
+    Signal.effect(syncPages(renderer, container))
 
     Signal.effect(setTitle(app.title()))
     Signal.effect {
@@ -89,7 +101,62 @@ class MainActivity extends Activity {
     registerBackHandler()
 
     if getIntent != null && getIntent.getBooleanExtra("selftest", false) then
-      SelfTest.run(model, app, mounted.handle)
+      // A thunk: "the screen" is whichever page is on top when a check runs, and the stack
+      // changes underneath the test.
+      SelfTest.run(model, app, () => topPage.getOrElse(container), () => container)
+  }
+
+  /** One mounted page per entry id, in stack order. */
+  private val livePages =
+    scala.collection.mutable.LinkedHashMap.empty[Long, (View, Mounted[View], Owner)]
+
+  /** The view of the page on top, once there is one. */
+  private def topPage: Option[View] = livePages.lastOption.map(_._2._1)
+
+  /** Bring the container in line with `AppRoot.pages`.
+    *
+    * Only the top page is visible; the ones beneath stay in the view tree, which is the
+    * whole point. `TransitionManager` animates the change with the platform's own Slide, so
+    * a push looks like a push rather than a swap.
+    */
+  private def syncPages(
+    renderer:  AndroidRenderer,
+    container: FrameLayout
+  )(using thicket.signals.Tracking
+  ): Unit = {
+    val pages = app.pages()
+    val live = pages.view.map(_.id).toSet
+
+    // Untracked, and not as an optimisation: mounting a page reads whatever signals its
+    // content reads, so a tracked mount would make every one of them a dependency of *this*
+    // effect, and the next re-run would dispose the page's own inner effects as its
+    // children. The GTK host learned this the hard way.
+    Signal.untracked {
+      livePages.keys.toSeq.reverse.filterNot(live).foreach { id =>
+        livePages.remove(id).foreach { (view, mounted, owner) =>
+          container.removeView(view)
+          mounted.dispose()
+          owner.dispose()
+        }
+      }
+
+      pages.filterNot(p => livePages.contains(p.id)).foreach { p =>
+        val pageOwner = Owner()
+        val mounted = {
+          given Owner = pageOwner
+          Reconciler.mount(renderer, p.content)
+        }
+        livePages(p.id) = (mounted.handle, mounted, pageOwner)
+        container.addView(mounted.handle)
+      }
+
+      // The platform's transition, then show only the top.
+      TransitionManager.beginDelayedTransition(container, new Slide())
+      val top = livePages.lastOption.map(_._1)
+      livePages.foreach { (id, entry) =>
+        entry._1.setVisibility(if top.contains(id) then View.VISIBLE else View.GONE)
+      }
+    }
   }
 
   /** The actions the current screen declares, read by [[onCreateOptionsMenu]].

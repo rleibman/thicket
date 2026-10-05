@@ -28,6 +28,19 @@ spike**, named in the prompt that started you. Do that spike, write its report, 
   you were asked to "finish" the work. Open it, say it is ready, stop. Merging is
   the user's, with no exception.
 - **sbt.** Always `sbt --error ...`; drop `--error` only when you need the extra output.
+- **sbt-mcp**, when it is running. `.mcp.json` registers an MCP server, `sbt-mcp-thicket`,
+  that a *long-lived* `sbt` session hosts on `127.0.0.1:5010`. When it is up, prefer it over
+  shelling out: `sbt-task` to run commands (`;`-separated), `list-tasks` to discover them,
+  `check` for a fast compile-free type check of edited files, and `glob-search` / `inspect` /
+  `symbol-location` for Scala symbol questions in preference to text search or guessing an
+  API.
+  Two caveats worth knowing before relying on it. It exists only while that session is
+  loaded — a one-shot `sbt foo` starts a server and takes it away again — so when it is
+  absent, say so and use the CLI rather than pretending. And only one session can hold the
+  port: while a persistent one is up, every other `sbt` invocation logs
+  `sbt-mcp: failed to start MCP server: Address already in use` and runs without one. That
+  line is noise, not a build failure, and it has already been mistaken for one in an error
+  count.
 - **System changes.** Ask before installing system packages, SDKs (Android SDK,
   Xcode components), or anything outside the repo. Repo-local tooling
   (`cs install`, sbt plugins, npm in a spike dir) is fine.
