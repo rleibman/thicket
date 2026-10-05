@@ -90,6 +90,11 @@ plugin, because flags are not what is missing: an Apple consumer needs `libthick
 a Swift static library this repository builds with a shell script and does not publish, and
 on iOS the Swift host owns `main`. #41 is the issue that makes an Apple getting-started real.
 
+*Update, 2026-10-05 (#41):* now published. `thicket-renderer-apple`'s jar carries the shim
+for macOS and the iOS simulator, `ThicketMacPlugin` and `ThicketIosPlugin` unpack and link it,
+and `bin/verify-getting-started-apple.sh` builds and runs `templates/hello-thicket-macos` and
+`templates/hello-thicket-ios` outside the repository. See `tools/sbt-thicket/README.md`.
+
 ## 14.4 Checking the getting-started still works
 
 ```bash

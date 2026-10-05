@@ -36,16 +36,27 @@ every subsequent edit, because a build file is not one of a test's inputs — th
 once and then silently stopped guarding. At build load it runs every time, and a failure
 stops the load. `SharedFlagsSpec` keeps the part a test is good at: what the flags are.
 
-## No Apple plugin yet
+## Apple: `ThicketMacPlugin` and `ThicketIosPlugin`
 
-`ThicketNativeFlags.apple` and `ThicketNativeFlags.ios` are here, and they are the
-definitions `build.sbt` links the macOS and iOS targets with. There is no
-`ThicketApplePlugin`, because flags are not what is missing: an Apple consumer needs
-`libthicketapple.a`, a Swift static library this repository builds with a shell script and
-does not publish, and on iOS there is no `main` at all — the Swift host owns it. A plugin
-pointing `-L` at a directory nobody filled would be worse than none. Issue #41 is the one
-that makes an Apple getting-started real.
+An Apple app needs more than flags: the renderer's `sui_*` functions are Swift, in
+`libthicketapple.a`, which Thicket builds with a shell script. So Thicket's build puts the
+shim in the published `thicket-renderer-apple` jar — both slices (`macos`, `ios-sim`) and
+the headers, under `thicket-apple/`, built at package time — and these plugins unpack it
+from the resolved jar (#41). Nothing has to be cloned or built.
 
-Neither Apple function has been run since being moved here. They compile, and they are
-byte-for-byte what worked in `build.sbt`; there was no Mac available, which is a weaker
-claim than verified.
+```scala
+lazy val app = project.in(file(".")).enablePlugins(ThicketMacPlugin)   // macOS: a binary
+lazy val app = project.in(file(".")).enablePlugins(ThicketIosPlugin)   // iOS: a static library
+```
+
+- **`ThicketMacPlugin`** adds `thicket-core` and `thicket-renderer-apple` and links the
+  unpacked shim with `ThicketNativeFlags.apple`.
+- **`ThicketIosPlugin`** links a static library with `ThicketNativeFlags.ios`. iOS needs a
+  Swift host that owns `main`, which links that library, the shim and itself; the template
+  in `templates/hello-thicket-ios` carries one, and `ios-app/build-app.sh` does the link.
+- **`thicketAppleShim`** unpacks the shim and returns where it went. In sbt 2 a project's
+  `target` is below `target/out/`, so ask (`sbt 'print thicketAppleShim'`) rather than assume.
+
+Both were first run by `bin/verify-getting-started-apple.sh`, which publishes locally, copies
+the two templates outside the repository and builds and runs them: the macOS app owns a window
+titled "Hello Thicket" after 10 s, and the iOS app is still running in the simulator after 10 s.
