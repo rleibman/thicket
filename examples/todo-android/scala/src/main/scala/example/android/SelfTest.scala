@@ -57,27 +57,48 @@ object SelfTest {
     if !cond && detail.nonEmpty then Log.i(Tag, s"[selftest]      $detail")
   }
 
-  def run(model: TodoApp.Model, app: NavHost[TodoApp.Route], root: View): Unit = {
+  /** `root` is a thunk, deliberately.
+    *
+    * Each entry on the navigation stack is now its own view, so "the screen" is whatever is
+    * on top *now*. A `View` captured once goes stale as soon as the stack changes, and
+    * `navigator.reset` replaces the items page outright — after which every remaining check
+    * was walking a disposed view and finding nothing. Twelve of them failed that way, all
+    * reporting an empty tree, which is a good signature for this mistake.
+    */
+  def run(
+    model: TodoApp.Model,
+    app:   NavHost[TodoApp.Route],
+    root:  () => View,
+    stack: () => View
+  ): Unit = {
     Log.i(Tag, "[selftest] driving navigation and reading back out of Android")
 
     check("starts on the items screen", app.title.now == "Todo")
-    val onItems = allTexts(root)
+    val onItems = allTexts(root())
     check("item rows are rendered", onItems.contains("Navigation"), onItems.toString)
 
     app.push(TodoApp.Route.Detail(3))
     check("pushed: title follows the top screen", app.title.now == "Item")
-    val onDetail = allTexts(root)
+    val onDetail = allTexts(root())
     check("detail content is mounted", onDetail.contains("Navigation"), onDetail.toString)
-    check("items screen is gone", !onDetail.contains("Add"), onDetail.toString)
+    // Used to assert the items screen was *gone*: a push unmounted it and a pop rebuilt it
+    // from scratch. Keeping the stack alive is the point of the native container, so the
+    // honest assertion is the opposite one — and it is the more useful of the two, because
+    // it is what preserves a screen's scroll position and its in-flight requests.
+    // Asked of the *container*, not of `root()`. `root()` is the page on top, which is the
+    // detail screen and rightly has no "Add" on it; the question here is whether the page
+    // underneath is still in the view tree, and only the container can answer that.
+    val wholeStack = allTexts(stack())
+    check("the screen below a push stays mounted", wholeStack.contains("Add"), wholeStack.toString)
     check("back is available", app.canGoBack.now)
 
     model.toggle(3)
-    check("toggling from the detail screen updates it", allTexts(root).contains("Done"),
-      allTexts(root).toString)
+    check("toggling from the detail screen updates it", allTexts(root()).contains("Done"),
+      allTexts(root()).toString)
 
     check("back() pops", app.back())
     check("title restored", app.title.now == "Todo")
-    check("items screen is back", allTexts(root).contains("Navigation"))
+    check("items screen is back", allTexts(root()).contains("Navigation"))
     check("back is no longer available at the root", !app.canGoBack.now)
     check("back() at the root defers to the platform", !app.back())
 
@@ -96,7 +117,7 @@ object SelfTest {
 
     model.draft.set("Write the catalogue")
     check("writing the signal reaches the widget",
-      allTexts(root).contains("Write the catalogue"), allTexts(root).toString)
+      allTexts(root()).contains("Write the catalogue"), allTexts(root()).toString)
     check("a non-empty draft is valid", model.draftValid.now)
 
     model.draftDone.set(true)
@@ -110,17 +131,17 @@ object SelfTest {
     check("the form cleared", model.draft.now.isEmpty && !model.draftDone.now)
 
     // --- the widgets phase 2 added, read back out of Android ---
-    val switches = findAll(root) { case _: Switch => true; case _ => false }
+    val switches = findAll(root()) { case _: Switch => true; case _ => false }
     check("the settings row has a Switch", switches.length == 1, switches.length.toString)
     switches.headOption.collect { case s: Switch => s }.foreach { s =>
       check("the switch starts off", !s.isChecked)
       model.hideDone.set(true)
       check("writing the signal flips the switch", s.isChecked)
       check("hiding completed items shrinks the list",
-        !allTexts(root).contains("Structural reconciliation"),
-        allTexts(root).toString)
+        !allTexts(root()).contains("Structural reconciliation"),
+        allTexts(root()).toString)
       model.hideDone.set(false)
-      check("showing them again restores it", allTexts(root).contains("Structural reconciliation"))
+      check("showing them again restores it", allTexts(root()).contains("Structural reconciliation"))
     }
 
     // A horizontal ProgressBar and an indeterminate spinner are the same Android class, so
@@ -129,12 +150,12 @@ object SelfTest {
     // And SeekBar extends ProgressBar, so a slider is a determinate progress bar as far as
     // `isInstanceOf` is concerned. It has to be excluded explicitly — the first version of
     // this check reported two bars once the slider landed.
-    def bars = findAll(root) {
+    def bars = findAll(root()) {
       case _: SeekBar     => false
       case p: ProgressBar => !p.isIndeterminate
       case _              => false
     }
-    def spinners = findAll(root) { case p: ProgressBar => p.isIndeterminate; case _ => false }
+    def spinners = findAll(root()) { case p: ProgressBar => p.isIndeterminate; case _ => false }
 
     check("there is a determinate ProgressBar", bars.length == 1, bars.length.toString)
     bars.headOption.collect { case p: ProgressBar => p }.foreach { bar =>
@@ -157,7 +178,7 @@ object SelfTest {
     model.busy.set(false)
     check("and is gone again when not", spinners.isEmpty, spinners.length.toString)
 
-    val seeks = findAll(root) { case _: SeekBar => true; case _ => false }
+    val seeks = findAll(root()) { case _: SeekBar => true; case _ => false }
     check("there is a SeekBar", seeks.length == 1, seeks.length.toString)
     seeks.headOption.collect { case s: SeekBar => s }.foreach { bar =>
       // A SeekBar counts integer steps, so the renderer converts. The app's units are
@@ -173,7 +194,7 @@ object SelfTest {
 
     // A SecureField is an EditText with a password input type; two exist by now and only
     // the secure one is masked.
-    val fields = findAll(root) { case _: EditText => true; case _ => false }
+    val fields = findAll(root()) { case _: EditText => true; case _ => false }
       .collect { case e: EditText => e }
     val masked = fields.filter { e =>
       (e.getInputType & InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0
@@ -207,15 +228,15 @@ object SelfTest {
     // nothing in the view tree to find before the gesture. What is observable here is that
     // the rows are long-clickable at all - the renderer set a listener - and the real
     // gesture is driven from adb in the build script's screenshot pass.
-    val longClickable = findAll(root)(v => v.isLongClickable)
+    val longClickable = findAll(root())(v => v.isLongClickable)
     check("list rows are long-clickable", longClickable.nonEmpty,
       "a row with a ContextMenu must accept the platform's gesture for one")
 
     // --- Sheet: a presented *container*, with a live subtree inside it ---
     check("no sheet before it is asked for", !model.editing.now)
     model.editing.set(true)
-    check("the screen behind is untouched", allTexts(root).contains("Hide completed"),
-      allTexts(root).toString)
+    check("the screen behind is untouched", allTexts(root()).contains("Hide completed"),
+      allTexts(root()).toString)
 
     val sizeBeforeSheet = model.items.now.size
     model.draft.set("From the sheet")
@@ -232,7 +253,7 @@ object SelfTest {
 
     model.editing.set(false)
     check("unmounting takes the sheet down and leaves the screen",
-      allTexts(root).contains("Hide completed"))
+      allTexts(root()).contains("Hide completed"))
 
     // --- Alert: presented by a signal, dismissed by unmounting ---
     check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
@@ -240,7 +261,7 @@ object SelfTest {
 
     model.confirmingDrop.set(true)
     check("presenting an alert leaves the screen intact",
-      allTexts(root).contains("Hide completed"), allTexts(root).toString)
+      allTexts(root()).contains("Hide completed"), allTexts(root()).toString)
 
     // Unmounting is the whole of dismissing, and it must NOT report a user dismissal: the
     // app asked for it to go away, which is not the user declining to choose. On Android

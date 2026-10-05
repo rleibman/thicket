@@ -18,12 +18,20 @@ echo "== sbt: building the Scala JARs =="
   "signalsJVM/package" "rendererApiJVM/package" "coreJVM/package" \
   "rendererAndroid/package" "examplesSharedJVM/package" "todoAndroid/package" >/dev/null)
 
+# Ask for the version rather than globbing for it. The version is git-derived and contains
+# the commit sha, so every commit leaves a differently-named jar in the same directory and
+# they accumulate: the old `*[0-9T].jar` glob matched one jar per commit built, `readlink`
+# returned the lot newline-separated, and `cp` failed with a path containing a newline. An
+# mtime heuristic would work until two builds landed in the same second; this is exact.
+ver=$(cd "$root" && sbt --error "print signalsJVM/version" 2>/dev/null | tr -d '\r' | tail -1)
+[ -n "$ver" ] || { echo "could not read the project version from sbt" >&2; exit 1; }
+echo "   version $ver"
+
 rm -f "$here"/app/libs/*.jar
 for module in thicket-signals thicket-renderer-api thicket-core \
               thicket-renderer-android thicket-examples-shared todo-android; do
-  # sbt 2 publishes artifacts as symlinks into a content-addressed store.
-  # Exclude the `-tests.jar` the same directory also holds.
-  src=$(readlink -f "$root"/target/out/jvm/scala-3.9.0/"$module"/"$module"_3-*[0-9T].jar)
+  # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
+  src=$(readlink -f "$root/target/out/jvm/scala-3.9.0/$module/${module}_3-$ver.jar")
   cp "$src" "$here/app/libs/$module.jar"
   printf "   %-34s %8d bytes\n" "$module.jar" "$(stat -c%s "$here/app/libs/$module.jar")"
 done
