@@ -456,9 +456,23 @@ public func sui_set_fill(_ h: UnsafeMutableRawPointer, _ has: Int32, _ r: Int32,
   view(h).backgroundColor = c
 }
 
+/// Where `ImageSource.FromFile` actually is. An absolute path, or a relative one that exists
+/// from the working directory, is used as given — a binary run from the repo, as the macOS
+/// examples are. Otherwise a relative path is looked up in the app bundle's resources: an iOS
+/// app's working directory is `/`, and the bundle is the only place its own files live. The
+/// gallery on the simulator loaded neither of its two images before this (#31).
+private func resolveImagePath(_ path: String) -> String {
+  if path.hasPrefix("/") || FileManager.default.fileExists(atPath: path) { return path }
+  if let base = Bundle.main.resourcePath {
+    let inBundle = (base as NSString).appendingPathComponent(path)
+    if FileManager.default.fileExists(atPath: inBundle) { return inBundle }
+  }
+  return path
+}
+
 @_cdecl("sui_set_image_file")
 public func sui_set_image_file(_ h: UnsafeMutableRawPointer, _ path: UnsafePointer<CChar>) {
-  (view(h) as? UIImageView)?.image = UIImage(contentsOfFile: String(cString: path))
+  (view(h) as? UIImageView)?.image = UIImage(contentsOfFile: resolveImagePath(String(cString: path)))
 }
 
 @_cdecl("sui_set_image_bytes")
@@ -1298,4 +1312,17 @@ public func sui_pages_back_offered() -> Int32 {
 public func sui_pages_back() -> Int32 {
   guard let nav = hostNavigation(), nav.viewControllers.count > 1 else { return 0 }
   return nav.popViewController(animated: false) != nil ? 1 : 0
+}
+
+@_cdecl("sui_has_image")
+public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let iv = view(h) as? UIImageView else { return -1 }
+  return iv.image != nil ? 1 : 0
+}
+
+/// UIKit scroll views are top-origin; the adjusted inset is where "the top" rests.
+@_cdecl("sui_scroll_offset")
+public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
+  guard let scroll = view(h) as? UIScrollView else { return -1 }
+  return Double(scroll.contentOffset.y + scroll.adjustedContentInset.top)
 }

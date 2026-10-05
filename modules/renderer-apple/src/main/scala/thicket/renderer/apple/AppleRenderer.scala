@@ -368,6 +368,11 @@ final class AppleRenderer extends Renderer {
   /** The presented widgets currently on screen, oldest first, with their kinds. */
   def presented: List[(Handle, WidgetKind)] = presentedNow.toList
 
+  /** What a handle was created as, if this renderer created it. A test uses it to pick out the framework's own widgets
+    * from the platform's private subviews — a UIKit switch or slider contains image views of its own.
+    */
+  def kindOf(handle: Handle): Option[WidgetKind] = kinds.get(handle)
+
   /** Whether a handle is a `Scroll` that was created with [[Orientation.Horizontal]]. */
   def isHorizontalScroll(handle: Handle): Boolean = horizontalScrolls.contains(handle)
 

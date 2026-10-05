@@ -79,6 +79,12 @@ private func isOn(_ v: NSView) -> Bool {
 /// Taps on a plain container: NSStackView emits no action, so a click recogniser is
 /// attached the way GTK needs a GtkGestureClick on a GtkBox.
 private final class TapView: NSStackView {
+  /// Top-left origin, as on UIKit and in reading order. It matters as a scroll view's document
+  /// view: AppKit keeps an unflipped document's *bottom* edge in view, so a Column taller than
+  /// its window opened scrolled to the bottom with its first row under the title bar — 48pt
+  /// from the top on the todo screen (#28). Layout is by constraints, so nothing else moves.
+  override var isFlipped: Bool { true }
+
   override func mouseDown(with event: NSEvent) {
     if let t = taps[ObjectIdentifier(self)] { t.cb(t.ctx) } else { super.mouseDown(with: event) }
   }
@@ -367,9 +373,23 @@ public func sui_set_fill(_ h: UnsafeMutableRawPointer, _ has: Int32, _ r: Int32,
   v.layer?.backgroundColor = c.cgColor
 }
 
+/// Where `ImageSource.FromFile` actually is. An absolute path, or a relative one that exists
+/// from the working directory, is used as given — a binary run from the repo, as the macOS
+/// examples are. Otherwise a relative path is looked up in the app bundle's resources: an iOS
+/// app's working directory is `/`, and the bundle is the only place its own files live. The
+/// gallery on the simulator loaded neither of its two images before this (#31).
+private func resolveImagePath(_ path: String) -> String {
+  if path.hasPrefix("/") || FileManager.default.fileExists(atPath: path) { return path }
+  if let base = Bundle.main.resourcePath {
+    let inBundle = (base as NSString).appendingPathComponent(path)
+    if FileManager.default.fileExists(atPath: inBundle) { return inBundle }
+  }
+  return path
+}
+
 @_cdecl("sui_set_image_file")
 public func sui_set_image_file(_ h: UnsafeMutableRawPointer, _ path: UnsafePointer<CChar>) {
-  (view(h) as? NSImageView)?.image = NSImage(contentsOfFile: String(cString: path))
+  (view(h) as? NSImageView)?.image = NSImage(contentsOfFile: resolveImagePath(String(cString: path)))
 }
 
 @_cdecl("sui_set_image_bytes")
@@ -1335,4 +1355,19 @@ public func sui_pages_back() -> Int32 {
   guard rows > 1 else { return 0 }
   sidebar.table.selectRowIndexes(IndexSet(integer: rows - 2), byExtendingSelection: false)
   return 1
+}
+
+@_cdecl("sui_has_image")
+public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let iv = view(h) as? NSImageView else { return -1 }
+  return iv.image != nil ? 1 : 0
+}
+
+/// Measured from the *top* of the content whatever the document view's coordinate system: in
+/// an unflipped document the origin is bottom-left, so the top is at `frame.height`.
+@_cdecl("sui_scroll_offset")
+public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
+  guard let scroll = view(h) as? NSScrollView, let doc = scroll.documentView else { return -1 }
+  let visible = scroll.contentView.bounds
+  return Double(doc.isFlipped ? visible.minY : doc.frame.height - visible.maxY)
 }

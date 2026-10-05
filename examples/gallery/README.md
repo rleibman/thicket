@@ -29,6 +29,13 @@ written at the check. The context menu is the clear case: on GTK it is a `GtkPop
 widget tree, on Apple it is `NSView.menu` or a `UIContextMenuInteraction`, so one counts
 popovers and the other asks which views carry menu items.
 
+**Measured on Apple (#31):** 20/20 on macOS and on the iOS simulator. The image check — added
+then, because the Image section's heading being on screen said nothing about the pictures —
+found the iOS app showing neither: its working directory is `/`, so the repo-relative
+`docs/assets/thicket-logo.png` resolved nowhere. The Apple shims now look a relative path up
+in the app bundle when it does not exist from the working directory, and the iOS
+`build-app.sh` copies the logo into the bundle under the same path.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name

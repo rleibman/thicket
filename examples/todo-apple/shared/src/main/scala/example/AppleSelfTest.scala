@@ -68,6 +68,13 @@ object AppleSelfTest {
     val probe = AppleRenderer()
 
     check("starts on the items screen", app.title.now == "Todo")
+
+    // The items screen is a vertical Scroll taller than the window. It must open at its top:
+    // on AppKit an unflipped document view starts with its bottom edge in view, which hid the
+    // first row under the title bar (#28).
+    val opening = AppleInspect.scrollOffset(AppleApp.rootHandle)
+    println(s"[selftest]   items screen opens ${opening}pt from its top")
+    check("a vertical Scroll opens at its top", opening == 0.0, s"${opening}pt from the top")
     val onItems = screenTexts
     check("item rows are rendered", onItems.contains("Navigation"), onItems.toString)
 

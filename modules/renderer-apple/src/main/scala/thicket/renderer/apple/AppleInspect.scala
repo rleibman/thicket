@@ -124,4 +124,17 @@ object AppleInspect {
   /** Goes back one page through the platform's own path, as a user would. */
   def platformBack(): Boolean = Shim.sui_pages_back() != 0
 
+  /** `Some(true)` when an image view holds a decoded image, `Some(false)` when it shows nothing, `None` when `h` is not
+    * an image view.
+    */
+  def hasImage(h: Shim.Handle): Option[Boolean] =
+    Shim.sui_has_image(h) match {
+      case 1 => Some(true)
+      case 0 => Some(false)
+      case _ => None
+    }
+
+  /** How far a vertical scroller is from the top of its content; 0 at the top, -1 if `h` is not a scroller. */
+  def scrollOffset(h: Shim.Handle): Double = Shim.sui_scroll_offset(h)
+
 }
