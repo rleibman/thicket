@@ -53,17 +53,42 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 `thicket-signals` and `thicket-renderer-api` come in transitively; naming them is only
 necessary to write a renderer.
 
-### The part that is not published, and should be
+And the plugin, which is what a consumer actually adds:
 
-A GTK app also needs about a dozen lines of `nativeConfig` — the `pkg-config` compile and
-link flags, the GC, the LTO and the mode — and **nothing publishes them**. Today a consumer
-copies them out of `templates/hello-thicket/build.sbt`, which works and is ugly: it couples
-every app to a build detail of ours, and an app that gets the GC wrong fails at link time
-with nothing pointing at the cause.
+| Artefact | For |
+|---|---|
+| `dev.thicket:sbt-thicket` (`_sbt2_3`) | the build: GTK link flags, the Scala Native mode and GC, and the two dependencies above |
 
-The fix is an `sbt-thicket` plugin exposing `thicketGtkSettings`. It is not in phase 5's
-scope and is tracked separately; the template is the honest interim answer rather than a
-pretence that there is nothing missing.
+```scala
+// project/plugins.sbt
+addSbtPlugin("dev.thicket" % "sbt-thicket" % thicketVersion)
+
+// build.sbt
+lazy val app = project.in(file(".")).enablePlugins(ThicketGtkPlugin)
+```
+
+That is the whole of it. `ScalaNativePlugin` comes in as a dependency of the plugin, and
+`thicket-core` and `thicket-renderer-gtk` are added at the plugin's **own** version — plugin
+and framework come out of one build, so they cannot disagree, and
+`bin/verify-getting-started.sh` fails if they ever do.
+
+Until #40 this was the thing phase 5 left undone: a GTK app copied about a dozen lines of
+`nativeConfig` out of `templates/hello-thicket/build.sbt`, which coupled every app to a build
+detail of ours, and an app that got the GC wrong failed at link time with nothing pointing at
+the cause.
+
+The flags are not two copies kept in step. `ThicketNativeFlags` is one source file, compiled
+into the plugin *and* into this repository's meta-build, which `project/build.sbt` wires up —
+so `build.sbt` and `thicketGtkSettings` are the same method on the same bytes, and the build
+refuses to load if anyone computes the flags in `build.sbt` again.
+`tools/sbt-thicket/README.md` has the detail and what the arrangement costs.
+
+### The part that is still not published
+
+Apple. `ThicketNativeFlags.apple` and `.ios` are shared the same way, and there is no Apple
+plugin, because flags are not what is missing: an Apple consumer needs `libthicketapple.a`,
+a Swift static library this repository builds with a shell script and does not publish, and
+on iOS the Swift host owns `main`. #41 is the issue that makes an Apple getting-started real.
 
 ## 14.4 Checking the getting-started still works
 
@@ -71,8 +96,10 @@ pretence that there is nothing missing.
 ./bin/verify-getting-started.sh
 ```
 
-Publishes the framework locally, copies `templates/hello-thicket` **outside** the repo, and
-builds and runs it against the published artefacts. Outside is the point: building the
+Publishes the framework **and `sbt-thicket`** locally, copies `templates/hello-thicket`
+**outside** the repo, and builds and runs it against the published artefacts. The plugin is
+resolved by the template's meta-build, so a plugin that does not publish or does not load
+fails before anything is compiled. Outside is the point: building the
 template in place would resolve the modules as project dependencies and prove nothing about
 what a stranger gets from a jar.
 

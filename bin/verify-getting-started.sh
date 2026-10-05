@@ -22,15 +22,26 @@ sbt --error \
   "rendererApiJVM/publishLocal; rendererApiNative/publishLocal" \
   "coreJVM/publishLocal; coreNative/publishLocal" \
   "effectZioJVM/publishLocal; effectZioNative/publishLocal" \
-  "rendererGtk/publishLocal"
+  "rendererGtk/publishLocal" \
+  "sbtThicket/publishLocal"
 
-ver=$(sbt --error "print coreJVM/version" | tr -d '\r' | tail -1)
+vers=$(sbt --error "print coreJVM/version" "print sbtThicket/version" | tr -d '\r' | tail -2)
+ver=$(echo "$vers" | head -1)
+pluginver=$(echo "$vers" | tail -1)
 [ -n "$ver" ] || { echo "could not read the version" >&2; exit 1; }
+# The plugin puts its *own* version on the thicket dependencies it adds, so if it is not the
+# framework's version the template resolves artefacts nobody published. One build produces
+# both, so they agree; checked rather than assumed, because the failure is a resolution error
+# in someone else's project.
+[ "$ver" = "$pluginver" ] || {
+  echo "FAIL: framework version $ver but sbt-thicket version $pluginver" >&2; exit 1; }
 echo "== version $ver =="
 
 cp -r templates/hello-thicket "$work/app"
 cd "$work/app"
 
+# THICKET_VERSION reaches both build.sbt and project/plugins.sbt: the sbt-thicket plugin is
+# resolved by the meta-build, so a stale plugin version fails the *load*, before any of this.
 echo "== building the template, outside the repo, against the published jars =="
 THICKET_VERSION="$ver" sbt --error nativeLink
 

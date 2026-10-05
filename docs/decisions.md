@@ -69,6 +69,44 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-05 — **`sbt-thicket` publishes the build, and the flags have exactly one
+  definition** (#40). A GTK app was copying twelve lines of `nativeConfig` out of our
+  `build.sbt`; now it says `addSbtPlugin("dev.thicket" % "sbt-thicket" % version)` and
+  `.enablePlugins(ThicketGtkPlugin)`, and gets the pkg-config flags, `LTO.none`,
+  `Mode.debug`, `GC.immix`, `sbt-scala-native` and the two Thicket dependencies at the
+  plugin's own version. Measured on `templates/hello-thicket`, counting
+  non-blank non-comment lines: **25 before (24 in `build.sbt`, 1 in `plugins.sbt`), 11 after
+  (9 and 2)**. Totals including comments go 33 to 23. The twelve that mattered are gone. `bin/verify-getting-started.sh` PASSes, 5,213,600-byte binary, still up
+  after 10s.
+  **How the two copies are kept in step: there is one copy.**
+  `tools/sbt-thicket/shared/src/main/scala/.../ThicketNativeFlags.scala` is compiled into the
+  plugin *and* into this repository's meta-build, which adds that directory to
+  `Compile / unmanagedSourceDirectories` in `project/build.sbt`. `gtkNativeSettings` and
+  `thicketGtkSettings` are then the same method on the same bytes. The cost is a path the
+  meta-build must be able to find — if it goes stale the build does not load, which is the
+  failure we want, since no local copy remains to fall back on. The circular alternative,
+  this build depending on the published plugin, would need a plugin release before the
+  renderer could be built at all.
+  Falsified three ways. Dropping `pkgConfig("--libs")` from the shared definition and
+  republishing made the *consumer's* link fail with ~200 undefined `gtk_*`/`adw_*` symbols and
+  **zero** compile errors; restoring it linked the same tree again, so the failure was the
+  sabotage and not a stale binary. Pasting a `pkg-config` command line back into `build.sbt`
+  now stops the build from loading with a message naming the file to edit instead.
+  **A guard that was quietly not running.** That second check started as a zio-test suite
+  reading `build.sbt`. It passed, and then sbt said "No tests to run" for every later edit —
+  a build file is not one of a test's inputs, so the suite was cached green against a
+  sabotaged `build.sbt`. Found by sabotaging and watching nothing happen. It is a build-load
+  check now; `SharedFlagsSpec` keeps only what a test is good at, which is what the flags are.
+  I also got the Scala pin wrong in the other direction: I expected a plugin compiled with
+  3.9.0 to be unreadable by a meta-build on sbt's own 3.8.4, and said so. It is not — the
+  template loaded and linked against it. `scalaVersion := "3.8.4"` stays as a precaution for
+  a consumer on an older sbt, not as a reproduced failure.
+  Apple is deliberately not a plugin. `ThicketNativeFlags.apple` and `.ios` are shared the
+  same way and `build.sbt` uses them, but flags are not what an Apple consumer is missing:
+  it needs `libthicketapple.a`, which nothing publishes, and on iOS the Swift host owns
+  `main`. Neither function has been run since being moved — there is no Mac here, and they
+  compile, which is weaker than verified. #41.
+
 - 2026-10-05 — **The getting-started is a script, not a paragraph.** Phase 5's exit
   criterion is a person building an app in under thirty minutes, which only a person can
   measure — but the half that does not need one is checkable, so
