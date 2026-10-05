@@ -4,7 +4,7 @@
 renderer lands — unlike `docs/01`–`docs/09`, which are frozen. The target is the v1
 catalogue in `docs/07` §7.10.
 
-**Last updated:** 2026-10-02 (context menus on Apple, #19).
+**Last updated:** 2026-10-02 (`AppRoot.pages` on Apple, #25).
 
 ## 12.1 Scoreboard
 
@@ -19,10 +19,12 @@ catalogue in `docs/07` §7.10.
 
 **Seventeen of thirty-two, every one on every renderer.** The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
-menus followed in #19. The Apple self-test is **77/77** on macOS and **71/71** on the iOS
-simulator; the six iOS does not run are the three that choose an alert action and the two
-that choose a menu item from code (UIKit offers no public way to do either) and one overflow
-check a phone is too wide to exercise, and each says so rather than passing.
+menus followed in #19, and the Apple hosts render `AppRoot.pages` since #25. The Apple
+self-test is **87/87** on macOS and **82/82** on the iOS simulator; the five iOS does not
+run are the three that choose an alert action and the two that choose a menu item from code
+(UIKit offers no public way to do either), and each says so rather than passing. The
+button-row overflow check is not exercised on either any more: as a page, the screen fills
+the window, and five buttons fit in 480 px.
 
 The first nine were, deliberately, the ones that forced the contract to be right: a
 tappable container, a two-way-bound field, a recycling list and a viewport between them
@@ -203,7 +205,7 @@ every remaining entry before it is built, not after.
 | Fine-grained signals | `modules/signals` | done — glitch-free, property-tested on JVM/JS/Native |
 | Keyed reconciliation | `Reconciler` | done — `Show`, `Switch`, `ForEach`, `Fragment`, in-place `moveAfter` |
 | Virtualised list | `LazyColumn` + `RowSource` | done — all four recycle. Materialised rows for a 10 000-row list: GTK **205**, Android **66**, AppKit **40**, UIKit **34** |
-| Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title, Up and **toolbar actions** work as native chrome; no *native* navigation container |
+| Navigation | `Nav`, `NavHost`, `AppRoot` | partial — stack, title, Up and **toolbar actions** work as native chrome. A *native* container via `AppRoot.pages` on Apple (#25): `UINavigationController` on iOS, a sidebar on macOS; GTK and Android still mount `element` |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, **per-subtree `Provide`**; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread` | done |
@@ -245,8 +247,8 @@ depends on it until `Grid` or absolute positioning does.
 **Division of labour.** Apple work is done on the macOS laptop, so anything AppKit/UIKit is
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
-widgets), **#18** (`Alert`, `Sheet`) and **#19** (context menus) are done; `AppRoot.pages`
-(#25) is next. Everything else is built and measured on the
+widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
+are done; #28 (a vertical `Scroll` that opens at the bottom on AppKit) is next. Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:
@@ -273,7 +275,7 @@ someone and watch. It implies five things, roughly in dependency order.
 |---|---|---|
 | 1 | **Shim generation** (Forgejo **#7**, phase 1 — *adopted 2026-09-29, GitHub #3; Swift bodies deliberately stay hand-written*) — Swift, C header and Scala externs from one widget description | The Mac measured **11.0 non-comment Swift lines per exported function**, projecting ~240 functions for the v1 catalogue and roughly **5 200 lines of Swift maintained in duplicate** across the two shims (`docs/09`). Hand-writing the remaining 23 widgets four times over is the single largest cost in the project, and generation removes most of it. A prerequisite, not an optimisation. |
 | 2 | **Widget breadth** — ~20 of the 32, chosen by what a real app cannot do without | `Toggle`, `Spacer`, `Slider`, `Picker`, `ProgressBar`, `ActivityIndicator`, `Alert`, `Sheet`, `TabView`. The demo currently fakes two of these. |
-| 3 | **Apple parity** — `AppRoot.pages` (#25); everything else in the catalogue is on all four | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
+| 3 | **Apple parity** — done for the catalogue; #28 is a layout fix | `LazyColumn` silently mounting 10 000 rows on iOS was the worst kind of gap: it worked in the demo and died in an app. Now 40 rows on AppKit and 34 on UIKit. |
 | 4 | **Native navigation containers** and per-subtree theming | The two places the framework currently asks the app to accept something non-native. |
 | 5 | **Published artefacts and a getting-started** | Without these, "an outside developer" is not a thing that can be tested. |
 

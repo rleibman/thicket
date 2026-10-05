@@ -47,7 +47,8 @@ object Parse {
     "sui_text_cb"     -> CType.TextCb,
     "sui_bool_cb"     -> CType.BoolCb,
     "sui_row_cb"      -> CType.RowCb,
-    "sui_value_cb"    -> CType.ValueCb
+    "sui_value_cb"    -> CType.ValueCb,
+    "sui_int_cb"      -> CType.IntCb
   )
 
   /** Splits `const char *title` into its type and drops the parameter name. C puts the `*` with the name, so the type
@@ -101,7 +102,8 @@ object Parse {
     "sui_text_cb"                  -> CType.TextCb,
     "sui_bool_cb"                  -> CType.BoolCb,
     "sui_row_cb"                   -> CType.RowCb,
-    "sui_value_cb"                 -> CType.ValueCb
+    "sui_value_cb"                 -> CType.ValueCb,
+    "sui_int_cb"                   -> CType.IntCb
   )
 
   /** A trailing `?` is Swift's optional, which is the same C pointer — `sui_get_text` returns `UnsafePointer<CChar>?`
@@ -167,7 +169,8 @@ object Parse {
     "TextCb"       -> CType.TextCb,
     "BoolCb"       -> CType.BoolCb,
     "RowCb"        -> CType.RowCb,
-    "ValueCb"      -> CType.ValueCb
+    "ValueCb"      -> CType.ValueCb,
+    "IntCb"        -> CType.IntCb
   )
 
   private val scFn = """^\s*def\s+(sui_\w+)\s*\((.*)\)\s*:\s*(\S+?)\s*=\s*extern\s*$""".r

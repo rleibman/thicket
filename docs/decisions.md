@@ -85,6 +85,31 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   the warning** and reports through the signal instead. Reintroducing the bug produced 0
   stderr warnings and 20 counted errors with the check failing — so the fix removes the
   noise and makes the failure visible at the same time.
+- 2026-10-02 — **On macOS a navigation stack is a sidebar** (#25, decided by the project
+  owner). macOS has no push idiom, so `AppRoot.pages` renders as an `NSSplitViewController`:
+  the live pages as a source list, the selected page's content beside it, every page kept
+  mounted. Choosing an earlier entry is going back to it, reported to `Nav` like any platform
+  pop. **With a single page the sidebar is collapsed** — there is nothing to choose between.
+  Rejected: staying on `element` (a Mac app would lose the stack) and hand-rolled push/pop
+  (an idiom the platform does not have).
+- 2026-10-02 — **On iOS `AppRoot.pages` is the host's own `UINavigationController`, and its
+  changes share the presentation queue** (#25). One controller per page; the bottom page
+  reuses the host's root controller, so `rootView` never leaves the window. A swipe-back or
+  the back button pops UIKit's stack without asking, so the navigation delegate reports the
+  new depth and the host calls `back()` until `Nav` agrees. UIKit does not apply a stack
+  change made mid-transition, and a sheet presented during a push left the push's transition
+  unfinished: measured, a push and pop in one turn left the platform two deep while `Nav`
+  was one. Deferring on the push's own coordinator was not enough —
+  `animate(alongsideTransition:completion:)` returns false and never calls the completion
+  when it cannot attach — so every UIKit transition, navigation or presentation, now starts
+  only when the previous one has finished. Self-test **87/87** macOS, **82/82** iOS.
+  Controls: a platform pop not reported to `Nav` fails "a back gesture by the platform pops
+  Nav too"; rebuilding pages on every change fails "the page below is the same mounted view".
+- 2026-10-02 — **Pages mount the screen's content, not `NavHost.element`'s wrapper**, so the
+  self-test's layout probes now start one level deeper. On macOS the page fills the window,
+  where `element`'s `Column` hugged ~197 px and clipped the button row; with the space, the
+  row fits and the overflow branch no longer runs. Compared by screenshot on the same build.
+  A clipped *top* seen in both is pre-existing, filed as #28.
 
 - 2026-10-02 — **On Apple a context menu is `NSView.menu` and a `UIContextMenuInteraction`,
   with items carried by the tap trampoline** (#19). Each item is a label, an enabled flag and

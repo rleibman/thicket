@@ -169,6 +169,9 @@ private func applyTitle() {
 @_cdecl("sui_window_set_title")
 public func sui_window_set_title(_ title: UnsafePointer<CChar>) {
   windowTitle = String(cString: title)
+  // With a page stack each page's controller carries its own title, and the root controller
+  // is the *bottom* page — giving it the top page's title would be wrong.
+  if pagesActive { return }
   applyTitle()
 }
 
@@ -1130,4 +1133,169 @@ public func sui_menu_activate(_ h: UnsafeMutableRawPointer, _ index: Int32) -> I
 @_cdecl("sui_menu_live")
 public func sui_menu_live() -> Int32 {
   liveMenuItems
+}
+
+// MARK: - navigation (AppRoot.pages)
+
+/// The host's controller for the root view, and the navigation controller it sits in. The
+/// bottom page reuses that controller, so `rootView` stays in the window whatever the depth —
+/// presentation and inspection reach the window through it.
+private func hostController() -> UIViewController? {
+  var responder: UIResponder? = rootView
+  while let r = responder {
+    if let vc = r as? UIViewController { return vc }
+    responder = r.next
+  }
+  return nil
+}
+
+private var pagesActive = false
+private var pendingPages: [(id: Int64, content: UIView, title: String)] = []
+private var pageList: [(id: Int64, content: UIView, title: String)] = []
+private var pageControllers: [Int64: UIViewController] = [:]
+private var applyingPages = false
+private var onPopped: (cb: sui_int_cb, ctx: Int64)?
+
+/// A swipe back, or the back button, pops UIKit's stack without asking. Reported as the new
+/// depth, so the app's `Nav` follows rather than the two stacks silently diverging and the
+/// navigation bar starting to lie.
+private final class PagesDelegate: NSObject, UINavigationControllerDelegate {
+  func navigationController(
+    _ navigationController: UINavigationController,
+    didShow viewController: UIViewController,
+    animated: Bool
+  ) {
+    let depth = navigationController.viewControllers.count
+    guard !applyingPages, depth < pageList.count, let p = onPopped else { return }
+    pageList = Array(pageList.prefix(depth))
+    p.cb(p.ctx, Int32(depth))
+  }
+}
+private let pagesDelegate = PagesDelegate()
+
+@_cdecl("sui_pages_begin")
+public func sui_pages_begin() {
+  pendingPages = []
+}
+
+@_cdecl("sui_pages_add")
+public func sui_pages_add(_ id: Int64, _ content: UnsafeMutableRawPointer, _ title: UnsafePointer<CChar>) {
+  pendingPages.append((id, view(content), String(cString: title)))
+}
+
+/// Places a page's content in its controller's view, once; the content then stays there,
+/// mounted, for as long as the page is on the stack.
+private func place(_ content: UIView, in host: UIView) {
+  guard content.superview !== host else { return }
+  content.removeFromSuperview()
+  sui_insert_after(
+    Unmanaged.passUnretained(host).toOpaque(), Unmanaged.passUnretained(content).toOpaque(), nil
+  )
+}
+
+@_cdecl("sui_pages_commit")
+public func sui_pages_commit() {
+  guard let root = hostController(), let nav = root.navigationController ?? (root as? UINavigationController) ?? nil,
+        let rv = rootView
+  else { return }
+  pagesActive = true
+  nav.delegate = pagesDelegate
+
+  var controllers: [UIViewController] = []
+  for (i, page) in pendingPages.enumerated() {
+    let vc: UIViewController
+    if i == 0 {
+      vc = root
+      place(page.content, in: rv)
+    } else if let existing = pageControllers[page.id] {
+      vc = existing
+    } else {
+      vc = UIViewController()
+      vc.view.backgroundColor = .systemBackground
+      place(page.content, in: vc.view)
+      pageControllers[page.id] = vc
+    }
+    vc.title = page.title
+    vc.navigationItem.title = page.title
+    controllers.append(vc)
+  }
+  let live = Set(pendingPages.map(\.id))
+  pageControllers = pageControllers.filter { live.contains($0.key) }
+
+  pageList = pendingPages
+  desiredControllers = controllers
+  applyDesired(nav)
+}
+
+/// The stack the app wants, applied when UIKit is ready for it.
+private var desiredControllers: [UIViewController] = []
+
+/// UIKit does not apply a stack change made while a transition is still running, and a
+/// presentation started mid-push leaves the push's transition unfinished. Measured: a push
+/// followed by a pop in one turn left the platform two deep while `Nav` was one — the
+/// divergence this seam exists to prevent — and deferring on the push's own coordinator was
+/// not enough, because a sheet presented next kept that transition from ever completing.
+///
+/// So stack changes go through the same serial queue as presentations: every UIKit
+/// transition, of either kind, starts only when the previous one has finished. Each apply
+/// uses whatever the app wants *by then*, so a burst of changes settles in one step.
+private func applyDesired(_ nav: UINavigationController) {
+  enqueuePresentation { done in
+    guard nav.viewControllers != desiredControllers else { return done() }
+    // A push or pop of one page animates, as a user would see it; anything larger is a jump.
+    let animated = nav.view.window != nil && abs(desiredControllers.count - nav.viewControllers.count) == 1
+    applyingPages = true
+    nav.setViewControllers(desiredControllers, animated: animated)
+    applyingPages = false
+    // `animate(alongsideTransition:completion:)` returns false, and never calls the
+    // completion, when there is no running transition to attach to — a non-animated change.
+    if !(nav.transitionCoordinator?.animate(alongsideTransition: nil, completion: { _ in done() }) ?? false) {
+      DispatchQueue.main.async { done() }
+    }
+  }
+}
+
+@_cdecl("sui_on_pages_popped")
+public func sui_on_pages_popped(_ cb: @escaping sui_int_cb, _ ctx: Int64) {
+  onPopped = (cb, ctx)
+}
+
+private func hostNavigation() -> UINavigationController? {
+  hostController()?.navigationController
+}
+
+@_cdecl("sui_pages_depth")
+public func sui_pages_depth() -> Int32 {
+  Int32(hostNavigation()?.viewControllers.count ?? 0)
+}
+
+@_cdecl("sui_page_title")
+public func sui_page_title(_ index: Int32) -> UnsafePointer<CChar>? {
+  guard let vcs = hostNavigation()?.viewControllers, index >= 0, Int(index) < vcs.count,
+        let t = vcs[Int(index)].navigationItem.title
+  else { return nil }
+  return scratch(t)
+}
+
+/// -1 while a transition is running: mid-push the stack already holds the new page, but the
+/// navigation bar has not caught up, so no page is "the one on screen" yet.
+@_cdecl("sui_pages_shown")
+public func sui_pages_shown() -> Int32 {
+  guard let nav = hostNavigation(), nav.transitionCoordinator == nil, let top = nav.topViewController,
+        let i = nav.viewControllers.firstIndex(of: top)
+  else { return -1 }
+  return Int32(i)
+}
+
+@_cdecl("sui_pages_back_offered")
+public func sui_pages_back_offered() -> Int32 {
+  (hostNavigation()?.navigationBar.backItem != nil) ? 1 : 0
+}
+
+/// `popViewController` is what the back button does; the delegate then reports it like any
+/// other platform pop.
+@_cdecl("sui_pages_back")
+public func sui_pages_back() -> Int32 {
+  guard let nav = hostNavigation(), nav.viewControllers.count > 1 else { return 0 }
+  return nav.popViewController(animated: false) != nil ? 1 : 0
 }

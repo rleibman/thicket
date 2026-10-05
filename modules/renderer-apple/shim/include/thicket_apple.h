@@ -146,6 +146,18 @@ void sui_menu_clear(sui_handle h);
 void sui_menu_add_item(sui_handle h, const char *label, int32_t enabled,
                        sui_void_cb cb, int64_t ctx);
 
+/* --- navigation -------------------------------------------------------------- */
+/* Starts describing the stack. Nothing changes on screen until sui_pages_commit. */
+void sui_pages_begin(void);
+/* The next page up. `id` is stable for as long as the page is on the stack, and so is its
+   `content`, which stays mounted while it is covered. */
+void sui_pages_add(int64_t id, sui_handle content, const char *title);
+/* Makes the platform's stack match what was described. */
+void sui_pages_commit(void);
+/* The platform popped the stack itself, to the depth given. Never called for a change
+   the app made through sui_pages_commit. */
+void sui_on_pages_popped(sui_int_cb cb, int64_t ctx);
+
 /* --- inspection, for the self-test ------------------------------------------- */
 int32_t sui_child_count(sui_handle h);
 sui_handle sui_child_at(sui_handle h, int32_t index);
@@ -173,6 +185,18 @@ const char *sui_presented_message(sui_handle h);
 /* How many items the platform's menu for this view holds; 0 when it has none. */
 int32_t sui_menu_item_count(sui_handle h);
 const char *sui_menu_item_label(sui_handle h, int32_t index);
+/* How many pages the platform's own stack holds. */
+int32_t sui_pages_depth(void);
+/* The title the platform shows for page `index`, bottom first: the navigation item's
+   on iOS, the sidebar entry's on macOS. */
+const char *sui_page_title(int32_t index);
+/* The index of the page on screen, bottom first. */
+int32_t sui_pages_shown(void);
+/* 1 when the platform's own chrome offers going back: a back button, or a sidebar to choose from. */
+int32_t sui_pages_back_offered(void);
+/* Goes back one page through the platform's own path — popping the navigation controller,
+   selecting the previous sidebar entry — exactly as a user would. */
+int32_t sui_pages_back(void);
 /* How many menu items the shim still holds, counted as they are freed. Falls by a
    row's items when the row is destroyed, or the menu leaked with its view. */
 int32_t sui_menu_live(void);
