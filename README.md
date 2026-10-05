@@ -32,14 +32,23 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | | |
 |---|---|
 | Works today | Linux/GTK4, Android, macOS, iOS simulator — the same app on all four |
-| Widgets | **9 of the 32** in the v1 catalogue → [docs/12](docs/12-component-status.md) |
-| Published artefacts | **None yet.** You build from this repository |
+| Widgets | **17 of 32** as widgets, all of them on **every** renderer; **21 of 32** covered once you count the four the catalogue lists as widgets and this framework deliberately does not → [docs/12](docs/12-component-status.md) |
+| Navigation | Native container on all four: `AdwNavigationView`, a `FrameLayout` + `Slide`, `UINavigationController`, a macOS sidebar. Back gesture and title bar are the platform's own |
+| Theming | By role, scoped to a subtree with `Provide` |
+| Published artefacts | `dev.thicket`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |
 | API stability | **None.** Expect breaking changes without notice |
 | Windows | Not started, and out of the 0.1 scope |
 
-This is early. It is real software with measured numbers, not a prototype — but you cannot
-`libraryDependencies +=` it yet, and the catalogue is a quarter complete. If you need a
-`Slider` today, it isn't here.
+This is early, and the honest shape of it is: the parts that exist are finished on all four
+platforms rather than sketched on one. Seventeen widgets, every one on every renderer, with
+a self-test on each host that reads the tree back out of the real toolkit.
+
+What is genuinely missing: seven catalogue entries, of which `Picker` and `DatePicker` are
+the ones a form actually wants; Maven Central publishing; and an Apple getting-started, since
+an Apple consumer needs a Swift static library this repo builds with a shell script rather
+than just a dependency line. A GTK app can be built from outside this repo today —
+`bin/verify-getting-started.sh` checks exactly that — but it has to copy a dozen lines of
+our `nativeConfig`, because nothing publishes them yet.
 
 ## Getting started
 
@@ -90,6 +99,23 @@ For Android, with an emulator running:
 ```bash
 ./examples/todo-android/build.sh   # builds the Scala, hands the JAR to Gradle, installs, launches
 ```
+
+### Or see every component at once
+
+```bash
+sbt --error galleryGtk/nativeLink
+./target/out/native0.5/scala-3.9.0/gallery-gtk/gallery-gtk
+```
+
+`examples/gallery` is one screen holding every component the framework has, built for all
+four platforms. It is a conformance surface rather than a showcase: `TestRenderer` answers
+for every widget, so a widget that renders on GTK and does nothing at all on Android would
+pass the whole unit-test suite. Only a screen that uses everything, rendered by each real
+toolkit, catches that — which is why adding a component without adding it here is treated as
+an incomplete change ([docs/12](docs/12-component-status.md) §12.10).
+
+`THICKET_GALLERY_SELFTEST=1` makes it read the tree back out of the toolkit and print
+pass/fail per component.
 
 ### Your first app
 
@@ -315,6 +341,7 @@ the framework's source.*
 |---|---|---|
 | 12 | [docs/12-component-status.md](docs/12-component-status.md) | **Start here.** Done vs left, per widget and per renderer |
 | 13 | [docs/13-phases.md](docs/13-phases.md) | Phases, branches, PRs, exit criteria |
+| 14 | [docs/14-releasing.md](docs/14-releasing.md) | Versions from tags, `early-semver`, what a consumer needs |
 | 11 | [docs/11-what-it-looks-like.md](docs/11-what-it-looks-like.md) | The design ideas, and the gap each one exposed |
 | 10 | [docs/10-phase-0-findings.md](docs/10-phase-0-findings.md) | Every phase-0 measurement and the GO decision |
 | — | [docs/decisions.md](docs/decisions.md) | Versions, tooling, the dated decision log |
