@@ -124,7 +124,6 @@ object AppleInspect {
   /** Goes back one page through the platform's own path, as a user would. */
   def platformBack(): Boolean = Shim.sui_pages_back() != 0
 
-
   /** `Some(true)` when an image view holds a decoded image, `Some(false)` when it shows nothing, `None` when `h` is not
     * an image view.
     */
