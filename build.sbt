@@ -20,7 +20,14 @@ ThisBuild / organization := "dev.thicket"
 //   - no tag reachable at all        -> 0.1.0-<sha>-SNAPSHOT  (baseVersion + sha)
 // There are no tags in this repo yet, which is why every module currently reports a bare
 // sha. Tag `v0.1.0` and the versions become readable.
-ThisBuild / GitKeys.baseVersion    := "0.1.0"
+ThisBuild / GitKeys.baseVersion := "0.1.0"
+// `useGitDescribe` is ALSO set per project, in `commonSettings`, and it has to be.
+// GitVersioning sets `useGitDescribe := false` in its own *projectSettings*, which shadows
+// a ThisBuild setting entirely: `ThisBuild / useGitDescribe` read `true` while
+// `coreJVM / useGitDescribe` read `false`, so every project ignored the tag and fell back to
+// baseVersion + sha. `v0.1.0` was tagged and the artefacts still came out as
+// `0.1.0-<sha>` — the tag was inert, which is the sort of thing a release notices far too
+// late.
 ThisBuild / GitKeys.useGitDescribe := true
 // Tags are `v`-prefixed; anything else is not a version and is left for `git describe` to
 // render as-is rather than being mangled into one.
@@ -84,6 +91,8 @@ lazy val coverageSettings = Seq(
 )
 
 lazy val commonSettings = Seq(
+  // Project scope on purpose — see the note at `ThisBuild / GitKeys.useGitDescribe`.
+  GitKeys.useGitDescribe := true,
   scalacOptions ++= Seq(
     "-deprecation",
     "-feature",
