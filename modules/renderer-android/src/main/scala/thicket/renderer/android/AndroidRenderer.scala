@@ -570,6 +570,13 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case l: LinearLayout => val _ = spacing.remove(l)
       case _               => ()
     }
+    // Keyed by View, so an entry left behind keeps the View itself alive for the life of
+    // the renderer. Android needs no handle table — the closures sit in these maps and the
+    // GC collects them once nothing references the View — which is exactly why the removal
+    // was easy to forget here and nowhere else.
+    val _ = ranges.remove(handle)
+    val _ = alertActions.remove(handle)
+    val _ = alertDismiss.remove(handle)
   }
 
   def measure(handle: Handle, constraints: Constraints): Measurement = {

@@ -61,6 +61,16 @@ private[gtk] object Handles {
     val _ = callbacks.put(id, f)
   }
 
+  /** How many callbacks the table is holding.
+    *
+    * For the self-test. An id that `destroy` forgets to release keeps its closure here
+    * forever, and the closure can capture a whole subtree — so "the table is the same size
+    * after mounting and unmounting" is the only cheap way to notice. Found the hard way:
+    * `valueIds` had been leaking on GTK since `Slider` landed, and a review caught the same
+    * omission for `Picker` on Apple.
+    */
+  def liveCount: Int = callbacks.size + valued.size + readers.size + muted.size + listBinders.size
+
   def release(id: Long): Unit = {
     val _ = callbacks.remove(id)
     val _ = valued.remove(id)

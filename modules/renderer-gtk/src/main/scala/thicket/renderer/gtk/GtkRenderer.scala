@@ -714,6 +714,12 @@ final class GtkRenderer extends Renderer {
     tapIds.remove(handle).foreach(Handles.release)
     editIds.remove(handle).foreach(Handles.release)
     toggleIds.remove(handle).foreach(Handles.release)
+    // `valueIds` was missing here from the day `Slider` landed, so every destroyed slider
+    // left its handler and its two source closures in the table. A review caught the same
+    // omission for `selectIds`; both are the same mistake, and `Handles.liveCount` plus a
+    // self-test check is what stops a third.
+    valueIds.remove(handle).foreach(Handles.release)
+    selectIds.remove(handle).foreach(Handles.release)
     suppress -= handle
     kinds.remove(handle)
     // GTK4: a widget is owned by its parent, and unparenting drops that reference, which

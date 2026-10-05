@@ -360,6 +360,7 @@ final class AppleRenderer extends Renderer {
     editIds.remove(handle).foreach(Handles.release)
     boolIds.remove(handle).foreach(Handles.release)
     valueIds.remove(handle).foreach(Handles.release)
+    selectIds.remove(handle).foreach(Handles.release)
     actionIds.remove(handle).foreach(_.foreach(Handles.release))
     dismissIds.remove(handle).foreach(Handles.release)
     menuIds.remove(handle).foreach(_.foreach(Handles.release))

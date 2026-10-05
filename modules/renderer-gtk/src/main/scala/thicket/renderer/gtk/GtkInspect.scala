@@ -51,6 +51,15 @@ object GtkInspect {
     */
   def cssParseErrors: Long = Handles.cssParseErrors
 
+  /** Callbacks the handle table is holding right now.
+    *
+    * A `destroy` that forgets to release an id leaves its closure here for the life of the
+    * process, and the closure can capture a whole subtree. Comparing the count across a
+    * mount-then-unmount is the cheap way to notice; `valueIds` leaked from the day `Slider`
+    * landed and nothing saw it.
+    */
+  def liveCallbacks: Int = Handles.liveCount
+
   /** Whether the pointer still refers to a live `GtkWidget`.
     *
     * On a toolkit where a container owns its children, freeing a container frees its
