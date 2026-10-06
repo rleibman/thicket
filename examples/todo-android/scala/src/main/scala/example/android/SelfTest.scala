@@ -25,6 +25,7 @@ import thicket.core.NavHost
 import thicket.renderer.CalendarDate
 import thicket.renderer.android.AndroidRenderer
 import android.content.DialogInterface
+import scala.collection.mutable
 
 /** Drives navigation and reads the view tree back out of Android — the same checks the GTK
   * host runs, against a structurally different toolkit.
@@ -42,6 +43,15 @@ object SelfTest {
       (0 until g.getChildCount).toList.flatMap(i => allTexts(g.getChildAt(i)))
     case t: TextView => List(t.getText.toString)
     case _           => Nil
+  }
+
+  /** The theme's own link colour, resolved independently of the renderer, so the check compares against the theme
+    * rather than against whatever the renderer happened to set.
+    */
+  private def linkColour(v: View): Int = {
+    val tv = _root_.android.util.TypedValue()
+    v.getContext.getTheme.resolveAttribute(_root_.android.R.attr.textColorLink, tv, true)
+    v.getContext.getColorStateList(tv.resourceId).getDefaultColor
   }
 
   /** Every descendant for which `p` holds, in tree order. */
@@ -310,6 +320,28 @@ object SelfTest {
       model.order.set(0)
       check("writing the signal checks the other segment", checked == List(true, false), checked.toString)
     }
+
+    // --- Link: a Button that opens a URL, drawn as Android draws a link ---
+    // Clicked for real (performClick runs the listener the renderer set), with the opener
+    // swapped for a recorder so the self-test does not leave for a browser half-way through.
+    // That the intent then opens a browser is measured separately, by tapping it from adb.
+    val opened = mutable.Buffer.empty[String]
+    val realOpener = AndroidRenderer.urlOpener
+    AndroidRenderer.urlOpener = (_, url) => opened += url
+    val links = findAll(root()) {
+      case b: _root_.android.widget.Button => b.getText.toString == "thicket on GitHub"
+      case _                                => false
+    }.collect { case b: _root_.android.widget.Button => b }
+    check("the link is a Button", links.length == 1, links.length.toString)
+    links.headOption.foreach { b =>
+      check("drawn in the theme's link colour, underlined",
+        (b.getPaintFlags & _root_.android.graphics.Paint.UNDERLINE_TEXT_FLAG) != 0 &&
+          b.getTextColors.getDefaultColor == linkColour(b),
+        f"flags 0x${b.getPaintFlags}%x, colour 0x${b.getTextColors.getDefaultColor}%08x, theme link 0x${linkColour(b)}%08x")
+      b.performClick()
+      check("clicking it opens its URL", opened.toList == List(TodoApp.repoUrl), opened.toString)
+    }
+    AndroidRenderer.urlOpener = realOpener
 
     // --- ZStack: the spinner is drawn over the logo, in a FrameLayout ---
     // Mounted after the picture, so this is the insert that must land on top. Child index is

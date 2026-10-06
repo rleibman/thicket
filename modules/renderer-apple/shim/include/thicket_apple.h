@@ -172,6 +172,9 @@ int32_t sui_get_date(sui_handle h);
 /* The epoch day the user chose. */
 void sui_on_date_change(sui_handle h, sui_int_cb cb, int64_t ctx);
 
+/* --- links ------------------------------------------------------------------- */
+void sui_set_open_url(sui_handle h, const char *url);
+
 /* --- navigation -------------------------------------------------------------- */
 /* Starts describing the stack. Nothing changes on screen until sui_pages_commit. */
 void sui_pages_begin(void);

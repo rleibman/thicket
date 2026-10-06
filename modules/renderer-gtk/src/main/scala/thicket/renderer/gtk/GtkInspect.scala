@@ -137,6 +137,18 @@ object GtkInspect {
     } finally zone.close()
   }
 
+  /** Route every link opened from here on into the returned buffer instead of to the desktop.
+    *
+    * A self-test that clicks a link must not launch a browser on the machine it runs on, so this records what *would*
+    * have opened. It proves the click reaches the URL; that `GtkUriLauncher` then opens it is the platform's half, and
+    * is not exercised by any self-test.
+    */
+  def interceptUrls(): scala.collection.mutable.Buffer[String] = {
+    val opened = scala.collection.mutable.Buffer.empty[String]
+    UrlOpener.replace((url, _) => opened += url)
+    opened
+  }
+
   /** Emit a button's "clicked" signal, as a real click does — through the handler GTK has connected, not by calling
     * ours. On a `GtkToggleButton` that is what toggles it.
     *
@@ -197,6 +209,8 @@ object GtkInspect {
       )
     )
   }
+
+  def isButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_button_get_type())
 
   /** A `ZStack`. */
   def isOverlay(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_overlay_get_type())

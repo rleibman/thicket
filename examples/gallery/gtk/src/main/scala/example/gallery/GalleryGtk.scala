@@ -64,6 +64,7 @@ object GalleryGtk {
       "Picker — a choice from a fixed list",
       "DatePicker — a day, in the platform's own chooser",
       "SegmentedControl — one of a few, all on screen",
+      "Link — opens a URL, drawn as each platform draws a link",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "ZStack — children drawn over one another, last on top",
@@ -140,6 +141,25 @@ object GalleryGtk {
       check("clicking a segment makes it the only one active", active == List(false, false, true), active.toString)
       check("and reaches the app", GtkInspect.allTexts(root).contains("Showing a Month"),
         GtkInspect.allTexts(root).filter(_.startsWith("Showing")).toString)
+    }
+
+    // Links. Clicked for real — "clicked" is emitted on the widget — with the opener
+    // swapped for a recorder, so the check proves a click reaches the URL without launching
+    // a browser on this machine. That GtkUriLauncher then opens it is not exercised here.
+    val opened = GtkInspect.interceptUrls()
+    val links  = GtkInspect.findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.hasCssClass(w, "link"))
+    check("both links are GtkButtons drawn as links", links.length == 2,
+      links.map(GtkInspect.allTexts).toString)
+    links.find(l => GtkInspect.allTexts(l) == List("thicket on GitHub")).foreach { l =>
+      GtkInspect.click(l)
+      check("clicking a link opens its URL", opened.toList == List(Gallery.repoUrl), opened.toString)
+    }
+    links.find(l => GtkInspect.allTexts(l) == List("Apache License 2.0")).foreach { l =>
+      GtkInspect.click(l)
+      check("a link with a tap opens its URL", opened.lastOption.contains(Gallery.licenceUrl), opened.toString)
+      check("and runs the tap as well",
+        GtkInspect.allTexts(root).contains("The licence link was tapped 1 times"),
+        GtkInspect.allTexts(root).filter(_.contains("licence")).toString)
     }
 
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)

@@ -50,6 +50,7 @@ object Gallery {
     val picked:   Var[Int]     = Var(1)
     val span:     Var[Int]     = Var(1)
     val due:      Var[CalendarDate] = Var(Gallery.firstDue)
+    val linkTaps: Var[Int]     = Var(0)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
@@ -81,6 +82,10 @@ object Gallery {
 
   /** The segmented control's options. On the object so the self-test can name them. */
   val spans: Seq[String] = Seq("Day", "Week", "Month")
+
+  /** Where the gallery's links go. On the object so the self-test can say what should have opened. */
+  val repoUrl:    String = "https://github.com/rleibman/thicket"
+  val licenceUrl: String = "https://www.apache.org/licenses/LICENSE-2.0"
 
   /** The picker's options. On the object so the self-test can name them. */
   val fruit: Seq[String] = Seq("Apple", "Banana", "Cherry")
@@ -160,6 +165,13 @@ object Gallery {
               Button("Select first")(model.span.set(0)),
               Button("Clear")(model.span.set(-1))
             )
+          ),
+          section("Link — opens a URL, drawn as each platform draws a link")(
+            Link("thicket on GitHub", Gallery.repoUrl),
+            // A link that also does something in the app. Both must run: a renderer that wires
+            // one click handler per widget would let whichever came last win.
+            Link("Apache License 2.0", Gallery.licenceUrl).onTap(model.linkTaps.set(model.linkTaps.now + 1)),
+            Label(model.linkTaps.map(n => s"The licence link was tapped $n times"), style = TextRole.Caption)
           ),
           section("Slider, ProgressBar, ActivityIndicator")(
             Slider(model.volume, min = 0, max = 11)(model.volume.set),

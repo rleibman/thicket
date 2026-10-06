@@ -87,6 +87,7 @@ object Shim {
   def sui_set_date(h: Handle, epochDay: CInt): Unit = extern
   def sui_get_date(h: Handle): CInt = extern
   def sui_on_date_change(h: Handle, cb: IntCb, ctx: Long): Unit = extern
+  def sui_set_open_url(h: Handle, url: CString): Unit = extern
   def sui_pages_begin(): Unit = extern
   def sui_pages_add(id: Long, content: Handle, title: CString): Unit = extern
   def sui_pages_commit(): Unit = extern
