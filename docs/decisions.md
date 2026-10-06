@@ -92,6 +92,33 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   the index has to survive that. Falsified on GTK by dropping `gtk_toggle_button_set_group`:
   clicking "Month" left `List(false, true, true)`, two segments on.
 
+- 2026-10-06 — **`Link` is `Prop.OpenUrl(url)`, and a tap and a URL on one widget both
+  run** (#50; that it is a prop was the project owner's decision there). `Link(text, url)` is
+  a `Button` that carries the URL and **no accent fill** — the fill is what makes a button
+  look like a command, and a link leaves the app. `.link(url)` puts the URL on any element,
+  as behaviour only.
+  Every renderer keeps the app's tap and the URL **in two tables behind one connection** and
+  dispatches both. A view has one click listener on Android and one target/action on Apple,
+  so storing the URL as "the" handler would let `.link` on a tappable row silently replace the
+  row's tap, or the tap the link — whichever was applied last. Falsified on GTK by letting the
+  URL displace the tap: "and runs the tap as well" fails with the counter still at 0.
+  Opening is the platform's: `GtkUriLauncher` (with the window as parent, so the portal can
+  place a chooser), an `ACTION_VIEW` intent with `FLAG_ACTIVITY_NEW_TASK` when the context is
+  not an Activity, `NSWorkspace.open`, `UIApplication.open`. A failure is logged, never thrown
+  into a click handler: there is nothing the app could do differently.
+  **The self-tests intercept the opener**, so clicking a link does not launch a browser on
+  the machine running them. The platform half was measured once by hand on Android: the
+  link tapped from `adb` brought `com.android.chrome` to the foreground. On GTK it has not
+  been exercised; launching the desktop's browser from a test is not something to do
+  unattended.
+  Two GTK traps on the way. `gtk_widget_activate` on a button does not emit "clicked" until
+  its pressed animation ends about 250 ms later, so the first check read an empty list; the
+  self-test emits "clicked" itself. And `GtkUriLauncher` is released in its completion
+  callback, the one place it is known to be finished with.
+  Also found, not caused, here: **#49's Swift calls a `str(...)` helper that was never
+  defined**, in both shims, so the Picker could not have compiled on a Mac. Defined now;
+  nothing on Linux compiles Swift, which is the whole of #45/#46.
+
 - 2026-10-06 — **`ZStack`, not `Stack`: children overlap in order, each at its natural size,
   placed by one alignment on the stack** (#50). The name is load bearing. `NSStackView` and
   `UIStackView` are what `Column` and `Row` already *are*, and a `GtkStack` shows one child at

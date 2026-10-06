@@ -14,8 +14,8 @@ catalogue in `docs/07` §7.10.
 | Widgets implemented on at least one renderer | **20** |
 | Widgets implemented on **every** renderer that exists | **20** (Apple's Swift for three of them is written but unrun — #45, #46) |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **31** |
-| Props implemented on every renderer | **31** — all of them |
+| Props in the contract | **32** |
+| Props implemented on every renderer | **32** — all of them |
 
 **Twenty of thirty-two, every one on every renderer** — though the Swift for `Picker` (#45), `ZStack` and `SegmentedControl` (#46) is written and unrun, so on Apple it is twenty on paper and seventeen measured. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
@@ -70,6 +70,16 @@ time.** All four toolkits model a context menu as something a view *has*, never 
 you place: `NSView.menu`, `UIContextMenuInteraction`, a `GtkPopover` parented to the widget,
 a `PopupMenu` anchored at the view. So it is `Prop.ContextMenu(Seq[MenuItem])` and an
 `.contextMenu(...)` modifier, and it adds no node to the tree.
+
+**`Link` is a prop as well — the §12.2a answer a sixth time, decided by the project owner on
+#50.** Android and both Apple platforms model a link as "a button that opens this URL", so it
+is `Prop.OpenUrl(url)`, a `.link(url)` modifier for any element, and a `Link(text, url)`
+constructor that is a `Button` *without* the accent fill. On a button it takes the
+platform's link look: GTK's `link` class, which is all a `GtkLinkButton` is; the theme's link
+colour, underlined, on Android; a borderless `.linkColor` button on AppKit; a fill-less
+`.system` `UIButton` on UIKit, which already is one. On anything else it is behaviour only.
+Opening goes to `GtkUriLauncher`, an `ACTION_VIEW` intent, `NSWorkspace` and
+`UIApplication.open`. A tap and a URL on the same widget both run, on every renderer.
 
 Which gesture opens it is the platform's and deliberately not the app's: **secondary click
 on GTK and AppKit, long press on Android and UIKit**. An app that hard-coded either would be
@@ -167,11 +177,12 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 | Group | Left to do |
 |---|---|
 | Layout | `Grid` |
-| Controls | `IconButton`, `Radio`, `Stepper`, `DatePicker`, `Link` |
+| Controls | `IconButton`, `Radio`, `Stepper`, `DatePicker` |
 | Containers | `TabView` |
 
-`IconButton` and `Link` are held back on purpose: the first needs an icon/resource system
-and the second needs platform URL opening, and neither should be improvised inside a widget.
+`IconButton` is held back on purpose: it needs an icon/resource system, which should not be
+improvised inside a widget. `Link`, held back with it for want of platform URL opening, is
+now a prop — see below.
 
 ### 12.2a Two entries in §7.10 are not cross-platform widgets
 

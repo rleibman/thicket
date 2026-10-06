@@ -401,6 +401,14 @@ object Abi {
     setter("sui_set_stack_alignment", "horizontal" -> I32, "vertical" -> I32)
   )
 
+  /** A link: activating the view opens `url` with `NSWorkspace` / `UIApplication.open`. A property of a view, not a
+    * kind — on a button it also takes the platform's link look, on anything else it is behaviour only, like a tap. The
+    * shim dispatches a tap to both the app's handler and the URL, so neither displaces the other.
+    */
+  val links: List[Fn] = List(
+    setter("sui_set_open_url", "url" -> Str)
+  )
+
   /** A context menu is something a view *has* (`NSView.menu`, `UIContextMenuInteraction`), so it is set on the view's
     * own handle and adds nothing to the tree. Items are data — a label, an enabled flag and a callback each — like an
     * alert's actions. Which gesture opens it is the platform's business, so nothing here names one.
@@ -593,6 +601,7 @@ object Abi {
     Group("context menus", contextMenus),
     Group("picker", picker),
     Group("zstack", zstack),
+    Group("links", links),
     Group("navigation", navigation),
     Group("inspection, for the self-test", inspection)
   )

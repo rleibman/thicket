@@ -375,6 +375,22 @@ enum Prop {
 
   case OnSelect(handler: Int => Unit)
 
+  /** Activating this widget opens `url` with whatever the platform opens URLs with — the default browser, or the app
+    * registered for the scheme.
+    *
+    * A **prop, not a widget**, by the project owner's decision on #50 and §12.2a's rule: Android and both Apple
+    * platforms model a link as "a button that opens this URL", so it is a property of a view, the same conclusion
+    * `ContextMenu` reached. `GtkLinkButton` is how GTK *draws* one, not the model.
+    *
+    * On a `Button` it also takes the platform's link styling — GTK's `link` class, which is all `GtkLinkButton` is, the
+    * theme's link colour on Android, a borderless link-tinted button on Apple. On anything else it is only behaviour,
+    * like [[OnTap]]: a row that opens a page does not turn blue. Any `OnTap` on the same widget still runs.
+    *
+    * The framework opens the URL and does not look at it. Whether `mailto:` or a custom scheme works is the platform's
+    * answer, not ours.
+    */
+  case OpenUrl(url: String)
+
   /** Where a [[WidgetKind.ZStack]] places each child within itself, on both axes.
     *
     * On the *stack*, not per child: the largest child fills the stack whatever its alignment, so what this decides is

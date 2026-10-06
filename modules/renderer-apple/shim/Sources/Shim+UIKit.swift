@@ -19,6 +19,12 @@ private func view(_ h: UnsafeMutableRawPointer) -> UIView {
   Unmanaged<UIView>.fromOpaque(h).takeUnretainedValue()
 }
 
+/// A C string from Scala as a Swift one, `""` for null. #49's picker called this without it
+/// ever being defined, which nothing on Linux can notice: the Swift is only compiled on a Mac.
+private func str(_ p: UnsafePointer<CChar>?) -> String {
+  p.map { String(cString: $0) } ?? ""
+}
+
 private func retained(_ v: UIView) -> UnsafeMutableRawPointer {
   Unmanaged.passRetained(v).toOpaque()
 }
@@ -32,6 +38,17 @@ private struct ValueChange { let cb: sui_value_cb; let ctx: Int64 }
 private struct Selection { let cb: sui_int_cb; let ctx: Int64 }
 
 private var taps: [ObjectIdentifier: Tap] = [:]
+
+/// URLs that views open when activated (`Prop.OpenUrl`). Beside `taps`, not instead of a tap:
+/// every tap path goes through `fireTap`, which runs both, so `.link(url)` on a tappable row
+/// cannot displace the row's own handler — the same rule GTK and Android keep.
+private var links: [ObjectIdentifier: URL] = [:]
+
+private func fireTap(_ id: ObjectIdentifier) {
+  if let t = taps[id] { t.cb(t.ctx) }
+  // Handed to the platform, which picks the browser or the app registered for the scheme.
+  if let url = links[id] { UIApplication.shared.open(url) }
+}
 private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
 private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
@@ -60,7 +77,7 @@ private var suppressed: Set<ObjectIdentifier> = []
 /// Scala hits with CFuncPtr, met again on this side of the boundary.
 private final class Proxy: NSObject {
   @objc func tapped(_ sender: UIControl) {
-    if let t = taps[ObjectIdentifier(sender)] { t.cb(t.ctx) }
+    fireTap(ObjectIdentifier(sender))
   }
 
   @objc func segmented(_ sender: UISegmentedControl) {
@@ -89,7 +106,7 @@ private final class Proxy: NSObject {
 
   @objc func containerTapped(_ gesture: UITapGestureRecognizer) {
     guard let v = gesture.view else { return }
-    if let t = taps[ObjectIdentifier(v)] { t.cb(t.ctx) }
+    fireTap(ObjectIdentifier(v))
   }
 }
 
@@ -407,6 +424,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   let v = view(h)
   let id = ObjectIdentifier(v)
   taps.removeValue(forKey: id)
+  links.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
   valueChanges.removeValue(forKey: id)
@@ -643,6 +661,15 @@ public func sui_set_value(_ h: UnsafeMutableRawPointer, _ value: Double) {
 @_cdecl("sui_on_tap")
 public func sui_on_tap(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_void_cb, _ ctx: Int64) {
   taps[ObjectIdentifier(view(h))] = Tap(cb: cb, ctx: ctx)
+}
+
+@_cdecl("sui_set_open_url")
+public func sui_set_open_url(_ h: UnsafeMutableRawPointer, _ url: UnsafePointer<CChar>?) {
+  let v = view(h)
+  // A string the platform cannot parse as a URL opens nothing, rather than crashing a tap.
+  links[ObjectIdentifier(v)] = URL(string: str(url))
+  // Nothing to restyle: a `.system` UIButton with no fill — which is what a Link is, since
+  // it never sends one — is already UIKit's link idiom, tinted text that opens something.
 }
 
 @_cdecl("sui_on_text_change")

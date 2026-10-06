@@ -203,6 +203,27 @@ object dsl {
       Nil
     )
 
+  /** Text that opens `url` when activated, drawn as each platform draws a link.
+    *
+    * A `Button` with [[thicket.renderer.Prop.OpenUrl]] and **without** a button's accent fill: the fill is what makes a
+    * button look like a button, and a link that looked like one would be lying about what it does — it leaves the app.
+    *
+    * {{{
+    * Link("Read the docs", "https://github.com/rleibman/thicket")
+    * }}}
+    *
+    * To make something other than text open a URL, a row say, use the [[link]] modifier instead.
+    */
+  def Link(
+    value: String | Signal[String],
+    url:   String
+  ): Element =
+    Widget(
+      WidgetKind.Button,
+      Seq(text(value), Static(Prop.OpenUrl(url))),
+      Nil
+    )
+
   /** A single-line text field bound to a signal.
     *
     * Two-way: the field shows `value`, and edits are reported through `onChange`. Nothing here closes the loop for you
@@ -607,6 +628,13 @@ object dsl {
     def contextMenu(items: MenuItem*): Element = withAttr(Static(Prop.ContextMenu(items)))
 
     def padding(dp: Int): Element = withAttr(Static(Prop.Padding(dp)))
+
+    /** Open `url` when this element is activated, with whatever the platform opens URLs with.
+      *
+      * Behaviour only on anything but a `Button`: a row that opens a page keeps looking like a row. For text that looks
+      * like a link, use [[dsl.Link]].
+      */
+    def link(url: String): Element = withAttr(Static(Prop.OpenUrl(url)))
 
     /** Keep this widget's content clear of the system's chrome — a notch, a status bar, a home indicator.
       *
