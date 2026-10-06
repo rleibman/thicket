@@ -69,6 +69,29 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-06 — **`SegmentedControl` is built, and is the one §12.2a exception** (#50,
+  decided by the project owner there). Only the two Apple platforms have one:
+  `NSSegmentedControl` and `UISegmentedControl`. By the rule it would be an app-level
+  composition; it is in the contract anyway because it is a common, recognisable control. The
+  condition is that each other platform gets **its own construction, not an imitation of
+  Apple's**.
+  **GTK: a `linked` `GtkBox` of grouped `GtkToggleButton`s**, which is how GNOME apps drew
+  this before `AdwToggleGroup` and what any GTK 4 still has. **Not `AdwToggleGroup`**, which
+  the note on #50 allowed "where libadwaita is new enough": the pinned bindings (0.2.6)
+  predate it, and declaring its symbols by hand would make **every** thicket GTK app fail to
+  start on libadwaita older than 1.7. Ubuntu 24.04 LTS ships 1.5. A runtime switch is
+  possible later, through `dlsym`, and is not worth its second code path today.
+  **Android: a horizontal `RadioGroup`.** Android has no segmented control outside Material
+  Components, a dependency this project does not take, and a `RadioGroup` is the framework's
+  own "choose one, all visible": real mutual exclusion, and TalkBack reads "radio button, 2
+  of 3". It looks like radio buttons because on Android it is radio buttons.
+  **The same three props as `Picker`**: `Options`, `Selected` as an index with `-1` for none,
+  and `OnSelect`. It is the same choice drawn differently, so the Apple ABI reuses the
+  picker's five functions and adds only kind code **20**. The selection is held beside the
+  control on GTK and Android, because both rebuild their segments when the options change and
+  the index has to survive that. Falsified on GTK by dropping `gtk_toggle_button_set_group`:
+  clicking "Month" left `List(false, true, true)`, two segments on.
+
 - 2026-10-06 — **`ZStack`, not `Stack`: children overlap in order, each at its natural size,
   placed by one alignment on the stack** (#50). The name is load bearing. `NSStackView` and
   `UIStackView` are what `Column` and `Row` already *are*, and a `GtkStack` shows one child at

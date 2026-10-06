@@ -19,7 +19,7 @@ package example.android
 import android.util.Log
 import android.view.{Gravity, View, ViewGroup}
 import android.text.InputType
-import android.widget.{EditText, FrameLayout, ProgressBar, ScrollView, SeekBar, Switch, TextView}
+import android.widget.{EditText, FrameLayout, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Switch, TextView}
 import example.TodoApp
 import thicket.core.NavHost
 
@@ -236,6 +236,34 @@ object SelfTest {
     check("no spinner while the app is idle", spinners.isEmpty, spinners.length.toString)
     model.busy.set(true)
     check("a spinner appears when busy", spinners.length == 1, spinners.length.toString)
+
+    // --- SegmentedControl: a horizontal RadioGroup, one RadioButton per option ---
+    val groups = findAll(root()) { case _: RadioGroup => true; case _ => false }
+      .collect { case g: RadioGroup => g }
+    check("the order control is one RadioGroup", groups.length == 1, groups.length.toString)
+    groups.headOption.foreach { g =>
+      def buttons = (0 until g.getChildCount).map(g.getChildAt).collect { case b: RadioButton => b }
+      def checked = buttons.map(_.isChecked).toList
+      def rowsFirst: Option[String] = {
+        val texts = allTexts(root())
+        val titles = model.items.now.map(_.title)
+        texts.find(t => titles.exists(t.endsWith))
+      }
+      check("a RadioButton per option, in order",
+        buttons.map(_.getText.toString).toList == List("Oldest first", "Newest first"),
+        buttons.map(_.getText.toString).toString)
+      check("the model's choice is the checked one", checked == List(true, false), checked.toString)
+      val oldestFirst = rowsFirst
+      // A real click: RadioButton.performClick checks it, the group's listener runs, and the
+      // renderer reports the index to the app.
+      buttons(1).performClick()
+      check("clicking a segment reaches the app", model.order.now == 1, model.order.now.toString)
+      check("and only that one is checked", checked == List(false, true), checked.toString)
+      check("and the list reverses", rowsFirst != oldestFirst && rowsFirst.nonEmpty,
+        s"$oldestFirst then $rowsFirst")
+      model.order.set(0)
+      check("writing the signal checks the other segment", checked == List(true, false), checked.toString)
+    }
 
     // --- ZStack: the spinner is drawn over the logo, in a FrameLayout ---
     // Mounted after the picture, so this is the insert that must land on top. Child index is

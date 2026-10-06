@@ -63,6 +63,12 @@ private final class Proxy: NSObject {
     if let t = taps[ObjectIdentifier(sender)] { t.cb(t.ctx) }
   }
 
+  @objc func segmented(_ sender: UISegmentedControl) {
+    let id = ObjectIdentifier(sender)
+    guard !suppressed.contains(id), let s = selections[id] else { return }
+    s.cb(s.ctx, Int32(sender.selectedSegmentIndex))
+  }
+
   @objc func edited(_ sender: UITextField) {
     let id = ObjectIdentifier(sender)
     guard !suppressed.contains(id), let e = edits[id] else { return }
@@ -372,6 +378,11 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 19:
     return retained(ZStackView())
 
+  case 20:
+    let s = UISegmentedControl()
+    s.addTarget(proxy, action: #selector(Proxy.segmented(_:)), for: .valueChanged)
+    return retained(s)
+
   case 14:
     // Only construction differs from a TextField; text, placeholder and edits are shared.
     let f = UITextField()
@@ -671,6 +682,7 @@ private func rebuildPickerMenu(_ b: UIButton) {
 
 @_cdecl("sui_picker_clear_options")
 public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
+  if let seg = view(h) as? UISegmentedControl { seg.removeAllSegments(); return }
   guard let b = view(h) as? UIButton else { return }
   pickerOptions[ObjectIdentifier(b)] = []
   rebuildPickerMenu(b)
@@ -678,6 +690,10 @@ public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
 
 @_cdecl("sui_picker_add_option")
 public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>?) {
+  if let seg = view(h) as? UISegmentedControl {
+    seg.insertSegment(withTitle: label.map { String(cString: $0) } ?? "", at: seg.numberOfSegments, animated: false)
+    return
+  }
   guard let b = view(h) as? UIButton else { return }
   pickerOptions[ObjectIdentifier(b), default: []].append(str(label))
   rebuildPickerMenu(b)
@@ -685,6 +701,12 @@ public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafeP
 
 @_cdecl("sui_set_selected")
 public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
+  if let seg = view(h) as? UISegmentedControl {
+    // UIKit sends no .valueChanged for a programmatic change, so no suppression is needed.
+    seg.selectedSegmentIndex =
+      (index >= 0 && Int(index) < seg.numberOfSegments) ? Int(index) : UISegmentedControl.noSegment
+    return
+  }
   guard let b = view(h) as? UIButton else { return }
   let id = ObjectIdentifier(b)
   guard (pickerSelected[id] ?? -1) != Int(index) else { return }
@@ -696,6 +718,7 @@ public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
 
 @_cdecl("sui_get_selected")
 public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
+  if let seg = view(h) as? UISegmentedControl { return Int32(seg.selectedSegmentIndex) }
   guard let b = view(h) as? UIButton else { return -1 }
   return Int32(pickerSelected[ObjectIdentifier(b)] ?? -1)
 }

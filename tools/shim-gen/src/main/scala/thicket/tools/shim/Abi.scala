@@ -204,6 +204,13 @@ object Abi {
       "ZStackView(",
       "ZStackView(",
       "a plain view that pins each child by constraints; later subviews draw on top"
+    ),
+    built(
+      20,
+      "SegmentedControl",
+      "NSSegmentedControl(",
+      "UISegmentedControl(",
+      "the picker's options/selection functions drive it; native on both Apple platforms"
     )
   )
 

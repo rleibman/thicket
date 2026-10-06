@@ -50,7 +50,8 @@ void sui_window_set_title(const char *title);
      16 Alert              AlertView()                    AlertView()       a placeholder; NSAlert / UIAlertController at present
      17 Sheet              SheetView()                    SheetView()       a container; a sheet window / a presented controller
      18 Picker             NSPopUpButton()                UIButton()        UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list
-     19 ZStack             ZStackView()                   ZStackView()      a plain view that pins each child by constraints; later subviews draw on top */
+     19 ZStack             ZStackView()                   ZStackView()      a plain view that pins each child by constraints; later subviews draw on top
+     20 SegmentedControl   NSSegmentedControl()           UISegmentedControl()  the picker's options/selection functions drive it; native on both Apple platforms */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 

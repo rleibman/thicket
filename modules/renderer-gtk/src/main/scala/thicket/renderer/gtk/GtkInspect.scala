@@ -137,6 +137,28 @@ object GtkInspect {
     } finally zone.close()
   }
 
+  /** Emit a button's "clicked" signal, as a real click does — through the handler GTK has connected, not by calling
+    * ours. On a `GtkToggleButton` that is what toggles it.
+    *
+    * Not `gtk_widget_activate`, which on a button plays the pressed animation and emits "clicked" about 250 ms *later*:
+    * a check that reads straight afterwards sees nothing.
+    */
+  def click(widget: Ptr[GtkWidget]): Unit =
+    Zone(
+      sn.gnome.gobject.internal.g_signal_emit_by_name(
+        widget.asInstanceOf[sn.gnome.glib.internal.gpointer],
+        toCString("clicked").asInstanceOf[Ptr[sn.gnome.glib.internal.gchar]]
+      )
+    )
+
+  def hasCssClass(widget: Ptr[GtkWidget], name: String): Boolean =
+    Zone(gtk_widget_has_css_class(widget, toCString(name)).asInstanceOf[CInt] != 0)
+
+  def isToggleButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_toggle_button_get_type())
+
+  def toggleActive(widget: Ptr[GtkWidget]): Boolean =
+    gtk_toggle_button_get_active(widget.asInstanceOf[Ptr[GtkToggleButton]]).asInstanceOf[CInt] != 0
+
   /** A `ZStack`. */
   def isOverlay(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_overlay_get_type())
 

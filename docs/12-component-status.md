@@ -11,13 +11,13 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **19** |
-| Widgets implemented on **every** renderer that exists | **19** (Apple's Swift for two of them is written but unrun — #45, #46) |
+| Widgets implemented on at least one renderer | **20** |
+| Widgets implemented on **every** renderer that exists | **20** (Apple's Swift for three of them is written but unrun — #45, #46) |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **31** |
 | Props implemented on every renderer | **31** — all of them |
 
-**Nineteen of thirty-two, every one on every renderer** — though the Swift for `Picker` (#45) and `ZStack` (#46) is written and unrun, so on Apple it is nineteen on paper and seventeen measured. The six phase 2 widgets landed on
+**Twenty of thirty-two, every one on every renderer** — though the Swift for `Picker` (#45), `ZStack` and `SegmentedControl` (#46) is written and unrun, so on Apple it is twenty on paper and seventeen measured. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
 menus followed in #19, and the Apple hosts render `AppRoot.pages` since #25. The Apple
 self-test is **87/87** on macOS and **82/82** on the iOS simulator; the five iOS does not
@@ -143,6 +143,7 @@ Slice 2:
 |---|---|---|---|---|---|---|
 | `Slider` | `WidgetKind.Slider` | done | done | done | done | `GtkScale` / `SeekBar`. `Prop.Value` is in the **app's units**, not a fraction |
 | `Picker` | `WidgetKind.Picker` | done | done | written, unrun (#45) | written, unrun (#45) | `GtkDropDown` over a `GtkStringList` model / `Spinner` / `NSPopUpButton` / a menu-backed `UIButton` — **not** `UIPickerView`, which is a wheel. Selection is an **index**: two options may share a label |
+| `SegmentedControl` | `WidgetKind.SegmentedControl` | done | done | written, unrun (#46) | written, unrun (#46) | **The §12.2a exception**, by the project owner's decision on #50: native only on Apple (`NSSegmentedControl` / `UISegmentedControl`). GTK gets a `linked` box of grouped `GtkToggleButton`s, Android a horizontal `RadioGroup` — each platform's own construction, not an imitation of Apple's. Same props as `Picker` |
 | `SecureField` | `WidgetKind.SecureField` | done | done | done | done | Entry visibility / password input type. A kind rather than a prop because `NSSecureTextField` is a separate class |
 
 Slice 1:
@@ -166,7 +167,7 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 | Group | Left to do |
 |---|---|
 | Layout | `Grid` |
-| Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `DatePicker`, `Link` |
+| Controls | `IconButton`, `Radio`, `Stepper`, `DatePicker`, `Link` |
 | Containers | `TabView` |
 
 `IconButton` and `Link` are held back on purpose: the first needs an icon/resource system

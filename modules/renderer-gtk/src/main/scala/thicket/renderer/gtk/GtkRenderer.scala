@@ -192,6 +192,14 @@ final class GtkRenderer extends Renderer {
         // so every child is an overlay with `measure` set, which is GTK's own way of saying
         // "count this one when sizing".
         case WidgetKind.ZStack => gtk_overlay_new()
+        // A row of grouped GtkToggleButtons in a box with the `linked` class: the segmented
+        // control GNOME apps drew before AdwToggleGroup, and still the one any GTK 4 has.
+        // Not AdwToggleGroup: the pinned bindings predate it, and linking its symbols would
+        // stop every thicket GTK app starting on libadwaita < 1.7 (Ubuntu 24.04 ships 1.5).
+        case WidgetKind.SegmentedControl =>
+          val box = gtk_box_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0)
+          gtk_widget_add_css_class(box, toCString("linked"))
+          box
         case WidgetKind.Picker =>
           // A GtkStringList model rather than gtk_drop_down_new_from_strings: the options are
           // a prop and can change, and a model can be refilled in place where a
@@ -363,6 +371,10 @@ final class GtkRenderer extends Renderer {
         // Contrast a control GTK genuinely lacks, where the honest options are to imitate it
         // or to decline — see §12.2a.
         ()
+
+      case Prop.Options(values) if isSegmented(handle) => setSegments(handle, values)
+      case Prop.Selected(index) if isSegmented(handle)  => selectSegment(handle, index)
+      case Prop.OnSelect(f) if isSegmented(handle)      => segmentChosen(handle) = f
 
       case Prop.Options(values) =>
         // Refill the model in place. GtkStringList has no "clear", so splice removes the old
@@ -702,6 +714,80 @@ final class GtkRenderer extends Renderer {
       gtk_widget_set_valign(child, v)
     }
 
+  // -- SegmentedControl ------------------------------------------------------
+  //
+  // The selection lives here, not in the buttons: the buttons are rebuilt whenever the
+  // options change, and the index has to survive that. Each button's "toggled" handler is
+  // its own Handles id, released when the buttons are replaced and when the control goes.
+
+  private val segments      = mutable.Map.empty[Ptr[GtkWidget], Vector[(Ptr[GtkWidget], Long)]]
+  private val segmentIndex  = mutable.Map.empty[Ptr[GtkWidget], Int]
+  private val segmentChosen = mutable.Map.empty[Ptr[GtkWidget], Int => Unit]
+
+  private def isSegmented(handle: Handle): Boolean = kinds.get(handle).contains(WidgetKind.SegmentedControl)
+
+  private def setSegments(control: Handle, values: Seq[String]): Unit = {
+    releaseSegments(control)
+    val built = values.zipWithIndex.map { (label, i) =>
+      val b = Zone(gtk_toggle_button_new_with_label(toCString(label)))
+      val toggle = b.asInstanceOf[Ptr[GtkToggleButton]]
+      // Grouped to the first, which is what makes them mutually exclusive: GTK deactivates
+      // the old one when a new one is pressed.
+      val id = Handles.register { () =>
+        // "toggled" fires for the button going off as well as the one coming on; only the
+        // one coming on is a choice, and only when the user made it.
+        if gtk_toggle_button_get_active(toggle).asInstanceOf[CInt] != 0 && !suppress.contains(control) then {
+          segmentIndex(control) = i
+          segmentChosen.get(control).foreach(_(i))
+        }
+      }
+      Zone {
+        val _ = g_signal_connect_data(
+          b.asInstanceOf[gpointer],
+          toCString("toggled").asInstanceOf[Ptr[gchar]],
+          GCallback.fromPtr(Handles.clickedPtr),
+          Handles.idToPointer(id),
+          null.asInstanceOf[GClosureNotify],
+          GConnectFlags.define(0)
+        )
+      }
+      (b, id)
+    }.toVector
+    built.headOption.foreach { (first, _) =>
+      built.drop(1).foreach { (b, _) =>
+        gtk_toggle_button_set_group(b.asInstanceOf[Ptr[GtkToggleButton]], first.asInstanceOf[Ptr[GtkToggleButton]])
+      }
+    }
+    built.foreach((b, _) => gtk_box_append(control.asInstanceOf[Ptr[GtkBox]], b))
+    segments(control) = built
+    // The index survives a change of options; re-applying it is what keeps "Week" chosen
+    // when the list is refilled, or clears it when the list got shorter.
+    selectSegment(control, segmentIndex.getOrElse(control, -1))
+  }
+
+  private def selectSegment(control: Handle, index: Int): Unit = {
+    val buttons = segments.getOrElse(control, Vector.empty)
+    segmentIndex(control) = index
+    // Writing `active` fires "toggled", which would report the app's own write back to it
+    // as a user choice — and with a Var behind it, loop. Guarded as the switch is.
+    suppress += control
+    if index >= 0 && index < buttons.length then
+      gtk_toggle_button_set_active(buttons(index)._1.asInstanceOf[Ptr[GtkToggleButton]], gbool(true))
+    else
+      // -1, or past the end: nothing chosen. A GTK toggle group allows none active.
+      buttons.foreach((b, _) => gtk_toggle_button_set_active(b.asInstanceOf[Ptr[GtkToggleButton]], gbool(false)))
+    suppress -= control
+  }
+
+  /** Disconnect nothing — the buttons are freed with the box — but release each button's handler, which the table
+    * would otherwise keep, with its closure, forever.
+    */
+  private def releaseSegments(control: Handle): Unit =
+    segments.remove(control).foreach(_.foreach { (b, id) =>
+      Handles.release(id)
+      gtk_box_remove(control.asInstanceOf[Ptr[GtkBox]], b)
+    })
+
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
     if kinds.get(parent).contains(WidgetKind.ZStack) then {
       val overlay = parent.asInstanceOf[Ptr[GtkOverlay]]
@@ -781,6 +867,9 @@ final class GtkRenderer extends Renderer {
     // self-test check is what stops a third.
     valueIds.remove(handle).foreach(Handles.release)
     selectIds.remove(handle).foreach(Handles.release)
+    segments.remove(handle).foreach(_.foreach((_, id) => Handles.release(id)))
+    val _ = segmentIndex.remove(handle)
+    val _ = segmentChosen.remove(handle)
     suppress -= handle
     kinds.remove(handle)
     val _ = stackAlignment.remove(handle)

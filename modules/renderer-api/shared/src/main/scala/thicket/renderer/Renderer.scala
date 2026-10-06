@@ -191,6 +191,19 @@ enum WidgetKind {
     */
   case ZStack
 
+  /** One choice from a few, every option visible at once: `NSSegmentedControl` / `UISegmentedControl`.
+    *
+    * **The one §12.2a exception, by the project owner's decision on #50.** Only the two Apple platforms have a native
+    * one. It is built anyway, with each of the other two given its own closest construction rather than an imitation of
+    * Apple's: on GTK a `linked` box of grouped toggle buttons, which is how GNOME apps drew this before
+    * `AdwToggleGroup` existed; on Android a horizontal `RadioGroup`, the framework's one-of-a-few control.
+    *
+    * The same three props as [[Picker]] — [[Prop.Options]], [[Prop.Selected]] as an index, [[Prop.OnSelect]] — because
+    * it is the same choice drawn differently: which of the two an app picks is about how many options there are and
+    * whether they should all be on screen, not about what is being chosen.
+    */
+  case SegmentedControl
+
   /** Whether this kind is *presented over* the app rather than placed in the tree.
     *
     * A framework-level fact rather than a per-renderer one: an alert is not a child of anything on any of the four

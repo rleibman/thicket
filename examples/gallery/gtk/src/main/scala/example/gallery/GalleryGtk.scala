@@ -62,6 +62,7 @@ object GalleryGtk {
       "TextField and SecureField",
       "Checkbox and Toggle",
       "Picker — a choice from a fixed list",
+      "SegmentedControl — one of a few, all on screen",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "ZStack — children drawn over one another, last on top",
@@ -101,6 +102,25 @@ object GalleryGtk {
     check("the Picker offers its options", texts.contains("Banana"), texts.filter(_.contains("an")).toString)
     check("and the selection is bound", texts.exists(_.startsWith("Chose ")),
       texts.filter(_.startsWith("Chose")).toString)
+    // SegmentedControl: a `linked` box of grouped toggle buttons. Asked of the real
+    // buttons — which one GTK says is active — and then clicked for real, so the bound
+    // label proves the choice went through the renderer's handler and back.
+    val segmented = GtkInspect.findAll(root)(w =>
+      GtkInspect.hasCssClass(w, "linked") && GtkInspect.children(w).nonEmpty &&
+        GtkInspect.children(w).forall(GtkInspect.isToggleButton))
+    check("one linked box of toggle buttons", segmented.length == 1, segmented.length.toString)
+    segmented.headOption.foreach { box =>
+      val segs = GtkInspect.children(box)
+      def active = segs.map(GtkInspect.toggleActive)
+      check("a segment per option, in order", segs.map(GtkInspect.allTexts) == Gallery.spans.map(List(_)),
+        segs.map(GtkInspect.allTexts).toString)
+      check("the model's selection is the active segment", active == List(false, true, false), active.toString)
+      GtkInspect.click(segs(2))
+      check("clicking a segment makes it the only one active", active == List(false, false, true), active.toString)
+      check("and reaches the app", GtkInspect.allTexts(root).contains("Showing a Month"),
+        GtkInspect.allTexts(root).filter(_.startsWith("Showing")).toString)
+    }
+
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)
 
     // ZStack is a GtkOverlay. Child order is paint order, so the badge being *last* is the

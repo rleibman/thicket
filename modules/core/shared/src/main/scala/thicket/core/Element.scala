@@ -365,6 +365,31 @@ object dsl {
     )
   }
 
+  /** One choice from a few, with every option on screen at once.
+    *
+    * The same arguments as [[Picker]], and the same promise: `selected` is an index, `-1` is nothing selected. Use this
+    * for two to five short options the user should see side by side — a view mode, a unit — and a `Picker` for anything
+    * longer.
+    */
+  def SegmentedControl(
+    options:  Seq[String] | Signal[Seq[String]],
+    selected: Int | Signal[Int]
+  )(
+    onSelect: Int => Unit
+  ): Element = {
+    val optionsAttr = options match {
+      case s: Seq[String] @unchecked         => Static(Prop.Options(s))
+      case s: Signal[Seq[String]] @unchecked => Reactive(s, Prop.Options(_))
+    }
+    val selectedAttr = selected match {
+      case i: Int                    => Static(Prop.Selected(i))
+      case s: Signal[Int] @unchecked => Reactive(s, Prop.Selected(_))
+    }
+    // Options before the selection, as for Picker: an index into segments that do not
+    // exist yet means nothing.
+    Widget(WidgetKind.SegmentedControl, Seq(optionsAttr, selectedAttr, Static(Prop.OnSelect(onSelect))), Nil)
+  }
+
   /** Single-line text input that does not show what it holds.
     *
     * Same shape as [[TextField]] — it is a separate widget because `NSSecureTextField` is a separate class, not because
