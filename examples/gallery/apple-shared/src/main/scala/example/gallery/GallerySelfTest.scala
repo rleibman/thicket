@@ -56,6 +56,7 @@ object GallerySelfTest {
       "Button — roles, and one disabled",
       "TextField and SecureField",
       "Checkbox and Toggle",
+      "Link — opens a URL, drawn as each platform draws a link",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "ZStack — children drawn over one another, last on top",

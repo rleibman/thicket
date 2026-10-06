@@ -336,14 +336,29 @@ final class AndroidRenderer(context: Context) extends Renderer {
         }
 
       case Prop.OnTap(f) =>
-        // Setting a listener replaces the previous one, so repeated updates cannot
-        // stack handlers — the same property the GTK renderer gets by swapping the
-        // closure behind a single connected signal.
-        handle.setOnClickListener((_: View) => f())
+        appTaps(handle) = f
+        connectTap(handle)
         // Something tappable should look tappable: a container picks up the platform's
         // own ripple. Buttons already have theirs.
         handle match {
           case _: Button => ()
+          case v =>
+            v.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackground).resourceId)
+        }
+
+      // Android has no link button; a link is text in the theme's link colour, underlined,
+      // that opens the URL — which is what Linkify makes of one inside a TextView. On a
+      // Button that means dropping the button's raised background for the borderless ripple,
+      // so it reads as a link rather than as a command. Anything else keeps its look.
+      case Prop.OpenUrl(url) =>
+        links(handle) = url
+        connectTap(handle)
+        handle match {
+          case b: Button =>
+            b.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackground).resourceId)
+            b.setAllCaps(false)
+            b.setTextColor(context.getColorStateList(themeAttr(_root_.android.R.attr.textColorLink).resourceId))
+            b.setPaintFlags(b.getPaintFlags | _root_.android.graphics.Paint.UNDERLINE_TEXT_FLAG)
           case v =>
             v.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackground).resourceId)
         }
@@ -577,6 +592,22 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
   }
 
+  /** What a tap on each view does: the app's own handler and, separately, the URL it opens. A view has one click
+    * listener, so keeping them apart and dispatching both is what stops `.link(url)` on a tappable row from replacing
+    * the tap, or the tap the link.
+    */
+  private val appTaps = mutable.Map.empty[View, () => Unit]
+  private val links   = mutable.Map.empty[View, String]
+
+  /** Setting a listener replaces the previous one, so repeated updates cannot stack handlers — the same property the
+    * GTK renderer gets from one connected signal.
+    */
+  private def connectTap(handle: View): Unit =
+    handle.setOnClickListener { (_: View) =>
+      appTaps.get(handle).foreach(_())
+      links.get(handle).foreach(url => AndroidRenderer.urlOpener(context, url))
+    }
+
   /** Each ZStack's gravity, so a child inserted later is placed like the ones already there. */
   private val stackGravity = mutable.Map.empty[FrameLayout, Int]
 
@@ -677,6 +708,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // GC collects them once nothing references the View — which is exactly why the removal
     // was easy to forget here and nowhere else.
     val _ = ranges.remove(handle)
+    val _ = appTaps.remove(handle)
+    val _ = links.remove(handle)
     val _ = alertActions.remove(handle)
     val _ = alertDismiss.remove(handle)
   }
@@ -803,4 +836,32 @@ final class AndroidRenderer(context: Context) extends Renderer {
     else {
       val _ = mainHandler.post(() => f())
     }
+}
+
+object AndroidRenderer {
+
+  /** How a link is opened: an `ACTION_VIEW` intent, which goes to the default browser for `https:` and to whatever app
+    * claims the scheme otherwise.
+    *
+    * Replaceable for one reason: a self-test that clicks a link must not leave the app for a browser half-way through.
+    * Nothing else should touch it.
+    */
+  @volatile var urlOpener: (Context, String) => Unit = { (context, url) =>
+    val intent = _root_.android.content.Intent(
+      _root_.android.content.Intent.ACTION_VIEW,
+      _root_.android.net.Uri.parse(url)
+    )
+    // Started from a View's context, which need not be an Activity; without NEW_TASK that
+    // throws rather than opening anything.
+    if !context.isInstanceOf[_root_.android.app.Activity] then
+      intent.addFlags(_root_.android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    try context.startActivity(intent)
+    catch {
+      // Nothing installed handles the scheme. There is nothing the app could do about it,
+      // so it is logged rather than thrown into a click handler.
+      case _: _root_.android.content.ActivityNotFoundException =>
+        val _ = _root_.android.util.Log.w("thicket", s"no app opens $url")
+    }
+  }
+
 }

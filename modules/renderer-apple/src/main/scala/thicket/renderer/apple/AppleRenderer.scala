@@ -270,6 +270,8 @@ final class AppleRenderer extends Renderer {
       case Prop.Range(min, max) => Shim.sui_set_range(handle, min, max)
       case Prop.Value(v)        => Shim.sui_set_value(handle, v)
 
+      case Prop.OpenUrl(url) => Zone(Shim.sui_set_open_url(handle, toCString(url)))
+
       case Prop.StackAlignment(h, v) => Shim.sui_set_stack_alignment(handle, alignCode(h), alignCode(v))
 
       case Prop.SafeArea(edges) =>

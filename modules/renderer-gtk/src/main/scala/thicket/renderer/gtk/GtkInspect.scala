@@ -137,6 +137,32 @@ object GtkInspect {
     } finally zone.close()
   }
 
+  /** Route every link opened from here on into the returned buffer instead of to the desktop.
+    *
+    * A self-test that clicks a link must not launch a browser on the machine it runs on, so this records what *would*
+    * have opened. It proves the click reaches the URL; that `GtkUriLauncher` then opens it is the platform's half, and
+    * is not exercised by any self-test.
+    */
+  def interceptUrls(): scala.collection.mutable.Buffer[String] = {
+    val opened = scala.collection.mutable.Buffer.empty[String]
+    UrlOpener.replace((url, _) => opened += url)
+    opened
+  }
+
+  /** Emit a button's "clicked" signal, as a real click does — through the handler GTK has connected, not by calling
+    * ours.
+    *
+    * Not `gtk_widget_activate`, which on a `GtkButton` plays the pressed animation and emits "clicked" about 250 ms
+    * *later*: a check that reads straight afterwards sees nothing, and that is how the first version of this failed.
+    */
+  def click(widget: Ptr[GtkWidget]): Unit =
+    Zone(sn.gnome.gobject.internal.g_signal_emit_by_name(widget.asInstanceOf[sn.gnome.glib.internal.gpointer], toCString("clicked").asInstanceOf[Ptr[sn.gnome.glib.internal.gchar]]))
+
+  def hasCssClass(widget: Ptr[GtkWidget], name: String): Boolean =
+    Zone(gtk_widget_has_css_class(widget, toCString(name)).asInstanceOf[CInt] != 0)
+
+  def isButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_button_get_type())
+
   /** A `ZStack`. */
   def isOverlay(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_overlay_get_type())
 
