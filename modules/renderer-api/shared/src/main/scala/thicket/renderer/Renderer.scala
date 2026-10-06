@@ -204,6 +204,15 @@ enum WidgetKind {
     */
   case SegmentedControl
 
+  /** A calendar date, chosen with the platform's own date chooser: a `.compact` `UIDatePicker`, a text-field
+    * `NSDatePicker`, a `GtkMenuButton` that opens a `GtkCalendar`, a button that opens Android's `DatePickerDialog`.
+    *
+    * All four are the *compact* idiom — a control showing the date, which opens a calendar — rather than an inline
+    * calendar, because that is what each platform puts in a form. The value is a [[CalendarDate]]: a day, with no time
+    * and no time zone, so nothing can move it by a day on the way through.
+    */
+  case DatePicker
+
   /** Whether this kind is *presented over* the app rather than placed in the tree.
     *
     * A framework-level fact rather than a per-renderer one: an alert is not a child of anything on any of the four
@@ -375,6 +384,12 @@ enum Prop {
 
   case OnSelect(handler: Int => Unit)
 
+  /** A [[WidgetKind.DatePicker]]'s date. */
+  case DateValue(date: CalendarDate)
+
+  /** The date the user chose. Not called for the app's own writes. */
+  case OnDateChange(handler: CalendarDate => Unit)
+
   /** Where a [[WidgetKind.ZStack]] places each child within itself, on both axes.
     *
     * On the *stack*, not per child: the largest child fills the stack whatever its alignment, so what this decides is
@@ -398,6 +413,67 @@ enum Prop {
     * insets here is the right answer honestly arrived at.
     */
   case SafeArea(edges: Set[Edge])
+
+}
+
+/** A day in the proleptic Gregorian calendar: no time, no time zone. `month` is 1–12 and `day` 1–31, as people write
+  * them — the renderers convert, since Android's and GTK's months count from 0.
+  *
+  * Not `java.time.LocalDate`, which Scala Native does not have. Across the Apple boundary it travels as an **epoch
+  * day** (days since 1970-01-01), and the shims read it at midnight UTC in a picker set to UTC: a whole day in any
+  * calendar the user's locale shows, and never a different day because of where the device is.
+  */
+final case class CalendarDate(
+  year:  Int,
+  month: Int,
+  day:   Int
+) {
+
+  require(month >= 1 && month <= 12, s"month $month is not 1-12")
+  require(day >= 1 && day <= CalendarDate.daysIn(year, month), s"$year-$month has no day $day")
+
+  /** Days since 1970-01-01, negative before it. Howard Hinnant's `days_from_civil`: exact for every Gregorian date, and
+    * arithmetic only.
+    */
+  def toEpochDay: Int = {
+    val y = if month <= 2 then year - 1 else year
+    val era = (if y >= 0 then y else y - 399) / 400
+    val yoe = y - era * 400
+    val doy = (153 * (if month > 2 then month - 3 else month + 9) + 2) / 5 + day - 1
+    val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    era * 146097 + doe - 719468
+  }
+
+  override def toString: String = f"$year%04d-$month%02d-$day%02d"
+
+}
+
+object CalendarDate {
+
+  /** The inverse of [[CalendarDate.toEpochDay]], Hinnant's `civil_from_days`. */
+  def fromEpochDay(epochDay: Int): CalendarDate = {
+    val z = epochDay + 719468
+    val era = (if z >= 0 then z else z - 146096) / 146097
+    val doe = z - era * 146097
+    val yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val d = doy - (153 * mp + 2) / 5 + 1
+    val m = if mp < 10 then mp + 3 else mp - 9
+    CalendarDate(yoe + era * 400 + (if m <= 2 then 1 else 0), m, d)
+  }
+
+  def isLeap(year: Int): Boolean = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+
+  def daysIn(
+    year:  Int,
+    month: Int
+  ): Int =
+    month match {
+      case 2              => if isLeap(year) then 29 else 28
+      case 4 | 6 | 9 | 11 => 30
+      case _              => 31
+    }
 
 }
 

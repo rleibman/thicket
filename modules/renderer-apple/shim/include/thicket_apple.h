@@ -51,7 +51,8 @@ void sui_window_set_title(const char *title);
      17 Sheet              SheetView()                    SheetView()       a container; a sheet window / a presented controller
      18 Picker             NSPopUpButton()                UIButton()        UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list
      19 ZStack             ZStackView()                   ZStackView()      a plain view that pins each child by constraints; later subviews draw on top
-     20 SegmentedControl   NSSegmentedControl()           UISegmentedControl()  the picker's options/selection functions drive it; native on both Apple platforms */
+     20 SegmentedControl   NSSegmentedControl()           UISegmentedControl()  the picker's options/selection functions drive it; native on both Apple platforms
+     21 DatePicker         NSDatePicker()                 UIDatePicker()    compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -164,6 +165,12 @@ void sui_on_select(sui_handle h, sui_int_cb cb, int64_t ctx);
 
 /* --- zstack ------------------------------------------------------------------ */
 void sui_set_stack_alignment(sui_handle h, int32_t horizontal, int32_t vertical);
+
+/* --- dates ------------------------------------------------------------------- */
+void sui_set_date(sui_handle h, int32_t epochDay);
+int32_t sui_get_date(sui_handle h);
+/* The epoch day the user chose. */
+void sui_on_date_change(sui_handle h, sui_int_cb cb, int64_t ctx);
 
 /* --- navigation -------------------------------------------------------------- */
 /* Starts describing the stack. Nothing changes on screen until sui_pages_commit. */

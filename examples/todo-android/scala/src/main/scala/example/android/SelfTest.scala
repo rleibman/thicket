@@ -22,6 +22,9 @@ import android.text.InputType
 import android.widget.{EditText, FrameLayout, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Switch, TextView}
 import example.TodoApp
 import thicket.core.NavHost
+import thicket.renderer.CalendarDate
+import thicket.renderer.android.AndroidRenderer
+import android.content.DialogInterface
 
 /** Drives navigation and reads the view tree back out of Android — the same checks the GTK
   * host runs, against a structurally different toolkit.
@@ -236,6 +239,49 @@ object SelfTest {
     check("no spinner while the app is idle", spinners.isEmpty, spinners.length.toString)
     model.busy.set(true)
     check("a spinner appears when busy", spinners.length == 1, spinners.length.toString)
+
+    // --- DatePicker: a field that opens the platform's DatePickerDialog ---
+    // Driven through the user's own path: click the field, which opens the real dialog; set
+    // the dialog's DatePicker; press the dialog's own OK button, whose listener is the
+    // renderer's. The expected text is formatted here, independently of the renderer.
+    def medium(d: CalendarDate): String = {
+      val f = _root_.android.text.format.DateFormat.getMediumDateFormat(root().getContext)
+      f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"))
+      f.format(java.util.Date(d.toEpochDay.toLong * 86400000L))
+    }
+    val start = model.reviewBy.now
+    val dateFields = findAll(root()) {
+      case b: _root_.android.widget.Button => b.getText.toString == medium(start)
+      case _                                => false
+    }
+    check("the date field shows the model's date in the user's format", dateFields.length == 1,
+      s"looking for ${medium(start)}")
+    dateFields.headOption.foreach { field =>
+      field.performClick()
+      val dialog = AndroidRenderer.dateDialog
+      check("clicking it opens a DatePickerDialog", dialog.exists(_.isShowing))
+      dialog.foreach { d =>
+        val p = d.getDatePicker
+        check("the dialog opens on the model's date, leap day and all",
+          (p.getYear, p.getMonth + 1, p.getDayOfMonth) == (start.year, start.month, start.day),
+          s"${p.getYear}-${p.getMonth + 1}-${p.getDayOfMonth}")
+        d.updateDate(2029, 0, 31)
+        d.getButton(DialogInterface.BUTTON_POSITIVE).performClick()
+        // AlertDialog delivers a button's listener and its own dismissal as Handler messages,
+        // queued by that click, so the outcome exists only after they run. Posted behind
+        // them; like the SafeArea check it logs after the summary, and build.sh's grep for
+        // FAIL still catches it. The first version asked straight away and saw nothing.
+        field.post { () =>
+          check("choosing a date reaches the app", model.reviewBy.now == CalendarDate(2029, 1, 31),
+            model.reviewBy.now.toString)
+          check("and the field shows it",
+            field.asInstanceOf[TextView].getText.toString == medium(CalendarDate(2029, 1, 31)),
+            field.asInstanceOf[TextView].getText.toString)
+          check("and the dialog has closed", !d.isShowing)
+          model.reviewBy.set(start)
+        }
+      }
+    }
 
     // --- SegmentedControl: a horizontal RadioGroup, one RadioButton per option ---
     val groups = findAll(root()) { case _: RadioGroup => true; case _ => false }

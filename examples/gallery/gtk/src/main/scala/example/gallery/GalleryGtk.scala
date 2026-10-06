@@ -62,6 +62,7 @@ object GalleryGtk {
       "TextField and SecureField",
       "Checkbox and Toggle",
       "Picker — a choice from a fixed list",
+      "DatePicker — a day, in the platform's own chooser",
       "SegmentedControl — one of a few, all on screen",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
@@ -102,6 +103,26 @@ object GalleryGtk {
     check("the Picker offers its options", texts.contains("Banana"), texts.filter(_.contains("an")).toString)
     check("and the selection is bound", texts.exists(_.startsWith("Chose ")),
       texts.filter(_.startsWith("Chose")).toString)
+    // DatePicker: a GtkMenuButton whose popover holds a GtkCalendar. Read back out of the
+    // calendar itself, then a day is chosen the way a click does — "day-selected" — so the
+    // bound label proves the choice went through the renderer and back to the app.
+    val datePickers = GtkInspect.findAll(root)(w => GtkInspect.isMenuButton(w) && GtkInspect.calendarOf(w).nonEmpty)
+    check("one GtkMenuButton with a GtkCalendar", datePickers.length == 1, datePickers.length.toString)
+    datePickers.headOption.foreach { button =>
+      GtkInspect.calendarOf(button).foreach { cal =>
+        val start = Gallery.firstDue
+        check("the calendar shows the model's date, leap day and all",
+          GtkInspect.calendarDate(cal) == (start.year, start.month, start.day), GtkInspect.calendarDate(cal).toString)
+        val before = GtkInspect.menuButtonLabel(button)
+        check("the button shows a date", before.nonEmpty, before)
+        GtkInspect.chooseDay(cal, 2029, 1, 31)
+        check("choosing a day reaches the app", GtkInspect.allTexts(root).contains("Due 2029-01-31"),
+          GtkInspect.allTexts(root).filter(_.startsWith("Due")).toString)
+        check("and the button shows the new date", GtkInspect.menuButtonLabel(button) != before,
+          s"$before -> ${GtkInspect.menuButtonLabel(button)}")
+      }
+    }
+
     // SegmentedControl: a `linked` box of grouped toggle buttons. Asked of the real
     // buttons — which one GTK says is active — and then clicked for real, so the bound
     // label proves the choice went through the renderer's handler and back.

@@ -18,7 +18,7 @@ package example.gallery
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{AlertAction, Alignment, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{AlertAction, Alignment, CalendarDate, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
 import example.gallery.buildinfo.BuildInfo
 import thicket.signals.{Signal, Var}
 
@@ -49,6 +49,7 @@ object Gallery {
     val volume:   Var[Double]  = Var(4.0)
     val picked:   Var[Int]     = Var(1)
     val span:     Var[Int]     = Var(1)
+    val due:      Var[CalendarDate] = Var(Gallery.firstDue)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
@@ -74,6 +75,9 @@ object Gallery {
     }
 
   }
+
+  /** The date picker's starting date. A leap day, so a conversion that slips by one is visible as March 1. */
+  val firstDue: CalendarDate = CalendarDate(2028, 2, 29)
 
   /** The segmented control's options. On the object so the self-test can name them. */
   val spans: Seq[String] = Seq("Day", "Week", "Month")
@@ -140,6 +144,13 @@ object Gallery {
               Button("Select last")(model.picked.set(Gallery.fruit.length - 1)),
               Button("Clear")(model.picked.set(-1))
             )
+          ),
+          section("DatePicker — a day, in the platform's own chooser")(
+            DatePicker(model.due)(model.due.set),
+            // Bound: the label is the model's date, in ISO form, so it can be compared with
+            // what the platform shows in its own format.
+            Label(model.due.map(d => s"Due $d")),
+            Button("Back to the leap day")(model.due.set(Gallery.firstDue))
           ),
           section("SegmentedControl — one of a few, all on screen")(
             SegmentedControl(Gallery.spans, model.span)(model.span.set),

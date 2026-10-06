@@ -159,6 +159,45 @@ object GtkInspect {
   def toggleActive(widget: Ptr[GtkWidget]): Boolean =
     gtk_toggle_button_get_active(widget.asInstanceOf[Ptr[GtkToggleButton]]).asInstanceOf[CInt] != 0
 
+  def isMenuButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_menu_button_get_type())
+
+  def menuButtonLabel(widget: Ptr[GtkWidget]): String = {
+    val l = gtk_menu_button_get_label(widget.asInstanceOf[Ptr[GtkMenuButton]])
+    if l == null then "" else fromCString(l)
+  }
+
+  /** A `DatePicker`'s calendar: the child of its menu button's popover, which is not in the widget tree a walk from the
+    * root sees until it is opened.
+    */
+  def calendarOf(menuButton: Ptr[GtkWidget]): Option[Ptr[GtkWidget]] = {
+    val popover = gtk_menu_button_get_popover(menuButton.asInstanceOf[Ptr[GtkMenuButton]])
+    if popover == null then None
+    else Option(gtk_popover_get_child(popover)).filter(c => isA(c, gtk_calendar_get_type()))
+  }
+
+  /** The date the calendar shows, as (year, month 1-12, day). */
+  def calendarDate(calendar: Ptr[GtkWidget]): (Int, Int, Int) = {
+    val c = calendar.asInstanceOf[Ptr[GtkCalendar]]
+    (gtk_calendar_get_year(c), gtk_calendar_get_month(c) + 1, gtk_calendar_get_day(c))
+  }
+
+  /** Choose a day as a click on it does: move the calendar there and emit "day-selected", which is the signal a click
+    * on a day emits — so the renderer's own handler is what reports it.
+    */
+  def chooseDay(calendar: Ptr[GtkWidget], year: Int, month: Int, day: Int): Unit = {
+    val c = calendar.asInstanceOf[Ptr[GtkCalendar]]
+    gtk_calendar_set_day(c, 1)
+    gtk_calendar_set_year(c, year)
+    gtk_calendar_set_month(c, month - 1)
+    gtk_calendar_set_day(c, day)
+    Zone(
+      sn.gnome.gobject.internal.g_signal_emit_by_name(
+        calendar.asInstanceOf[sn.gnome.glib.internal.gpointer],
+        toCString("day-selected").asInstanceOf[Ptr[sn.gnome.glib.internal.gchar]]
+      )
+    )
+  }
+
   /** A `ZStack`. */
   def isOverlay(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_overlay_get_type())
 

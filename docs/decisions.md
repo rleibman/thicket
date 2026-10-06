@@ -69,6 +69,33 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-06 — **`DatePicker` is the compact idiom on all four, and its value is a day,
+  not an instant** (#50). Each platform's *form* control, not an inline calendar: a
+  `.compact` `UIDatePicker` and a text-field `NSDatePicker` are the Apple ones. GTK has no
+  compact date picker, so it gets what GNOME apps use, a `GtkMenuButton` whose popover holds
+  a `GtkCalendar`. Android gets a spinner-styled field that opens `DatePickerDialog`; the
+  inline `DatePicker` is a whole calendar, and no form puts one in a row.
+  **The value is `CalendarDate(year, month, day)`**: no time and no time zone. Not
+  `java.time.LocalDate`, which Scala Native lacks. Months are 1–12 in the contract;
+  Android's and `GtkCalendar`'s count from 0, and each renderer converts. Impossible dates
+  are refused rather than rolled over, which is how a lenient calendar comes to show a date
+  nobody chose. Across the Apple ABI it is an **epoch day** (`int32`), converted by Hinnant's
+  `days_from_civil`, which is arithmetic only and is checked against every day from 1800 to
+  2200. The shims read it at **midnight UTC in a picker set to UTC**, which is the same day
+  wherever the device is. The picker keeps the user's own *calendar*, so a Buddhist or
+  Japanese locale still sees the right day. Android formats its field the same way, the
+  user's medium format at UTC, because the user's zone would show the day before everywhere
+  west of Greenwich.
+  The gallery and the todo app start on **2028-02-29**, so a one-off slip shows as March.
+  Falsified on both Linux-side platforms by dropping the 0-based month conversion: GTK's
+  calendar showed `(2028,3,29)`, Android's dialog `2028-3-29`.
+  One Android trap: `AlertDialog` delivers a button's listener and its own dismissal as
+  `Handler` messages, so the first check, made right after clicking OK, saw nothing. The
+  check now runs behind them, posted.
+  Known GTK behaviour, left alone: `GtkCalendar`'s month arrows move the selected date, so
+  browsing months reports dates to the app. That is GtkCalendar's model, and a GNOME user
+  expects it.
+
 - 2026-10-06 — **`SegmentedControl` is built, and is the one §12.2a exception** (#50,
   decided by the project owner there). Only the two Apple platforms have one:
   `NSSegmentedControl` and `UISegmentedControl`. By the rule it would be an app-level

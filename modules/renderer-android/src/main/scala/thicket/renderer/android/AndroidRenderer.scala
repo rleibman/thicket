@@ -135,6 +135,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // Material Components (a dependency this project does not take), and a horizontal
       // RadioGroup is what the platform itself offers for "choose one, all visible": real
       // mutual exclusion, and TalkBack announces each as "radio button, 2 of 3".
+      // A field that opens the platform's DatePickerDialog, which is how an Android form asks
+      // for a date. Spinner-styled, so it reads as "tap to choose" rather than as a command;
+      // the inline DatePicker widget is a whole calendar, and no form puts one in a row.
+      case WidgetKind.DatePicker =>
+        val b = Button(context, null, _root_.android.R.attr.spinnerStyle)
+        b.setAllCaps(false)
+        b
+
       case WidgetKind.SegmentedControl =>
         val g = RadioGroup(context)
         g.setOrientation(LinearLayout.HORIZONTAL)
@@ -429,6 +437,17 @@ final class AndroidRenderer(context: Context) extends Renderer {
             })
         }
 
+      case Prop.DateValue(date) =>
+        dates(handle) = date
+        handle match {
+          case b: Button => b.setText(formatDate(date))
+          case _         => ()
+        }
+
+      case Prop.OnDateChange(f) =>
+        dateChanged(handle) = f
+        handle.setOnClickListener((_: View) => openDateDialog(handle))
+
       case Prop.Options(values) if handle.isInstanceOf[RadioGroup] =>
         val g = handle.asInstanceOf[RadioGroup]
         suppress += handle
@@ -615,6 +634,41 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
   }
 
+  private val dates       = mutable.Map.empty[View, CalendarDate]
+  private val dateChanged = mutable.Map.empty[View, CalendarDate => Unit]
+
+  /** The user's medium date format, at UTC: a [[CalendarDate]] is a day, and formatting midnight UTC in any other zone
+    * would show the day before for everyone west of Greenwich.
+    */
+  private def formatDate(date: CalendarDate): String = {
+    val f = _root_.android.text.format.DateFormat.getMediumDateFormat(context)
+    f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"))
+    f.format(java.util.Date(date.toEpochDay.toLong * 86400000L))
+  }
+
+  private def openDateDialog(field: View): Unit = {
+    val d = dates.getOrElse(field, CalendarDate(2000, 1, 1))
+    // Android's month counts from 0; the contract's from 1.
+    val dialog = _root_.android.app.DatePickerDialog(
+      context,
+      (_: _root_.android.widget.DatePicker, y: Int, m: Int, day: Int) => {
+        val chosen = CalendarDate(y, m + 1, day)
+        dates(field) = chosen
+        field match {
+          case b: Button => b.setText(formatDate(chosen))
+          case _         => ()
+        }
+        dateChanged.get(field).foreach(_(chosen))
+      },
+      d.year,
+      d.month - 1,
+      d.day
+    )
+    dialog.setOnDismissListener((_: DialogInterface) => AndroidRenderer.dateDialog = None)
+    AndroidRenderer.dateDialog = Some(dialog)
+    dialog.show()
+  }
+
   /** Each segmented control's chosen index, kept here because its RadioButtons are rebuilt when the options change. */
   private val segmentIndex = mutable.Map.empty[RadioGroup, Int]
 
@@ -728,6 +782,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // GC collects them once nothing references the View — which is exactly why the removal
     // was easy to forget here and nowhere else.
     val _ = ranges.remove(handle)
+    val _ = dates.remove(handle)
+    val _ = dateChanged.remove(handle)
     val _ = alertActions.remove(handle)
     val _ = alertDismiss.remove(handle)
   }
@@ -854,4 +910,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
     else {
       val _ = mainHandler.post(() => f())
     }
+}
+
+object AndroidRenderer {
+
+  /** The date dialog on screen, if any. A dialog is not in any view tree, so this is the only way a self-test can find
+    * the one a field opened and choose a date in it — which is the user's own path, through the platform's buttons.
+    * Set when one is shown, cleared when it is dismissed; nothing else should touch it.
+    */
+  @volatile var dateDialog: Option[_root_.android.app.DatePickerDialog] = None
+
 }

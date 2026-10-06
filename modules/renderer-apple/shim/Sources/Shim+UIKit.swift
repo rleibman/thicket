@@ -36,6 +36,14 @@ private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
 private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
 private var selections: [ObjectIdentifier: Selection] = [:]
+private var dateChanges: [ObjectIdentifier: Selection] = [:]
+
+/// A `DatePicker`'s value crosses the boundary as an epoch day. It is read at midnight UTC,
+/// and every picker here is set to UTC, so it is a whole day — the same day — whatever zone
+/// the device is in. The picker keeps the user's own *calendar*, so a locale that shows a
+/// Buddhist or Japanese year still shows the right day.
+private func epochDay(_ d: Date) -> Int32 { Int32((d.timeIntervalSince1970 / 86400).rounded(.down)) }
+private func dateOf(_ day: Int32) -> Date { Date(timeIntervalSince1970: Double(day) * 86400) }
 
 /// A picker's options and selection, kept here rather than read back off the control.
 ///
@@ -61,6 +69,12 @@ private var suppressed: Set<ObjectIdentifier> = []
 private final class Proxy: NSObject {
   @objc func tapped(_ sender: UIControl) {
     if let t = taps[ObjectIdentifier(sender)] { t.cb(t.ctx) }
+  }
+
+  @objc func dated(_ sender: UIDatePicker) {
+    let id = ObjectIdentifier(sender)
+    guard !suppressed.contains(id), let s = dateChanges[id] else { return }
+    s.cb(s.ctx, epochDay(sender.date))
   }
 
   @objc func segmented(_ sender: UISegmentedControl) {
@@ -383,6 +397,16 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.addTarget(proxy, action: #selector(Proxy.segmented(_:)), for: .valueChanged)
     return retained(s)
 
+  case 21:
+    // .compact: a button showing the date that opens a calendar, UIKit's form idiom since
+    // iOS 14. Not .inline (a whole calendar) and not .wheels.
+    let p = UIDatePicker()
+    p.datePickerMode = .date
+    p.preferredDatePickerStyle = .compact
+    p.timeZone = TimeZone(identifier: "UTC")
+    p.addTarget(proxy, action: #selector(Proxy.dated(_:)), for: .valueChanged)
+    return retained(p)
+
   case 14:
     // Only construction differs from a TextField; text, placeholder and edits are shared.
     let f = UITextField()
@@ -407,6 +431,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   let v = view(h)
   let id = ObjectIdentifier(v)
   taps.removeValue(forKey: id)
+  dateChanges.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
   valueChanges.removeValue(forKey: id)
@@ -734,6 +759,27 @@ public func sui_set_stack_alignment(_ h: UnsafeMutableRawPointer, _ horizontal: 
 @_cdecl("sui_on_select")
 public func sui_on_select(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_cb, _ ctx: Int64) {
   selections[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
+}
+
+@_cdecl("sui_set_date")
+public func sui_set_date(_ h: UnsafeMutableRawPointer, _ epochDayValue: Int32) {
+  guard let p = view(h) as? UIDatePicker else { return }
+  let id = ObjectIdentifier(p)
+  // An app's own write is not a choice. UIKit sends no action for it anyway; AppKit may.
+  suppressed.insert(id)
+  p.date = dateOf(epochDayValue)
+  suppressed.remove(id)
+}
+
+@_cdecl("sui_get_date")
+public func sui_get_date(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let p = view(h) as? UIDatePicker else { return Int32.min }
+  return epochDay(p.date)
+}
+
+@_cdecl("sui_on_date_change")
+public func sui_on_date_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_cb, _ ctx: Int64) {
+  dateChanges[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
 }
 
 @_cdecl("sui_set_safe_area")
