@@ -78,6 +78,10 @@ void sui_set_image_bytes(sui_handle h, const uint8_t *data, int32_t length);
 void sui_clear_image(sui_handle h);
 /* fit: 0 Contain, 1 Cover, 2 Fill */
 void sui_set_content_fit(sui_handle h, int32_t fit);
+/* edges: a bitmask - 1 Top, 2 Bottom, 4 Leading, 8 Trailing. A mask rather than
+   four flags because an app usually wants all of them or one of them, and a single
+   int keeps it one call. 0 means honour none, which is how an app opts out again. */
+void sui_set_safe_area(sui_handle h, int32_t edges);
 /* has 0 means indeterminate, which is deliberately not the same as a fraction of 0.0.
    The fraction is 0.0-1.0; the shim scales it for NSProgressIndicator's 0-100. */
 void sui_set_progress(sui_handle h, int32_t has, double fraction);

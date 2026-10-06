@@ -52,6 +52,7 @@ object Shim {
   def sui_set_image_bytes(h: Handle, data: Ptr[Byte], length: CInt): Unit = extern
   def sui_clear_image(h: Handle): Unit = extern
   def sui_set_content_fit(h: Handle, fit: CInt): Unit = extern
+  def sui_set_safe_area(h: Handle, edges: CInt): Unit = extern
   def sui_set_progress(h: Handle, has: CInt, fraction: CDouble): Unit = extern
   def sui_set_range(h: Handle, min: CDouble, max: CDouble): Unit = extern
   def sui_set_value(h: Handle, value: CDouble): Unit = extern

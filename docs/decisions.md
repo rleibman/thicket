@@ -94,6 +94,35 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   Kind code **19**. The Apple half is written and passes shim-gen's consistency checks, but
   nothing here can build Swift (#46). The open cost of "natural size" is in `09` §9.7.
 
+- 2026-10-05 — **`SafeArea` is a prop, and three wrong versions of its test were the real
+  work.** (#50) §12.2a a fifth time: no toolkit models a safe area as something you place.
+  Apple exposes `safeAreaInsets` on a view, Android dispatches insets to a listener on a
+  view, and **GTK4 has no such concept at all** — so it is `Prop.SafeArea(Set[Edge])` and a
+  `.safeArea()` modifier. GTK's answer is no padding, and that is *correct* rather than a
+  stub: a desktop window's safe area is the whole window. That is the line between this and
+  a control GTK genuinely lacks, where the only options are to imitate or decline.
+  The payoff: the Android host's hand-rolled inset handling is deleted (`docs/05` F-02 had
+  asked for this), and the demo now says `.safeArea()` once for all four platforms.
+  **`Edge.Leading`/`Trailing`, not left/right**, because both Apple platforms and Android lay
+  out RTL and a safe area pinned to "left" is wrong in Arabic on exactly the hardware that
+  has a notch.
+  What took the time was the check, and each wrong version failed differently. **One**: "does
+  any view have top padding" — passed for the wrong reason, the screen's own
+  `Column(padding = 16)`. **Two**: compare the target view against
+  `getRootWindowInsets` — failed a *correct* implementation, because the root reports 128
+  where the insets dispatched to that view are 275; they are not the same question.
+  **Three**: asked inside `onCreate`, before the first layout pass, so insets read zero.
+  The version that holds asks only what is true whatever the device reports: the view
+  `.safeArea()` is applied to has top padding, and a `Scroll` declares none of its own.
+  Falsified with `.safeArea(Edge.Bottom)` → `top paddings List(0)`.
+  Two process notes worth more than the feature. `requestApplyInsets()` on a **detached**
+  view is a no-op, and a prop is applied before the reconciler inserts the view, so the
+  request has to happen on attach. And inside package `thicket.renderer.android`,
+  `android.util.Log` resolves to the *local* package: my instrumentation never compiled, two
+  builds failed, and I read the resulting empty logs as evidence twice — once concluding the
+  listener never fired and once that the prop never arrived. Both were wrong. **Check the
+  build exited 0 before believing a log.**
+
 - 2026-10-05 — **The Swift shim ships inside `thicket-renderer-apple`'s jar** (#41). An
   Apple consumer needs `libthicketapple.a` as well as Scala artefacts, and it was built by a
   shell script here and never published. Of #41's options — a classified artefact, an

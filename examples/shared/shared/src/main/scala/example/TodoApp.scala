@@ -173,6 +173,8 @@ object TodoApp {
       // No title label in the content: `Screen.title` already drives the platform's own
       // chrome (action bar, header bar), and repeating it is how cross-platform apps end
       // up looking like neither platform.
+      // `.safeArea()` rather than the Android host padding by hand: this is the same
+      // declaration on every platform, and a no-op on GTK where the window has no insets.
       content = Scroll()(Column(spacing = 16, padding = 16)(
         // Shown when the host supplies one, so every screenshot of this screen carries it.
         // The spinner is drawn *over* it while busy: a ZStack, with the spinner last so it
@@ -305,7 +307,7 @@ object TodoApp {
             model.confirmingDrop.set(false)
           }
         }
-      ))
+      )).safeArea()
     )
 
   private def detailScreen(model: Model, nav: Nav[Route], id: Int): Screen = {

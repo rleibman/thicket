@@ -20,6 +20,7 @@ import thicket.renderer.{
   AlertAction,
   Alignment,
   ContentFit,
+  Edge,
   Emphasis,
   ImageSource,
   MenuItem,
@@ -581,6 +582,20 @@ object dsl {
     def contextMenu(items: MenuItem*): Element = withAttr(Static(Prop.ContextMenu(items)))
 
     def padding(dp: Int): Element = withAttr(Static(Prop.Padding(dp)))
+
+    /** Keep this widget's content clear of the system's chrome — a notch, a status bar, a home indicator.
+      *
+      * {{{
+      * Column()(…).safeArea()                   // every edge, the usual case
+      * Column()(…).safeArea(Edge.Top)           // only the top; content runs under the
+      *                                          // home indicator, which is often wanted
+      * }}}
+      *
+      * A no-op on GTK, where a window's safe area is the whole window. That is the right answer for a desktop rather
+      * than a gap — see `Prop.SafeArea`.
+      */
+    def safeArea(edges: Edge*): Element =
+      withAttr(Static(Prop.SafeArea(if edges.isEmpty then Edge.all else edges.toSet)))
 
     private def withAttr(attr: Attr): Element =
       element match {

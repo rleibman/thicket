@@ -272,6 +272,17 @@ final class AppleRenderer extends Renderer {
 
       case Prop.StackAlignment(h, v) => Shim.sui_set_stack_alignment(handle, alignCode(h), alignCode(v))
 
+      case Prop.SafeArea(edges) =>
+        // A bitmask, matching the ABI. Leading/Trailing stay logical across the boundary:
+        // the shim resolves them against the view's effective layout direction, because only
+        // the platform knows whether the locale is RTL.
+        val mask =
+          (if edges.contains(Edge.Top) then 1 else 0) |
+            (if edges.contains(Edge.Bottom) then 2 else 0) |
+            (if edges.contains(Edge.Leading) then 4 else 0) |
+            (if edges.contains(Edge.Trailing) then 8 else 0)
+        Shim.sui_set_safe_area(handle, mask)
+
       case Prop.Options(values) =>
         // Clear-then-add, the shape the ABI uses for an alert's actions. No handles to
         // release here: options are strings, not callbacks.

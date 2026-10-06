@@ -14,8 +14,8 @@ catalogue in `docs/07` §7.10.
 | Widgets implemented on at least one renderer | **19** |
 | Widgets implemented on **every** renderer that exists | **19** (Apple's Swift for two of them is written but unrun — #45, #46) |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **30** |
-| Props implemented on every renderer | **30** — all of them |
+| Props in the contract | **31** |
+| Props implemented on every renderer | **31** — all of them |
 
 **Nineteen of thirty-two, every one on every renderer** — though the Swift for `Picker` (#45) and `ZStack` (#46) is written and unrun, so on Apple it is nineteen on paper and seventeen measured. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
@@ -165,7 +165,7 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 
 | Group | Left to do |
 |---|---|
-| Layout | `SafeArea` (#51), `Grid` |
+| Layout | `Grid` |
 | Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `DatePicker`, `Link` |
 | Containers | `TabView` |
 
@@ -223,7 +223,7 @@ the point of doing this in Scala.
 `OnCheckedChange`, `Style`, `Grow`, `Align`, `Tint`, `Fill`, `Picture`, `Fit`,
 `TextEmphasis`, `Axis`, `Progress`, `Value`, `Range`, `OnValueChange`.
 
-**"Handled" is not "honoured."** All twenty-nine are honoured everywhere. `Message`, `Actions`
+**"Handled" is not "honoured."** All thirty are honoured everywhere. `Message`, `Actions`
 and `OnDismiss` were unreachable on Apple until `Alert` could be presented (#18), and
 `ContextMenu` was the last, until #19.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,

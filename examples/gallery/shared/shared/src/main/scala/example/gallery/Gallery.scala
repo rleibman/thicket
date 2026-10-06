@@ -97,6 +97,7 @@ object Gallery {
     Screen(
       title = "Thicket gallery",
       actions = Seq(Action("Add")(model.add()), Action("Rotate")(model.rotate())),
+      // The gallery asks for it too, so a screenshot on a notched device is not clipped.
       content = Scroll()(
         Column(spacing = 16, padding = 16)(
           section("Label — every text role")(
@@ -198,6 +199,17 @@ object Gallery {
               }
             )
           ),
+          // A prop, so there is nothing to *show* — the honest demonstration is the
+          // declaration plus a note of what each platform does with it.
+          section("SafeArea — a prop, because no toolkit models it as a widget")(
+            Label("This screen is wrapped in .safeArea(), so its content clears the status bar."),
+            Label(
+              "Apple: safeAreaInsets. Android: WindowInsets on the view. GTK: nothing to do — " +
+                "a desktop window's safe area is the whole window.",
+              style = TextRole.Caption,
+              emphasis = Emphasis.Secondary
+            )
+          ),
           // Proof that BuildInfo is wired, not just generated: this is `galleryShared`'s own
           // object, in its own package, carrying the git-derived version. Each module has
           // one, so a bug report from any platform can name the commit it was built from.
@@ -236,7 +248,7 @@ object Gallery {
             }
           )
         )
-      )
+      ).safeArea()
     )
 
   /** A second screen, so navigation is exercised: a push, a title and a way back. */

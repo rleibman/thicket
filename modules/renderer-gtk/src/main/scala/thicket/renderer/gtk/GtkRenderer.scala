@@ -356,6 +356,14 @@ final class GtkRenderer extends Renderer {
             }
         }
 
+      case Prop.SafeArea(_) =>
+        // Nothing to do, and that is the correct answer rather than a gap. GTK4 has no
+        // safe-area concept because a desktop window has no notch, no status bar over it and
+        // no home indicator: its safe area *is* the whole window, so the right inset is zero.
+        // Contrast a control GTK genuinely lacks, where the honest options are to imitate it
+        // or to decline — see §12.2a.
+        ()
+
       case Prop.Options(values) =>
         // Refill the model in place. GtkStringList has no "clear", so splice removes the old
         // range and inserts the new one in a single step; a remove-all-then-append loop

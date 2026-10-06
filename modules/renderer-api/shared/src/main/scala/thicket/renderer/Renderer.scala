@@ -373,6 +373,19 @@ enum Prop {
     vertical:   Alignment
   )
 
+  /** Keep this widget's content out from under the system's own chrome — a notch, a status bar, a home indicator, a
+    * rounded corner.
+    *
+    * A **prop, not a widget**, which is §12.2a answered a fifth time. No toolkit models a safe area as something you
+    * place: Apple exposes `safeAreaInsets` on a view, Android hands insets to a listener on a view, and **GTK4 has no
+    * such concept at all**. All three that have it describe a property of a view, so that is what this is.
+    *
+    * GTK's answer is therefore no padding, and that is *correct* rather than a stub: a desktop window's safe area is
+    * the whole window. The distinction matters — a `SegmentedControl` on GTK would have to be imitated, where zero
+    * insets here is the right answer honestly arrived at.
+    */
+  case SafeArea(edges: Set[Edge])
+
 }
 
 enum Emphasis {
@@ -396,6 +409,24 @@ final case class Rgb(
 enum TextRole {
 
   case Title, Body, Caption
+
+}
+
+/** An edge of the screen, for [[Prop.SafeArea]].
+  *
+  * `Leading`/`Trailing` rather than left/right: both Apple platforms and Android lay out right-to-left under an RTL
+  * locale, and a safe area pinned to "left" is wrong in Arabic on exactly the hardware that has a notch.
+  */
+enum Edge {
+
+  case Top, Bottom, Leading, Trailing
+
+}
+
+object Edge {
+
+  /** Every edge — the common case, and what `.safeArea` means with no arguments. */
+  val all: Set[Edge] = Edge.values.toSet
 
 }
 

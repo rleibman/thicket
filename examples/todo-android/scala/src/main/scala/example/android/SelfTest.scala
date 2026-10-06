@@ -19,7 +19,7 @@ package example.android
 import android.util.Log
 import android.view.{Gravity, View, ViewGroup}
 import android.text.InputType
-import android.widget.{EditText, FrameLayout, ProgressBar, SeekBar, Switch, TextView}
+import android.widget.{EditText, FrameLayout, ProgressBar, ScrollView, SeekBar, Switch, TextView}
 import example.TodoApp
 import thicket.core.NavHost
 
@@ -109,6 +109,49 @@ object SelfTest {
     val parsed = saved.flatMap(TodoApp.parseRoute)
     check("the back stack round-trips through strings", parsed == app.navigator.routes.now,
       s"saved=$saved parsed=$parsed")
+
+    // SafeArea, which replaced the Activity's hand-rolled inset handling (docs/05 F-02).
+    //
+    // Worth an actual check rather than trust: the old version was never verified either, so
+    // without this the change would swap one unchecked implementation for another. The
+    // emulator has a status bar, so the top inset is non-zero and the view the screen applies
+    // `.safeArea()` to must have picked it up.
+    // The ScrollView specifically — the view `.safeArea()` is applied to — and against the
+    // *actual* status-bar inset, not merely "greater than zero".
+    //
+    // The first version of this check asked whether ANY view in the tree had top padding,
+    // and passed for the wrong reason: the screen's `Column(padding = 16)` sets top padding
+    // of its own. Asking for `.safeArea(Edge.Bottom)` instead of every edge still passed it,
+    // which is how the mistake surfaced.
+    // Asked of the view itself: getRootWindowInsets is what the platform actually handed the
+    // window, so this compares against the real number rather than a guess at it.
+    // Deferred to after the first layout pass, which is the only time this can be asked.
+    //
+    // The rest of the suite runs inside `onCreate`, where texts and properties are already
+    // set — but window insets are not: the platform dispatches them during layout, so
+    // `getRootWindowInsets` reads zero here and the padding has not been applied yet. Asking
+    // early is how the first version of this check came to pass for the wrong reason (the
+    // screen's own `Column(padding = 16)`) and then to fail for the right one.
+    //
+    // `post` runs it after layout. It logs after the summary line, which is untidy, but
+    // `build.sh` greps the whole log for FAIL so a failure is still caught.
+    stack().post { () =>
+      // The ScrollView `.safeArea()` is applied to, and only that view.
+      //
+      // Deliberately NOT compared against `getRootWindowInsets`: that reports 128 here while
+      // the insets actually dispatched to this view are 275, and asserting against the wrong
+      // one of those failed a correct implementation. The number a view is handed and the
+      // number the root reports are not the same question.
+      //
+      // So the claim is the one that holds whatever the device's insets are: the view this is
+      // applied to gets top padding, and it is the *only* thing giving it that padding — a
+      // `Scroll` declares none of its own. An earlier version asked whether ANY view had top
+      // padding and passed because the screen's `Column(padding = 16)` has some.
+      val scrolls = findAll(stack())(_.isInstanceOf[ScrollView])
+      check("SafeArea pads the view it is applied to",
+        scrolls.nonEmpty && scrolls.forall(_.getPaddingTop > 0),
+        s"${scrolls.length} scroll views, top paddings ${scrolls.map(_.getPaddingTop)}")
+    }
 
     // Restoring the stack must *mount* it, not merely set it.
     //

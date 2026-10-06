@@ -209,6 +209,9 @@ final class TestRenderer extends Renderer {
         n.nums("rangeMax") = hi
       case Prop.OnValueChange(f) => n.onValueChange = Some(f)
 
+      case Prop.SafeArea(es) =>
+        // Sorted by name so the assertion does not depend on Set iteration order.
+        n.props("safeArea") = es.map(_.toString).toList.sorted.mkString(",")
       // Options as a list, not a joined string: a test that asserts on "a,b" cannot tell an
       // option containing a comma from two options, and the whole point of an index-based
       // selection is that labels are not identities.
