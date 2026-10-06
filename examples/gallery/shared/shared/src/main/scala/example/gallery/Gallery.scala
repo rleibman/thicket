@@ -183,9 +183,6 @@ object Gallery {
               }
             )
           ),
-          // Proof that BuildInfo is wired, not just generated: this is `galleryShared`'s own
-          // object, in its own package, carrying the git-derived version. Each module has
-          // one, so a bug report from any platform can name the commit it was built from.
           // A prop, so there is nothing to *show* — the honest demonstration is the
           // declaration plus a note of what each platform does with it.
           section("SafeArea — a prop, because no toolkit models it as a widget")(
@@ -197,6 +194,9 @@ object Gallery {
               emphasis = Emphasis.Secondary
             )
           ),
+          // Proof that BuildInfo is wired, not just generated: this is `galleryShared`'s own
+          // object, in its own package, carrying the git-derived version. Each module has
+          // one, so a bug report from any platform can name the commit it was built from.
           section("BuildInfo — this module's own, from git")(
             Label(s"${BuildInfo.name} ${BuildInfo.version}", style = TextRole.Caption),
             Label(
