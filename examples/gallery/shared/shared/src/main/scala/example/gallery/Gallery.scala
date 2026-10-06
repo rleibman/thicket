@@ -232,7 +232,7 @@ object Gallery {
             }
           )
         )
-      )
+      ).safeArea()
     )
 
   /** A second screen, so navigation is exercised: a push, a title and a way back. */
