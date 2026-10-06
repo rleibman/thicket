@@ -212,6 +212,9 @@ final class TestRenderer extends Renderer {
       // Options as a list, not a joined string: a test that asserts on "a,b" cannot tell an
       // option containing a comma from two options, and the whole point of an index-based
       // selection is that labels are not identities.
+      case Prop.SafeArea(es) =>
+        // Sorted by name so the assertion does not depend on Set iteration order.
+        n.props("safeArea") = es.map(_.toString).toList.sorted.mkString(",")
       case Prop.Options(vs)  => n.options = vs
       case Prop.Selected(i)  => n.nums("selected") = i.toDouble
       case Prop.OnSelect(f)  => n.onSelect = Some(f)

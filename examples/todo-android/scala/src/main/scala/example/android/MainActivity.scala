@@ -18,7 +18,7 @@ package example.android
 
 import android.app.Activity
 import android.os.{Build, Bundle}
-import android.view.{Menu, MenuItem, View, WindowInsets}
+import android.view.{Menu, MenuItem, View}
 import android.widget.FrameLayout
 import android.transition.{Slide, TransitionManager}
 import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
@@ -80,7 +80,6 @@ class MainActivity extends Activity {
     // platform's own transition.
     val container = new FrameLayout(this)
     setContentView(container)
-    applySystemInsets(container)
     Signal.effect(syncPages(renderer, container))
 
     Signal.effect(setTitle(app.title()))
@@ -179,23 +178,6 @@ class MainActivity extends Activity {
     true
   }
 
-  /** Keep content out from under the system bars.
-    *
-    * `targetSdk` 35+ forces edge-to-edge, so an app draws behind the status bar and the
-    * action bar unless it says otherwise — which is why the first rows of this screen were
-    * hidden. Padding by the system-bar insets is the platform-correct fix.
-    *
-    * This belongs in the framework, not in every app: docs/05 F-02 lists safe areas among
-    * the behaviours a native renderer is supposed to give for free, and there is no
-    * `SafeArea` element yet. Doing it here keeps the demo honest until there is.
-    */
-  private def applySystemInsets(root: View): Unit =
-    if Build.VERSION.SDK_INT >= Build.VERSION_CODES.R then
-      root.setOnApplyWindowInsetsListener { (v: View, insets: WindowInsets) =>
-        val bars = insets.getInsets(WindowInsets.Type.systemBars())
-        v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-        insets
-      }
 
   /** Android 13+ replaced `onBackPressed` with a dispatcher that also drives the predictive
     * back gesture — the animated peek at the previous screen. Registering here is what makes

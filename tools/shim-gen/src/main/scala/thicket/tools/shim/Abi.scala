@@ -243,6 +243,11 @@ object Abi {
     setter("sui_set_image_bytes", "data" -> Bytes, "length" -> I32),
     setter("sui_clear_image"),
     setter("sui_set_content_fit", "fit" -> I32).copy(doc = "fit: 0 Contain, 1 Cover, 2 Fill"),
+    setter("sui_set_safe_area", "edges" -> I32).copy(
+      doc = "edges: a bitmask - 1 Top, 2 Bottom, 4 Leading, 8 Trailing. A mask rather than\n" +
+        "   four flags because an app usually wants all of them or one of them, and a single\n" +
+        "   int keeps it one call. 0 means honour none, which is how an app opts out again."
+    ),
     setter("sui_set_progress", "has" -> I32, "fraction" -> F64).copy(
       doc = "has 0 means indeterminate, which is deliberately not the same as a fraction of 0.0.\n" +
         "   The fraction is 0.0-1.0; the shim scales it for NSProgressIndicator's 0-100."
