@@ -164,6 +164,9 @@ void sui_on_select(sui_handle h, sui_int_cb cb, int64_t ctx);
 /* --- zstack ------------------------------------------------------------------ */
 void sui_set_stack_alignment(sui_handle h, int32_t horizontal, int32_t vertical);
 
+/* --- links ------------------------------------------------------------------- */
+void sui_set_open_url(sui_handle h, const char *url);
+
 /* --- navigation -------------------------------------------------------------- */
 /* Starts describing the stack. Nothing changes on screen until sui_pages_commit. */
 void sui_pages_begin(void);

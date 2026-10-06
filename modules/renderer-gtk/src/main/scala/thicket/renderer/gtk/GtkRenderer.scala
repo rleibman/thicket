@@ -476,47 +476,17 @@ final class GtkRenderer extends Renderer {
         }
 
       case Prop.OnTap(f) =>
-        // Re-tapping an existing handler swaps the closure rather than connecting a second
-        // signal, so repeated property updates cannot stack handlers.
-        tapIds.get(handle) match {
-          case Some(id) => Handles.replace(id, f)
-          case None =>
-            val id = Handles.register(f)
-            tapIds(handle) = id
-            if kinds.get(handle).contains(WidgetKind.Button) then
-              Zone {
-                val _ = g_signal_connect_data(
-                  handle.asInstanceOf[gpointer],
-                  toCString("clicked").asInstanceOf[Ptr[gchar]],
-                  GCallback.fromPtr(Handles.clickedPtr),
-                  Handles.idToPointer(id),
-                  null.asInstanceOf[GClosureNotify],
-                  GConnectFlags.define(0)
-                )
-              }
-            else {
-              // Something tappable should look tappable, so the row picks up the platform's
-              // own activatable styling and pointer cursor rather than us drawing anything.
-              Zone {
-                gtk_widget_add_css_class(handle, toCString("activatable"))
-                gtk_widget_set_cursor_from_name(handle, toCString("pointer"))
-              }
-              // A GtkBox emits no "clicked": taps on plain containers come from an event
-              // controller, which is how GTK4 does input on arbitrary widgets.
-              val gesture = gtk_gesture_click_new()
-              Zone {
-                val _ = g_signal_connect_data(
-                  gesture.asInstanceOf[gpointer],
-                  toCString("released").asInstanceOf[Ptr[gchar]],
-                  GCallback.fromPtr(Handles.releasedPtr),
-                  Handles.idToPointer(id),
-                  null.asInstanceOf[GClosureNotify],
-                  GConnectFlags.define(0)
-                )
-              }
-              gtk_widget_add_controller(handle, gesture.asInstanceOf[Ptr[GtkEventController]])
-            }
-        }
+        appTaps(handle) = f
+        connectTap(handle)
+
+      // GtkLinkButton is a GtkButton with the `link` style class and a URI to launch, so a
+      // Button that carries a URL *is* one, drawn by the theme exactly as GTK's own is. On
+      // anything else the URL is behaviour only, like OnTap.
+      case Prop.OpenUrl(url) =>
+        links(handle) = url
+        if kinds.get(handle).contains(WidgetKind.Button) then
+          Zone(gtk_widget_add_css_class(handle, toCString("link")))
+        connectTap(handle)
 
       case Prop.ContextMenu(items) =>
         // A GtkPopover of buttons, not a GtkPopoverMenu. The latter is the more "menu-ish"
@@ -702,6 +672,59 @@ final class GtkRenderer extends Renderer {
       gtk_widget_set_valign(child, v)
     }
 
+  /** What a tap on each widget does: the app's own handler and, separately, the URL it opens. Kept apart and dispatched
+    * from one connection, so `.link(url)` on a row that is also tappable runs both instead of whichever was applied last.
+    */
+  private val appTaps = mutable.Map.empty[Ptr[GtkWidget], () => Unit]
+  private val links   = mutable.Map.empty[Ptr[GtkWidget], String]
+
+  private def fireTap(handle: Handle): Unit = {
+    appTaps.get(handle).foreach(_())
+    links.get(handle).foreach(url => UrlOpener.open(url, handle))
+  }
+
+  /** Connect the platform's tap signal once per widget. Re-applying a prop changes what the maps hold, never how many
+    * handlers are connected, so repeated property updates cannot stack them.
+    */
+  private def connectTap(handle: Handle): Unit =
+    if !tapIds.contains(handle) then {
+      val id = Handles.register(() => fireTap(handle))
+      tapIds(handle) = id
+      if kinds.get(handle).contains(WidgetKind.Button) then
+        Zone {
+          val _ = g_signal_connect_data(
+            handle.asInstanceOf[gpointer],
+            toCString("clicked").asInstanceOf[Ptr[gchar]],
+            GCallback.fromPtr(Handles.clickedPtr),
+            Handles.idToPointer(id),
+            null.asInstanceOf[GClosureNotify],
+            GConnectFlags.define(0)
+          )
+        }
+      else {
+        // Something tappable should look tappable, so the row picks up the platform's
+        // own activatable styling and pointer cursor rather than us drawing anything.
+        Zone {
+          gtk_widget_add_css_class(handle, toCString("activatable"))
+          gtk_widget_set_cursor_from_name(handle, toCString("pointer"))
+        }
+        // A GtkBox emits no "clicked": taps on plain containers come from an event
+        // controller, which is how GTK4 does input on arbitrary widgets.
+        val gesture = gtk_gesture_click_new()
+        Zone {
+          val _ = g_signal_connect_data(
+            gesture.asInstanceOf[gpointer],
+            toCString("released").asInstanceOf[Ptr[gchar]],
+            GCallback.fromPtr(Handles.releasedPtr),
+            Handles.idToPointer(id),
+            null.asInstanceOf[GClosureNotify],
+            GConnectFlags.define(0)
+          )
+        }
+        gtk_widget_add_controller(handle, gesture.asInstanceOf[Ptr[GtkEventController]])
+      }
+    }
+
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
     if kinds.get(parent).contains(WidgetKind.ZStack) then {
       val overlay = parent.asInstanceOf[Ptr[GtkOverlay]]
@@ -773,6 +796,8 @@ final class GtkRenderer extends Renderer {
 
   def destroy(handle: Handle): Unit = {
     tapIds.remove(handle).foreach(Handles.release)
+    val _ = appTaps.remove(handle)
+    val _ = links.remove(handle)
     editIds.remove(handle).foreach(Handles.release)
     toggleIds.remove(handle).foreach(Handles.release)
     // `valueIds` was missing here from the day `Slider` landed, so every destroyed slider

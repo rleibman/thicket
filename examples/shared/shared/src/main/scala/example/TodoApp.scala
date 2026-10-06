@@ -140,6 +140,9 @@ object TodoApp {
     (if i.done then "✓" else "•") + "  " + i.title
 
   /** The app: a `Nav` plus a total function from `Route` to `Screen`. */
+  /** Where the items screen's link goes. Here so a self-test can say what should have opened. */
+  val repoUrl: String = "https://github.com/rleibman/thicket"
+
   /** `logo` is supplied by the *host*, not baked in here.
     *
     * The framework renders bytes and does not fetch (docs/11 §11.9), and where those bytes
@@ -184,6 +187,8 @@ object TodoApp {
           // The spinner has no "running" prop. `Show` is what starts and stops it.
           Show(model.busy)(Spinner())
         ),
+        // Leaves the app, so it is drawn as a link rather than as a button.
+        Link("thicket on GitHub", TodoApp.repoUrl),
         // A small form: a bound text field, a bound checkbox, and a button whose enabled
         // state is derived from the model rather than remembered.
         Row(spacing = 8)(
