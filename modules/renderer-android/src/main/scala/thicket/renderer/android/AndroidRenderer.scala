@@ -17,10 +17,10 @@
 package thicket.renderer.android
 
 import android.content.Context
-import android.os.{Handler, Looper}
+import android.os.{Build, Handler, Looper}
 import android.graphics.{BitmapFactory, Typeface}
 import android.util.TypedValue
-import android.view.{Gravity, View, ViewGroup}
+import android.view.{Gravity, View, ViewGroup, WindowInsets}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
@@ -371,6 +371,44 @@ final class AndroidRenderer(context: Context) extends Renderer {
               suppress -= s
             }
           case _ => ()
+        }
+
+      case Prop.SafeArea(edges) =>
+        // The framework's version of what the demo's Activity used to do by hand (docs/05
+        // F-02). targetSdk 35+ forces edge-to-edge, so without this a screen draws behind
+        // the status bar and its first row is simply invisible.
+        if Build.VERSION.SDK_INT >= Build.VERSION_CODES.R then {
+          handle.setOnApplyWindowInsetsListener { (v: View, insets: WindowInsets) =>
+            val bars = insets.getInsets(WindowInsets.Type.systemBars())
+            // Leading/Trailing, not left/right: under an RTL locale the leading edge is the
+            // right-hand one, and `getLayoutDirection` is how Android says which.
+            val rtl = v.getLayoutDirection == View.LAYOUT_DIRECTION_RTL
+            val leading = if rtl then Edge.Trailing else Edge.Leading
+            val trailing = if rtl then Edge.Leading else Edge.Trailing
+            v.setPadding(
+              if edges.contains(leading) then bars.left else 0,
+              if edges.contains(Edge.Top) then bars.top else 0,
+              if edges.contains(trailing) then bars.right else 0,
+              if edges.contains(Edge.Bottom) then bars.bottom else 0
+            )
+            insets
+          }
+          // `requestApplyInsets()` on a DETACHED view is a no-op, and a prop is applied
+          // before the reconciler inserts the view — so asking here achieved nothing and the
+          // listener never fired at all. The window's insets had already been dispatched by
+          // the time this view existed, and nothing dispatches them again.
+          //
+          // So ask once the view is actually in the hierarchy. Measured: without this the
+          // listener is never called, which the self-test's inset check is what caught.
+          if handle.isAttachedToWindow then handle.requestApplyInsets()
+          else
+            handle.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener {
+
+              def onViewAttachedToWindow(v: View): Unit = v.requestApplyInsets()
+
+              def onViewDetachedFromWindow(v: View): Unit = ()
+
+            })
         }
 
       case Prop.Options(values) =>

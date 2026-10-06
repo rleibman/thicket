@@ -629,6 +629,26 @@ public func sui_on_select(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_
   selections[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
 }
 
+@_cdecl("sui_set_safe_area")
+public func sui_set_safe_area(_ h: UnsafeMutableRawPointer, _ edges: Int32) {
+  let v = view(h)
+  // UIKit already lays out against the safe area when asked, so this is the one place the
+  // platform does most of the work: pin the content to safeAreaLayoutGuide on the chosen
+  // edges. Where an edge is not chosen, the content is free to run under the chrome, which
+  // is what an app wants for a scrolling list behind the home indicator.
+  v.insetsLayoutMarginsFromSafeArea = false
+  let i = v.safeAreaInsets
+  let rtl = v.effectiveUserInterfaceLayoutDirection == .rightToLeft
+  let leadingInset: CGFloat = (edges & 4) != 0 ? (rtl ? i.right : i.left) : 0
+  let trailingInset: CGFloat = (edges & 8) != 0 ? (rtl ? i.left : i.right) : 0
+  v.directionalLayoutMargins = NSDirectionalEdgeInsets(
+    top: (edges & 1) != 0 ? i.top : 0,
+    leading: leadingInset,
+    bottom: (edges & 2) != 0 ? i.bottom : 0,
+    trailing: trailingInset
+  )
+}
+
 // MARK: - tree
 
 @_cdecl("sui_insert_after")

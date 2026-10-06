@@ -656,6 +656,24 @@ public func sui_on_select(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_
   selections[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
 }
 
+@_cdecl("sui_set_safe_area")
+public func sui_set_safe_area(_ h: UnsafeMutableRawPointer, _ edges: Int32) {
+  let v = view(h)
+  // AppKit has `safeAreaInsets` but no automatic padding, so this reads the window's insets
+  // and turns them into layout margins. On a Mac they are usually zero — the exceptions are
+  // a full-screen window under the menu bar and, on recent laptops, the camera housing.
+  let i = v.safeAreaInsets
+  let rtl = v.userInterfaceLayoutDirection == .rightToLeft
+  let leading: CGFloat = (edges & 4) != 0 ? (rtl ? i.right : i.left) : 0
+  let trailing: CGFloat = (edges & 8) != 0 ? (rtl ? i.left : i.right) : 0
+  v.additionalSafeAreaInsets = NSEdgeInsets(
+    top: (edges & 1) != 0 ? i.top : 0,
+    left: rtl ? trailing : leading,
+    bottom: (edges & 2) != 0 ? i.bottom : 0,
+    right: rtl ? leading : trailing
+  )
+}
+
 // MARK: - tree
 
 @_cdecl("sui_insert_after")

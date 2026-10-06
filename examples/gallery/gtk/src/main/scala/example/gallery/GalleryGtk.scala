@@ -68,6 +68,7 @@ object GalleryGtk {
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",
       "Provide — a theme scoped to one subtree",
+      "SafeArea — a prop, because no toolkit models it as a widget",
       "BuildInfo — this module's own, from git",
       "Presented — Sheet and Alert are shown over the app, never inserted"
     ).foreach(h => check(s"section is on screen: $h", texts.contains(h)))
