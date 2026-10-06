@@ -17,9 +17,9 @@
 package example.android
 
 import android.util.Log
-import android.view.{View, ViewGroup}
+import android.view.{Gravity, View, ViewGroup}
 import android.text.InputType
-import android.widget.{EditText, ProgressBar, ScrollView, SeekBar, Switch, TextView}
+import android.widget.{EditText, FrameLayout, ProgressBar, ScrollView, SeekBar, Switch, TextView}
 import example.TodoApp
 import thicket.core.NavHost
 
@@ -236,6 +236,34 @@ object SelfTest {
     check("no spinner while the app is idle", spinners.isEmpty, spinners.length.toString)
     model.busy.set(true)
     check("a spinner appears when busy", spinners.length == 1, spinners.length.toString)
+
+    // --- ZStack: the spinner is drawn over the logo, in a FrameLayout ---
+    // Mounted after the picture, so this is the insert that must land on top. Child index is
+    // paint order in a FrameLayout, so "last" is the claim that it is visible.
+    spinners.headOption.foreach { sp =>
+      sp.getParent match {
+        case stack: FrameLayout =>
+          check("the spinner is the stack's last child, so drawn on top",
+            stack.indexOfChild(sp) == stack.getChildCount - 1 && stack.getChildCount == 2,
+            s"index ${stack.indexOfChild(sp)} of ${stack.getChildCount}")
+          val g = sp.getLayoutParams.asInstanceOf[FrameLayout.LayoutParams].gravity
+          check("and centred over the picture", g == (Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL),
+            s"gravity 0x${g.toHexString}")
+          // Measured, not laid out: FrameLayout measures its children inside its own measure,
+          // so this needs no layout pass and asks exactly "is the stack its largest child".
+          val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+          stack.measure(unspecified, unspecified)
+          val kids = (0 until stack.getChildCount).map(stack.getChildAt)
+          val (w, h) = (stack.getMeasuredWidth, stack.getMeasuredHeight)
+          val (cw, ch) = (kids.map(_.getMeasuredWidth).max, kids.map(_.getMeasuredHeight).max)
+          check("the stack is as large as its largest child, and no larger",
+            w == cw + stack.getPaddingLeft + stack.getPaddingRight &&
+              h == ch + stack.getPaddingTop + stack.getPaddingBottom && cw > sp.getMeasuredWidth,
+            s"stack ${w}x$h, largest child ${cw}x$ch, spinner ${sp.getMeasuredWidth}x${sp.getMeasuredHeight}")
+        case other =>
+          check("the spinner sits in a FrameLayout", false, String.valueOf(other))
+      }
+    }
     model.busy.set(false)
     check("and is gone again when not", spinners.isEmpty, spinners.length.toString)
 

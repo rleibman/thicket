@@ -24,7 +24,7 @@ import android.view.{Gravity, View, ViewGroup, WindowInsets}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, ScrollView, SeekBar, Spinner, Switch, TextView}
+import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, ScrollView, SeekBar, Spinner, Switch, TextView}
 import scala.collection.mutable
 import thicket.renderer.*
 
@@ -127,6 +127,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
         e
 
       case WidgetKind.Slider => SeekBar(context)
+
+      // FrameLayout is exactly the contract: children drawn in order, each at its own size
+      // and placed by its gravity, the layout as large as the largest of them.
+      case WidgetKind.ZStack => FrameLayout(context)
       case WidgetKind.Picker =>
         val s = Spinner(context)
         // simple_spinner_dropdown_item, not simple_spinner_item: the latter is the *closed*
@@ -252,6 +256,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
             t.setTypeface(null, if bold then Typeface.BOLD else Typeface.NORMAL)
           case _ => ()
         }
+
+      // Grow means "along the parent's main axis", and a ZStack has none. Ignoring it there
+      // is also what keeps the child's FrameLayout.LayoutParams: replacing them with a
+      // LinearLayout's would make the FrameLayout throw on its next measure.
+      case Prop.Grow(_) if handle.getParent.isInstanceOf[View] && isZStack(handle.getParent.asInstanceOf[View]) => ()
 
       case Prop.Grow(v) =>
         val lp = handle.getLayoutParams match {
@@ -440,6 +449,18 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case _ => ()
         }
 
+      case Prop.StackAlignment(h, v) =>
+        handle match {
+          case f: FrameLayout =>
+            stackGravity(f) = gravity(h, v)
+            var i = 0
+            while i < f.getChildCount do {
+              placeInStack(f, f.getChildAt(i))
+              i += 1
+            }
+          case _ => ()
+        }
+
       case Prop.OnSelect(f) =>
         handle match {
           case s: Spinner =>
@@ -556,6 +577,37 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
   }
 
+  /** Each ZStack's gravity, so a child inserted later is placed like the ones already there. */
+  private val stackGravity = mutable.Map.empty[FrameLayout, Int]
+
+  /** Asked of `kinds`, not of the class: a ScrollView is a FrameLayout too, and so is the navigation container. */
+  private def isZStack(v: View): Boolean = kinds.get(v).contains(WidgetKind.ZStack)
+
+  private def gravity(h: Alignment, v: Alignment): Int = {
+    // START and END rather than LEFT and RIGHT, so a right-to-left locale mirrors it.
+    val x = h match {
+      case Alignment.Start  => Gravity.START
+      case Alignment.Center => Gravity.CENTER_HORIZONTAL
+      case Alignment.End    => Gravity.END
+    }
+    val y = v match {
+      case Alignment.Start  => Gravity.TOP
+      case Alignment.Center => Gravity.CENTER_VERTICAL
+      case Alignment.End    => Gravity.BOTTOM
+    }
+    x | y
+  }
+
+  /** A FrameLayout places each child by that child's own `gravity`, so the stack's alignment is written onto each. */
+  private def placeInStack(stack: FrameLayout, child: View): Unit =
+    stackGravity.get(stack).foreach { g =>
+      // addView has already converted whatever the child carried into FrameLayout's own
+      // params, keeping its size and margins; only the gravity is ours to set.
+      val lp = child.getLayoutParams.asInstanceOf[FrameLayout.LayoutParams]
+      lp.gravity = g
+      child.setLayoutParams(lp)
+    }
+
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
     if kinds.get(parent).contains(WidgetKind.Scroll) then {
       // A scroll view holds one child, so "insert" is "set". Typed as ViewGroup, not
@@ -575,10 +627,21 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Some(a) if count > 0 && vg.getChildAt(count - 1) == a => count
       case Some(a)                                         => vg.indexOfChild(a) + 1
     }
+    // A view that carries no params of its own is given the parent's defaults, and
+    // FrameLayout's are MATCH_PARENT both ways where LinearLayout's are WRAP_CONTENT — so
+    // without this every plain child of a ZStack is stretched to fill it. The self-test
+    // caught it as a spinner measuring exactly the size of the picture it sat on.
+    if isZStack(vg) && child.getLayoutParams == null then
+      child.setLayoutParams(
+        FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+      )
+    // Index order is drawing order in a FrameLayout, so placing the child by its preceding
+    // sibling is also what puts it at the right depth.
     vg.addView(child, index)
     vg match {
-      case l: LinearLayout => applySpacing(l)
-      case _               => ()
+      case l: LinearLayout              => applySpacing(l)
+      case f: FrameLayout if isZStack(f) => placeInStack(f, child)
+      case _                            => ()
     }
   }
 
@@ -606,6 +669,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     val _ = kinds.remove(handle)
     handle match {
       case l: LinearLayout => val _ = spacing.remove(l)
+      case f: FrameLayout  => val _ = stackGravity.remove(f)
       case _               => ()
     }
     // Keyed by View, so an entry left behind keeps the View itself alive for the life of

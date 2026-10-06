@@ -122,15 +122,32 @@ object GtkInspect {
     * below its content's: the content overflows, and the viewport asks for a fraction of
     * it rather than forcing the window wider or clipping the surplus.
     */
-  def naturalWidth(widget: Ptr[GtkWidget]): Int = {
+  def naturalWidth(widget: Ptr[GtkWidget]): Int = natural(widget, GtkOrientation.GTK_ORIENTATION_HORIZONTAL)
+
+  def naturalHeight(widget: Ptr[GtkWidget]): Int = natural(widget, GtkOrientation.GTK_ORIENTATION_VERTICAL)
+
+  private def natural(widget: Ptr[GtkWidget], axis: GtkOrientation): Int = {
     val zone = scala.scalanative.unsafe.Zone.open()
     try {
       given Zone = zone
       val min    = alloc[CInt](1)
       val nat    = alloc[CInt](1)
-      gtk_widget_measure(widget, GtkOrientation.GTK_ORIENTATION_HORIZONTAL, -1, min, nat, null, null)
+      gtk_widget_measure(widget, axis, -1, min, nat, null, null)
       !nat
     } finally zone.close()
+  }
+
+  /** A `ZStack`. */
+  def isOverlay(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_overlay_get_type())
+
+  /** Where a ZStack placed `widget`, as the contract's names for it, horizontal then vertical. */
+  def placement(widget: Ptr[GtkWidget]): (String, String) = {
+    def name(a: GtkAlign): String =
+      if a == GtkAlign.GTK_ALIGN_START then "Start"
+      else if a == GtkAlign.GTK_ALIGN_CENTER then "Center"
+      else if a == GtkAlign.GTK_ALIGN_END then "End"
+      else "other"
+    (name(gtk_widget_get_halign(widget)), name(gtk_widget_get_valign(widget)))
   }
 
   /** The first descendant that is a `GtkScrolledWindow`, in tree order. */

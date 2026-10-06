@@ -69,6 +69,31 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-06 — **`ZStack`, not `Stack`: children overlap in order, each at its natural size,
+  placed by one alignment on the stack** (#50). The name is load bearing. `NSStackView` and
+  `UIStackView` are what `Column` and `Row` already *are*, and a `GtkStack` shows one child at
+  a time, so "Stack" would be misread by exactly the people who know the toolkits.
+  Child order is **paint order** on all four (`GtkOverlay` snapshot order, `FrameLayout`
+  index, subview order), so the reconciler's insert-after-sibling already is a z-order
+  promise; nothing new crosses the contract for depth.
+  The stack is as large as its **largest child**, and none of the toolkits does that by
+  default, each for a different reason. **GTK:** a `GtkOverlay` is sized by its one *main*
+  child and ignores overlays, so a ZStack has no main child and every child is an overlay with
+  `measure` set; without it the stack measures **0×0**, and that is how the gallery check was
+  falsified. **Android:** a view with no layout params gets the parent's defaults, and
+  `FrameLayout`'s are `MATCH_PARENT` both ways where `LinearLayout`'s are `WRAP_CONTENT`, so
+  every plain child was stretched to fill the stack. The emulator self-test found that
+  one: a spinner measuring exactly the 300×374 of the picture it sat on. **Apple:** neither
+  toolkit has a view for it, so a plain view whose wish to be 0×0 is at fitting-size priority
+  (50), beneath anything a child asks for, with four containment inequalities per child.
+  Alignment is **one `Prop.StackAlignment(horizontal, vertical)` on the stack**, not per
+  child: the largest child fills the stack whatever its alignment, so what it decides is where
+  the smaller ones sit, a badge in a corner or a spinner in the middle. `Start`/`End`, which
+  all four mirror under right-to-left. The ABI passes it as two `int32`s spelled out by a
+  match, not `Alignment.ordinal`, so reordering the enum cannot silently move them.
+  Kind code **19**. The Apple half is written and passes shim-gen's consistency checks, but
+  nothing here can build Swift (#46). The open cost of "natural size" is in `09` §9.7.
+
 - 2026-10-05 — **`SafeArea` is a prop, and three wrong versions of its test were the real
   work.** (#50) §12.2a a fifth time: no toolkit models a safe area as something you place.
   Apple exposes `safeAreaInsets` on a view, Android dispatches insets to a listener on a

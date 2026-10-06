@@ -186,6 +186,12 @@ final class GtkRenderer extends Renderer {
         case WidgetKind.Slider =>
           gtk_scale_new_with_range(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.01)
         case WidgetKind.Checkbox => gtk_check_button_new()
+
+        // A GtkOverlay with no main child. Its main child is the one widget that sizes the
+        // overlay, and a ZStack has no such child — it is as large as the largest of them —
+        // so every child is an overlay with `measure` set, which is GTK's own way of saying
+        // "count this one when sizing".
+        case WidgetKind.ZStack => gtk_overlay_new()
         case WidgetKind.Picker =>
           // A GtkStringList model rather than gtk_drop_down_new_from_strings: the options are
           // a prop and can change, and a model can be refilled in place where a
@@ -385,6 +391,14 @@ final class GtkRenderer extends Renderer {
           suppress += handle
           gtk_drop_down_set_selected(dd, pos)
           suppress -= handle
+        }
+
+      case Prop.StackAlignment(h, v) =>
+        stackAlignment(handle) = (gtkAlign(h), gtkAlign(v))
+        var c = gtk_widget_get_first_child(handle)
+        while c != null do {
+          alignInStack(handle, c)
+          c = gtk_widget_get_next_sibling(c)
         }
 
       case Prop.OnSelect(f) =>
@@ -667,7 +681,38 @@ final class GtkRenderer extends Renderer {
       case Prop.OnDismiss(f) => alertDismiss(handle) = f
     }
 
+  /** Each ZStack's alignment, so a child inserted later is placed like the ones already there. */
+  private val stackAlignment = mutable.Map.empty[Ptr[GtkWidget], (GtkAlign, GtkAlign)]
+
+  private def gtkAlign(a: Alignment): GtkAlign =
+    a match {
+      // START and END, not LEFT and RIGHT: GTK flips them under a right-to-left locale,
+      // which is what Start and End mean everywhere else in the contract.
+      case Alignment.Start  => GtkAlign.GTK_ALIGN_START
+      case Alignment.Center => GtkAlign.GTK_ALIGN_CENTER
+      case Alignment.End    => GtkAlign.GTK_ALIGN_END
+    }
+
+  /** A GtkOverlay places an overlay child by that child's own halign/valign, so the stack's alignment is written onto
+    * each child. Nothing else in this renderer sets either, so there is nothing of the child's to overwrite.
+    */
+  private def alignInStack(stack: Handle, child: Handle): Unit =
+    stackAlignment.get(stack).foreach { (h, v) =>
+      gtk_widget_set_halign(child, h)
+      gtk_widget_set_valign(child, v)
+    }
+
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    if kinds.get(parent).contains(WidgetKind.ZStack) then {
+      val overlay = parent.asInstanceOf[Ptr[GtkOverlay]]
+      gtk_overlay_add_overlay(overlay, child)
+      gtk_overlay_set_measure_overlay(overlay, child, gbool(true))
+      // add_overlay always appends, i.e. on top. Paint order is child order, so a child that
+      // belongs underneath — an underlay shown after the content — is moved to its place.
+      gtk_widget_insert_after(child, parent, after.orNull)
+      alignInStack(parent, child)
+      return
+    }
     if kinds.get(parent).contains(WidgetKind.Scroll) then {
       // A scrolled window holds one child, so "insert" is "set".
       gtk_scrolled_window_set_child(parent.asInstanceOf[Ptr[GtkScrolledWindow]], child)
@@ -682,7 +727,9 @@ final class GtkRenderer extends Renderer {
   }
 
   def removeChild(parent: Handle, child: Handle): Unit =
-    if kinds.get(parent).contains(WidgetKind.Scroll) then {
+    if kinds.get(parent).contains(WidgetKind.ZStack) then
+      gtk_overlay_remove_overlay(parent.asInstanceOf[Ptr[GtkOverlay]], child)
+    else if kinds.get(parent).contains(WidgetKind.Scroll) then {
       gtk_scrolled_window_set_child(parent.asInstanceOf[Ptr[GtkScrolledWindow]], null)
       val _ = setterParent.remove(child)
     } else gtk_box_remove(parent.asInstanceOf[Ptr[GtkBox]], child)
@@ -691,6 +738,12 @@ final class GtkRenderer extends Renderer {
     * detach/attach cycle would drop focus and restart any running animation.
     */
   override def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    // In a ZStack this is a change of paint order, and the widget's sibling position is all
+    // GTK uses for that — so it is a reorder, the same as in a box.
+    if kinds.get(parent).contains(WidgetKind.ZStack) then {
+      gtk_widget_insert_after(child, parent, after.orNull)
+      return
+    }
     val box = parent.asInstanceOf[Ptr[GtkBox]]
     after match {
       case None    => gtk_box_reorder_child_after(box, child, null)
@@ -730,6 +783,7 @@ final class GtkRenderer extends Renderer {
     selectIds.remove(handle).foreach(Handles.release)
     suppress -= handle
     kinds.remove(handle)
+    val _ = stackAlignment.remove(handle)
     // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
     // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox
     // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".

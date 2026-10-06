@@ -58,6 +58,7 @@ object GallerySelfTest {
       "Checkbox and Toggle",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
+      "ZStack — children drawn over one another, last on top",
       "Image — the three content fits",
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",

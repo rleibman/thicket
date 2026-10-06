@@ -79,6 +79,7 @@ A component counts as present in the gallery when:
 
 Labels in every `TextRole`, buttons by role and disabled, `TextField`, `SecureField`,
 `Checkbox`, `Toggle`, `Slider`, determinate `ProgressBar`, `ActivityIndicator`, `Divider`,
-`Spacer`, `Grow`, `Image` in two fits, nested and horizontal `Scroll`, keyed `ForEach`,
-virtualised `LazyColumn`, a per-row `ContextMenu`, subtree theming with `Provide`, the two
-presented widgets (`Alert` and `Sheet`), toolbar `Action`s and a navigation push.
+`Spacer`, `Grow`, `ZStack` as a corner badge and as a centred overlay, `Image` in two fits,
+nested and horizontal `Scroll`, keyed `ForEach`, virtualised `LazyColumn`, a per-row
+`ContextMenu`, subtree theming with `Provide`, the two presented widgets (`Alert` and
+`Sheet`), toolbar `Action`s and a navigation push.

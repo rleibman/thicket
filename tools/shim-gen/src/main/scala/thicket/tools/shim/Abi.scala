@@ -197,6 +197,13 @@ object Abi {
       "NSPopUpButton(",
       "UIButton(",
       "UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list"
+    ),
+    built(
+      19,
+      "ZStack",
+      "ZStackView(",
+      "ZStackView(",
+      "a plain view that pins each child by constraints; later subviews draw on top"
     )
   )
 
@@ -375,6 +382,16 @@ object Abi {
     Fn("sui_get_selected", I32, List(p("h", Handle))),
     setter("sui_on_select", "cb" -> IntCb, "ctx" -> I64)
       .copy(doc = "The index the user chose.")
+  )
+
+  /** A `ZStack`'s placement of its children, on both axes. `0` start, `1` centre, `2` end — the order of the contract's
+    * `Alignment`, and leading/trailing rather than left/right so a right-to-left layout mirrors it.
+    *
+    * On the stack rather than on each child, because that is where the contract puts it: the shim keeps it and applies
+    * it to every child inserted later.
+    */
+  val zstack: List[Fn] = List(
+    setter("sui_set_stack_alignment", "horizontal" -> I32, "vertical" -> I32)
   )
 
   /** A context menu is something a view *has* (`NSView.menu`, `UIContextMenuInteraction`), so it is set on the view's
@@ -568,6 +585,7 @@ object Abi {
     Group("presentation", presentation),
     Group("context menus", contextMenus),
     Group("picker", picker),
+    Group("zstack", zstack),
     Group("navigation", navigation),
     Group("inspection, for the self-test", inspection)
   )

@@ -11,13 +11,13 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **18** |
-| Widgets implemented on **every** renderer that exists | **18** (Apple's Swift is written but unrun — #45) |
+| Widgets implemented on at least one renderer | **19** |
+| Widgets implemented on **every** renderer that exists | **19** (Apple's Swift for two of them is written but unrun — #45, #46) |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **30** |
-| Props implemented on every renderer | **30** — all of them |
+| Props in the contract | **31** |
+| Props implemented on every renderer | **31** — all of them |
 
-**Eighteen of thirty-two, every one on every renderer** — though `Picker`'s Swift is written and unrun (#45), so on Apple it is eighteen on paper and seventeen measured. The six phase 2 widgets landed on
+**Nineteen of thirty-two, every one on every renderer** — though the Swift for `Picker` (#45) and `ZStack` (#46) is written and unrun, so on Apple it is nineteen on paper and seventeen measured. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
 menus followed in #19, and the Apple hosts render `AppRoot.pages` since #25. The Apple
 self-test is **87/87** on macOS and **82/82** on the iOS simulator; the five iOS does not
@@ -46,6 +46,7 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Scroll` | `WidgetKind.Scroll` | done | done | done | done | Vertical and horizontal (`Prop.Axis`) on all four. The axis is read at `create`; Apple folds it into the kind code |
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
+| `ZStack` | `WidgetKind.ZStack` | done | done | written, unrun (#46) | written, unrun (#46) | `GtkOverlay` with every child an overlay that `measure`s / `FrameLayout` / a plain view and constraints. Last child on top; each child at its **natural size**, placed by one `Prop.StackAlignment` on the stack. Not called `Stack`: that is what `NSStackView`, `UIStackView` and `GtkStack` already mean, and none of them overlaps anything |
 
 ### Added in phase 3 — done on all four (#18 for Apple)
 
@@ -164,7 +165,7 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 
 | Group | Left to do |
 |---|---|
-| Layout | `Stack`/`ZStack`, `Grid` |
+| Layout | `Grid` |
 | Controls | `IconButton`, `Radio`, `Stepper`, `SegmentedControl`, `DatePicker`, `Link` |
 | Containers | `TabView` |
 
