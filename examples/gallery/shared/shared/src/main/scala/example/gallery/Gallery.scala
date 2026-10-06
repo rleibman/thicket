@@ -48,6 +48,7 @@ object Gallery {
     val toggled:  Var[Boolean] = Var(true)
     val volume:   Var[Double]  = Var(4.0)
     val picked:   Var[Int]     = Var(1)
+    val span:     Var[Int]     = Var(1)
     val linkTaps: Var[Int]     = Var(0)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
@@ -74,6 +75,9 @@ object Gallery {
     }
 
   }
+
+  /** The segmented control's options. On the object so the self-test can name them. */
+  val spans: Seq[String] = Seq("Day", "Week", "Month")
 
   /** Where the gallery's links go. On the object so the self-test can say what should have opened. */
   val repoUrl:    String = "https://github.com/rleibman/thicket"
@@ -140,6 +144,15 @@ object Gallery {
             Row(spacing = 8)(
               Button("Select last")(model.picked.set(Gallery.fruit.length - 1)),
               Button("Clear")(model.picked.set(-1))
+            )
+          ),
+          section("SegmentedControl — one of a few, all on screen")(
+            SegmentedControl(Gallery.spans, model.span)(model.span.set),
+            // Bound, per the gallery's rule: the label proves the choice round-tripped.
+            Label(model.span.map(i => Gallery.spans.lift(i).fold("(no span)")(s => s"Showing a $s"))),
+            Row(spacing = 8)(
+              Button("Select first")(model.span.set(0)),
+              Button("Clear")(model.span.set(-1))
             )
           ),
           section("Link — opens a URL, drawn as each platform draws a link")(

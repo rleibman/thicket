@@ -56,6 +56,7 @@ object GallerySelfTest {
       "Button — roles, and one disabled",
       "TextField and SecureField",
       "Checkbox and Toggle",
+      "SegmentedControl — one of a few, all on screen",
       "Link — opens a URL, drawn as each platform draws a link",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",

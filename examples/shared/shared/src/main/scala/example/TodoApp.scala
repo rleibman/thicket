@@ -74,6 +74,9 @@ object TodoApp {
     /** Drives the settings-row `Toggle`. */
     val hideDone: Var[Boolean] = Var(false)
 
+    /** Drives the `SegmentedControl`: 0 is the order items were added in, 1 the reverse. */
+    val order: Var[Int] = Var(0)
+
     /** Drives the `Spinner`, which has no prop of its own: it spins while it is mounted. */
     val busy: Var[Boolean] = Var(false)
 
@@ -133,7 +136,10 @@ object TodoApp {
       * list and nothing else — the caption, the progress bar and the form are untouched.
       */
     val visibleItems: Signal[Seq[Item]] =
-      items.zip(hideDone).map((xs, hide) => if hide then xs.filterNot(_.done) else xs)
+      items.zip(hideDone).zip(order).map { case ((xs, hide), o) =>
+        val shown = if hide then xs.filterNot(_.done) else xs
+        if o == 1 then shown.reverse else shown
+      }
   }
 
   def bullet(i: Item): String =
@@ -255,6 +261,8 @@ object TodoApp {
           Spacer(),
           Toggle(model.hideDone)(model.hideDone.set)
         ),
+        // Two short options, both worth seeing: a segmented control rather than a Picker.
+        SegmentedControl(Seq("Oldest first", "Newest first"), model.order)(model.order.set),
 
         // Determinate progress driven by the model rather than by a timer: the bar is a
         // view of the data, exactly as the caption above it is.

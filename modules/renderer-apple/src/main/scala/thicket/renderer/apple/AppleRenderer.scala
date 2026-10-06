@@ -94,6 +94,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.SecureField       => ShimKind.SecureField
       case WidgetKind.Picker            => ShimKind.Picker
       case WidgetKind.ZStack            => ShimKind.ZStack
+      case WidgetKind.SegmentedControl  => ShimKind.SegmentedControl
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children

@@ -24,7 +24,7 @@ import android.view.{Gravity, View, ViewGroup, WindowInsets}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, ScrollView, SeekBar, Spinner, Switch, TextView}
+import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
 import scala.collection.mutable
 import thicket.renderer.*
 
@@ -131,6 +131,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // FrameLayout is exactly the contract: children drawn in order, each at its own size
       // and placed by its gravity, the layout as large as the largest of them.
       case WidgetKind.ZStack => FrameLayout(context)
+      // The framework's own one-of-a-few control. Android has no segmented control outside
+      // Material Components (a dependency this project does not take), and a horizontal
+      // RadioGroup is what the platform itself offers for "choose one, all visible": real
+      // mutual exclusion, and TalkBack announces each as "radio button, 2 of 3".
+      case WidgetKind.SegmentedControl =>
+        val g = RadioGroup(context)
+        g.setOrientation(LinearLayout.HORIZONTAL)
+        g
+
       case WidgetKind.Picker =>
         val s = Spinner(context)
         // simple_spinner_dropdown_item, not simple_spinner_item: the latter is the *closed*
@@ -435,6 +444,35 @@ final class AndroidRenderer(context: Context) extends Renderer {
             })
         }
 
+      case Prop.Options(values) if handle.isInstanceOf[RadioGroup] =>
+        val g = handle.asInstanceOf[RadioGroup]
+        suppress += handle
+        g.removeAllViews()
+        values.foreach { label =>
+          val b = RadioButton(context)
+          // A RadioGroup tracks its choice by view id, so each segment needs a real one.
+          b.setId(View.generateViewId())
+          b.setText(label)
+          g.addView(b)
+        }
+        suppress -= handle
+        // The index survives a change of options, as on GTK.
+        selectSegment(g, segmentIndex.getOrElse(g, -1))
+
+      case Prop.Selected(index) if handle.isInstanceOf[RadioGroup] =>
+        selectSegment(handle.asInstanceOf[RadioGroup], index)
+
+      case Prop.OnSelect(f) if handle.isInstanceOf[RadioGroup] =>
+        val g = handle.asInstanceOf[RadioGroup]
+        g.setOnCheckedChangeListener { (group: RadioGroup, checkedId: Int) =>
+          // -1 is clearCheck(), which only the app does.
+          if checkedId != -1 && !suppress.contains(group) then {
+            val i = group.indexOfChild(group.findViewById[View](checkedId))
+            segmentIndex(group) = i
+            f(i)
+          }
+        }
+
       case Prop.Options(values) =>
         handle match {
           case s: Spinner =>
@@ -592,6 +630,17 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
   }
 
+  /** Each segmented control's chosen index, kept here because its RadioButtons are rebuilt when the options change. */
+  private val segmentIndex = mutable.Map.empty[RadioGroup, Int]
+
+  private def selectSegment(g: RadioGroup, index: Int): Unit = {
+    segmentIndex(g) = index
+    // check() and clearCheck() both call the listener; an app's own write is not a choice.
+    suppress += g
+    if index >= 0 && index < g.getChildCount then g.check(g.getChildAt(index).getId) else g.clearCheck()
+    suppress -= g
+  }
+
   /** What a tap on each view does: the app's own handler and, separately, the URL it opens. A view has one click
     * listener, so keeping them apart and dispatching both is what stops `.link(url)` on a tappable row from replacing
     * the tap, or the tap the link.
@@ -699,6 +748,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
     suppress -= handle
     val _ = kinds.remove(handle)
     handle match {
+      // Before LinearLayout, which a RadioGroup is.
+      case g: RadioGroup   => val _ = segmentIndex.remove(g)
       case l: LinearLayout => val _ = spacing.remove(l)
       case f: FrameLayout  => val _ = stackGravity.remove(f)
       case _               => ()

@@ -73,6 +73,12 @@ private final class Proxy: NSObject, NSTextFieldDelegate {
     t.cb(t.ctx, isOn(sender) ? 1 : 0)
   }
 
+  @objc func segmented(_ sender: NSSegmentedControl) {
+    let id = ObjectIdentifier(sender)
+    guard !suppressed.contains(id), let s = selections[id] else { return }
+    s.cb(s.ctx, Int32(sender.selectedSegment))
+  }
+
   @objc func chose(_ sender: NSPopUpButton) {
     let id = ObjectIdentifier(sender)
     guard !suppressed.contains(id), let s = selections[id] else { return }
@@ -443,6 +449,16 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 19:
     return retained(ZStackView())
 
+  case 20:
+    // .selectOne: one segment at a time, and a click on the chosen one leaves it chosen —
+    // a segmented control is a choice, not a set of toggles.
+    let s = NSSegmentedControl()
+    s.trackingMode = .selectOne
+    s.segmentCount = 0
+    s.target = proxy
+    s.action = #selector(Proxy.segmented(_:))
+    return retained(s)
+
   case 14:
     // A separate class on AppKit, which is why SecureField is a kind rather than a prop.
     let f = NSSecureTextField(string: "")
@@ -737,12 +753,18 @@ public func sui_on_value_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping su
 
 @_cdecl("sui_picker_clear_options")
 public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
+  if let seg = view(h) as? NSSegmentedControl { seg.segmentCount = 0; return }
   guard let b = view(h) as? NSPopUpButton else { return }
   b.removeAllItems()
 }
 
 @_cdecl("sui_picker_add_option")
 public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>?) {
+  if let seg = view(h) as? NSSegmentedControl {
+    seg.segmentCount += 1
+    seg.setLabel(label.map { String(cString: $0) } ?? "", forSegment: seg.segmentCount - 1)
+    return
+  }
   guard let b = view(h) as? NSPopUpButton else { return }
   // addItem(withTitle:) silently refuses a duplicate title, which would make two options
   // sharing a label collapse into one and shift every index after it. Build the item.
@@ -752,6 +774,18 @@ public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafeP
 
 @_cdecl("sui_set_selected")
 public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
+  if let seg = view(h) as? NSSegmentedControl {
+    let id = ObjectIdentifier(seg)
+    suppressed.insert(id)
+    if index >= 0 && Int(index) < seg.segmentCount {
+      seg.selectedSegment = Int(index)
+    } else {
+      // -1: nothing chosen, which .selectOne allows when no segment is selected.
+      for i in 0..<seg.segmentCount { seg.setSelected(false, forSegment: i) }
+    }
+    suppressed.remove(id)
+    return
+  }
   guard let b = view(h) as? NSPopUpButton, b.indexOfSelectedItem != Int(index) else { return }
   let id = ObjectIdentifier(b)
   suppressed.insert(id)
@@ -761,6 +795,7 @@ public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
 
 @_cdecl("sui_get_selected")
 public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
+  if let seg = view(h) as? NSSegmentedControl { return Int32(seg.selectedSegment) }
   guard let b = view(h) as? NSPopUpButton else { return -1 }
   return Int32(b.indexOfSelectedItem)
 }

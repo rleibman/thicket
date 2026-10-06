@@ -142,4 +142,5 @@ object ShimKind {
   inline val Sheet = 17
   inline val Picker = 18
   inline val ZStack = 19
+  inline val SegmentedControl = 20
 }
