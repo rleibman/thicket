@@ -43,7 +43,6 @@ object SelfTest {
     case _           => Nil
   }
 
-  /** Every descendant for which `p` holds, in tree order. */
   /** The theme's own link colour, resolved independently of the renderer, so the check compares against the theme
     * rather than against whatever the renderer happened to set.
     */
@@ -53,6 +52,7 @@ object SelfTest {
     v.getContext.getColorStateList(tv.resourceId).getDefaultColor
   }
 
+  /** Every descendant for which `p` holds, in tree order. */
   private def findAll(v: View)(p: View => Boolean): List[View] = {
     val here = if p(v) then List(v) else Nil
     val kids = v match {
