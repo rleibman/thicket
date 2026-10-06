@@ -18,7 +18,7 @@ package thicket.renderer.gtk
 
 import scala.scalanative.unsafe.*
 import sn.gnome.gtk4.internal.*
-import sn.gnome.gobject.internal.{g_object_unref, GObject}
+import sn.gnome.gobject.internal.g_object_unref
 import sn.gnome.gio.internal.{GAsyncReadyCallback, GAsyncResult}
 import sn.gnome.glib.internal.{g_error_free, gpointer, GError}
 
