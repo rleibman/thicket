@@ -175,7 +175,13 @@ object TodoApp {
       // up looking like neither platform.
       content = Scroll()(Column(spacing = 16, padding = 16)(
         // Shown when the host supplies one, so every screenshot of this screen carries it.
-        Fragment(logo.map(src => Image(src, fit = ContentFit.Contain)).toSeq*),
+        // The spinner is drawn *over* it while busy: a ZStack, with the spinner last so it
+        // paints on top, and mounted after the picture so its insert has to land above it.
+        ZStack()(
+          Fragment(logo.map(src => Image(src, fit = ContentFit.Contain)).toSeq*),
+          // The spinner has no "running" prop. `Show` is what starts and stops it.
+          Show(model.busy)(Spinner())
+        ),
         // A small form: a bound text field, a bound checkbox, and a button whose enabled
         // state is derived from the model rather than remembered.
         Row(spacing = 8)(
@@ -248,9 +254,6 @@ object TodoApp {
         ProgressBar(model.items.map { xs =>
           if xs.isEmpty then None else Some(xs.count(_.done).toDouble / xs.size)
         }),
-
-        // The spinner has no "running" prop. `Show` is what starts and stops it.
-        Show(model.busy)(Spinner()),
 
         // A slider in the app's own units: 0 to 11, never a fraction. The renderer whose
         // control is integral underneath does that conversion, because only it knows its

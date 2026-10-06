@@ -121,6 +121,79 @@ private final class SheetDelegate: NSObject, UIAdaptivePresentationControllerDel
 }
 private var sheetDelegates: [ObjectIdentifier: SheetDelegate] = [:]
 
+/// Kind 19, a `ZStack`: children drawn over one another, later subviews on top — which is
+/// subview order on both Apple toolkits, so the insert position *is* the paint order.
+///
+/// Neither toolkit has a view for this (`NSStackView`/`UIStackView` are `Column` and `Row`),
+/// so it is a plain view and constraints. Each child gets one constraint per axis that places
+/// it and four inequalities that keep it inside; the stack's own wish to be 0×0 is weaker
+/// than anything a child asks for, so it settles at exactly its largest child — the size
+/// GTK gets from `measure` on each overlay and Android from `FrameLayout`.
+private final class ZStackView: UIView {
+  /// 0 start, 1 centre, 2 end, per axis. Centred until told otherwise, as in the contract.
+  var horizontal: Int32 = 1
+  var vertical: Int32 = 1
+  private var placed: [ObjectIdentifier: [NSLayoutConstraint]] = [:]
+
+  init() {
+    super.init(frame: .zero)
+    let w = widthAnchor.constraint(equalToConstant: 0)
+    let h = heightAnchor.constraint(equalToConstant: 0)
+    w.priority = .fittingSizeLevel
+    h.priority = .fittingSizeLevel
+    NSLayoutConstraint.activate([w, h])
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  func insert(_ c: UIView, after: UIView?) {
+    c.translatesAutoresizingMaskIntoConstraints = false
+    if let a = after, let i = subviews.firstIndex(of: a) {
+      insertSubview(c, at: i + 1)
+    } else if after == nil {
+      insertSubview(c, at: 0)
+    } else {
+      addSubview(c)
+    }
+    place(c)
+  }
+
+  func realign() { subviews.forEach(place) }
+
+  private func place(_ c: UIView) {
+    NSLayoutConstraint.deactivate(placed[ObjectIdentifier(c)] ?? [])
+    // Leading and trailing, not left and right: a right-to-left layout mirrors them.
+    let x: NSLayoutConstraint
+    switch horizontal {
+    case 0: x = c.leadingAnchor.constraint(equalTo: leadingAnchor)
+    case 2: x = c.trailingAnchor.constraint(equalTo: trailingAnchor)
+    default: x = c.centerXAnchor.constraint(equalTo: centerXAnchor)
+    }
+    let y: NSLayoutConstraint
+    switch vertical {
+    case 0: y = c.topAnchor.constraint(equalTo: topAnchor)
+    case 2: y = c.bottomAnchor.constraint(equalTo: bottomAnchor)
+    default: y = c.centerYAnchor.constraint(equalTo: centerYAnchor)
+    }
+    let cs = [
+      x, y,
+      c.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor),
+      c.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+      c.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
+      c.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor)
+    ]
+    NSLayoutConstraint.activate(cs)
+    placed[ObjectIdentifier(c)] = cs
+  }
+
+  /// Every way a child leaves — `sui_remove_child`, a destroy, a move — ends in
+  /// `removeFromSuperview`, so this is the one place that forgets it.
+  override func willRemoveSubview(_ subview: UIView) {
+    super.willRemoveSubview(subview)
+    placed[ObjectIdentifier(subview)] = nil
+  }
+}
+
 // MARK: - application lifecycle
 
 // Unlike AppKit, the shim does not start the application here. On iOS the *host* bundle
@@ -295,6 +368,9 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     b.changesSelectionAsPrimaryAction = true
     b.menu = UIMenu(children: [])
     return retained(b)
+
+  case 19:
+    return retained(ZStackView())
 
   case 14:
     // Only construction differs from a TextField; text, placeholder and edits are shared.
@@ -624,6 +700,14 @@ public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
   return Int32(pickerSelected[ObjectIdentifier(b)] ?? -1)
 }
 
+@_cdecl("sui_set_stack_alignment")
+public func sui_set_stack_alignment(_ h: UnsafeMutableRawPointer, _ horizontal: Int32, _ vertical: Int32) {
+  guard let z = view(h) as? ZStackView else { return }
+  z.horizontal = horizontal
+  z.vertical = vertical
+  z.realign()
+}
+
 @_cdecl("sui_on_select")
 public func sui_on_select(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_cb, _ ctx: Int64) {
   selections[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
@@ -638,6 +722,11 @@ public func sui_insert_after(
 ) {
   let p = view(parent)
   let c = view(child)
+
+  if let z = p as? ZStackView {
+    z.insert(c, after: after.map(view))
+    return
+  }
 
   if let scroll = p as? UIScrollView {
     // A scroll view holds exactly one child here, so "insert" is "set".

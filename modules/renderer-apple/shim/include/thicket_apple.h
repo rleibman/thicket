@@ -49,7 +49,8 @@ void sui_window_set_title(const char *title);
      15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create
      16 Alert              AlertView()                    AlertView()       a placeholder; NSAlert / UIAlertController at present
      17 Sheet              SheetView()                    SheetView()       a container; a sheet window / a presented controller
-     18 Picker             NSPopUpButton()                UIButton()        UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list */
+     18 Picker             NSPopUpButton()                UIButton()        UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list
+     19 ZStack             ZStackView()                   ZStackView()      a plain view that pins each child by constraints; later subviews draw on top */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -155,6 +156,9 @@ void sui_set_selected(sui_handle h, int32_t index);
 int32_t sui_get_selected(sui_handle h);
 /* The index the user chose. */
 void sui_on_select(sui_handle h, sui_int_cb cb, int64_t ctx);
+
+/* --- zstack ------------------------------------------------------------------ */
+void sui_set_stack_alignment(sui_handle h, int32_t horizontal, int32_t vertical);
 
 /* --- navigation -------------------------------------------------------------- */
 /* Starts describing the stack. Nothing changes on screen until sui_pages_commit. */

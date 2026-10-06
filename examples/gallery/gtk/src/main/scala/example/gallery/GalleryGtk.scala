@@ -64,6 +64,7 @@ object GalleryGtk {
       "Picker — a choice from a fixed list",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
+      "ZStack — children drawn over one another, last on top",
       "Image — the three content fits",
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",
@@ -100,6 +101,31 @@ object GalleryGtk {
     check("and the selection is bound", texts.exists(_.startsWith("Chose ")),
       texts.filter(_.startsWith("Chose")).toString)
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)
+
+    // ZStack is a GtkOverlay. Child order is paint order, so the badge being *last* is the
+    // claim that it is drawn on top; and the stack's size is the largest child's, which is
+    // what `measure` on every overlay buys — without it a GtkOverlay with no main child
+    // measures 0x0 and the whole section collapses.
+    val stacks = GtkInspect.findAll(root)(GtkInspect.isOverlay)
+    check("two GtkOverlays for the two ZStacks", stacks.length == 2, s"${stacks.length} overlays")
+    stacks.headOption.foreach { badge =>
+      val kids = GtkInspect.children(badge)
+      check("the badge is the last child, so painted on top",
+        kids.lastOption.exists(k => GtkInspect.allTexts(k).exists(_.endsWith(" rows"))),
+        kids.map(GtkInspect.allTexts).toString)
+      check("the badge sits top-trailing", kids.lastOption.map(GtkInspect.placement).contains(("End", "Start")),
+        kids.map(GtkInspect.placement).toString)
+      val (w, h) = (GtkInspect.naturalWidth(badge), GtkInspect.naturalHeight(badge))
+      val (cw, ch) = (kids.map(GtkInspect.naturalWidth).max, kids.map(GtkInspect.naturalHeight).max)
+      check("the stack is as large as its largest child", w == cw && h == ch && w > 0 && h > 0,
+        s"stack ${w}x$h, largest child ${cw}x$ch")
+    }
+    stacks.lift(1).foreach { centred =>
+      val kids = GtkInspect.children(centred)
+      check("the spinner is over its content, centred",
+        kids.length == 2 && GtkInspect.isSpinner(kids(1)) && GtkInspect.placement(kids(1)) == ("Center", "Center"),
+        kids.map(GtkInspect.placement).toString)
+    }
 
     // The ForEach rows each carry a context menu, so there is one popover per row.
     val popovers = GtkInspect.findAll(root)(GtkInspect.isPopover)

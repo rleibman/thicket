@@ -32,7 +32,7 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | | |
 |---|---|
 | Works today | Linux/GTK4, Android, macOS, iOS simulator — the same app on all four |
-| Widgets | **18 of 32** as widgets — 17 measured on every renderer, and `Picker`'s Apple half written but unrun ([#45](https://github.com/rleibman/thicket/issues/45)); **22 of 32** covered once you count the four the catalogue lists as widgets and this framework deliberately does not → [docs/12](docs/12-component-status.md) |
+| Widgets | **19 of 32** as widgets — 17 measured on every renderer, and the Apple halves of `Picker` and `ZStack` written but unrun ([#45](https://github.com/rleibman/thicket/issues/45), [#46](https://github.com/rleibman/thicket/issues/46)); **23 of 32** covered once you count the four the catalogue lists as widgets and this framework deliberately does not → [docs/12](docs/12-component-status.md) |
 | Navigation | Native container on all four: `AdwNavigationView`, a `FrameLayout` + `Slide`, `UINavigationController`, a macOS sidebar. Back gesture and title bar are the platform's own |
 | Theming | By role, scoped to a subtree with `Provide` |
 | Published artefacts | `dev.thicket`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |
@@ -40,10 +40,10 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | Windows | Not started, and out of the 0.1 scope |
 
 This is early, and the honest shape of it is: the parts that exist are finished on all four
-platforms rather than sketched on one. Eighteen widgets, every one on every renderer, with
+platforms rather than sketched on one. Nineteen widgets, every one on every renderer, with
 a self-test on each host that reads the tree back out of the real toolkit.
 
-What is genuinely missing: six catalogue entries, of which `DatePicker` is the one a form
+What is genuinely missing: five catalogue entries, of which `DatePicker` is the one a form
 actually wants, and Maven Central publishing. An app can be built from outside this repo on
 GTK, macOS and the iOS simulator — `bin/verify-getting-started.sh` and
 `bin/verify-getting-started-apple.sh` check exactly that, by building a template outside the

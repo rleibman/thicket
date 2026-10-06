@@ -93,12 +93,21 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.Slider            => ShimKind.Slider
       case WidgetKind.SecureField       => ShimKind.SecureField
       case WidgetKind.Picker            => ShimKind.Picker
+      case WidgetKind.ZStack            => ShimKind.ZStack
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
       // mount into. `present` is what puts either on screen.
       case WidgetKind.Alert => ShimKind.Alert
       case WidgetKind.Sheet => ShimKind.Sheet
+    }
+
+  /** Spelled out rather than `ordinal`: these numbers are ABI, and reordering the enum must not silently move them. */
+  private def alignCode(a: Alignment): CInt =
+    a match {
+      case Alignment.Start  => 0
+      case Alignment.Center => 1
+      case Alignment.End    => 2
     }
 
   private def isHorizontal(props: Seq[Prop]): Boolean =
@@ -260,6 +269,8 @@ final class AppleRenderer extends Renderer {
       // value is never clamped against the control's default bounds.
       case Prop.Range(min, max) => Shim.sui_set_range(handle, min, max)
       case Prop.Value(v)        => Shim.sui_set_value(handle, v)
+
+      case Prop.StackAlignment(h, v) => Shim.sui_set_stack_alignment(handle, alignCode(h), alignCode(v))
 
       case Prop.Options(values) =>
         // Clear-then-add, the shape the ABI uses for an alert's actions. No handles to

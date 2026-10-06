@@ -185,6 +185,15 @@ object Todo {
     model.busy.set(true)
     check("a spinner appears when busy",
       GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isSpinner).length == 1)
+    // The same question the Android self-test asks: the spinner is in the ZStack over the
+    // logo, last (so painted on top) and centred. Mounted after the picture, so this is the
+    // insert that has to land above it rather than wherever GTK appends.
+    val overlays = GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isOverlay)
+    val onTop    = overlays.flatMap(o => GtkInspect.children(o).lastOption).filter(GtkInspect.isSpinner)
+    check("the spinner is the ZStack's last child, so drawn on top", onTop.length == 1,
+      overlays.map(o => GtkInspect.children(o).length).toString)
+    check("and centred over the picture", onTop.map(GtkInspect.placement) == List(("Center", "Center")),
+      onTop.map(GtkInspect.placement).toString)
     model.busy.set(false)
     check("and is gone again when not",
       GtkInspect.findAll(GtkApp.rootHandle)(GtkInspect.isSpinner).isEmpty)

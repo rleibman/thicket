@@ -384,3 +384,14 @@ should not be made until M1.
   but they should be re-measured with `ScalaNativeInit` at the top of `main` before they are
   treated as properties of Scala Native rather than of the host. Until then, keep the rules.
 
+
+## 9.7 Opened by `ZStack` (2026-10-06)
+
+- **A ZStack child cannot ask to fill the stack.** Each child is at its natural size, which
+  is right for a badge or a spinner and wrong for a background: a progress bar or a tinted
+  panel behind content shrinks to its natural width instead of spanning the stack. SwiftUI
+  offers its proposed size to every child, `FrameLayout` honours `MATCH_PARENT` and GTK has
+  `halign` `FILL`, so all of them could do it natively. The open question is the shape: a
+  fourth `Alignment` value (`Fill`) would leak into every other user of `Alignment`, while a
+  per-child prop is a second way to place a child. Not decided until an app needs it;
+  `Prop.Fill` already covers a plain background colour without a ZStack at all.

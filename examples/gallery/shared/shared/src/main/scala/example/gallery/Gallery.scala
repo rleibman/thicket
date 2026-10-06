@@ -18,7 +18,7 @@ package example.gallery
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{AlertAction, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{AlertAction, Alignment, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
 import example.gallery.buildinfo.BuildInfo
 import thicket.signals.{Signal, Var}
 
@@ -148,6 +148,22 @@ object Gallery {
           section("Layout — Spacer, Grow, Divider, nested Row and Column")(
             Row(spacing = 8)(Label("left"), Spacer(), Label("right")),
             Row(spacing = 8)(Label("grown").grow, Label("fixed"))
+          ),
+          section("ZStack — children drawn over one another, last on top")(
+            Row(spacing = 16)(
+              // The badge case: trailing and top, so the two axes are told apart. The count is
+              // the ForEach section's row count, so "Add" in the toolbar proves it is bound.
+              ZStack(Alignment.End, Alignment.Start)(
+                Image(ImageSource.FromFile("docs/assets/thicket-logo.png"), fit = ContentFit.Contain),
+                Label(model.rows.map(rs => s"${rs.size} rows"), style = TextRole.Caption)
+              ),
+              // Centred, the default: a spinner over the content it is waiting on. Always
+              // spinning, so the overlap is on screen without anyone having to start it.
+              ZStack()(
+                Label("Underneath\nthe spinner"),
+                Spinner()
+              )
+            )
           ),
           section("Image — the three content fits")(
             Row(spacing = 8)(

@@ -473,6 +473,24 @@ object dsl {
       children
     )
 
+  /** Children drawn over one another, in order, so the last is on top.
+    *
+    * Each child keeps its natural size, and the stack is as large as the largest of them. `horizontal` and `vertical`
+    * place the smaller ones: `ZStack(Alignment.End, Alignment.Start)(picture, badge)` puts the badge in the top
+    * trailing corner of the picture, in either layout direction.
+    */
+  def ZStack(
+    horizontal: Alignment = Alignment.Center,
+    vertical:   Alignment = Alignment.Center
+  )(
+    children: Element*
+  ): Element =
+    Widget(
+      WidgetKind.ZStack,
+      Seq(Static(Prop.StackAlignment(horizontal, vertical))),
+      children
+    )
+
   /** Re-render `view` whenever `signal` changes.
     *
     * `Show` keys on a boolean, so it mounts and unmounts. This keys on the value itself, which is what an `RemoteData`

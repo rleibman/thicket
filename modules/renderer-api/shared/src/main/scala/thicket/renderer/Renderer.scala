@@ -180,6 +180,17 @@ enum WidgetKind {
     */
   case Picker
 
+  /** Children drawn over one another, later ones on top: `GtkOverlay`, `FrameLayout`, a plain `NSView` / `UIView`.
+    *
+    * Named for the z-axis on purpose. "Stack" already means three other things here — `NSStackView` and `UIStackView`
+    * are what `Column` and `Row` *are*, and a `GtkStack` shows one child at a time — so a widget called `Stack` would
+    * be misread by exactly the people who know the toolkits best.
+    *
+    * Each child keeps its natural size and is placed by [[Prop.StackAlignment]]; the stack is as large as its largest
+    * child. [[Prop.Grow]] means nothing here, because a stack has no main axis to grow along.
+    */
+  case ZStack
+
   /** Whether this kind is *presented over* the app rather than placed in the tree.
     *
     * A framework-level fact rather than a per-renderer one: an alert is not a child of anything on any of the four
@@ -350,6 +361,17 @@ enum Prop {
   case Selected(index: Int)
 
   case OnSelect(handler: Int => Unit)
+
+  /** Where a [[WidgetKind.ZStack]] places each child within itself, on both axes.
+    *
+    * On the *stack*, not per child: the largest child fills the stack whatever its alignment, so what this decides is
+    * where the smaller ones sit — a badge in a corner, a spinner in the middle. `Start` and `End` follow the layout
+    * direction, as everywhere else in the contract.
+    */
+  case StackAlignment(
+    horizontal: Alignment,
+    vertical:   Alignment
+  )
 
 }
 

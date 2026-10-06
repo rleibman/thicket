@@ -82,6 +82,7 @@ object Shim {
   def sui_set_selected(h: Handle, index: CInt): Unit = extern
   def sui_get_selected(h: Handle): CInt = extern
   def sui_on_select(h: Handle, cb: IntCb, ctx: Long): Unit = extern
+  def sui_set_stack_alignment(h: Handle, horizontal: CInt, vertical: CInt): Unit = extern
   def sui_pages_begin(): Unit = extern
   def sui_pages_add(id: Long, content: Handle, title: CString): Unit = extern
   def sui_pages_commit(): Unit = extern
@@ -138,4 +139,5 @@ object ShimKind {
   inline val Alert = 16
   inline val Sheet = 17
   inline val Picker = 18
+  inline val ZStack = 19
 }
