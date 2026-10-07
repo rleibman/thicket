@@ -56,6 +56,7 @@ object GallerySelfTest {
       "Button — roles, and one disabled",
       "TextField and SecureField",
       "Checkbox and Toggle",
+      "DatePicker — a day, in the platform's own chooser",
       "SegmentedControl — one of a few, all on screen",
       "Link — opens a URL, drawn as each platform draws a link",
       "Slider, ProgressBar, ActivityIndicator",

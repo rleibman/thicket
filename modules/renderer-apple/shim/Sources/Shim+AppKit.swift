@@ -51,6 +51,14 @@ private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
 private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
 private var selections: [ObjectIdentifier: Selection] = [:]
+private var dateChanges: [ObjectIdentifier: Selection] = [:]
+
+/// A `DatePicker`'s value crosses the boundary as an epoch day. It is read at midnight UTC,
+/// and every picker here is set to UTC, so it is a whole day — the same day — whatever zone
+/// the device is in. The picker keeps the user's own *calendar*, so a locale that shows a
+/// Buddhist or Japanese year still shows the right day.
+private func epochDay(_ d: Date) -> Int32 { Int32((d.timeIntervalSince1970 / 86400).rounded(.down)) }
+private func dateOf(_ day: Int32) -> Date { Date(timeIntervalSince1970: Double(day) * 86400) }
 
 /// True while the renderer is writing a value in, so a control's own change notification
 /// can tell an app-driven update from a user edit and stay silent for the former. Without
@@ -71,6 +79,12 @@ private final class Proxy: NSObject, NSTextFieldDelegate {
     let id = ObjectIdentifier(sender)
     guard !suppressed.contains(id), let t = toggles[id] else { return }
     t.cb(t.ctx, isOn(sender) ? 1 : 0)
+  }
+
+  @objc func dated(_ sender: NSDatePicker) {
+    let id = ObjectIdentifier(sender)
+    guard !suppressed.contains(id), let s = dateChanges[id] else { return }
+    s.cb(s.ctx, epochDay(sender.dateValue))
   }
 
   @objc func segmented(_ sender: NSSegmentedControl) {
@@ -459,6 +473,18 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.action = #selector(Proxy.segmented(_:))
     return retained(s)
 
+  case 21:
+    // A text field with a stepper, whose click opens a calendar: AppKit's own form control
+    // for a date. Not .clockAndCalendar, which is a whole calendar inline.
+    let p = NSDatePicker()
+    p.datePickerStyle = .textFieldAndStepper
+    p.datePickerElements = .yearMonthDay
+    p.datePickerMode = .single
+    p.timeZone = TimeZone(identifier: "UTC")
+    p.target = proxy
+    p.action = #selector(Proxy.dated(_:))
+    return retained(p)
+
   case 14:
     // A separate class on AppKit, which is why SecureField is a kind rather than a prop.
     let f = NSSecureTextField(string: "")
@@ -555,6 +581,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   let v = view(h)
   let id = ObjectIdentifier(v)
   taps.removeValue(forKey: id)
+  dateChanges.removeValue(forKey: id)
   links.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
@@ -811,6 +838,27 @@ public func sui_set_stack_alignment(_ h: UnsafeMutableRawPointer, _ horizontal: 
 @_cdecl("sui_on_select")
 public func sui_on_select(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_cb, _ ctx: Int64) {
   selections[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
+}
+
+@_cdecl("sui_set_date")
+public func sui_set_date(_ h: UnsafeMutableRawPointer, _ epochDayValue: Int32) {
+  guard let p = view(h) as? NSDatePicker else { return }
+  let id = ObjectIdentifier(p)
+  // An app's own write is not a choice. UIKit sends no action for it anyway; AppKit may.
+  suppressed.insert(id)
+  p.dateValue = dateOf(epochDayValue)
+  suppressed.remove(id)
+}
+
+@_cdecl("sui_get_date")
+public func sui_get_date(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let p = view(h) as? NSDatePicker else { return Int32.min }
+  return epochDay(p.dateValue)
+}
+
+@_cdecl("sui_on_date_change")
+public func sui_on_date_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_int_cb, _ ctx: Int64) {
+  dateChanges[ObjectIdentifier(view(h))] = Selection(cb: cb, ctx: ctx)
 }
 
 @_cdecl("sui_set_safe_area")

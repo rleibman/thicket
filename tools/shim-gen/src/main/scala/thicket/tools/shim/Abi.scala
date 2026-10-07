@@ -211,6 +211,13 @@ object Abi {
       "NSSegmentedControl(",
       "UISegmentedControl(",
       "the picker's options/selection functions drive it; native on both Apple platforms"
+    ),
+    built(
+      21,
+      "DatePicker",
+      "NSDatePicker(",
+      "UIDatePicker(",
+      "compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC"
     )
   )
 
@@ -399,6 +406,17 @@ object Abi {
     */
   val zstack: List[Fn] = List(
     setter("sui_set_stack_alignment", "horizontal" -> I32, "vertical" -> I32)
+  )
+
+  /** A `DatePicker`'s date, as an **epoch day**: days since 1970-01-01. A day, not an instant — the shims read it at
+    * midnight UTC in a picker whose time zone is UTC, so it is the same day in any calendar the locale shows and in any
+    * zone the device is in. `sui_get_date` reads it back out of the control, for the self-test.
+    */
+  val dates: List[Fn] = List(
+    setter("sui_set_date", "epochDay" -> I32),
+    Fn("sui_get_date", I32, List(p("h", Handle))),
+    setter("sui_on_date_change", "cb" -> IntCb, "ctx" -> I64)
+      .copy(doc = "The epoch day the user chose.")
   )
 
   /** A link: activating the view opens `url` with `NSWorkspace` / `UIApplication.open`. A property of a view, not a
@@ -601,6 +619,7 @@ object Abi {
     Group("context menus", contextMenus),
     Group("picker", picker),
     Group("zstack", zstack),
+    Group("dates", dates),
     Group("links", links),
     Group("navigation", navigation),
     Group("inspection, for the self-test", inspection)

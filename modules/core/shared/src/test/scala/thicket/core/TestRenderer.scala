@@ -37,6 +37,7 @@ final class TestRenderer extends Renderer {
     var onCheckedChange: Option[Boolean => Unit] = None,
     var onValueChange:   Option[Double => Unit] = None,
     var onSelect:        Option[Int => Unit] = None,
+    var onDateChange:    Option[thicket.renderer.CalendarDate => Unit] = None,
     var options:         Seq[String] = Nil,
     /** Every prop applied to this node, in order. Some promises are about sequence — a `Picker`'s options must arrive
       * before its selection — and a map cannot show that.
@@ -215,10 +216,12 @@ final class TestRenderer extends Renderer {
       // Options as a list, not a joined string: a test that asserts on "a,b" cannot tell an
       // option containing a comma from two options, and the whole point of an index-based
       // selection is that labels are not identities.
-      case Prop.Options(vs) => n.options = vs
-      case Prop.Selected(i) => n.nums("selected") = i.toDouble
-      case Prop.OnSelect(f) => n.onSelect = Some(f)
-      case Prop.OpenUrl(u)  => n.props("url") = u
+      case Prop.Options(vs)     => n.options = vs
+      case Prop.Selected(i)     => n.nums("selected") = i.toDouble
+      case Prop.OnSelect(f)     => n.onSelect = Some(f)
+      case Prop.OpenUrl(u)      => n.props("url") = u
+      case Prop.DateValue(d)    => n.props("date") = d.toString
+      case Prop.OnDateChange(f) => n.onDateChange = Some(f)
       case Prop.StackAlignment(h, v) =>
         n.props("horizontal") = h.toString
         n.props("vertical") = v.toString

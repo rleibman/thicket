@@ -196,6 +196,17 @@ final class GtkRenderer extends Renderer {
         // control GNOME apps drew before AdwToggleGroup, and still the one any GTK 4 has.
         // Not AdwToggleGroup: the pinned bindings predate it, and linking its symbols would
         // stop every thicket GTK app starting on libadwaita < 1.7 (Ubuntu 24.04 ships 1.5).
+        // GNOME's date field: a menu button showing the date, whose popover holds a
+        // GtkCalendar. GTK has no compact date picker of its own, and an inline calendar is
+        // not what a form puts in a row.
+        case WidgetKind.DatePicker =>
+          val button   = gtk_menu_button_new()
+          val calendar = gtk_calendar_new()
+          val popover  = gtk_popover_new()
+          gtk_popover_set_child(popover.asInstanceOf[Ptr[GtkPopover]], calendar)
+          gtk_menu_button_set_popover(button.asInstanceOf[Ptr[GtkMenuButton]], popover)
+          calendars(button) = calendar
+          button
         case WidgetKind.SegmentedControl =>
           val box = gtk_box_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0)
           gtk_widget_add_css_class(box, toCString("linked"))
@@ -371,6 +382,27 @@ final class GtkRenderer extends Renderer {
         // Contrast a control GTK genuinely lacks, where the honest options are to imitate it
         // or to decline — see §12.2a.
         ()
+
+      case Prop.DateValue(date) => showDate(handle, date)
+
+      case Prop.OnDateChange(f) =>
+        dateChanged(handle) = f
+        if !dateIds.contains(handle) then
+          calendars.get(handle).foreach { calendar =>
+            val id = Handles.register(() => dateChosen(handle, calendar))
+            dateIds(handle) = id
+            Zone {
+              // (GtkCalendar*, gpointer), the same shape as "clicked".
+              val _ = g_signal_connect_data(
+                calendar.asInstanceOf[gpointer],
+                toCString("day-selected").asInstanceOf[Ptr[gchar]],
+                GCallback.fromPtr(Handles.clickedPtr),
+                Handles.idToPointer(id),
+                null.asInstanceOf[GClosureNotify],
+                GConnectFlags.define(0)
+              )
+            }
+          }
 
       case Prop.Options(values) if isSegmented(handle) => setSegments(handle, values)
       case Prop.Selected(index) if isSegmented(handle)  => selectSegment(handle, index)
@@ -684,6 +716,54 @@ final class GtkRenderer extends Renderer {
       gtk_widget_set_valign(child, v)
     }
 
+  // -- DatePicker ------------------------------------------------------------
+
+  private val calendars   = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
+  private val dateIds     = mutable.Map.empty[Ptr[GtkWidget], Long]
+  private val dateChanged = mutable.Map.empty[Ptr[GtkWidget], CalendarDate => Unit]
+
+  private def showDate(button: Handle, date: CalendarDate): Unit =
+    calendars.get(button).foreach { c =>
+      val calendar = c.asInstanceOf[Ptr[GtkCalendar]]
+      // Day 1 first: moving from the 31st to a 30-day month would otherwise pass through a
+      // day that does not exist. GtkCalendar's month counts from 0.
+      suppress += button
+      gtk_calendar_set_day(calendar, 1)
+      gtk_calendar_set_year(calendar, date.year)
+      gtk_calendar_set_month(calendar, date.month - 1)
+      gtk_calendar_set_day(calendar, date.day)
+      suppress -= button
+      Zone(gtk_menu_button_set_label(button.asInstanceOf[Ptr[GtkMenuButton]], toCString(formatDate(date))))
+    }
+
+  /** The locale's own date format (`%x`), from glib, so the button reads as dates do on this desktop. At midnight UTC
+    * on a UTC date-time: the date is a calendar day, and no zone may move it.
+    */
+  private def formatDate(date: CalendarDate): String = Zone {
+    import sn.gnome.glib.internal.{gdouble, gint}
+    val dt = sn.gnome.glib.internal.g_date_time_new_utc(gint(date.year), gint(date.month), gint(date.day), gint(0), gint(0), gdouble(0.0))
+    val f  = sn.gnome.glib.internal.g_date_time_format(dt, toCString("%x").asInstanceOf[Ptr[gchar]])
+    sn.gnome.glib.internal.g_date_time_unref(dt)
+    val out = fromCString(f.asInstanceOf[CString])
+    sn.gnome.glib.internal.g_free(f.asInstanceOf[gpointer])
+    out
+  }
+
+  /** "day-selected" also fires when the app moves the calendar, so the suppress guard is what keeps an app's write from
+    * being reported back as a choice.
+    */
+  private def dateChosen(button: Handle, c: Ptr[GtkWidget]): Unit =
+    if !suppress.contains(button) then {
+      val calendar = c.asInstanceOf[Ptr[GtkCalendar]]
+      val chosen = CalendarDate(
+        gtk_calendar_get_year(calendar),
+        gtk_calendar_get_month(calendar) + 1,
+        gtk_calendar_get_day(calendar)
+      )
+      Zone(gtk_menu_button_set_label(button.asInstanceOf[Ptr[GtkMenuButton]], toCString(formatDate(chosen))))
+      dateChanged.get(button).foreach(_(chosen))
+    }
+
   // -- SegmentedControl ------------------------------------------------------
   //
   // The selection lives here, not in the buttons: the buttons are rebuilt whenever the
@@ -893,6 +973,9 @@ final class GtkRenderer extends Renderer {
     valueIds.remove(handle).foreach(Handles.release)
     selectIds.remove(handle).foreach(Handles.release)
     segments.remove(handle).foreach(_.foreach((_, id) => Handles.release(id)))
+    dateIds.remove(handle).foreach(Handles.release)
+    val _ = calendars.remove(handle)
+    val _ = dateChanged.remove(handle)
     val _ = segmentIndex.remove(handle)
     val _ = segmentChosen.remove(handle)
     suppress -= handle

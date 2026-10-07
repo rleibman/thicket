@@ -38,6 +38,7 @@ final class AppleRenderer extends Renderer {
   private val boolIds = mutable.Map.empty[Handle, Long]
   private val valueIds = mutable.Map.empty[Handle, Long]
   private val selectIds = mutable.Map.empty[Handle, Long]
+  private val dateIds   = mutable.Map.empty[Handle, Long]
   private val actionIds = mutable.Map.empty[Handle, Seq[Long]]
   private val dismissIds = mutable.Map.empty[Handle, Long]
   private val menuIds = mutable.Map.empty[Handle, Seq[Long]]
@@ -95,6 +96,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.Picker            => ShimKind.Picker
       case WidgetKind.ZStack            => ShimKind.ZStack
       case WidgetKind.SegmentedControl  => ShimKind.SegmentedControl
+      case WidgetKind.DatePicker        => ShimKind.DatePicker
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
@@ -298,6 +300,21 @@ final class AppleRenderer extends Renderer {
         // back as a user choice.
         if Shim.sui_get_selected(handle) != index then Shim.sui_set_selected(handle, index)
 
+      // An epoch day across the boundary; see Abi.dates. Read first and skip a no-op write,
+      // as the toggle and the picker do.
+      case Prop.DateValue(d) =>
+        if Shim.sui_get_date(handle) != d.toEpochDay then Shim.sui_set_date(handle, d.toEpochDay)
+
+      case Prop.OnDateChange(f) =>
+        val g: Int => Unit = day => f(CalendarDate.fromEpochDay(day))
+        dateIds.get(handle) match {
+          case Some(id) => Handles.replaceInt(id, g)
+          case None =>
+            val id = Handles.registerInt(g)
+            dateIds(handle) = id
+            Shim.sui_on_date_change(handle, Handles.intTrampoline, id)
+        }
+
       case Prop.OnSelect(f) =>
         selectIds.get(handle) match {
           case Some(id) => Handles.replaceInt(id, f)
@@ -386,6 +403,7 @@ final class AppleRenderer extends Renderer {
     boolIds.remove(handle).foreach(Handles.release)
     valueIds.remove(handle).foreach(Handles.release)
     selectIds.remove(handle).foreach(Handles.release)
+    dateIds.remove(handle).foreach(Handles.release)
     actionIds.remove(handle).foreach(_.foreach(Handles.release))
     dismissIds.remove(handle).foreach(Handles.release)
     menuIds.remove(handle).foreach(_.foreach(Handles.release))
