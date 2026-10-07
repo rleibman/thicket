@@ -19,6 +19,7 @@ package thicket.core
 import thicket.renderer.{
   AlertAction,
   Alignment,
+  CalendarDate,
   ContentFit,
   Edge,
   Emphasis,
@@ -384,6 +385,23 @@ object dsl {
       Seq(optionsAttr, selectedAttr, Static(Prop.OnSelect(onSelect))),
       Nil
     )
+  }
+
+  /** A calendar date, chosen with the platform's own date chooser.
+    *
+    * Two-way like a `TextField`: the control shows `value`, and the user's choice is reported through `onChange` — the
+    * app decides whether to write it back, which is where "not in the past" belongs.
+    *
+    * {{{
+    * DatePicker(model.due)(model.due.set)
+    * }}}
+    */
+  def DatePicker(value: CalendarDate | Signal[CalendarDate])(onChange: CalendarDate => Unit): Element = {
+    val valueAttr = value match {
+      case d: CalendarDate                    => Static(Prop.DateValue(d))
+      case s: Signal[CalendarDate] @unchecked => Reactive(s, Prop.DateValue(_))
+    }
+    Widget(WidgetKind.DatePicker, Seq(valueAttr, Static(Prop.OnDateChange(onChange))), Nil)
   }
 
   /** One choice from a few, with every option on screen at once.

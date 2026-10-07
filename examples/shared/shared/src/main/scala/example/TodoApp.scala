@@ -18,7 +18,7 @@ package example
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{Alignment, AlertAction, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{Alignment, AlertAction, CalendarDate, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
 import thicket.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -73,6 +73,9 @@ object TodoApp {
 
     /** Drives the settings-row `Toggle`. */
     val hideDone: Var[Boolean] = Var(false)
+
+    /** Drives the `DatePicker`. A leap day, so a renderer that slips a day shows March 1. */
+    val reviewBy: Var[CalendarDate] = Var(CalendarDate(2028, 2, 29))
 
     /** Drives the `SegmentedControl`: 0 is the order items were added in, 1 the reverse. */
     val order: Var[Int] = Var(0)
@@ -260,6 +263,11 @@ object TodoApp {
           Label("Hide completed"),
           Spacer(),
           Toggle(model.hideDone)(model.hideDone.set)
+        ),
+        Row(spacing = 8)(
+          Label("Review by"),
+          Spacer(),
+          DatePicker(model.reviewBy)(model.reviewBy.set)
         ),
         // Two short options, both worth seeing: a segmented control rather than a Picker.
         SegmentedControl(Seq("Oldest first", "Newest first"), model.order)(model.order.set),
