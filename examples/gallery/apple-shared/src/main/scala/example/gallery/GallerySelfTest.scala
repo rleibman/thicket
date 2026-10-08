@@ -63,6 +63,8 @@ object GallerySelfTest {
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "ZStack — children drawn over one another, last on top",
       "Grid — cells flow into columns, each as wide as its widest cell",
+      "IconButton — every curated icon, each with its label",
+      "TabView — sections kept alive, switched with the platform's tab bar",
       "Image — the three content fits",
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",

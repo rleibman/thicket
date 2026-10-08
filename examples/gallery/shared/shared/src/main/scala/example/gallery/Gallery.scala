@@ -18,7 +18,7 @@ package example.gallery
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{AlertAction, Alignment, CalendarDate, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{AlertAction, Alignment, CalendarDate, Icon, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
 import example.gallery.buildinfo.BuildInfo
 import thicket.signals.{Signal, Var}
 
@@ -52,6 +52,11 @@ object Gallery {
     val due:      Var[CalendarDate] = Var(Gallery.firstDue)
     val linkTaps: Var[Int]     = Var(0)
     val gridExtra: Var[Boolean] = Var(false)
+    val lastIcon:  Var[String]  = Var("")
+    // Not 0: the platform shows the first tab by default, so starting anywhere else is what
+    // proves the app's initial selection reaches it (#70 review: GTK dropped it).
+    val tab: Var[Int] = Var(1)
+    val extraTab:  Var[Boolean] = Var(false)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
@@ -80,6 +85,9 @@ object Gallery {
 
   /** The date picker's starting date. A leap day, so a conversion that slips by one is visible as March 1. */
   val firstDue: CalendarDate = CalendarDate(2028, 2, 29)
+
+  /** The TabView's tab titles. On the object so the self-test can name them. */
+  val tabTitles: Seq[String] = Seq("Home", "Mail", "Settings")
 
   /** The segmented control's options. On the object so the self-test can name them. */
   val spans: Seq[String] = Seq("Day", "Week", "Month")
@@ -218,6 +226,33 @@ object Gallery {
             ),
             Button(model.gridExtra.map(b => if b then "Remove the row" else "Insert a row"))(
               model.gridExtra.set(!model.gridExtra.now)
+            )
+          ),
+          section("IconButton — every curated icon, each with its label")(
+            // All 24 at once, so a reviewer sees every mapping on every platform; in a Grid,
+            // which is what a toolbar of icons is.
+            Grid(columns = 8, spacing = 4)(
+              Icon.curated.map(i => IconButton(i, i.toString)(model.lastIcon.set(i.toString)))*
+            ),
+            Row(spacing = 8)(
+              IconButton(Icon.Delete, "Delete (disabled)", enabled = false)(()),
+              // Bound: proves a tap went through the renderer to the app.
+              Label(model.lastIcon.map(n => if n.isEmpty then "Tap an icon" else s"Tapped $n"))
+            )
+          ),
+          section("TabView — sections kept alive, switched with the platform's tab bar")(
+            TabView(model.tab)(model.tab.set)(
+              Tab(Gallery.tabTitles(0), Icon.Home)(Label("The home tab's content")),
+              // A tab that appears in the middle: the others must keep their order and content.
+              Show(model.extraTab)(Tab("Extra", Icon.Star)(Label("The extra tab's content"))),
+              Tab(Gallery.tabTitles(1), Icon.Mail)(Label("The mail tab's content")),
+              Tab(Gallery.tabTitles(2), Icon.Settings)(Label("The settings tab's content"))
+            ),
+            // Bound: the label is the app's own record of the selection, so a tap on the
+            // platform's bar showing up here proves it went through the renderer.
+            Label(model.tab.map(i => s"Showing tab $i")),
+            Button(model.extraTab.map(b => if b then "Remove the extra tab" else "Add a tab in the middle"))(
+              model.extraTab.set(!model.extraTab.now)
             )
           ),
           section("Image — the three content fits")(

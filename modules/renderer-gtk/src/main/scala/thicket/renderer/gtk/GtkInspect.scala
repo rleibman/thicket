@@ -214,6 +214,54 @@ object GtkInspect {
 
   def isGrid(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_grid_get_type())
 
+  /** A `TabView`'s stack. */
+  def isViewStack(widget: Ptr[GtkWidget]): Boolean =
+    isA(widget, sn.gnome.adwaita.internal.adw_view_stack_get_type())
+
+  /** A `TabView`'s switcher bar, whose buttons are what a user clicks. */
+  def isViewSwitcherBar(widget: Ptr[GtkWidget]): Boolean =
+    isA(widget, sn.gnome.adwaita.internal.adw_view_switcher_bar_get_type())
+
+  /** Each page of a stack as (title, icon name, page widget), in the stack's own order. */
+  def stackPages(stack: Ptr[GtkWidget]): List[(String, String, Ptr[GtkWidget])] =
+    children(stack).map { child =>
+      val page = sn.gnome.adwaita.internal.adw_view_stack_get_page(
+        stack.asInstanceOf[Ptr[sn.gnome.adwaita.internal.AdwViewStack]],
+        child
+      )
+      def str(c: CString) = if c == null then "" else fromCString(c)
+      (
+        str(sn.gnome.adwaita.internal.adw_view_stack_page_get_title(page).asInstanceOf[CString]),
+        str(sn.gnome.adwaita.internal.adw_view_stack_page_get_icon_name(page).asInstanceOf[CString]),
+        child
+      )
+    }
+
+  def visiblePage(stack: Ptr[GtkWidget]): Ptr[GtkWidget] =
+    sn.gnome.adwaita.internal.adw_view_stack_get_visible_child(
+      stack.asInstanceOf[Ptr[sn.gnome.adwaita.internal.AdwViewStack]]
+    )
+
+  /** The icon name a button shows, or "" for none. */
+  def buttonIconName(widget: Ptr[GtkWidget]): String = {
+    val n = gtk_button_get_icon_name(widget.asInstanceOf[Ptr[GtkButton]])
+    if n == null then "" else fromCString(n)
+  }
+
+  def tooltip(widget: Ptr[GtkWidget]): String = {
+    val t = gtk_widget_get_tooltip_text(widget)
+    if t == null then "" else fromCString(t)
+  }
+
+  /** Whether the icon theme in use can draw `name` — asked of the theme, not of a list, so a name that the user's theme
+    * lacks fails here rather than drawing GTK's missing-image icon.
+    */
+  def themeHasIcon(widget: Ptr[GtkWidget], name: String): Boolean =
+    Zone(
+      gtk_icon_theme_has_icon(gtk_icon_theme_get_for_display(gtk_widget_get_display(widget)), toCString(name))
+        .asInstanceOf[CInt] != 0
+    )
+
   /** Where a `Grid` put a cell, as (column, row), read back from GTK rather than computed. */
   def gridCell(grid: Ptr[GtkWidget], child: Ptr[GtkWidget]): (Int, Int) = {
     val zone = scala.scalanative.unsafe.Zone.open()

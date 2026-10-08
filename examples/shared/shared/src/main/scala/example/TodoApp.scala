@@ -18,7 +18,7 @@ package example
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{Alignment, AlertAction, CalendarDate, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{Alignment, AlertAction, CalendarDate, ContentFit, Icon, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
 import thicket.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -76,6 +76,9 @@ object TodoApp {
 
     /** Drives the `DatePicker`. A leap day, so a renderer that slips a day shows March 1. */
     val reviewBy: Var[CalendarDate] = Var(CalendarDate(2028, 2, 29))
+
+    /** Drives the `TabView` around the counts: 0 is Summary, 1 is Help. */
+    val infoTab: Var[Int] = Var(0)
 
     /** Drives the `SegmentedControl`: 0 is the order items were added in, 1 the reverse. */
     val order: Var[Int] = Var(0)
@@ -272,12 +275,24 @@ object TodoApp {
         // Two short options, both worth seeing: a segmented control rather than a Picker.
         SegmentedControl(Seq("Oldest first", "Newest first"), model.order)(model.order.set),
 
-        // The counts behind the bar, as a two-column grid so the numbers line up.
-        Grid(columns = 2, spacing = 8)(
-          Label("Items", emphasis = Emphasis.Secondary),
-          Label(model.items.map(_.size.toString)),
-          Label("Done", emphasis = Emphasis.Secondary),
-          Label(model.items.map(_.count(_.done).toString))
+        // The counts behind the bar, as a two-column grid so the numbers line up, in a TabView
+        // beside a short help page: both tabs stay mounted, only one shows.
+        TabView(model.infoTab)(model.infoTab.set)(
+          Tab("Summary", Icon.Info)(
+            Grid(columns = 2, spacing = 8)(
+              Label("Items", emphasis = Emphasis.Secondary),
+              Label(model.items.map(_.size.toString)),
+              Label("Done", emphasis = Emphasis.Secondary),
+              Label(model.items.map(_.count(_.done).toString))
+            )
+          ),
+          Tab("Help", Icon.Warning)(Label("Long-press a row for its menu."))
+        ),
+
+        // Icon-only buttons, each labelled for a screen reader and a tooltip.
+        Row(spacing = 8)(
+          IconButton(Icon.Add, "Add an item")(model.add()),
+          IconButton(Icon.Delete, "Remove the last item")(model.dropLast())
         ),
 
         // Determinate progress driven by the model rather than by a timer: the bar is a

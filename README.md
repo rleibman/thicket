@@ -32,7 +32,7 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | | |
 |---|---|
 | Works today | Linux/GTK4, Android, macOS, iOS simulator — the same app on all four |
-| Widgets | **22 of 32** as widgets — 21 measured on every renderer, and `Grid` on GTK and Android with its Apple half in [#62](https://github.com/rleibman/thicket/issues/62); **27 of 32** covered once you count the five the catalogue lists as widgets and this framework deliberately does not → [docs/12](docs/12-component-status.md) |
+| Widgets | **24 of 32** as widgets — 21 measured on every renderer, and `Grid`, `IconButton` and `TabView` on GTK and Android with their Apple halves in [#62](https://github.com/rleibman/thicket/issues/62), [#66](https://github.com/rleibman/thicket/issues/66) and [#69](https://github.com/rleibman/thicket/issues/69). **30 of 32** covered, counting the six the framework provides another way (SafeArea and Link as props, List as `LazyColumn`, NavigationStack as `Nav`, Menu as a context-menu prop, Toolbar as screen actions); the last two, Radio and Stepper, are reclassified under §12.2a → [docs/12](docs/12-component-status.md) |
 | Navigation | Native container on all four: `AdwNavigationView`, a `FrameLayout` + `Slide`, `UINavigationController`, a macOS sidebar. Back gesture and title bar are the platform's own |
 | Theming | By role, scoped to a subtree with `Provide` |
 | Published artefacts | `dev.thicket`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |
@@ -43,8 +43,8 @@ This is early, and the honest shape of it is: the parts that exist are finished 
 platforms rather than sketched on one. Twenty-one widgets, every one on every renderer, with
 a self-test on each host that reads the tree back out of the real toolkit.
 
-What is genuinely missing: two catalogue entries — `TabView` and `IconButton`, both waiting
-on an icon system (#61) — and Maven Central publishing. An app can be built from
+What is genuinely missing: nothing from the v1 catalogue — its last two entries, Radio and
+Stepper, fail §12.2a and are deliberately not built — and Maven Central publishing. An app can be built from
 outside this repo on GTK, macOS and the iOS simulator — `bin/verify-getting-started.sh` and
 `bin/verify-getting-started-apple.sh` check exactly that, by building a template outside the
 repo against published artefacts and running it.

@@ -69,6 +69,62 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-08 — **`TabView` is a container of `Tab`s that keeps every tab alive and keeps the
+  user on their tab; Android's is built, and libadwaita needed a workaround** (#61, #69).
+  A `Tab` carries its title (`Prop.Text`) and icon (`Prop.Glyph`) and holds one child, so a
+  title can be reactive. The selection reuses `Picker`'s `Selected`/`OnSelect`. Every tab
+  stays mounted, so a tab keeps its scroll position and state while the user is elsewhere, as
+  every native tab container does.
+  **Inserting or removing tabs keeps the user on the tab they are looking at**, and if that
+  changes its index (a tab added before it, the visible tab removed) the new index is
+  reported through `OnSelect`. The alternative, jumping to whatever now sits at the old
+  index, moves the user because the app changed something else. Found by the gallery's
+  mid-list insert, which first moved the user to the new tab.
+  **GTK**: `AdwViewStack` plus an always-revealed `AdwViewSwitcherBar`. The stack can only
+  append, so a tab inserted mid-list is placed by taking the later pages out and re-adding
+  them, holding a reference while they are out. **libadwaita 1.9.1 has a dangling pointer
+  here**: `stack_remove` clears `visible_child` but not `last_visible_child`, the page a
+  switch is leaving, which is kept until the switch's animation ends on the next frame even
+  with transitions off. Removing that page inside the frame left the stack pointing at freed
+  memory: 3 segfaults and 3 `gtk_widget_set_child_visible` criticals in 6 runs. Hiding a page
+  before removing it makes the stack's own `update_child_visible` clear the pointer; 8/8
+  clean since. Worth reporting upstream.
+  **Android**: every framework tab control is deprecated (`TabHost`, `TabWidget`,
+  `ActionBar.Tab`) and `BottomNavigationView` is Material, so the bar is a row of icon-over-
+  label items from framework views, tinted `colorPrimary` when selected; the tabs sit in a
+  `FrameLayout`, unselected ones `GONE`. `Selected` arrives at create, before any tab exists,
+  so the wanted index is remembered and applied when its tab arrives; falsified, nothing
+  showed at all.
+  The Apple half is #69 (kinds 24 and 25 reserved). With `TabView`, nothing in the v1
+  catalogue is left unbuilt: 24 widgets, 6 entries provided another way, and Radio and
+  Stepper reclassified.
+
+- 2026-10-08 — **Icons are a curated set of 24 meanings, each the platform's own; Android's
+  are bundled Material Symbols paths** (#61, both choices the project owner's).
+  `Icon.Add` … `Icon.Download` name what an icon *means*. GTK maps each to a
+  freedesktop symbolic name (`GtkIcons`), so the user's theme draws and recolours it. Every
+  name was checked to exist in Adwaita, and the gallery asks the *active* theme for each at
+  runtime: on this machine that is Ubuntu's Yaru-dark, which is why a falsified mapping to
+  `share-symbolic` still passed (Yaru has one, Adwaita does not) and a name no theme has was
+  needed to make the check fail. Adwaita has no `share` icon (so Share is `send-to`) and no
+  heart, so the set has no Favorite: GNOME uses a star, and so does the set.
+  **Android has no system icon set an app should use** (`android.R.drawable`'s `ic_menu_*`
+  are Holo-era), and the renderer ships as a jar, which cannot carry resources. So the 24
+  Material Symbols (Outlined, Apache-2.0) travel as path data in `MaterialSymbols` and are
+  drawn by `IconDrawable`, a tinted vector `Path` in the theme's `colorControlNormal`. The
+  parser, `SvgPath`, handles only the commands the set uses (`M L H V Q T Z`) and refuses
+  the rest. It lives in `renderer-api` so that every bundled path is parsed and
+  bounds-checked on JVM and JS, not first on a phone.
+  `Icon.Platform(gtk, sfSymbol, androidDrawable)` is the escape hatch. On Android it names a
+  drawable in the *app's* package, which has resources even though the framework does not.
+  `IconButton` is a kind (Android's icon button is `ImageButton`, a different class), and
+  its `label` is required: the button has no text, so the label is all a screen reader has.
+  It is `Prop.AccessibleLabel`, available on every widget, and it is also the tooltip
+  everywhere.
+  Measured on Android by drawing each icon into a bitmap: some of the square painted, not
+  none and not all. Falsified by dropping the view-box translation, which painted `0.0%`.
+  The Apple half (SF Symbols, the accessibility label, kind 23) is #66, for the Mac.
+
 - 2026-10-07 — **`Grid` is built, the second §12.2a exception; icons come before `TabView`**
   (#60, #61, both decided by the project owner). UIKit has no grid view, while GTK
   (`GtkGrid`), Android (`android.widget.GridLayout`, framework, not deprecated in

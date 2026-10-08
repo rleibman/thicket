@@ -225,6 +225,35 @@ enum WidgetKind {
     */
   case Grid
 
+  /** A button that shows only an icon: a `GtkButton` with an icon name, an `ImageButton`, an `NSButton` / `UIButton`
+    * with an image.
+    *
+    * A kind rather than a `Button` with an icon prop because Android's icon-only button is a different class
+    * (`ImageButton`), the same reason `SecureField` is a kind. It has no visible text, so [[Prop.AccessibleLabel]] is
+    * not optional: the DSL requires it, and every renderer also shows it as the platform's tooltip.
+    */
+  case IconButton
+
+  /** Top-level sections the user switches between, each kept alive: `AdwViewStack` with an `AdwViewSwitcherBar`,
+    * `UITabBarController`, `NSTabViewController`, and on Android a bottom bar built from framework views.
+    *
+    * **A §12.2a exception** (#61, the project owner's decision): every tab control in Android's framework is deprecated
+    * (`TabHost`, `TabWidget`, `ActionBar.Tab`) and the modern one is Material's, which this project does not depend on,
+    * so Android's is a construction. Its children are [[Tab]]s, in order; which one shows is [[Prop.Selected]], an
+    * index as for `Picker`, and the user's choice is [[Prop.OnSelect]]. Every tab stays mounted, so switching away and
+    * back keeps a tab's scroll position and its state, as the native containers all do.
+    *
+    * Inserting or removing tabs keeps the user on the tab they are looking at. If that changes its index — a tab added
+    * before it, or the visible tab itself removed — the new index is reported through `OnSelect`, so an app that writes
+    * the selection back stays true without doing anything.
+    */
+  case TabView
+
+  /** One page of a [[TabView]]: its title ([[Prop.Text]]), its icon ([[Prop.Glyph]]) and exactly one child, its content
+    * — inserting a second replaces the first, as for `Scroll`.
+    */
+  case Tab
+
   /** Whether this kind is *presented over* the app rather than placed in the tree.
     *
     * A framework-level fact rather than a per-renderer one: an alert is not a child of anything on any of the four
@@ -396,6 +425,17 @@ enum Prop {
 
   case OnSelect(handler: Int => Unit)
 
+  /** The icon a widget shows. Named `Glyph` rather than `Icon` so that it does not shadow the [[thicket.renderer.Icon]]
+    * type inside `Prop`.
+    */
+  case Glyph(icon: Icon)
+
+  /** What a screen reader announces for this widget, and what the platform shows as its tooltip where it has one.
+    *
+    * Required for anything that shows no text of its own — an [[WidgetKind.IconButton]] — and available on any widget.
+    */
+  case AccessibleLabel(text: String)
+
   /** How many columns a [[WidgetKind.Grid]]'s children flow into. At least 1. */
   case Columns(count: Int)
 
@@ -444,6 +484,62 @@ enum Prop {
     * insets here is the right answer honestly arrived at.
     */
   case SafeArea(edges: Set[Edge])
+
+}
+
+/** An icon, named for what it means rather than for how any one platform draws it (#61).
+  *
+  * Each curated name maps to the platform's own icon: a symbolic name from the GTK icon theme, an SF Symbol on Apple,
+  * and on Android — which has no system icon set an app should use — bundled Material Symbols artwork, the set Android
+  * apps actually show. The set is small on purpose: every entry is checked to exist on every platform, and adding one
+  * is a change to all three mappings.
+  *
+  * [[Icon.Platform]] is the escape hatch for anything outside it, named per platform. On Android that name is a
+  * drawable resource in the app's own package, since an app has resources even though this framework's jar cannot.
+  */
+enum Icon {
+
+  case Add, Remove, Delete, Edit, Search, Settings, Share, Close
+  case Back, Forward, Menu, More, Home, Person, Star, Check
+  case Refresh, Info, Warning, Copy, Calendar, Mail, Send, Download
+
+  case Platform(
+    gtk:             String,
+    sfSymbol:        String,
+    androidDrawable: String
+  )
+
+}
+
+object Icon {
+
+  /** Every curated icon, for galleries and for the tests that check each one maps on every platform. */
+  val curated: Seq[Icon] = Seq(
+    Add,
+    Remove,
+    Delete,
+    Edit,
+    Search,
+    Settings,
+    Share,
+    Close,
+    Back,
+    Forward,
+    Menu,
+    More,
+    Home,
+    Person,
+    Star,
+    Check,
+    Refresh,
+    Info,
+    Warning,
+    Copy,
+    Calendar,
+    Mail,
+    Send,
+    Download
+  )
 
 }
 

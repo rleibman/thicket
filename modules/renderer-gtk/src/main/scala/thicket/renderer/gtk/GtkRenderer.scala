@@ -203,6 +203,13 @@ final class GtkRenderer extends Renderer {
         // `placeGridCells`.
         case WidgetKind.Grid => gtk_grid_new()
 
+        // A GtkButton showing an icon name, which is exactly what GTK's own icon buttons are;
+        // the name is set by Prop.Glyph.
+        case WidgetKind.IconButton => gtk_button_new()
+
+        case WidgetKind.TabView => tabs.createTabView()
+        case WidgetKind.Tab     => tabs.createTab()
+
         case WidgetKind.DatePicker =>
           val button   = gtk_menu_button_new()
           val calendar = gtk_calendar_new()
@@ -287,6 +294,7 @@ final class GtkRenderer extends Renderer {
               gtk_button_set_label(handle.asInstanceOf[Ptr[GtkButton]], toCString(v))
             case Some(WidgetKind.Checkbox) =>
               gtk_check_button_set_label(handle.asInstanceOf[Ptr[GtkCheckButton]], toCString(v))
+            case Some(WidgetKind.Tab) => tabs.setTitle(handle, v)
             // An Alert's title arrives as Prop.Text on its placeholder handle.
             case Some(WidgetKind.Alert) | Some(WidgetKind.Sheet) => alertTitle(handle) = v
             case Some(WidgetKind.TextField) | Some(WidgetKind.SecureField) =>
@@ -407,6 +415,9 @@ final class GtkRenderer extends Renderer {
               )
             }
           }
+
+      case Prop.Selected(index) if tabs.isTabView(handle) => tabs.select(handle, index)
+      case Prop.OnSelect(f) if tabs.isTabView(handle)     => tabs.onSelect(handle, f)
 
       case Prop.Options(values) if isSegmented(handle) => setSegments(handle, values)
       case Prop.Selected(index) if isSegmented(handle)  => selectSegment(handle, index)
@@ -685,6 +696,25 @@ final class GtkRenderer extends Renderer {
           gtk_grid_set_column_spacing(handle.asInstanceOf[Ptr[GtkGrid]], toGuint(dp))
         }
 
+      case Prop.Glyph(icon) if kinds.get(handle).contains(WidgetKind.Tab) => tabs.setIcon(handle, icon)
+
+      case Prop.Glyph(icon) =>
+        if kinds.get(handle).contains(WidgetKind.IconButton) then
+          Zone(gtk_button_set_icon_name(handle.asInstanceOf[Ptr[GtkButton]], toCString(GtkIcons.name(icon))))
+
+      // Both the accessible name and the tooltip: GNOME shows a tooltip on every icon-only
+      // button, and a screen reader reads the label rather than the icon's file name.
+      case Prop.AccessibleLabel(text) =>
+        Zone {
+          gtk_widget_set_tooltip_text(handle, toCString(text))
+          gtk_accessible_update_property(
+            handle.asInstanceOf[Ptr[GtkAccessible]],
+            GtkAccessibleProperty.GTK_ACCESSIBLE_PROPERTY_LABEL,
+            toCString(text),
+            -1
+          )
+        }
+
       case Prop.Columns(count) =>
         gridColumns(handle) = count
         placeGridCells(handle)
@@ -868,7 +898,7 @@ final class GtkRenderer extends Renderer {
     if !tapIds.contains(handle) then {
       val id = Handles.register(() => fireTap(handle))
       tapIds(handle) = id
-      if kinds.get(handle).contains(WidgetKind.Button) then
+      if kinds.get(handle).exists(k => k == WidgetKind.Button || k == WidgetKind.IconButton) then
         Zone {
           val _ = g_signal_connect_data(
             handle.asInstanceOf[gpointer],
@@ -929,7 +959,18 @@ final class GtkRenderer extends Renderer {
     }
   }
 
+  /** TabView and Tab, kept in their own class; see `GtkTabs`. */
+  private val tabs = GtkTabs(suppress)
+
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    if tabs.isTabView(parent) then {
+      tabs.insertAfter(parent, child, after)
+      return
+    }
+    if kinds.get(parent).contains(WidgetKind.Tab) then {
+      tabs.setContent(parent, child)
+      return
+    }
     if isGrid(parent) then {
       // Attached anywhere, then moved to its place in the child order, which is what
       // `placeGridCells` reads positions from.
@@ -962,7 +1003,9 @@ final class GtkRenderer extends Renderer {
   }
 
   def removeChild(parent: Handle, child: Handle): Unit =
-    if isGrid(parent) then {
+    if tabs.isTabView(parent) then tabs.remove(parent, child)
+    else if kinds.get(parent).contains(WidgetKind.Tab) then gtk_box_remove(parent.asInstanceOf[Ptr[GtkBox]], child)
+    else if isGrid(parent) then {
       gtk_grid_remove(parent.asInstanceOf[Ptr[GtkGrid]], child)
       placeGridCells(parent)
     } else if kinds.get(parent).contains(WidgetKind.ZStack) then
@@ -976,6 +1019,10 @@ final class GtkRenderer extends Renderer {
     * detach/attach cycle would drop focus and restart any running animation.
     */
   override def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    if tabs.isTabView(parent) then {
+      tabs.insertAfter(parent, child, after)
+      return
+    }
     // In a ZStack this is a change of paint order, and the widget's sibling position is all
     // GTK uses for that — so it is a reorder, the same as in a box.
     if kinds.get(parent).contains(WidgetKind.ZStack) || isGrid(parent) then {
@@ -1053,6 +1100,7 @@ final class GtkRenderer extends Renderer {
       case Some(win) =>
         gtk_window_set_child(win, null)
         gtk_window_destroy(win)
+      case None if tabs.destroy(handle) => ()
       case None =>
         setterParent.remove(handle) match {
           case Some(scroll) =>

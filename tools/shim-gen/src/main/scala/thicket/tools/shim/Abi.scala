@@ -219,7 +219,10 @@ object Abi {
       "UIDatePicker(",
       "compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC"
     ),
-    Kind(22, "Grid", None, None, "reserved for the Mac (#62): NSGridView / a constraint grid on UIKit")
+    Kind(22, "Grid", None, None, "reserved for the Mac (#62): NSGridView / a constraint grid on UIKit"),
+    Kind(23, "IconButton", None, None, "reserved for the Mac (#66): NSButton / UIButton with an SF Symbol"),
+    Kind(24, "TabView", None, None, "reserved for the Mac (#69): UITabBarController / NSTabViewController"),
+    Kind(25, "Tab", None, None, "reserved for the Mac (#69): one tab of a TabView")
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of

@@ -16,7 +16,8 @@
 
 package example.gallery
 
-import thicket.renderer.gtk.{GtkApp, GtkInspect}
+import thicket.renderer.Icon
+import thicket.renderer.gtk.{GtkApp, GtkIcons, GtkInspect}
 
 /** The gallery on GTK4.
   *
@@ -69,6 +70,8 @@ object GalleryGtk {
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "ZStack — children drawn over one another, last on top",
       "Grid — cells flow into columns, each as wide as its widest cell",
+      "IconButton — every curated icon, each with its label",
+      "TabView — sections kept alive, switched with the platform's tab bar",
       "Image — the three content fits",
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",
@@ -187,6 +190,72 @@ object GalleryGtk {
         .headOption.foreach(GtkInspect.click)
       check("and removing it moves them back", at("Volume").contains((0, 1)) && at("Inserted").isEmpty,
         cells.toString)
+    }
+
+    // IconButton: a GtkButton showing a theme icon. For every curated icon: the button carries
+    // the mapped name, the installed theme can actually draw it (not GTK's missing-image
+    // icon), and the label reaches the tooltip. Then one is clicked for real.
+    // Ours, by label: GtkCalendar (the DatePicker's popover) has icon buttons of its own for
+    // its month and year arrows, and the first version of this count included them.
+    val ourLabels = Icon.curated.map(_.toString).toSet + "Delete (disabled)"
+    val iconButtons = GtkInspect.findAll(root)(w =>
+      GtkInspect.isButton(w) && GtkInspect.buttonIconName(w).nonEmpty && ourLabels(GtkInspect.tooltip(w)))
+    val byLabel = iconButtons.map(b => GtkInspect.tooltip(b) -> b).toMap
+    check("an icon button per curated icon, plus the disabled one", iconButtons.length == Icon.curated.size + 1,
+      iconButtons.map(b => s"${GtkInspect.buttonIconName(b)}[${GtkInspect.tooltip(b)}]").toString)
+    val wrong = Icon.curated.filterNot { i =>
+      byLabel.get(i.toString).exists(b =>
+        GtkInspect.buttonIconName(b) == GtkIcons.name(i) && GtkInspect.themeHasIcon(b, GtkIcons.name(i)))
+    }
+    check("each shows its mapped icon, and the theme can draw every one", wrong.isEmpty,
+      wrong.map(i => s"$i -> ${GtkIcons.name(i)}").toString)
+    byLabel.get("Share").foreach(GtkInspect.click)
+    check("a tap reaches the app", GtkInspect.allTexts(root).contains("Tapped Share"),
+      GtkInspect.allTexts(root).filter(_.startsWith("Tapped")).toString)
+
+    // TabView: an AdwViewStack with an AdwViewSwitcherBar. The pages carry the titles and the
+    // mapped icons; every tab's content is mounted; and a tab is switched the way a user does,
+    // by clicking the switcher bar's own button.
+    val viewStacks = GtkInspect.findAll(root)(GtkInspect.isViewStack)
+    check("one AdwViewStack, with a switcher bar beside it",
+      viewStacks.length == 1 && GtkInspect.findAll(root)(GtkInspect.isViewSwitcherBar).length == 1,
+      s"${viewStacks.length} viewStacks")
+    viewStacks.headOption.foreach { stack =>
+      val pages = GtkInspect.stackPages(stack)
+      check("the pages are the tabs, in order, with their mapped icons",
+        pages.map(_._1) == Gallery.tabTitles &&
+          pages.map(_._2) == List(Icon.Home, Icon.Mail, Icon.Settings).map(GtkIcons.name),
+        pages.map(p => s"${p._1}/${p._2}").toString)
+      check("every tab's content is mounted, not only the visible one's",
+        List("home", "mail", "settings").forall(t => GtkInspect.allTexts(stack).contains(s"The $t tab's content")),
+        GtkInspect.allTexts(stack).toString)
+      // The gallery starts on Mail, index 1, not the stack's default first page.
+      check("the app's initial tab is the visible page, not the stack's default",
+        pages.lift(1).exists(_._3 == GtkInspect.visiblePage(stack)) && GtkInspect.allTexts(root).contains("Showing tab 1"),
+        GtkInspect.allTexts(root).filter(_.startsWith("Showing")).toString)
+      val bar = GtkInspect.findAll(root)(GtkInspect.isViewSwitcherBar).head
+      GtkInspect.findAll(bar)(w => GtkInspect.isToggleButton(w) && GtkInspect.allTexts(w).contains("Settings"))
+        .headOption.foreach(GtkInspect.click)
+      check("clicking the bar's Settings button shows that page", pages.lift(2).exists(_._3 == GtkInspect.visiblePage(stack)))
+      check("and reaches the app, as its index", GtkInspect.allTexts(root).contains("Showing tab 2"),
+        GtkInspect.allTexts(root).filter(_.startsWith("Showing")).toString)
+      // AdwViewStack can only append, so a tab inserted mid-list is placed by taking the later
+      // pages out and adding them back: the order, the titles and the content must all survive.
+      GtkInspect.findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Add a tab in the middle"))
+        .headOption.foreach(GtkInspect.click)
+      val after = GtkInspect.stackPages(stack)
+      check("a tab inserted in the middle lands there, and the others keep their order",
+        after.map(_._1) == List("Home", "Extra", "Mail", "Settings"), after.map(_._1).toString)
+      check("the user stays on Settings, and the app is told its new index",
+        GtkInspect.visiblePage(stack) == after.last._3 && GtkInspect.allTexts(root).contains("Showing tab 3"),
+        GtkInspect.allTexts(root).filter(_.startsWith("Showing")).toString)
+      check("and every tab still has its content",
+        List("home", "extra", "mail", "settings").forall(t => GtkInspect.allTexts(stack).contains(s"The $t tab's content")),
+        GtkInspect.allTexts(stack).toString)
+      GtkInspect.findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Remove the extra tab"))
+        .headOption.foreach(GtkInspect.click)
+      check("and removing it restores the three", GtkInspect.stackPages(stack).map(_._1) == Gallery.tabTitles,
+        GtkInspect.stackPages(stack).map(_._1).toString)
     }
 
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)

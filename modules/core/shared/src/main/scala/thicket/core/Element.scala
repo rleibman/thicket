@@ -23,6 +23,7 @@ import thicket.renderer.{
   ContentFit,
   Edge,
   Emphasis,
+  Icon,
   ImageSource,
   MenuItem,
   Orientation,
@@ -203,6 +204,63 @@ object dsl {
       ),
       Nil
     )
+
+  /** Top-level sections, switched between with the platform's own tab bar, each kept alive while the others show.
+    *
+    * `selected` is an index into `tabs`, as for [[Picker]]; the user's choice is reported through `onSelect`, and the
+    * app decides whether to write it back.
+    *
+    * {{{
+    * TabView(model.tab)(model.tab.set)(
+    *   Tab("Items", Icon.Home)(itemsScreen),
+    *   Tab("Settings", Icon.Settings)(settingsScreen)
+    * )
+    * }}}
+    */
+  def TabView(selected: Int | Signal[Int])(onSelect: Int => Unit)(tabs: Element*): Element = {
+    val selectedAttr = selected match {
+      case i: Int                    => Static(Prop.Selected(i))
+      case s: Signal[Int] @unchecked => Reactive(s, Prop.Selected(_))
+    }
+    Widget(WidgetKind.TabView, Seq(selectedAttr, Static(Prop.OnSelect(onSelect))), tabs)
+  }
+
+  /** One page of a [[TabView]]: a title, an icon — tab bars on iOS and Android are icon-led — and its content. */
+  def Tab(
+    title: String | Signal[String],
+    icon:  Icon
+  )(
+    content: Element
+  ): Element = Widget(WidgetKind.Tab, Seq(text(title), Static(Prop.Glyph(icon))), Seq(content))
+
+  /** A button that shows only an icon.
+    *
+    * `label` is required, not decoration: the button has no visible text, so it is what a screen reader announces and
+    * what the platform shows as a tooltip.
+    *
+    * {{{
+    * IconButton(Icon.Delete, "Delete item")(model.delete(item.id))
+    * }}}
+    */
+  def IconButton(
+    icon:    Icon,
+    label:   String,
+    enabled: Boolean = true
+  )(
+    onTap: => Unit
+  ): Element = {
+    require(label.trim.nonEmpty, "an IconButton needs a label: it is all a screen reader has to announce")
+    Widget(
+      WidgetKind.IconButton,
+      Seq(
+        Static(Prop.Glyph(icon)),
+        Static(Prop.AccessibleLabel(label)),
+        Static(Prop.OnTap(() => onTap)),
+        Static(Prop.Enabled(enabled))
+      ),
+      Nil
+    )
+  }
 
   /** Text that opens `url` when activated, drawn as each platform draws a link.
     *
@@ -674,6 +732,9 @@ object dsl {
     def contextMenu(items: MenuItem*): Element = withAttr(Static(Prop.ContextMenu(items)))
 
     def padding(dp: Int): Element = withAttr(Static(Prop.Padding(dp)))
+
+    /** What a screen reader announces for this element, and its tooltip where the platform has them. */
+    def accessibleLabel(text: String): Element = withAttr(Static(Prop.AccessibleLabel(text)))
 
     /** Open `url` when this element is activated, with whatever the platform opens URLs with.
       *

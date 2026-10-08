@@ -24,7 +24,7 @@ import android.view.{Gravity, View, ViewGroup, WindowInsets}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, GridLayout, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
+import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, GridLayout, HorizontalScrollView, ImageButton, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
 import scala.collection.mutable
 import thicket.renderer.*
 
@@ -142,6 +142,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // is the contract's flow: addView at an index is the whole of inserting a cell.
       case WidgetKind.Grid => GridLayout(context)
 
+      case WidgetKind.TabView => tabs.createTabView()
+      case WidgetKind.Tab     => tabs.createTab()
+
+      // An ImageButton on the borderless ripple: Android's icon button, as in a toolbar.
+      case WidgetKind.IconButton =>
+        val b = ImageButton(context)
+        b.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackgroundBorderless).resourceId)
+        b
+
       case WidgetKind.DatePicker =>
         val b = Button(context, null, _root_.android.R.attr.spinnerStyle)
         b.setAllCaps(false)
@@ -206,6 +215,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   def update(handle: Handle, patch: Seq[Prop]): Unit =
     patch.foreach {
+      case Prop.Text(v) if tabs.isTab(handle) => tabs.setTitle(handle, v)
+
       case Prop.Text(v) =>
         handle match {
           case e: EditText =>
@@ -363,9 +374,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
         appTaps(handle) = f
         connectTap(handle)
         // Something tappable should look tappable: a container picks up the platform's
-        // own ripple. Buttons already have theirs.
+        // own ripple. Buttons already have theirs, and an ImageButton has the borderless one,
+        // which this would replace with a bounded box.
         handle match {
-          case _: Button => ()
+          case _: Button      => ()
+          case _: ImageButton => ()
           case v =>
             v.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackground).resourceId)
         }
@@ -389,6 +402,26 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.Enabled(v) =>
         handle.setEnabled(v)
+        // An ImageButton does not dim its own image when disabled; 38% is the platform's
+        // disabled emphasis.
+        handle match {
+          case b: ImageButton => b.setImageAlpha(if v then 255 else 97)
+          case _              => ()
+        }
+
+      case Prop.Glyph(icon) if tabs.isTab(handle) => tabs.setIcon(handle, icon)
+
+      case Prop.Glyph(icon) =>
+        handle match {
+          case b: ImageButton => b.setImageDrawable(iconDrawable(icon))
+          case _              => ()
+        }
+
+      // A screen reader reads contentDescription; the tooltip is what a long press or a mouse
+      // hover shows on API 26+.
+      case Prop.AccessibleLabel(text) =>
+        handle.setContentDescription(text)
+        handle.setTooltipText(text)
 
       // Create-only: honouring a change would mean swapping ScrollView for
       // HorizontalScrollView under a live subtree. See Prop.Axis.
@@ -469,6 +502,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.OnDateChange(f) =>
         dateChanged(handle) = f
         handle.setOnClickListener((_: View) => openDateDialog(handle))
+
+      case Prop.Selected(index) if tabs.isTabView(handle) => tabs.select(handle, index)
+      case Prop.OnSelect(f) if tabs.isTabView(handle)     => tabs.onSelect(handle, f)
 
       case Prop.Options(values) if handle.isInstanceOf[RadioGroup] =>
         val g = handle.asInstanceOf[RadioGroup]
@@ -724,6 +760,32 @@ final class AndroidRenderer(context: Context) extends Renderer {
     dialog.show()
   }
 
+  /** A theme colour attribute as a colour, whether the theme gives it as a resource or a literal. */
+  private def colourAttr(attr: Int): Int = {
+    val tv = themeAttr(attr)
+    if tv.resourceId != 0 then context.getColorStateList(tv.resourceId).getDefaultColor else tv.data
+  }
+
+  /** TabView and Tab, kept in their own class; see `AndroidTabs`. */
+  private lazy val tabs = AndroidTabs(context, dp, colourAttr, iconDrawable)
+
+  /** A curated icon from the bundled Material Symbols artwork, in the theme's control colour; a platform icon from the
+    * app's own drawables, by name.
+    */
+  private def iconDrawable(icon: Icon): _root_.android.graphics.drawable.Drawable =
+    MaterialSymbols.pathFor(icon) match {
+      case Some(d) =>
+        IconDrawable(d, dp(24), colourAttr(_root_.android.R.attr.colorControlNormal))
+      case None =>
+        val name = icon match {
+          case Icon.Platform(_, _, android) => android
+          case other                        => other.toString
+        }
+        val id = context.getResources.getIdentifier(name, "drawable", context.getPackageName)
+        if id == 0 then throw IllegalArgumentException(s"no drawable named '$name' in ${context.getPackageName}")
+        context.getDrawable(id)
+    }
+
   /** Each segmented control's chosen index, kept here because its RadioButtons are rebuilt when the options change. */
   private val segmentIndex = mutable.Map.empty[RadioGroup, Int]
 
@@ -783,6 +845,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
 
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    if tabs.isTabView(parent) then {
+      tabs.insertAfter(parent, child.asInstanceOf[FrameLayout], after)
+      return
+    }
+    if kinds.get(parent).contains(WidgetKind.Tab) then {
+      tabs.setContent(parent.asInstanceOf[FrameLayout], child)
+      return
+    }
     if kinds.get(parent).contains(WidgetKind.Scroll) then {
       // A scroll view holds one child, so "insert" is "set". Typed as ViewGroup, not
       // ScrollView: a horizontal Scroll is a HorizontalScrollView and the two share no
@@ -821,6 +891,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   def removeChild(parent: Handle, child: Handle): Unit = {
+    if tabs.isTabView(parent) then {
+      tabs.remove(parent, child)
+      return
+    }
     val vg = parent.asInstanceOf[ViewGroup]
     vg.removeView(child)
     vg match {
@@ -831,6 +905,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   def destroy(handle: Handle): Unit = {
+    // A Tab is in its TabView's content area and has an item in its bar; both go.
+    tabs.destroy(handle)
     handle.getParent match {
       case vg: ViewGroup =>
         vg.removeView(handle)
