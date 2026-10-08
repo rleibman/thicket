@@ -69,6 +69,32 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-08 — **Icons are a curated set of 24 meanings, each the platform's own; Android's
+  are bundled Material Symbols paths** (#61, both choices the project owner's).
+  `Icon.Add` … `Icon.Download` name what an icon *means*. GTK maps each to a
+  freedesktop symbolic name (`GtkIcons`), so the user's theme draws and recolours it. Every
+  name was checked to exist in Adwaita, and the gallery asks the *active* theme for each at
+  runtime: on this machine that is Ubuntu's Yaru-dark, which is why a falsified mapping to
+  `share-symbolic` still passed (Yaru has one, Adwaita does not) and a name no theme has was
+  needed to make the check fail. Adwaita has no `share` icon (so Share is `send-to`) and no
+  heart, so the set has no Favorite: GNOME uses a star, and so does the set.
+  **Android has no system icon set an app should use** (`android.R.drawable`'s `ic_menu_*`
+  are Holo-era), and the renderer ships as a jar, which cannot carry resources. So the 24
+  Material Symbols (Outlined, Apache-2.0) travel as path data in `MaterialSymbols` and are
+  drawn by `IconDrawable`, a tinted vector `Path` in the theme's `colorControlNormal`. The
+  parser, `SvgPath`, handles only the commands the set uses (`M L H V Q T Z`) and refuses
+  the rest. It lives in `renderer-api` so that every bundled path is parsed and
+  bounds-checked on JVM and JS, not first on a phone.
+  `Icon.Platform(gtk, sfSymbol, androidDrawable)` is the escape hatch. On Android it names a
+  drawable in the *app's* package, which has resources even though the framework does not.
+  `IconButton` is a kind (Android's icon button is `ImageButton`, a different class), and
+  its `label` is required: the button has no text, so the label is all a screen reader has.
+  It is `Prop.AccessibleLabel`, available on every widget, and it is also the tooltip
+  everywhere.
+  Measured on Android by drawing each icon into a bitmap: some of the square painted, not
+  none and not all. Falsified by dropping the view-box translation, which painted `0.0%`.
+  The Apple half (SF Symbols, the accessibility label, kind 23) is #66, for the Mac.
+
 - 2026-10-07 — **`Grid` is built, the second §12.2a exception; icons come before `TabView`**
   (#60, #61, both decided by the project owner). UIKit has no grid view, while GTK
   (`GtkGrid`), Android (`android.widget.GridLayout`, framework, not deprecated in

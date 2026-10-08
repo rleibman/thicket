@@ -216,13 +216,15 @@ final class TestRenderer extends Renderer {
       // Options as a list, not a joined string: a test that asserts on "a,b" cannot tell an
       // option containing a comma from two options, and the whole point of an index-based
       // selection is that labels are not identities.
-      case Prop.Options(vs)     => n.options = vs
-      case Prop.Selected(i)     => n.nums("selected") = i.toDouble
-      case Prop.OnSelect(f)     => n.onSelect = Some(f)
-      case Prop.Columns(count)  => n.nums("columns") = count.toDouble
-      case Prop.OpenUrl(u)      => n.props("url") = u
-      case Prop.DateValue(d)    => n.props("date") = d.toString
-      case Prop.OnDateChange(f) => n.onDateChange = Some(f)
+      case Prop.Options(vs)        => n.options = vs
+      case Prop.Selected(i)        => n.nums("selected") = i.toDouble
+      case Prop.OnSelect(f)        => n.onSelect = Some(f)
+      case Prop.Columns(count)     => n.nums("columns") = count.toDouble
+      case Prop.Glyph(icon)        => n.props("icon") = icon.toString
+      case Prop.AccessibleLabel(t) => n.props("label") = t
+      case Prop.OpenUrl(u)         => n.props("url") = u
+      case Prop.DateValue(d)       => n.props("date") = d.toString
+      case Prop.OnDateChange(f)    => n.onDateChange = Some(f)
       case Prop.StackAlignment(h, v) =>
         n.props("horizontal") = h.toString
         n.props("vertical") = v.toString

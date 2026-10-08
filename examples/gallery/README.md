@@ -84,10 +84,10 @@ A component counts as present in the gallery when:
 ## What it covers
 
 Labels in every `TextRole`, buttons by role and disabled, `TextField`, `SecureField`,
-`Checkbox`, `Toggle`, `SegmentedControl`, a `DatePicker` on a leap day, two `Link`s (one
-also tappable), `Slider`, determinate `ProgressBar`, `ActivityIndicator`, `Divider`,
-`Spacer`, `Grow`, a two-column `Grid` with a row inserted in the middle, `ZStack` as a
-corner badge and as a centred overlay, `Image` in two fits, nested and horizontal `Scroll`,
-keyed `ForEach`, virtualised `LazyColumn`, a per-row `ContextMenu`, subtree theming with
-`Provide`, the two presented widgets (`Alert` and `Sheet`), toolbar `Action`s and a
-navigation push.
+`Checkbox`, `Toggle`, every curated `Icon` as an `IconButton`, `SegmentedControl`, a
+`DatePicker` on a leap day, two `Link`s (one also tappable), `Slider`, determinate
+`ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer`, `Grow`, a two-column `Grid` with a
+row inserted in the middle, `ZStack` as a corner badge and as a centred overlay, `Image` in
+two fits, nested and horizontal `Scroll`, keyed `ForEach`, virtualised `LazyColumn`, a
+per-row `ContextMenu`, subtree theming with `Provide`, the two presented widgets (`Alert`
+and `Sheet`), toolbar `Action`s and a navigation push.

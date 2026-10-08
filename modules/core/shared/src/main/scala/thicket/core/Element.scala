@@ -23,6 +23,7 @@ import thicket.renderer.{
   ContentFit,
   Edge,
   Emphasis,
+  Icon,
   ImageSource,
   MenuItem,
   Orientation,
@@ -203,6 +204,35 @@ object dsl {
       ),
       Nil
     )
+
+  /** A button that shows only an icon.
+    *
+    * `label` is required, not decoration: the button has no visible text, so it is what a screen reader announces and
+    * what the platform shows as a tooltip.
+    *
+    * {{{
+    * IconButton(Icon.Delete, "Delete item")(model.delete(item.id))
+    * }}}
+    */
+  def IconButton(
+    icon:    Icon,
+    label:   String,
+    enabled: Boolean = true
+  )(
+    onTap: => Unit
+  ): Element = {
+    require(label.trim.nonEmpty, "an IconButton needs a label: it is all a screen reader has to announce")
+    Widget(
+      WidgetKind.IconButton,
+      Seq(
+        Static(Prop.Glyph(icon)),
+        Static(Prop.AccessibleLabel(label)),
+        Static(Prop.OnTap(() => onTap)),
+        Static(Prop.Enabled(enabled))
+      ),
+      Nil
+    )
+  }
 
   /** Text that opens `url` when activated, drawn as each platform draws a link.
     *
@@ -674,6 +704,9 @@ object dsl {
     def contextMenu(items: MenuItem*): Element = withAttr(Static(Prop.ContextMenu(items)))
 
     def padding(dp: Int): Element = withAttr(Static(Prop.Padding(dp)))
+
+    /** What a screen reader announces for this element, and its tooltip where the platform has them. */
+    def accessibleLabel(text: String): Element = withAttr(Static(Prop.AccessibleLabel(text)))
 
     /** Open `url` when this element is activated, with whatever the platform opens URLs with.
       *

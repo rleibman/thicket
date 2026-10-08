@@ -18,7 +18,7 @@ package example.gallery
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{AlertAction, Alignment, CalendarDate, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{AlertAction, Alignment, CalendarDate, Icon, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
 import example.gallery.buildinfo.BuildInfo
 import thicket.signals.{Signal, Var}
 
@@ -52,6 +52,7 @@ object Gallery {
     val due:      Var[CalendarDate] = Var(Gallery.firstDue)
     val linkTaps: Var[Int]     = Var(0)
     val gridExtra: Var[Boolean] = Var(false)
+    val lastIcon:  Var[String]  = Var("")
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
@@ -218,6 +219,18 @@ object Gallery {
             ),
             Button(model.gridExtra.map(b => if b then "Remove the row" else "Insert a row"))(
               model.gridExtra.set(!model.gridExtra.now)
+            )
+          ),
+          section("IconButton — every curated icon, each with its label")(
+            // All 24 at once, so a reviewer sees every mapping on every platform; in a Grid,
+            // which is what a toolbar of icons is.
+            Grid(columns = 8, spacing = 4)(
+              Icon.curated.map(i => IconButton(i, i.toString)(model.lastIcon.set(i.toString)))*
+            ),
+            Row(spacing = 8)(
+              IconButton(Icon.Delete, "Delete (disabled)", enabled = false)(()),
+              // Bound: proves a tap went through the renderer to the app.
+              Label(model.lastIcon.map(n => if n.isEmpty then "Tap an icon" else s"Tapped $n"))
             )
           ),
           section("Image — the three content fits")(
