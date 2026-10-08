@@ -16,6 +16,13 @@
 # logged-in session (`./svc.sh install` from the runner directory does that), because the
 # macOS self-tests open real windows. It needs Xcode, an 'iPhone 17' simulator, a JDK and
 # sbt on its PATH.
+#
+# After `./svc.sh install`, delete `SessionCreate` from the LaunchAgent's plist and restart
+# it (`/usr/libexec/PlistBuddy -c "Delete :SessionCreate" ~/Library/LaunchAgents/actions.runner.*.plist`,
+# then `./svc.sh stop && ./svc.sh start`). GitHub's template sets it, which puts the runner in
+# a security session of its own, outside the logged-in GUI session: AppKit still runs there,
+# but the window server does not show its windows, so an app's window cannot be found
+# (measured: windows=0 for an app that was up, until it was removed).
 
 name: Apple
 
