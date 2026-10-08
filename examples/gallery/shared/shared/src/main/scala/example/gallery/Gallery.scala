@@ -53,7 +53,9 @@ object Gallery {
     val linkTaps: Var[Int]     = Var(0)
     val gridExtra: Var[Boolean] = Var(false)
     val lastIcon:  Var[String]  = Var("")
-    val tab:       Var[Int]     = Var(0)
+    // Not 0: the platform shows the first tab by default, so starting anywhere else is what
+    // proves the app's initial selection reaches it (#70 review: GTK dropped it).
+    val tab: Var[Int] = Var(1)
     val extraTab:  Var[Boolean] = Var(false)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)

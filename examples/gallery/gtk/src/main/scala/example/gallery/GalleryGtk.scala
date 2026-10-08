@@ -229,7 +229,10 @@ object GalleryGtk {
       check("every tab's content is mounted, not only the visible one's",
         List("home", "mail", "settings").forall(t => GtkInspect.allTexts(stack).contains(s"The $t tab's content")),
         GtkInspect.allTexts(stack).toString)
-      check("the model's tab is the visible page", pages.headOption.exists(_._3 == GtkInspect.visiblePage(stack)))
+      // The gallery starts on Mail, index 1, not the stack's default first page.
+      check("the app's initial tab is the visible page, not the stack's default",
+        pages.lift(1).exists(_._3 == GtkInspect.visiblePage(stack)) && GtkInspect.allTexts(root).contains("Showing tab 1"),
+        GtkInspect.allTexts(root).filter(_.startsWith("Showing")).toString)
       val bar = GtkInspect.findAll(root)(GtkInspect.isViewSwitcherBar).head
       GtkInspect.findAll(bar)(w => GtkInspect.isToggleButton(w) && GtkInspect.allTexts(w).contains("Settings"))
         .headOption.foreach(GtkInspect.click)

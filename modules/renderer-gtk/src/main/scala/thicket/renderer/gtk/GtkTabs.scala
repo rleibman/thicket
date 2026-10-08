@@ -45,8 +45,12 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
 
   private val selectIds = mutable.Map.empty[Ptr[GtkWidget], Long]
 
-  /** Each TabView's selection as the app last knows it, and its `OnSelect`. */
+  /** Each TabView's selection as the app last knows it, and its `OnSelect`. `known` is unset until a selection has
+    * actually been shown, which is not at create: `Selected` is applied before any tab is mounted, so it is kept in
+    * `wanted` and shown when its tab arrives (#70 review, the same thing `AndroidTabs` does).
+    */
   private val known  = mutable.Map.empty[Ptr[GtkWidget], Int]
+  private val wanted = mutable.Map.empty[Ptr[GtkWidget], Int]
   private val chosen = mutable.Map.empty[Ptr[GtkWidget], Int => Unit]
 
   /** After tabs are inserted or removed, the page on screen is the same page, but its index may not be: inserting a tab
@@ -55,7 +59,9 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     */
   private def reportIfMoved(view: Ptr[GtkWidget]): Unit = {
     val now = selectedIndex(view)
-    if now >= 0 && !known.get(view).contains(now) then {
+    // Nothing to report while the app's own selection has not been shown yet: the tabs are
+    // still arriving, and a 0 reported now would overwrite what the app asked for.
+    if known.contains(view) && now >= 0 && !known.get(view).contains(now) then {
       known(view) = now
       chosen.get(view).foreach(_(now))
     }
@@ -162,7 +168,8 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     if visible != null && visible != tab then adw_view_stack_set_visible_child(stackOf(view), visible)
     suppress -= view
     order(view) = current.take(at) ++ (tab +: later)
-    reportIfMoved(view)
+    if known.contains(view) then reportIfMoved(view)
+    else wanted.get(view).foreach(i => select(view, i))
   }
 
   def remove(view: Ptr[GtkWidget], tab: Ptr[GtkWidget]): Unit =
@@ -174,7 +181,8 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
       reportIfMoved(view)
     }
 
-  def select(view: Ptr[GtkWidget], index: Int): Unit =
+  def select(view: Ptr[GtkWidget], index: Int): Unit = {
+    wanted(view) = index
     // AdwViewStack always shows a page, so -1 ("none") leaves it where it is.
     order(view).lift(index).foreach { tab =>
       known(view) = index
@@ -184,6 +192,7 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
         suppress -= view
       }
     }
+  }
 
   def selectedIndex(view: Ptr[GtkWidget]): Int =
     order(view).indexOf(adw_view_stack_get_visible_child(stackOf(view)))
@@ -220,6 +229,7 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     val _ = stacks.remove(h)
     val _ = order.remove(h)
     val _ = known.remove(h)
+    val _ = wanted.remove(h)
     val _ = chosen.remove(h)
     val _ = titles.remove(h)
     val _ = icons.remove(h)
