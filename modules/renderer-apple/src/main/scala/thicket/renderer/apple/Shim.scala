@@ -107,6 +107,14 @@ object Shim {
   def sui_presented_message(h: Handle): CString = extern
   def sui_menu_item_count(h: Handle): CInt = extern
   def sui_menu_item_label(h: Handle, index: CInt): CString = extern
+  def sui_option_count(h: Handle): CInt = extern
+  def sui_option_label(h: Handle, index: CInt): CString = extern
+  def sui_choose(h: Handle, index: CInt): CInt = extern
+  def sui_choose_date(h: Handle, epochDay: CInt): CInt = extern
+  def sui_get_frame(h: Handle, outX: Ptr[CDouble], outY: Ptr[CDouble], outW: Ptr[CDouble], outH: Ptr[CDouble]): Unit = extern
+  def sui_record_opened_urls(on: CInt): Unit = extern
+  def sui_opened_url_count(): CInt = extern
+  def sui_opened_url(index: CInt): CString = extern
   def sui_pages_depth(): CInt = extern
   def sui_page_title(index: CInt): CString = extern
   def sui_pages_shown(): CInt = extern

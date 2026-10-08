@@ -137,4 +137,42 @@ object AppleInspect {
   /** How far a vertical scroller is from the top of its content; 0 at the top, -1 if `h` is not a scroller. */
   def scrollOffset(h: Shim.Handle): Double = Shim.sui_scroll_offset(h)
 
+
+  /** The options a Picker or SegmentedControl holds, as the platform's control has them. */
+  def options(h: Shim.Handle): List[String] =
+    (0 until Shim.sui_option_count(h)).toList.flatMap(i => str(Shim.sui_option_label(h, i)))
+
+  /** The selected index, read from the control; -1 for none. */
+  def selected(h: Shim.Handle): Int = Shim.sui_get_selected(h)
+
+  /** Chooses an option through the control's own action. False where the platform offers no way to. */
+  def choose(
+    h:     Shim.Handle,
+    index: Int
+  ): Boolean = Shim.sui_choose(h, index) != 0
+
+  /** A DatePicker's day, read from the control, as an epoch day. */
+  def date(h: Shim.Handle): Int = Shim.sui_get_date(h)
+
+  /** Sets a DatePicker's day through the control's own action. */
+  def chooseDate(
+    h:        Shim.Handle,
+    epochDay: Int
+  ): Boolean = Shim.sui_choose_date(h, epochDay) != 0
+
+  /** A view's frame in its window, top-left origin: (x, y, width, height). */
+  def frame(h: Shim.Handle): (Double, Double, Double, Double) = Zone {
+    val out = alloc[Double](4)
+    Shim.sui_get_frame(h, out, out + 1, out + 2, out + 3)
+    (out(0), out(1), out(2), out(3))
+  }
+
+  /** Records the URLs links would open instead of opening them, until stopped; returns a reader for them. */
+  def recordOpenedUrls(): () => List[String] = {
+    Shim.sui_record_opened_urls(1)
+    () => (0 until Shim.sui_opened_url_count()).toList.flatMap(i => str(Shim.sui_opened_url(i)))
+  }
+
+  def stopRecordingUrls(): Unit = Shim.sui_record_opened_urls(0)
+
 }

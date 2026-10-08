@@ -220,6 +220,21 @@ const char *sui_presented_message(sui_handle h);
 /* How many items the platform's menu for this view holds; 0 when it has none. */
 int32_t sui_menu_item_count(sui_handle h);
 const char *sui_menu_item_label(sui_handle h, int32_t index);
+/* How many options a Picker or SegmentedControl holds, as the platform's control has them. */
+int32_t sui_option_count(sui_handle h);
+const char *sui_option_label(sui_handle h, int32_t index);
+/* Chooses option `index` through the control's own action, as a user would. 0 where the
+   platform offers no way to do that from code (UIKit's menu-backed Picker). */
+int32_t sui_choose(sui_handle h, int32_t index);
+/* Sets a DatePicker's day through the control's own action, as a user's choice would. */
+int32_t sui_choose_date(sui_handle h, int32_t epochDay);
+/* A view's alignment rect — what Auto Layout positions — in its window, top-left origin. */
+void sui_get_frame(sui_handle h, double *outX, double *outY, double *outW, double *outH);
+/* 1: a Link records the URL it would open instead of opening it, so a test can check it
+   without launching a browser. 0: open for real again. */
+void sui_record_opened_urls(int32_t on);
+int32_t sui_opened_url_count(void);
+const char *sui_opened_url(int32_t index);
 /* How many pages the platform's own stack holds. */
 int32_t sui_pages_depth(void);
 /* The title the platform shows for page `index`, bottom first: the navigation item's
