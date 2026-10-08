@@ -220,6 +220,63 @@ object GallerySelfTest {
       check("the spinner is over its content, centred", kids.length == 2 && spinnerCentred,
         kids.map(k => AppleInspect.frame(k)).toString)
     }
+
+    // --- Grid: the questions GtkGrid answers, asked of NSGridView's rows and columns on AppKit
+    // and of the construction on UIKit — and, on both, of the frames, which are the
+    // platform's own layout whichever builds it.
+    val grids = ofKind(WidgetKind.Grid)
+    check("one Grid", grids.length == 1, grids.length.toString)
+    grids.headOption.foreach { grid =>
+      def cells = AppleInspect.children(grid).map(c => (AppleInspect.allTexts(c).mkString, c))
+      def at(text: String) = cells.find(_._1 == text).flatMap((_, c) => AppleInspect.gridCell(grid, c))
+      def placement = cells.map((t, c) => t -> AppleInspect.gridCell(grid, c)).toString
+      // Each column starts where the one before it ends, at its widest cell, plus the 8 of
+      // spacing; each row likewise at its tallest cell. Every cell's leading and top edge is
+      // its column's and its row's. Within a point, as the ZStack's checks are.
+      def laidOut: (Boolean, String) = {
+        val placed = cells.flatMap((_, c) => AppleInspect.gridCell(grid, c).map(_ -> AppleInspect.frame(c)))
+        val byCol  = placed.groupBy(_._1._2).toList.sortBy(_._1).map(_._2.map(_._2))
+        val byRow  = placed.groupBy(_._1._1).toList.sortBy(_._1).map(_._2.map(_._2))
+        def near(a: Double, b: Double) = math.abs(a - b) <= 1.0
+        val colsLine = byCol.forall(fs => fs.forall(f => near(f._1, fs.head._1)))
+        val rowsLine = byRow.forall(fs => fs.forall(f => near(f._2, fs.head._2)))
+        val colsStep = byCol.sliding(2).forall {
+          case List(a, b) => near(b.head._1, a.head._1 + a.map(_._3).max + 8)
+          case _          => true
+        }
+        val rowsStep = byRow.sliding(2).forall {
+          case List(a, b) => near(b.head._2, a.head._2 + a.map(_._4).max + 8)
+          case _          => true
+        }
+        (colsLine && rowsLine && colsStep && rowsStep,
+          s"cols line=$colsLine step=$colsStep rows line=$rowsLine step=$rowsStep " +
+            byCol.map(_.map(f => f"(${f._1}%.0f,${f._2}%.0f ${f._3}%.0fx${f._4}%.0f)")).toString)
+      }
+      def button(t: String) = ofKind(WidgetKind.Button).find(h => AppleInspect.text(h).contains(t))
+
+      check("cells flow row by row into two columns",
+        at("Typed above").contains((0, 0)) && at("Volume").contains((1, 0)) &&
+          at("A much longer label than the others").contains((2, 0)) && at("short").contains((2, 1)),
+        placement)
+      check("the bound cell sits beside its label",
+        cells.exists((t, c) => t.matches("""\d+\.\d""") && AppleInspect.gridCell(grid, c).contains((1, 1))), placement)
+      val (ok, how) = laidOut
+      check("columns as wide as their widest cell, rows as tall as their tallest, 8 apart", ok, how)
+      println(s"[gallery]   grid frames: $how")
+
+      button("Insert a row").foreach(AppleInspect.click)
+      check("a row inserted in the middle lands there",
+        at("Inserted").contains((1, 0)) && at("a whole row").contains((1, 1)), placement)
+      check("and every cell after it moves down a row", at("Volume").contains((2, 0)) && at("short").contains((3, 1)),
+        placement)
+      val (ok2, how2) = laidOut
+      check("and the layout follows", ok2, how2)
+
+      button("Remove the row").foreach(AppleInspect.click)
+      check("and removing it moves them back", at("Volume").contains((1, 0)) && at("Inserted").isEmpty, placement)
+      val (ok3, how3) = laidOut
+      check("and so does the layout", ok3, how3)
+    }
   }
 
 }

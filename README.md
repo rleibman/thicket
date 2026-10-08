@@ -32,7 +32,7 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | | |
 |---|---|
 | Works today | Linux/GTK4, Android, macOS, iOS simulator — the same app on all four |
-| Widgets | **22 of 32** as widgets — 21 measured on every renderer, and `Grid` on GTK and Android with its Apple half in [#62](https://github.com/rleibman/thicket/issues/62); **27 of 32** covered once you count the five the catalogue lists as widgets and this framework deliberately does not → [docs/12](docs/12-component-status.md) |
+| Widgets | **22 of 32** as widgets, every one measured on every renderer; **27 of 32** covered once you count the five the catalogue lists as widgets and this framework deliberately does not → [docs/12](docs/12-component-status.md) |
 | Navigation | Native container on all four: `AdwNavigationView`, a `FrameLayout` + `Slide`, `UINavigationController`, a macOS sidebar. Back gesture and title bar are the platform's own |
 | Theming | By role, scoped to a subtree with `Provide` |
 | Published artefacts | `dev.thicket`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |

@@ -285,6 +285,102 @@ private final class ZStackView: NSView {
   }
 }
 
+/// Kind 22, a `Grid`: cells flow into `columns` columns in order, cell `i` at row
+/// `i / columns`, column `i % columns`, each column as wide as its widest cell.
+///
+/// An `NSGridView`, AppKit's own grid, inside a plain view that supplies the padding
+/// (`NSGridView` has none). Its rows are built from arrays of views, so it has no notion of
+/// a cell's *index*: inserting one in the middle means every later cell moves. So the order
+/// is kept here, and the rows are rebuilt from it on every insert and removal — the same
+/// re-placing GTK does through `GtkGridLayoutChild`.
+///
+/// Every way a cell leaves comes through [[remove]]: `sui_remove_child` and `sui_destroy`
+/// call it before detaching, because a removed view would otherwise linger in the row arrays.
+private final class GridView: NSView {
+  let grid = NSGridView()
+  var columns = 1 {
+    didSet { if columns != oldValue { reflow() } }
+  }
+  private(set) var cells: [NSView] = []
+  private var insets: [NSLayoutConstraint] = []
+
+  init() {
+    super.init(frame: .zero)
+    grid.translatesAutoresizingMaskIntoConstraints = false
+    // Leading and top, as GTK's labels sit and as the UIKit construction places them; the
+    // grid's default centres a narrow cell in a wide column.
+    grid.xPlacement = .leading
+    grid.yPlacement = .top
+    addSubview(grid)
+    setPadding(0)
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  func setPadding(_ p: CGFloat) {
+    NSLayoutConstraint.deactivate(insets)
+    insets = [
+      grid.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
+      grid.topAnchor.constraint(equalTo: topAnchor, constant: p),
+      trailingAnchor.constraint(equalTo: grid.trailingAnchor, constant: p),
+      bottomAnchor.constraint(equalTo: grid.bottomAnchor, constant: p)
+    ]
+    NSLayoutConstraint.activate(insets)
+  }
+
+  func setSpacing(_ s: CGFloat) {
+    grid.rowSpacing = s
+    grid.columnSpacing = s
+  }
+
+  func insert(_ c: NSView, after: NSView?) {
+    // A move arrives as an insert of a view that is already a cell.
+    cells.removeAll { $0 === c }
+    let at: Int
+    if let a = after { at = cells.firstIndex(of: a).map { $0 + 1 } ?? cells.count } else { at = 0 }
+    c.translatesAutoresizingMaskIntoConstraints = false
+    cells.insert(c, at: at)
+    reflow()
+  }
+
+  func remove(_ c: NSView) {
+    guard let i = cells.firstIndex(of: c) else { return }
+    cells.remove(at: i)
+    reflow()
+  }
+
+  private func reflow() {
+    while grid.numberOfRows > 0 { grid.removeRow(at: 0) }
+    while grid.numberOfColumns > 0 { grid.removeColumn(at: 0) }
+    // As many columns as there are cells to fill them, up to `columns`: a grid of two cells
+    // and three columns has no empty third column taking spacing, as on GTK.
+    let width = min(columns, cells.count)
+    for start in stride(from: 0, to: cells.count, by: columns) {
+      var row = Array(cells[start..<min(start + columns, cells.count)])
+      while row.count < width { row.append(NSGridCell.emptyContentView) }
+      grid.addRow(with: row)
+    }
+  }
+
+  /// Where the grid itself has placed `c`, read from its rows and columns.
+  func position(of c: NSView) -> (row: Int, column: Int)? {
+    guard let cell = grid.cell(for: c), let r = cell.row, let col = cell.column else { return nil }
+    return (grid.index(of: r), grid.index(of: col))
+  }
+
+  /// The cells in reading order, as the grid holds them — not as `cells` says.
+  var placed: [NSView] {
+    (0..<grid.numberOfRows).flatMap { r in
+      (0..<grid.numberOfColumns).compactMap { c -> NSView? in
+        let v = grid.cell(atColumnIndex: c, rowIndex: r).contentView
+        return v === NSGridCell.emptyContentView ? nil : v
+      }
+    }
+  }
+}
+
+/// The grid a view is a cell of: its superview is the `NSGridView`, whose superview is ours.
+private func gridOf(_ v: NSView) -> GridView? { v.superview?.superview as? GridView }
 
 /// Escape on a sheet arrives as `cancelOperation`. That is the platform closing it without
 /// a choice, which is what `OnDismiss` reports; the app then takes it down by unmounting.
@@ -473,6 +569,9 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 19:
     return retained(ZStackView())
 
+  case 22:
+    return retained(GridView())
+
   case 20:
     // .selectOne: one segment at a time, and a click on the chosen one leaves it chosen —
     // a segmented control is a choice, not a set of toggles.
@@ -610,6 +709,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   }
   // Detaching is part of destroying, not a separate step the caller performs first — the
   // contract says so, and the reconciler destroys depth-first.
+  gridOf(v)?.remove(v)
   v.removeFromSuperview()
   Unmanaged<NSView>.fromOpaque(h).release()
 }
@@ -673,14 +773,24 @@ public func sui_set_enabled(_ h: UnsafeMutableRawPointer, _ on: Int32) {
 
 @_cdecl("sui_set_spacing")
 public func sui_set_spacing(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
-  (view(h) as? NSStackView)?.spacing = CGFloat(dp)
+  switch view(h) {
+  case let s as NSStackView: s.spacing = CGFloat(dp)
+  case let g as GridView: g.setSpacing(CGFloat(dp))
+  default: break
+  }
 }
 
 @_cdecl("sui_set_padding")
 public func sui_set_padding(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
+  if let g = view(h) as? GridView { g.setPadding(CGFloat(dp)); return }
   guard let s = view(h) as? NSStackView else { return }
   let p = CGFloat(dp)
   s.edgeInsets = NSEdgeInsets(top: p, left: p, bottom: p, right: p)
+}
+
+@_cdecl("sui_set_grid_columns")
+public func sui_set_grid_columns(_ h: UnsafeMutableRawPointer, _ count: Int32) {
+  (view(h) as? GridView)?.columns = max(1, Int(count))
 }
 
 @_cdecl("sui_set_text_role")
@@ -904,6 +1014,11 @@ public func sui_insert_after(
     return
   }
 
+  if let g = p as? GridView {
+    g.insert(c, after: after.map(view))
+    return
+  }
+
   if let scroll = p as? NSScrollView {
     // A scroll view holds exactly one child, so "insert" is "set" — the same shape as
     // gtk_scrolled_window_set_child.
@@ -1093,6 +1208,7 @@ public func sui_remove_child(_ parent: UnsafeMutableRawPointer, _ child: UnsafeM
     return
   }
   if let stack = p as? NSStackView { stack.removeArrangedSubview(c) }
+  (p as? GridView)?.remove(c)
   c.removeFromSuperview()
 }
 
@@ -1150,6 +1266,7 @@ public func sui_run_on_main_after(_ delayMs: Int32, _ cb: @escaping sui_void_cb,
 private func arranged(_ v: NSView) -> [NSView] {
   if let s = v as? NSStackView { return s.arrangedSubviews }
   if let s = v as? NSScrollView { return s.documentView.map { [$0] } ?? [] }
+  if let g = v as? GridView { return g.placed }
   return v.subviews
 }
 
@@ -1742,4 +1859,16 @@ public func sui_opened_url_count() -> Int32 {
 public func sui_opened_url(_ index: Int32) -> UnsafePointer<CChar>? {
   guard let log = openedUrls, index >= 0, Int(index) < log.count else { return nil }
   return scratch(log[Int(index)])
+}
+
+/// Where the `NSGridView` has placed a cell, read from its own rows and columns.
+@_cdecl("sui_grid_cell")
+public func sui_grid_cell(
+  _ h: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer,
+  _ outRow: UnsafeMutablePointer<Double>, _ outColumn: UnsafeMutablePointer<Double>
+) -> Int32 {
+  guard let g = view(h) as? GridView, let at = g.position(of: view(child)) else { return 0 }
+  outRow.pointee = Double(at.row)
+  outColumn.pointee = Double(at.column)
+  return 1
 }
