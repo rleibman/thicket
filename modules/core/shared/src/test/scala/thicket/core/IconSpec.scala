@@ -140,6 +140,6 @@ object IconSpec extends ZIOSpecDefault {
         chk.eq(MaterialSymbols.pathFor(Icon.Platform("emoji-symbolic", "face.smiling", "ic_smile")), None)
         chk.result
       }
-    )
+    ) @@ TestAspect.sequential
 
 }
