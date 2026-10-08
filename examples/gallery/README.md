@@ -90,4 +90,5 @@ Labels in every `TextRole`, buttons by role and disabled, `TextField`, `SecureFi
 row inserted in the middle, `ZStack` as a corner badge and as a centred overlay, `Image` in
 two fits, nested and horizontal `Scroll`, keyed `ForEach`, virtualised `LazyColumn`, a
 per-row `ContextMenu`, subtree theming with `Provide`, the two presented widgets (`Alert`
-and `Sheet`), toolbar `Action`s and a navigation push.
+and `Sheet`), toolbar `Action`s, a navigation push, and a `TabView` with a tab inserted in
+the middle.

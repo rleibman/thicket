@@ -54,7 +54,9 @@ void sui_window_set_title(const char *title);
      20 SegmentedControl   NSSegmentedControl()           UISegmentedControl()  the picker's options/selection functions drive it; native on both Apple platforms
      21 DatePicker         NSDatePicker()                 UIDatePicker()    compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC
      22 Grid               -                              -                 reserved for the Mac (#62): NSGridView / a constraint grid on UIKit
-     23 IconButton         -                              -                 reserved for the Mac (#66): NSButton / UIButton with an SF Symbol */
+     23 IconButton         -                              -                 reserved for the Mac (#66): NSButton / UIButton with an SF Symbol
+     24 TabView            -                              -                 reserved for the Mac (#69): UITabBarController / NSTabViewController
+     25 Tab                -                              -                 reserved for the Mac (#69): one tab of a TabView */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 

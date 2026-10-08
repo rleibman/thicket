@@ -157,4 +157,6 @@ object ShimKind {
   inline val DatePicker = 21
   inline val Grid = 22
   inline val IconButton = 23
+  inline val TabView = 24
+  inline val Tab = 25
 }

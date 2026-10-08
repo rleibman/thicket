@@ -99,6 +99,9 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.DatePicker        => ShimKind.DatePicker
       case WidgetKind.Grid              => ShimKind.Grid
       case WidgetKind.IconButton        => ShimKind.IconButton
+      // Reserved for the Mac (#69); the shims build them as their default view until then.
+      case WidgetKind.TabView => ShimKind.TabView
+      case WidgetKind.Tab     => ShimKind.Tab
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
