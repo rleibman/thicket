@@ -69,6 +69,24 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-07 — **`Grid` on Apple: `NSGridView` on AppKit, a layout-guide construction on
+  UIKit** (#62). AppKit's grid is built from arrays of views and has no cell index, so the
+  order is kept in the shim and the rows are rebuilt from it on every insert and removal, the
+  same re-placing GTK does; the `NSGridView` sits in a plain view that supplies the padding
+  it lacks. UIKit has no grid, so each column and row is a `UILayoutGuide` that wants to be
+  zero, and each cell sits inside its column's and row's guide. **That wish's priority is the
+  design:** at 50 (`.fittingSizeLevel`, which the ZStack uses) it lost to the grid hugging its
+  columns, so when the gallery's stack stretched the grid across the iPhone the extra width
+  went into the first column — 264 wide around a widest cell of 193, measured, and the
+  frame check failed. At 500 it gives way to a cell's compression resistance (750), so a
+  column is never narrower than its widest cell, but not to a stretching parent, whose extra
+  space goes after the last column as on GTK. Gallery **58/58** on macOS and **57/57** on
+  the simulator; `bin/verify-apple.sh` **13/13**. Measured column starts: 240 = 16 + 216 + 8
+  on macOS, 217 = 16 + 193 + 8 on iOS. Falsified on both platforms: ignoring the column
+  count fails 5 checks; inserting at the end rather than in place fails 2. A second layout
+  pass for wrapping labels was tried first, on a wrong diagnosis; it looped on insert and
+  was removed.
+
 - 2026-10-07 — **The Apple CI runner runs in the logged-in GUI session, without
   `SessionCreate`.** First runs on the self-hosted runner (registered on the owner's Mac,
   `magrathea-thicket`, labels `self-hosted, macOS, ARM64, thicket-apple`) passed 12 of 13
