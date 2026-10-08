@@ -528,6 +528,41 @@ object Abi {
       doc = "How many items the platform's menu for this view holds; 0 when it has none."
     ),
     Fn("sui_menu_item_label", Str, List(p("h", Handle), p("index", I32))),
+    Fn(
+      "sui_option_count",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many options a Picker or SegmentedControl holds, as the platform's control has them."
+    ),
+    Fn("sui_option_label", Str, List(p("h", Handle), p("index", I32))),
+    Fn(
+      "sui_choose",
+      I32,
+      List(p("h", Handle), p("index", I32)),
+      doc = "Chooses option `index` through the control's own action, as a user would. 0 where the\n" +
+        "   platform offers no way to do that from code (UIKit's menu-backed Picker)."
+    ),
+    Fn(
+      "sui_choose_date",
+      I32,
+      List(p("h", Handle), p("epochDay", I32)),
+      doc = "Sets a DatePicker's day through the control's own action, as a user's choice would."
+    ),
+    Fn(
+      "sui_get_frame",
+      Void,
+      List(p("h", Handle), p("outX", OutF64), p("outY", OutF64), p("outW", OutF64), p("outH", OutF64)),
+      doc = "A view's alignment rect — what Auto Layout positions — in its window, top-left origin."
+    ),
+    Fn(
+      "sui_record_opened_urls",
+      Void,
+      List(p("on", I32)),
+      doc = "1: a Link records the URL it would open instead of opening it, so a test can check it\n" +
+        "   without launching a browser. 0: open for real again."
+    ),
+    Fn("sui_opened_url_count", I32, Nil),
+    Fn("sui_opened_url", Str, List(p("index", I32))),
     Fn("sui_pages_depth", I32, Nil, doc = "How many pages the platform's own stack holds."),
     Fn(
       "sui_page_title",

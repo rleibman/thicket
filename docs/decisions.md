@@ -69,6 +69,29 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-07 — **Apple's `Picker`, `ZStack`, `SegmentedControl`, `DatePicker`, `Link` and
+  `SafeArea` were run on a Mac for the first time, and measured** (#45, #46). The Swift was
+  written on Linux, where it cannot be compiled; it compiled first time. One crash, iOS only:
+  the gallery aborted at mount with a `NullPointerException` inside the signal runtime. That
+  was not the cause but Scala Native failing to handle a **foreign** exception — UIKit raised
+  `NSInternalInconsistencyException: Menu does not have a valid element for default
+  selection`, because the menu-backed Picker set `changesSelectionAsPrimaryAction` with an
+  empty menu and its options arrive afterwards, clear-then-add. Found by installing an
+  Objective-C exception preprocessor in the host, after two wrong theories (a re-entrant
+  `OnSelect`, a re-entrant callback — both ruled out by instrumenting them). The flag now goes
+  on only once the menu has an element. **An Objective-C exception that unwinds into Scala
+  frames is uncatchable there and surfaces as a misleading NPE**; the shims must never let
+  UIKit or AppKit raise. The gallery's Apple checks for these controls had been section
+  headings only — text that is on screen whether the control works or not — so they now ask
+  what GTK asks, of the platform's control: options and selection, a date (the leap day, so an
+  off-by-one reads as March 1), segments and their selection, a choice through the control's
+  own action reaching the app, links clicked with the opener recording instead of launching a
+  browser, and ZStack placement and size. Positions are **alignment rects** (what Auto Layout
+  positions); by frame, an AppKit label overhangs a trailing edge it is exactly aligned to by
+  2 pt. Gallery **48/48** macOS, **47/47** iOS; UIKit cannot perform a `UIAction` from code, so
+  the iOS Picker choice is reported as not exercised. Controls: a date written one day late
+  and links that open nothing fail four checks between them.
+
 - 2026-10-07 — **The GTK todo self-test's segfault was a GTK race, and the fix is to stop
   racing it** (#56). Found by reading GTK's private state from the self-test: the
   `GtkIMContextWaylandGlobal` and its `current` context, at their offsets in GTK 4.22.4's

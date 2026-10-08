@@ -47,8 +47,18 @@ private var links: [ObjectIdentifier: URL] = [:]
 private func fireTap(_ id: ObjectIdentifier) {
   if let t = taps[id] { t.cb(t.ctx) }
   // Handed to the platform, which picks the browser or the app registered for the scheme.
-  if let url = links[id] { UIApplication.shared.open(url) }
+  if let url = links[id] {
+    if var log = openedUrls {
+      log.append(url.absoluteString)
+      openedUrls = log
+    } else {
+      UIApplication.shared.open(url)
+    }
+  }
 }
+
+/// Non-nil while a test is recording what links would open (`sui_record_opened_urls`).
+private var openedUrls: [String]?
 private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
 private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
@@ -400,10 +410,12 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     // ranges, and for a short list the platform idiom since iOS 14 is a button that shows
     // the current choice and opens a menu. `changesSelectionAsPrimaryAction` is what makes
     // it behave as a selector rather than a command.
+    // `changesSelectionAsPrimaryAction` starts off: UIKit raises
+    // NSInternalInconsistencyException ("Menu does not have a valid element for default
+    // selection") when it is on and the menu is empty, and the options arrive afterwards,
+    // clear-then-add. `rebuildPickerMenu` turns it on once there is something to select.
     let b = UIButton(type: .system)
     b.showsMenuAsPrimaryAction = true
-    b.changesSelectionAsPrimaryAction = true
-    b.menu = UIMenu(children: [])
     return retained(b)
 
   case 19:
@@ -729,7 +741,17 @@ private func rebuildPickerMenu(_ b: UIButton) {
       s.cb(s.ctx, Int32(i))
     }
   }
-  b.menu = UIMenu(children: actions)
+  // An Objective-C exception cannot be caught on the Scala side — it unwinds into Scala
+  // frames and Scala Native's catch handler fails on it — so the empty menu UIKit rejects is
+  // never handed to it: with no options the button is a plain menu button, and the selector
+  // behaviour goes on only once there is an element to select, menu first.
+  if actions.isEmpty {
+    b.changesSelectionAsPrimaryAction = false
+    b.menu = nil
+  } else {
+    b.menu = UIMenu(children: actions)
+    b.changesSelectionAsPrimaryAction = true
+  }
 }
 
 @_cdecl("sui_picker_clear_options")
@@ -1608,4 +1630,81 @@ public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
 public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
   guard let scroll = view(h) as? UIScrollView else { return -1 }
   return Double(scroll.contentOffset.y + scroll.adjustedContentInset.top)
+}
+
+// MARK: - read-back for the new controls (#45, #46)
+
+@_cdecl("sui_option_count")
+public func sui_option_count(_ h: UnsafeMutableRawPointer) -> Int32 {
+  switch view(h) {
+  case let s as UISegmentedControl: return Int32(s.numberOfSegments)
+  case let b as UIButton: return Int32(b.menu?.children.count ?? 0)
+  default: return 0
+  }
+}
+
+/// Read from the control: the segments, or the button's installed menu.
+@_cdecl("sui_option_label")
+public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> UnsafePointer<CChar>? {
+  let i = Int(index)
+  switch view(h) {
+  case let s as UISegmentedControl where i >= 0 && i < s.numberOfSegments:
+    return scratch(s.titleForSegment(at: i) ?? "")
+  case let b as UIButton:
+    guard let items = b.menu?.children, i >= 0, i < items.count else { return nil }
+    return scratch(items[i].title)
+  default:
+    return nil
+  }
+}
+
+/// A segmented control is chosen by selecting and sending `.valueChanged`, which is what a
+/// tap does. UIKit offers no public way to perform a `UIAction`, so the menu-backed Picker
+/// says it cannot rather than calling the stored callback and passing without UIKit.
+@_cdecl("sui_choose")
+public func sui_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
+  guard let s = view(h) as? UISegmentedControl, index >= 0, Int(index) < s.numberOfSegments else { return 0 }
+  s.selectedSegmentIndex = Int(index)
+  s.sendActions(for: .valueChanged)
+  return 1
+}
+
+@_cdecl("sui_choose_date")
+public func sui_choose_date(_ h: UnsafeMutableRawPointer, _ epochDayValue: Int32) -> Int32 {
+  guard let p = view(h) as? UIDatePicker else { return 0 }
+  p.date = dateOf(epochDayValue)
+  p.sendActions(for: .valueChanged)
+  return 1
+}
+
+@_cdecl("sui_get_frame")
+public func sui_get_frame(
+  _ h: UnsafeMutableRawPointer, _ outX: UnsafeMutablePointer<Double>, _ outY: UnsafeMutablePointer<Double>,
+  _ outW: UnsafeMutablePointer<Double>, _ outH: UnsafeMutablePointer<Double>
+) {
+  let v = view(h)
+  v.window?.layoutIfNeeded()
+  // The *alignment* rect, which is what Auto Layout positions, as on AppKit.
+  let align = v.alignmentRect(forFrame: v.frame)
+  let r = v.superview.map { $0.convert(align, to: nil) } ?? v.convert(v.bounds, to: nil)
+  outX.pointee = Double(r.minX)
+  outY.pointee = Double(r.minY)
+  outW.pointee = Double(r.width)
+  outH.pointee = Double(r.height)
+}
+
+@_cdecl("sui_record_opened_urls")
+public func sui_record_opened_urls(_ on: Int32) {
+  openedUrls = on != 0 ? [] : nil
+}
+
+@_cdecl("sui_opened_url_count")
+public func sui_opened_url_count() -> Int32 {
+  Int32(openedUrls?.count ?? 0)
+}
+
+@_cdecl("sui_opened_url")
+public func sui_opened_url(_ index: Int32) -> UnsafePointer<CChar>? {
+  guard let log = openedUrls, index >= 0, Int(index) < log.count else { return nil }
+  return scratch(log[Int(index)])
 }

@@ -45,8 +45,18 @@ private var links: [ObjectIdentifier: URL] = [:]
 private func fireTap(_ id: ObjectIdentifier) {
   if let t = taps[id] { t.cb(t.ctx) }
   // Handed to the platform, which picks the browser or the app registered for the scheme.
-  if let url = links[id] { _ = NSWorkspace.shared.open(url) }
+  if let url = links[id] {
+    if var log = openedUrls {
+      log.append(url.absoluteString)
+      openedUrls = log
+    } else {
+      _ = NSWorkspace.shared.open(url)
+    }
+  }
 }
+
+/// Non-nil while a test is recording what links would open (`sui_record_opened_urls`).
+private var openedUrls: [String]?
 private var edits: [ObjectIdentifier: TextEdit] = [:]
 private var toggles: [ObjectIdentifier: Toggle] = [:]
 private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
@@ -1651,4 +1661,85 @@ public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
   guard let scroll = view(h) as? NSScrollView, let doc = scroll.documentView else { return -1 }
   let visible = scroll.contentView.bounds
   return Double(doc.isFlipped ? visible.minY : doc.frame.height - visible.maxY)
+}
+
+// MARK: - read-back for the new controls (#45, #46)
+
+@_cdecl("sui_option_count")
+public func sui_option_count(_ h: UnsafeMutableRawPointer) -> Int32 {
+  switch view(h) {
+  case let p as NSPopUpButton: return Int32(p.numberOfItems)
+  case let s as NSSegmentedControl: return Int32(s.segmentCount)
+  default: return 0
+  }
+}
+
+@_cdecl("sui_option_label")
+public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> UnsafePointer<CChar>? {
+  let i = Int(index)
+  switch view(h) {
+  case let p as NSPopUpButton where i >= 0 && i < p.numberOfItems: return scratch(p.itemTitle(at: i))
+  case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount: return scratch(s.label(forSegment: i) ?? "")
+  default: return nil
+  }
+}
+
+/// Selecting and then sending the control's own action is what a user's click does; the
+/// action runs the same proxy method, which reports the choice to the app.
+@_cdecl("sui_choose")
+public func sui_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
+  let i = Int(index)
+  switch view(h) {
+  case let p as NSPopUpButton where i >= 0 && i < p.numberOfItems:
+    p.selectItem(at: i)
+    return p.sendAction(p.action, to: p.target) ? 1 : 0
+  case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount:
+    s.selectedSegment = i
+    return s.sendAction(s.action, to: s.target) ? 1 : 0
+  default:
+    return 0
+  }
+}
+
+@_cdecl("sui_choose_date")
+public func sui_choose_date(_ h: UnsafeMutableRawPointer, _ epochDayValue: Int32) -> Int32 {
+  guard let p = view(h) as? NSDatePicker else { return 0 }
+  p.dateValue = dateOf(epochDayValue)
+  return p.sendAction(p.action, to: p.target) ? 1 : 0
+}
+
+/// In the window, with the origin top-left like UIKit's, whatever the views' own flipping.
+@_cdecl("sui_get_frame")
+public func sui_get_frame(
+  _ h: UnsafeMutableRawPointer, _ outX: UnsafeMutablePointer<Double>, _ outY: UnsafeMutablePointer<Double>,
+  _ outW: UnsafeMutablePointer<Double>, _ outH: UnsafeMutablePointer<Double>
+) {
+  let v = view(h)
+  v.window?.layoutIfNeeded()
+  // The *alignment* rect, which is what Auto Layout positions — not the frame. A label's
+  // frame is 2pt wider each side than its alignment rect, so a trailing-aligned badge read by
+  // frame overhangs its stack by 2pt while being exactly aligned.
+  let align = v.alignmentRect(forFrame: v.frame)
+  let r = v.superview.map { $0.convert(align, to: nil) } ?? v.convert(v.bounds, to: nil)
+  let height = v.window?.contentView?.bounds.height ?? r.maxY
+  outX.pointee = Double(r.minX)
+  outY.pointee = Double(height - r.maxY)
+  outW.pointee = Double(r.width)
+  outH.pointee = Double(r.height)
+}
+
+@_cdecl("sui_record_opened_urls")
+public func sui_record_opened_urls(_ on: Int32) {
+  openedUrls = on != 0 ? [] : nil
+}
+
+@_cdecl("sui_opened_url_count")
+public func sui_opened_url_count() -> Int32 {
+  Int32(openedUrls?.count ?? 0)
+}
+
+@_cdecl("sui_opened_url")
+public func sui_opened_url(_ index: Int32) -> UnsafePointer<CChar>? {
+  guard let log = openedUrls, index >= 0, Int(index) < log.count else { return nil }
+  return scratch(log[Int(index)])
 }

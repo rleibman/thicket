@@ -36,6 +36,12 @@ found the iOS app showing neither: its working directory is `/`, so the repo-rel
 in the app bundle when it does not exist from the working directory, and the iOS
 `build-app.sh` copies the logo into the bundle under the same path.
 
+**#45 / #46** added Picker, DatePicker, SegmentedControl, ZStack and Link checks that ask the
+platform what GTK asks — options, selection, date, a choice through the control's own action,
+links with the opener recording, ZStack placement by alignment rect: **48/48** on macOS and
+**47/47** on the iOS simulator, where a menu-backed Picker cannot be chosen from code and the
+test says so.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name
