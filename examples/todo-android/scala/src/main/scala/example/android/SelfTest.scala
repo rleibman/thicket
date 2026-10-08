@@ -19,7 +19,7 @@ package example.android
 import android.util.Log
 import android.view.{Gravity, View, ViewGroup}
 import android.text.InputType
-import android.widget.{EditText, FrameLayout, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Switch, TextView}
+import android.widget.{EditText, FrameLayout, GridLayout, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Switch, TextView}
 import example.TodoApp
 import thicket.core.NavHost
 import thicket.renderer.CalendarDate
@@ -290,6 +290,34 @@ object SelfTest {
           check("and the dialog has closed", !d.isShowing)
           model.reviewBy.set(start)
         }
+      }
+    }
+
+    // --- Grid: a GridLayout, its cells placed by GridLayout's own auto-flow ---
+    val grids = findAll(root()) { case _: GridLayout => true; case _ => false }
+      .collect { case g: GridLayout => g }
+    check("the counts are one GridLayout", grids.length == 1, grids.length.toString)
+    grids.headOption.foreach { g =>
+      val cells = (0 until g.getChildCount).map(g.getChildAt).collect { case t: TextView => t }
+      check("two columns, four cells, in order",
+        g.getColumnCount == 2 && cells.map(_.getText.toString).take(1) == Seq("Items") &&
+          cells.lift(2).map(_.getText.toString).contains("Done"),
+        s"${g.getColumnCount} columns: ${cells.map(_.getText.toString)}")
+      // Bound: the Done cell is the model's count, read back out of the TextView.
+      def doneCell = cells.lift(3).map(_.getText.toString)
+      check("the Done cell is the model's count",
+        doneCell.contains(model.items.now.count(_.done).toString), doneCell.toString)
+      // Geometry only exists after layout, so asked after it (and logged after the summary,
+      // like the SafeArea check; build.sh's grep for FAIL still catches it). The claim is
+      // the native grid's: a column is as wide as its widest cell, so both cells of a column
+      // start at the same x, and the second column starts after the widest first-column cell.
+      g.post { () =>
+        val lefts = cells.map(_.getLeft)
+        val widestFirst = cells.zipWithIndex.collect { case (c, i) if i % 2 == 0 => c.getRight }.maxOption.getOrElse(0)
+        check("each column lines up, and the second starts after the widest first cell",
+          cells.length == 4 && lefts(0) == lefts(2) && lefts(1) == lefts(3) && lefts(1) >= widestFirst &&
+            cells(2).getTop > cells(0).getTop,
+          s"lefts $lefts, widest first-column right $widestFirst, tops ${cells.map(_.getTop)}")
       }
     }
 

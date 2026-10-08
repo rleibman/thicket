@@ -52,7 +52,8 @@ void sui_window_set_title(const char *title);
      18 Picker             NSPopUpButton()                UIButton()        UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list
      19 ZStack             ZStackView()                   ZStackView()      a plain view that pins each child by constraints; later subviews draw on top
      20 SegmentedControl   NSSegmentedControl()           UISegmentedControl()  the picker's options/selection functions drive it; native on both Apple platforms
-     21 DatePicker         NSDatePicker()                 UIDatePicker()    compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC */
+     21 DatePicker         NSDatePicker()                 UIDatePicker()    compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC
+     22 Grid               -                              -                 reserved for the Mac (#62): NSGridView / a constraint grid on UIKit */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 

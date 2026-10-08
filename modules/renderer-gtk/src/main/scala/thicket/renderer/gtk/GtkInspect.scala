@@ -212,6 +212,20 @@ object GtkInspect {
 
   def isButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_button_get_type())
 
+  def isGrid(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_grid_get_type())
+
+  /** Where a `Grid` put a cell, as (column, row), read back from GTK rather than computed. */
+  def gridCell(grid: Ptr[GtkWidget], child: Ptr[GtkWidget]): (Int, Int) = {
+    val zone = scala.scalanative.unsafe.Zone.open()
+    try {
+      given Zone = zone
+      val col = alloc[CInt](1)
+      val row = alloc[CInt](1)
+      gtk_grid_query_child(grid.asInstanceOf[Ptr[GtkGrid]], child, col, row, null, null)
+      (!col, !row)
+    } finally zone.close()
+  }
+
   /** A `ZStack`. */
   def isOverlay(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_overlay_get_type())
 

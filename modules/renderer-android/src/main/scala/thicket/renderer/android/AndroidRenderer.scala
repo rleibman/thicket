@@ -24,7 +24,7 @@ import android.view.{Gravity, View, ViewGroup, WindowInsets}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
+import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, GridLayout, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
 import scala.collection.mutable
 import thicket.renderer.*
 
@@ -138,6 +138,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // A field that opens the platform's DatePickerDialog, which is how an Android form asks
       // for a date. Spinner-styled, so it reads as "tap to choose" rather than as a command;
       // the inline DatePicker widget is a whole calendar, and no form puts one in a row.
+      // GridLayout auto-places children that carry no row/column spec, in child order, which
+      // is the contract's flow: addView at an index is the whole of inserting a cell.
+      case WidgetKind.Grid => GridLayout(context)
+
       case WidgetKind.DatePicker =>
         val b = Button(context, null, _root_.android.R.attr.spinnerStyle)
         b.setAllCaps(false)
@@ -278,6 +282,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // is also what keeps the child's FrameLayout.LayoutParams: replacing them with a
       // LinearLayout's would make the FrameLayout throw on its next measure.
       case Prop.Grow(_) if handle.getParent.isInstanceOf[View] && isZStack(handle.getParent.asInstanceOf[View]) => ()
+      // The same for a Grid: it has two axes and no main one, and its children must keep
+      // GridLayout's own params.
+      case Prop.Grow(_) if handle.getParent.isInstanceOf[GridLayout] => ()
 
       case Prop.Grow(v) =>
         val lp = handle.getLayoutParams match {
@@ -619,11 +626,44 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case l: LinearLayout =>
             spacing(l) = dp(v)
             applySpacing(l)
+          case g: GridLayout =>
+            gridSpacing(g) = dp(v)
+            applyGridSpacing(g)
+          case _ => ()
+        }
+
+      case Prop.Columns(count) =>
+        handle match {
+          case g: GridLayout =>
+            g.setColumnCount(count)
+            applyGridSpacing(g)
           case _ => ()
         }
     }
 
   private val spacing = mutable.Map.empty[LinearLayout, Int]
+
+  private val gridSpacing = mutable.Map.empty[GridLayout, Int]
+
+  /** GridLayout has no spacing either, so the gap is a margin on each cell that is not first in its row or column. Which
+    * cells those are depends on every index, so it is recomputed whenever the children change, as for LinearLayout.
+    */
+  private def applyGridSpacing(g: GridLayout): Unit = {
+    val gap     = gridSpacing.getOrElse(g, 0)
+    val columns = math.max(1, g.getColumnCount)
+    var i       = 0
+    while i < g.getChildCount do {
+      val child = g.getChildAt(i)
+      child.getLayoutParams match {
+        case lp: GridLayout.LayoutParams =>
+          lp.leftMargin = if i % columns == 0 then 0 else gap
+          lp.topMargin = if i / columns == 0 then 0 else gap
+          child.setLayoutParams(lp)
+        case _ => ()
+      }
+      i += 1
+    }
+  }
 
   /** `LinearLayout` has no spacing property, so gaps are child margins. They have to be
     * recomputed whenever the children change, because "which child is first" changes.
@@ -773,6 +813,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // sibling is also what puts it at the right depth.
     vg.addView(child, index)
     vg match {
+      case g: GridLayout                => applyGridSpacing(g)
       case l: LinearLayout              => applySpacing(l)
       case f: FrameLayout if isZStack(f) => placeInStack(f, child)
       case _                            => ()
@@ -783,6 +824,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     val vg = parent.asInstanceOf[ViewGroup]
     vg.removeView(child)
     vg match {
+      case g: GridLayout   => applyGridSpacing(g)
       case l: LinearLayout => applySpacing(l)
       case _               => ()
     }
@@ -793,6 +835,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case vg: ViewGroup =>
         vg.removeView(handle)
         vg match {
+          case g: GridLayout   => applyGridSpacing(g)
           case l: LinearLayout => applySpacing(l)
           case _               => ()
         }
@@ -806,6 +849,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case g: RadioGroup   => val _ = segmentIndex.remove(g)
       case l: LinearLayout => val _ = spacing.remove(l)
       case f: FrameLayout  => val _ = stackGravity.remove(f)
+      case g: GridLayout   => val _ = gridSpacing.remove(g)
       case _               => ()
     }
     // Keyed by View, so an entry left behind keeps the View itself alive for the life of

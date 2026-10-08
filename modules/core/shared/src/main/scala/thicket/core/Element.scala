@@ -526,6 +526,34 @@ object dsl {
       children
     )
 
+  /** Children in `columns` columns, filled row by row in order. Each column is as wide as its widest cell, so labels
+    * and values line up:
+    *
+    * {{{
+    * Grid(columns = 2, spacing = 8)(
+    *   Label("Name"),  Label(user.name),
+    *   Label("Email"), Label(user.email)
+    * )
+    * }}}
+    *
+    * A cell is just the next child, so `Show` and `ForEach` inside a grid add and remove cells, and the cells after
+    * them move along.
+    */
+  def Grid(
+    columns: Int,
+    spacing: Int = 0,
+    padding: Int = 0
+  )(
+    children: Element*
+  ): Element = {
+    require(columns >= 1, s"a Grid needs at least one column, not $columns")
+    Widget(
+      WidgetKind.Grid,
+      Seq(Static(Prop.Columns(columns)), Static(Prop.Spacing(spacing)), Static(Prop.Padding(padding))),
+      children
+    )
+  }
+
   def Row(
     spacing: Int = 0,
     padding: Int = 0

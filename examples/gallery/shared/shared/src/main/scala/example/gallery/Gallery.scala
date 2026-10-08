@@ -51,6 +51,7 @@ object Gallery {
     val span:     Var[Int]     = Var(1)
     val due:      Var[CalendarDate] = Var(Gallery.firstDue)
     val linkTaps: Var[Int]     = Var(0)
+    val gridExtra: Var[Boolean] = Var(false)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
@@ -200,6 +201,23 @@ object Gallery {
                 Label("Underneath\nthe spinner"),
                 Spinner()
               )
+            )
+          ),
+          section("Grid — cells flow into columns, each as wide as its widest cell")(
+            Grid(columns = 2, spacing = 8)(
+              Label("Typed above"),
+              // Bound, per the gallery's rule: the TextField and the Slider earlier on this
+              // screen drive these, so the cells are live rather than drawn once.
+              Label(model.text.map(t => if t.isEmpty then "(nothing yet)" else t)),
+              // A row appearing in the middle of the grid: every cell after it moves along.
+              Show(model.gridExtra)(Fragment(Label("Inserted"), Label("a whole row"))),
+              Label("Volume"),
+              Label(model.volume.map(v => f"$v%.1f")),
+              Label("A much longer label than the others"),
+              Label("short")
+            ),
+            Button(model.gridExtra.map(b => if b then "Remove the row" else "Insert a row"))(
+              model.gridExtra.set(!model.gridExtra.now)
             )
           ),
           section("Image — the three content fits")(
