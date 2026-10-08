@@ -94,6 +94,20 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   `TabView` waits for an icon system (#61). Android's framework tab controls are all
   deprecated (`TabHost`, `TabWidget`, `ActionBar.Tab`), and tab bars on iOS and Android are
   icon-led.
+- 2026-10-07 — **The Apple CI runner runs in the logged-in GUI session, without
+  `SessionCreate`.** First runs on the self-hosted runner (registered on the owner's Mac,
+  `magrathea-thicket`, labels `self-hosted, macOS, ARM64, thicket-apple`) passed 12 of 13
+  steps and failed `getting-started` twice, for two reasons that never show up by hand:
+  sbt's output under the runner puts a terminal escape *before* the version line, so a
+  `grep '^[0-9]'` found nothing and `pipefail` ended the script silently; and the window
+  check found `windows=0` for an app that was up. The second is the runner, not the script:
+  `svc.sh`'s LaunchAgent template sets `SessionCreate`, which gives the runner a security
+  session of its own, outside the GUI session, where AppKit runs but the window server does
+  not show its windows. With the escapes stripped, the window counted by size (320 wide,
+  ≥160 tall — the app also owns 1728x33 menu-bar strips on layer 0), and `SessionCreate`
+  deleted from the plist, the workflow passes **all 13 steps on the runner**. The macOS
+  self-tests had passed under `SessionCreate` too, because they read their own views rather
+  than ask the window server; they are now running where a user's windows are.
 
 - 2026-10-07 — **Apple's `Picker`, `ZStack`, `SegmentedControl`, `DatePicker`, `Link` and
   `SafeArea` were run on a Mac for the first time, and measured** (#45, #46). The Swift was
