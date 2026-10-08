@@ -183,9 +183,9 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 | Controls | `Radio`, `Stepper` (both reclassified, §12.2a) |
 | Containers | `TabView` |
 
-`IconButton` is held back on purpose: it needs an icon/resource system, which should not be
-improvised inside a widget. `Link`, held back with it for want of platform URL opening, is
-now a prop — see below.
+`IconButton` and `Link` were held back for the same reason — one needed an icon system, the
+other platform URL opening, and neither should be improvised inside a widget. Both now have
+theirs: `IconButton` sits on the curated `Icon` set (#61), and `Link` is a prop — see below.
 
 ### 12.2a Two entries in §7.10 are not cross-platform widgets
 
