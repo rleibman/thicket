@@ -84,6 +84,16 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   third-party actions are pinned to commit SHAs rather than tags that can be moved.
   The runner has to be a LaunchAgent in a logged-in session, because the macOS self-tests
   open real windows.
+  **First run, on the Mac (2026-10-07):** the script as written could pass on binaries it had
+  not built. Its link step handed sbt's thin client four commands as separate arguments,
+  which it rejects, so nothing linked — and the self-tests then ran whatever an earlier build
+  had left in `target/`, and passed. Now each app links in its own invocation, their old
+  outputs are deleted first so a failed link fails the self-tests, any running sbt server is
+  shut down so the build (and its `git describe` version) is this checkout's, every iOS step
+  starts from a freshly booted simulator, and `SBT_OPTS` defaults to a 4 GB heap. Added: the
+  10 000-row probe on both platforms and `bin/verify-getting-started-apple.sh`. On `main` it
+  reports the two real failures #59 fixes (the iOS gallery's Picker crash, a stale image
+  check); with #59 merged, **all 13 steps pass**.
 
 - 2026-10-07 — **The GTK todo self-test's segfault was a GTK race, and the fix is to stop
   racing it** (#56). Found by reading GTK's private state from the self-test: the
