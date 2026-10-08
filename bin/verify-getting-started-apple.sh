@@ -24,12 +24,18 @@ for t in signalsNative rendererApiNative coreNative rendererApple sbtThicket; do
   sbt --error "$t/publishLocal"
 done
 
-# The line that looks like a version: sbt's thin client follows it with "[success] elapsed
-# time" and a terminal escape sequence, so the last line is not it.
-version_of() { sbt --error "print $1/version" | tr -d '\r' | grep -E '^[0-9]+\.[0-9]+' | tail -1; }
+# The version, wherever it is on the line. sbt's thin client surrounds it with "[success]"
+# lines and terminal escape sequences, and under the CI runner an escape *precedes* the
+# version on its own line — so escapes are stripped and the version matched anywhere, not
+# at the start. `|| true`: under `pipefail` a grep that finds nothing would otherwise end the
+# script silently, before the message below could say why.
+version_of() {
+  sbt --error "print $1/version" | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' |
+    grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*' | tail -1 || true
+}
 ver=$(version_of coreNative)
 pluginver=$(version_of sbtThicket)
-[ -n "$ver" ] || { echo "could not read the version" >&2; exit 1; }
+[ -n "$ver" ] || { echo "FAIL: could not read the version from sbt" >&2; exit 1; }
 # The plugin puts its own version on the dependencies it adds; one build makes both, so they
 # agree — checked, because the failure would be a resolution error in someone else's project.
 [ "$ver" = "$pluginver" ] || { echo "FAIL: framework $ver but sbt-thicket $pluginver" >&2; exit 1; }
@@ -54,12 +60,25 @@ fi
 
 # A window owned by the process. Owner PIDs are visible to anyone; titles only with
 # screen-recording permission, so they are reported when available rather than required.
+# *All* windows, not only on-screen ones: under a CI runner the display may be asleep or the
+# session locked, and then nothing is on screen — measured, the first CI run listed none for
+# an app that was up. Layer 0 still includes the app's menu-bar strips (1728x33, one per
+# display or space — measured), so the window counted is the one the template asked for:
+# 320 wide and at least 160 tall (its content, plus a title bar).
 cat >"$work/windows.swift" <<'SWIFT'
 import CoreGraphics
 let pid = Int(CommandLine.arguments[1])!
-let all = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
-let mine = all.filter { ($0[kCGWindowOwnerPID as String] as? Int) == pid }
-print("windows=\(mine.count) titles=\(mine.compactMap { $0[kCGWindowName as String] as? String })")
+let all = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+func size(_ w: [String: Any]) -> (Double, Double) {
+  let b = w[kCGWindowBounds as String] as? [String: Any] ?? [:]
+  return ((b["Width"] as? Double) ?? 0, (b["Height"] as? Double) ?? 0)
+}
+let mine = all.filter {
+  guard ($0[kCGWindowOwnerPID as String] as? Int) == pid, ($0[kCGWindowLayer as String] as? Int) == 0 else { return false }
+  let (w, h) = size($0)
+  return abs(w - 320) <= 2 && h >= 160
+}
+print("windows=\(mine.count) sizes=\(mine.map { size($0) }) titles=\(mine.compactMap { $0[kCGWindowName as String] as? String })")
 SWIFT
 windows=$(swift "$work/windows.swift" "$pid" 2>/dev/null || echo "windows=?")
 kill "$pid" 2>/dev/null || true
