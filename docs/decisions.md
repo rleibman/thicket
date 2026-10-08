@@ -69,6 +69,22 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-07 — **The Apple half is verified by a self-hosted Mac runner, and only on
+  `push`** (#46; the project owner chose this over cross-compiling with xtool, whose Darwin
+  SDK comes from an `Xcode.xip` that Apple's licence keeps off non-Apple hardware).
+  `bin/verify-apple.sh` is the whole of it, so CI and a run by hand on the Mac are the same
+  thing. It compiles both shims, runs shim-gen's consistency checks, links the four Apple
+  apps, runs the gallery and todo self-tests on macOS and on the simulator, and measures
+  `ContentFit`. Every step runs even after a failure, so one run shows everything that is
+  broken, and the summary is the result. `.github/workflows/apple.yml` runs it.
+  **Never on `pull_request`.** The repository is public and the runner is a personal
+  machine, so that event would run a stranger's fork on it. `push` needs write access, and a
+  PR from a branch here still gets the check from the push that updated it. The job also
+  checks `github.repository`, so a fork that copies the workflow finds no runner, and the
+  third-party actions are pinned to commit SHAs rather than tags that can be moved.
+  The runner has to be a LaunchAgent in a logged-in session, because the macOS self-tests
+  open real windows.
+
 - 2026-10-07 — **The GTK todo self-test's segfault was a GTK race, and the fix is to stop
   racing it** (#56). Found by reading GTK's private state from the self-test: the
   `GtkIMContextWaylandGlobal` and its `current` context, at their offsets in GTK 4.22.4's
