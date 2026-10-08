@@ -775,10 +775,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
   private def iconDrawable(icon: Icon): _root_.android.graphics.drawable.Drawable =
     MaterialSymbols.pathFor(icon) match {
       case Some(d) =>
-        val tv     = themeAttr(_root_.android.R.attr.colorControlNormal)
-        val colour =
-          if tv.resourceId != 0 then context.getColorStateList(tv.resourceId).getDefaultColor else tv.data
-        IconDrawable(d, dp(24), colour)
+        IconDrawable(d, dp(24), colourAttr(_root_.android.R.attr.colorControlNormal))
       case None =>
         val name = icon match {
           case Icon.Platform(_, _, android) => android
