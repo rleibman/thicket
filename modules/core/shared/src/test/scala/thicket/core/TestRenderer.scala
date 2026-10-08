@@ -219,6 +219,7 @@ final class TestRenderer extends Renderer {
       case Prop.Options(vs)     => n.options = vs
       case Prop.Selected(i)     => n.nums("selected") = i.toDouble
       case Prop.OnSelect(f)     => n.onSelect = Some(f)
+      case Prop.Columns(count)  => n.nums("columns") = count.toDouble
       case Prop.OpenUrl(u)      => n.props("url") = u
       case Prop.DateValue(d)    => n.props("date") = d.toString
       case Prop.OnDateChange(f) => n.onDateChange = Some(f)

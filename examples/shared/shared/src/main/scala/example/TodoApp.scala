@@ -272,6 +272,14 @@ object TodoApp {
         // Two short options, both worth seeing: a segmented control rather than a Picker.
         SegmentedControl(Seq("Oldest first", "Newest first"), model.order)(model.order.set),
 
+        // The counts behind the bar, as a two-column grid so the numbers line up.
+        Grid(columns = 2, spacing = 8)(
+          Label("Items", emphasis = Emphasis.Secondary),
+          Label(model.items.map(_.size.toString)),
+          Label("Done", emphasis = Emphasis.Secondary),
+          Label(model.items.map(_.count(_.done).toString))
+        ),
+
         // Determinate progress driven by the model rather than by a timer: the bar is a
         // view of the data, exactly as the caption above it is.
         ProgressBar(model.items.map { xs =>

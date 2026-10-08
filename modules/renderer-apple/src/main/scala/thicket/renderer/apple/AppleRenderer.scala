@@ -97,6 +97,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.ZStack            => ShimKind.ZStack
       case WidgetKind.SegmentedControl  => ShimKind.SegmentedControl
       case WidgetKind.DatePicker        => ShimKind.DatePicker
+      case WidgetKind.Grid              => ShimKind.Grid
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
@@ -272,6 +273,11 @@ final class AppleRenderer extends Renderer {
       // value is never clamped against the control's default bounds.
       case Prop.Range(min, max) => Shim.sui_set_range(handle, min, max)
       case Prop.Value(v)        => Shim.sui_set_value(handle, v)
+
+      // Reserved for the Mac (#62): kind code 22 exists so the Scala side compiles and maps
+      // it, but neither shim builds a grid yet, and the setter that carries the column count
+      // is part of that work. Until then a Grid on Apple is not drawn as a grid.
+      case Prop.Columns(_) => ()
 
       case Prop.OpenUrl(url) => Zone(Shim.sui_set_open_url(handle, toCString(url)))
 
