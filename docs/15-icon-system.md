@@ -119,7 +119,7 @@ IconButton(AppIcons.Leaf, label = "Plant a tree")(plant())
 | | Renders a custom icon by |
 |---|---|
 | Android | the §15.4 `Drawable`, the same code as the built-ins |
-| AppKit / UIKit | a new ABI call taking the commands as a flat `double` array (no struct crosses the boundary, per §13.3), which builds a `CGPath`, fills it into an image at the requested size, and marks it as a template (`isTemplate` / `.alwaysTemplate`), so it tints like an SF Symbol |
+| AppKit / UIKit | a new ABI call taking the commands as a flat `double` array (no struct crosses the boundary: `Abi.scala`'s rule), which builds a `CGPath`, fills it into an image at the requested size, and marks it as a template (`isTemplate` / `.alwaysTemplate`), so it tints like an SF Symbol |
 | GTK | a `GskPath` built from the commands and drawn in a small `GdkPaintable`. `GskPathBuilder` is GTK 4.14+, and the Linux box has 4.22. The alternative, writing a `-symbolic.svg` into a cache directory added with `gtk_icon_theme_add_search_path`, has GTK do the recolouring but writes files at startup |
 
 **Why not SVG files at runtime:** UIKit and AppKit don't load an SVG file outside an asset
