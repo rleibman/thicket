@@ -395,3 +395,16 @@ should not be made until M1.
   fourth `Alignment` value (`Fill`) would leak into every other user of `Alignment`, while a
   per-child prop is a second way to place a child. Not decided until an app needs it;
   `Prop.Fill` already covers a plain background colour without a ZStack at all.
+
+## 9.8 Opened by #56 (2026-10-07)
+
+- **A real app can still hit GTK's Wayland input-method race.** The condition is narrow:
+  the first text field in the process to get input-method focus is destroyed in the same
+  main-loop turn it was focused, on Wayland. A login form that autofocuses a field and
+  immediately navigates away because the user is already signed in would do it. The fix
+  belongs in GTK: `gtk_im_context_wayland_focus_out` should clear `global->current` when it
+  is the context, whether or not `text_input` has arrived yet. That is a one-line change in
+  `gtkimcontextwayland.c`, and it is not reported upstream yet (GNOME's GitLab could not be
+  reached from the build machine). Until then, the only renderer-side workarounds found are
+  worse than the bug (§ the 2026-10-07 decision-log entry).
+

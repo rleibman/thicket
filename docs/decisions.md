@@ -69,6 +69,32 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-07 — **The GTK todo self-test's segfault was a GTK race, and the fix is to stop
+  racing it** (#56). Found by reading GTK's private state from the self-test: the
+  `GtkIMContextWaylandGlobal` and its `current` context, at their offsets in GTK 4.22.4's
+  `gtkimcontextwayland.c`. On Wayland GTK creates its input-method state lazily, on the
+  **first** input-method focus-in, and gets its `text_input` only from a registry reply that
+  arrives when the main loop next runs. `focus_in` records the context as `current` *before*
+  checking for `text_input`; `focus_out` refuses to do anything until `text_input` exists.
+  So if the first text field ever focused is torn down in the same main-loop turn, `current`
+  is never cleared. The context is freed, and the next `zwp_text_input_v3.enter` (sent when
+  the window gains keyboard focus, which is the compositor's timing) dereferences it.
+  The self-test did exactly that: it mounted the sheet, whose field is the run's first,
+  and unmounted it in one callback. Measured: `text_input=null` throughout the teardown;
+  after one main-loop turn it was set, and `current` cleared to null as it should.
+  **The fix is in the test**: it posts the rest of the run after the sheet is mounted,
+  because no user opens and closes a sheet inside one frame. 8/8 runs pass where `main`
+  crashed 3/3.
+  **Why it came and went:** the crash needs the window to get keyboard focus afterwards, so
+  it depended on what the desktop was doing. `feat/link` passed this test the same morning
+  that `main`, with identical code, crashed. Adding the `Link` only shifted the timing.
+  **What was rejected:** clearing the root's focus before destroying a widget (it does
+  clear, but `focus_out` still bails while `text_input` is NULL); creating the IM state at
+  startup (the function that does it, `gtk_im_context_wayland_get_text_protocol`, is not
+  exported); faking an input-method focus at startup (can pop an on-screen keyboard); and a
+  `wl_display_roundtrip` during teardown (re-entrant event dispatch mid-destroy). The narrow
+  real-app exposure that remains is recorded in `09` §9.8.
+
 - 2026-10-06 — **`DatePicker` is the compact idiom on all four, and its value is a day,
   not an instant** (#50). Each platform's *form* control, not an inline calendar: a
   `.compact` `UIDatePicker` and a text-field `NSDatePicker` are the Apple ones. GTK has no
