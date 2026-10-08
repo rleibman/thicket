@@ -22,7 +22,11 @@ ROOT=$(pwd)
 echo "=== Scala half, and the Swift shim ==="
 # `print` rather than a guessed path: sbt 2 keeps a project's target under target/out/..., so
 # the task is asked where it unpacked to.
-SHIM_DIR=$(sbt --error "print thicketAppleShim" | tr -d '\r' | grep -E '^/' | tail -1)
+# Escapes stripped and the path matched anywhere on the line, for the same reason as the
+# version in bin/verify-getting-started-apple.sh: under a CI runner an escape precedes it.
+SHIM_DIR=$(sbt --error "print thicketAppleShim" | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' |
+  grep -oE '/[^[:space:]]*thicket-apple' | tail -1 || true)
+[ -n "$SHIM_DIR" ] || { echo "FAIL: sbt did not say where it unpacked the Swift shim" >&2; exit 1; }
 sbt --error nativeLink
 
 A=$(find "$ROOT/target" -type f -name "libhello-thicket-ios.a" | head -1)

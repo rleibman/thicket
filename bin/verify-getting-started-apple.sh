@@ -24,12 +24,18 @@ for t in signalsNative rendererApiNative coreNative rendererApple sbtThicket; do
   sbt --error "$t/publishLocal"
 done
 
-# The line that looks like a version: sbt's thin client follows it with "[success] elapsed
-# time" and a terminal escape sequence, so the last line is not it.
-version_of() { sbt --error "print $1/version" | tr -d '\r' | grep -E '^[0-9]+\.[0-9]+' | tail -1; }
+# The version, wherever it is on the line. sbt's thin client surrounds it with "[success]"
+# lines and terminal escape sequences, and under the CI runner an escape *precedes* the
+# version on its own line — so escapes are stripped and the version matched anywhere, not
+# at the start. `|| true`: under `pipefail` a grep that finds nothing would otherwise end the
+# script silently, before the message below could say why.
+version_of() {
+  sbt --error "print $1/version" | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' |
+    grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*' | tail -1 || true
+}
 ver=$(version_of coreNative)
 pluginver=$(version_of sbtThicket)
-[ -n "$ver" ] || { echo "could not read the version" >&2; exit 1; }
+[ -n "$ver" ] || { echo "FAIL: could not read the version from sbt" >&2; exit 1; }
 # The plugin puts its own version on the dependencies it adds; one build makes both, so they
 # agree — checked, because the failure would be a resolution error in someone else's project.
 [ "$ver" = "$pluginver" ] || { echo "FAIL: framework $ver but sbt-thicket $pluginver" >&2; exit 1; }
