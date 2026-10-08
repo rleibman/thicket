@@ -199,6 +199,10 @@ final class GtkRenderer extends Renderer {
         // GNOME's date field: a menu button showing the date, whose popover holds a
         // GtkCalendar. GTK has no compact date picker of its own, and an inline calendar is
         // not what a form puts in a row.
+        // Cells are placed by position, and re-placed whenever the children change; see
+        // `placeGridCells`.
+        case WidgetKind.Grid => gtk_grid_new()
+
         case WidgetKind.DatePicker =>
           val button   = gtk_menu_button_new()
           val calendar = gtk_calendar_new()
@@ -676,6 +680,14 @@ final class GtkRenderer extends Renderer {
       case Prop.Spacing(dp) =>
         if kinds.get(handle).exists(k => k == WidgetKind.Column || k == WidgetKind.Row) then
           gtk_box_set_spacing(handle.asInstanceOf[Ptr[GtkBox]], dp)
+        else if isGrid(handle) then {
+          gtk_grid_set_row_spacing(handle.asInstanceOf[Ptr[GtkGrid]], toGuint(dp))
+          gtk_grid_set_column_spacing(handle.asInstanceOf[Ptr[GtkGrid]], toGuint(dp))
+        }
+
+      case Prop.Columns(count) =>
+        gridColumns(handle) = count
+        placeGridCells(handle)
 
       case Prop.Padding(dp) =>
         gtk_widget_set_margin_top(handle, dp)
@@ -891,7 +903,41 @@ final class GtkRenderer extends Renderer {
       }
     }
 
+  // -- Grid ------------------------------------------------------------------
+
+  private val gridColumns = mutable.Map.empty[Ptr[GtkWidget], Int]
+
+  private def isGrid(handle: Handle): Boolean = kinds.get(handle).contains(WidgetKind.Grid)
+
+  /** Put every cell where its index says: row `i / columns`, column `i % columns`.
+    *
+    * The order is the grid's own child order, which `insertAfter` and `moveAfter` keep right, so a cell inserted in the
+    * middle moves every later one along. Re-placed through each child's `GtkGridLayoutChild` rather than by removing and
+    * re-attaching it: `gtk_grid_remove` drops the grid's reference, which frees the child.
+    */
+  private def placeGridCells(grid: Handle): Unit = {
+    val columns = gridColumns.getOrElse(grid, 1)
+    val layout  = gtk_widget_get_layout_manager(grid)
+    var child   = gtk_widget_get_first_child(grid)
+    var i       = 0
+    while child != null do {
+      val cell = gtk_layout_manager_get_layout_child(layout, child).asInstanceOf[Ptr[GtkGridLayoutChild]]
+      gtk_grid_layout_child_set_row(cell, i / columns)
+      gtk_grid_layout_child_set_column(cell, i % columns)
+      child = gtk_widget_get_next_sibling(child)
+      i += 1
+    }
+  }
+
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    if isGrid(parent) then {
+      // Attached anywhere, then moved to its place in the child order, which is what
+      // `placeGridCells` reads positions from.
+      gtk_grid_attach(parent.asInstanceOf[Ptr[GtkGrid]], child, 0, 0, 1, 1)
+      gtk_widget_insert_after(child, parent, after.orNull)
+      placeGridCells(parent)
+      return
+    }
     if kinds.get(parent).contains(WidgetKind.ZStack) then {
       val overlay = parent.asInstanceOf[Ptr[GtkOverlay]]
       gtk_overlay_add_overlay(overlay, child)
@@ -916,7 +962,10 @@ final class GtkRenderer extends Renderer {
   }
 
   def removeChild(parent: Handle, child: Handle): Unit =
-    if kinds.get(parent).contains(WidgetKind.ZStack) then
+    if isGrid(parent) then {
+      gtk_grid_remove(parent.asInstanceOf[Ptr[GtkGrid]], child)
+      placeGridCells(parent)
+    } else if kinds.get(parent).contains(WidgetKind.ZStack) then
       gtk_overlay_remove_overlay(parent.asInstanceOf[Ptr[GtkOverlay]], child)
     else if kinds.get(parent).contains(WidgetKind.Scroll) then {
       gtk_scrolled_window_set_child(parent.asInstanceOf[Ptr[GtkScrolledWindow]], null)
@@ -929,8 +978,9 @@ final class GtkRenderer extends Renderer {
   override def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
     // In a ZStack this is a change of paint order, and the widget's sibling position is all
     // GTK uses for that — so it is a reorder, the same as in a box.
-    if kinds.get(parent).contains(WidgetKind.ZStack) then {
+    if kinds.get(parent).contains(WidgetKind.ZStack) || isGrid(parent) then {
       gtk_widget_insert_after(child, parent, after.orNull)
+      if isGrid(parent) then placeGridCells(parent)
       return
     }
     val box = parent.asInstanceOf[Ptr[GtkBox]]
@@ -981,6 +1031,7 @@ final class GtkRenderer extends Renderer {
     suppress -= handle
     kinds.remove(handle)
     val _ = stackAlignment.remove(handle)
+    val _ = gridColumns.remove(handle)
     // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
     // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox
     // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
@@ -1007,7 +1058,13 @@ final class GtkRenderer extends Renderer {
           case Some(scroll) =>
             gtk_scrolled_window_set_child(scroll.asInstanceOf[Ptr[GtkScrolledWindow]], null)
           case None =>
-            if gtk_widget_get_parent(handle) != null then gtk_widget_unparent(handle)
+            val parent = gtk_widget_get_parent(handle)
+            if parent != null then {
+              gtk_widget_unparent(handle)
+              // Destroying detaches without going through removeChild, and every cell after
+              // this one has to move up a place.
+              if isGrid(parent) then placeGridCells(parent)
+            }
         }
     }
   }

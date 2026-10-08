@@ -62,6 +62,7 @@ object GallerySelfTest {
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "ZStack — children drawn over one another, last on top",
+      "Grid — cells flow into columns, each as wide as its widest cell",
       "Image — the three content fits",
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",

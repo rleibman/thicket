@@ -213,6 +213,18 @@ enum WidgetKind {
     */
   case DatePicker
 
+  /** Children in rows and columns: `GtkGrid`, `GridLayout`, `NSGridView`, and on UIKit a grid built from constraints.
+    *
+    * **A §12.2a exception**, by the project owner's decision on #60: UIKit has no grid view. The other three do, so it
+    * is built, and UIKit's is a construction rather than an imitation of one of the others.
+    *
+    * Children flow into [[Prop.Columns]] columns, row by row, in child order; each column is as wide as its widest cell
+    * and each row as tall as its tallest — what a label/value form needs, and what the three native grids do by
+    * default. [[Prop.Spacing]] is the gap between cells on both axes. Spans and explicit placement are deliberately
+    * absent until an app needs them.
+    */
+  case Grid
+
   /** Whether this kind is *presented over* the app rather than placed in the tree.
     *
     * A framework-level fact rather than a per-renderer one: an alert is not a child of anything on any of the four
@@ -383,6 +395,9 @@ enum Prop {
   case Selected(index: Int)
 
   case OnSelect(handler: Int => Unit)
+
+  /** How many columns a [[WidgetKind.Grid]]'s children flow into. At least 1. */
+  case Columns(count: Int)
 
   /** A [[WidgetKind.DatePicker]]'s date. */
   case DateValue(date: CalendarDate)

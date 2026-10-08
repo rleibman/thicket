@@ -69,6 +69,31 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-07 — **`Grid` is built, the second §12.2a exception; icons come before `TabView`**
+  (#60, #61, both decided by the project owner). UIKit has no grid view, while GTK
+  (`GtkGrid`), Android (`android.widget.GridLayout`, framework, not deprecated in
+  `android-36`) and AppKit (`NSGridView`) do. So `Grid` is built, and UIKit's is a
+  constraint construction, like `SegmentedControl`'s on GTK and Android.
+  The shape is the smallest one a form needs: children flow into `Prop.Columns` columns in
+  child order, and cell `i` is at row `i / columns`, column `i % columns`. Each column is as
+  wide as its widest cell, which is all three native grids' default. A cell is just the next
+  child, so `Show` and `ForEach` add and remove cells and the later cells move along. Spans
+  and explicit placement are out until an app needs them.
+  **GTK** re-places every cell through its `GtkGridLayoutChild` whenever the children
+  change, including on `destroy`, which detaches without `removeChild`. Remove-and-reattach
+  is not an option: `gtk_grid_remove` drops the grid's reference and frees the child.
+  **Android** relies on `GridLayout`'s auto-flow, so inserting at an index is the whole of
+  it. `GridLayout` has no spacing, so the gap is a margin on every cell that is not first in
+  its row or column, recomputed on every change. `Grow` is ignored in a grid, as in a
+  `ZStack`, so a child keeps its `GridLayout.LayoutParams`.
+  Falsified on both: without re-placing on insert, GTK put the inserted cells over the
+  first row; without the column count, Android flowed everything into one column.
+  The Apple half is **#62, for the Mac**. Kind code 22 is reserved as
+  `Kind(22, "Grid", None, None, …)`, and `Prop.Columns` is a no-op in `AppleRenderer` until
+  then.
+  `TabView` waits for an icon system (#61). Android's framework tab controls are all
+  deprecated (`TabHost`, `TabWidget`, `ActionBar.Tab`), and tab bars on iOS and Android are
+  icon-led.
 - 2026-10-07 — **The Apple CI runner runs in the logged-in GUI session, without
   `SessionCreate`.** First runs on the self-hosted runner (registered on the owner's Mac,
   `magrathea-thicket`, labels `self-hosted, macOS, ARM64, thicket-apple`) passed 12 of 13

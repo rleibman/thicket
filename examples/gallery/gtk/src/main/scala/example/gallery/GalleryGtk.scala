@@ -68,6 +68,7 @@ object GalleryGtk {
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "ZStack — children drawn over one another, last on top",
+      "Grid — cells flow into columns, each as wide as its widest cell",
       "Image — the three content fits",
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",
@@ -160,6 +161,32 @@ object GalleryGtk {
       check("and runs the tap as well",
         GtkInspect.allTexts(root).contains("The licence link was tapped 1 times"),
         GtkInspect.allTexts(root).filter(_.contains("licence")).toString)
+    }
+
+    // Grid: a GtkGrid whose cells are where their order says, read back from GTK with
+    // gtk_grid_query_child. Then a row is inserted in the middle by clicking the real button,
+    // and the cells after it must have moved down a row.
+    // Ours, not any GtkGrid: GtkCalendar — the DatePicker's popover — is built from one,
+    // and the first version of this check found that instead.
+    val grids = GtkInspect.findAll(root)(g => GtkInspect.isGrid(g) && GtkInspect.allTexts(g).contains("Typed above"))
+    check("the Grid is a GtkGrid", grids.length == 1, grids.length.toString)
+    grids.headOption.foreach { grid =>
+      def cells = GtkInspect.children(grid).map(c => (GtkInspect.allTexts(c).mkString, GtkInspect.gridCell(grid, c)))
+      def at(text: String) = cells.find(_._1 == text).map(_._2)
+      check("cells flow row by row into two columns",
+        at("Typed above").contains((0, 0)) && at("Volume").contains((0, 1)) && at("4.0").contains((1, 1)) &&
+          at("short").contains((1, 2)),
+        cells.toString)
+      GtkInspect.findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Insert a row"))
+        .headOption.foreach(GtkInspect.click)
+      check("a row inserted in the middle lands there", at("Inserted").contains((0, 1)) && at("a whole row").contains((1, 1)),
+        cells.toString)
+      check("and every cell after it moves down a row", at("Volume").contains((0, 2)) && at("short").contains((1, 3)),
+        cells.toString)
+      GtkInspect.findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Remove the row"))
+        .headOption.foreach(GtkInspect.click)
+      check("and removing it moves them back", at("Volume").contains((0, 1)) && at("Inserted").isEmpty,
+        cells.toString)
     }
 
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)
