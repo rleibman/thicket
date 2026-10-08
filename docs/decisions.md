@@ -69,6 +69,24 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-08 — **GTK's Wayland input-method race is worked around in the renderer, not only
+  in the test** (#56; answers `09` §9.8). The project owner's call: upstream bugs get
+  workarounds here rather than waiting on reports. #57 stopped the self-test from racing; a
+  real app could still lose the race if the first text field it ever focuses is destroyed in
+  the same main-loop turn.
+  Now `GtkRenderer.destroy` first asks `WaylandFocus` whether the widget going away holds the
+  keyboard focus. If it does, and the display is a `GdkWaylandDisplay`, it does one
+  `wl_display_roundtrip`. That delivers the registry reply GTK's input method is waiting
+  for, so `text_input` exists, and then the focus is cleared, so GTK's own focus-out and
+  unrealize release the context normally. **The roundtrip is the part that matters**: clearing
+  the focus alone, tried first, crashed 5/5, because `focus_out` does nothing until
+  `text_input` arrives. The functions are found with `dlsym`, not linked, so no app's link
+  line changes and a GTK without Wayland just skips it.
+  The self-test is put back the way #57 found it, mounting and unmounting the sheet in one
+  callback, so every run exercises the race: 6/6 clean with the workaround, 3/3 crashing
+  without it (`ok=67`, `Unhandled signal 11`, the #56 signature). Clean on X11 as well, where
+  the workaround does nothing.
+
 - 2026-10-07 — **`Grid` is built, the second §12.2a exception; icons come before `TabView`**
   (#60, #61, both decided by the project owner). UIKit has no grid view, while GTK
   (`GtkGrid`), Android (`android.widget.GridLayout`, framework, not deprecated in
