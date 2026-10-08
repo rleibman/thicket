@@ -24,7 +24,7 @@ import android.view.{Gravity, View, ViewGroup, WindowInsets}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, GridLayout, HorizontalScrollView, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
+import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, GridLayout, HorizontalScrollView, ImageButton, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
 import scala.collection.mutable
 import thicket.renderer.*
 
@@ -141,6 +141,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // GridLayout auto-places children that carry no row/column spec, in child order, which
       // is the contract's flow: addView at an index is the whole of inserting a cell.
       case WidgetKind.Grid => GridLayout(context)
+
+      // An ImageButton on the borderless ripple: Android's icon button, as in a toolbar.
+      case WidgetKind.IconButton =>
+        val b = ImageButton(context)
+        b.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackgroundBorderless).resourceId)
+        b
 
       case WidgetKind.DatePicker =>
         val b = Button(context, null, _root_.android.R.attr.spinnerStyle)
@@ -363,9 +369,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
         appTaps(handle) = f
         connectTap(handle)
         // Something tappable should look tappable: a container picks up the platform's
-        // own ripple. Buttons already have theirs.
+        // own ripple. Buttons already have theirs, and an ImageButton has the borderless one,
+        // which this would replace with a bounded box.
         handle match {
-          case _: Button => ()
+          case _: Button      => ()
+          case _: ImageButton => ()
           case v =>
             v.setBackgroundResource(themeAttr(_root_.android.R.attr.selectableItemBackground).resourceId)
         }
@@ -389,6 +397,24 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.Enabled(v) =>
         handle.setEnabled(v)
+        // An ImageButton does not dim its own image when disabled; 38% is the platform's
+        // disabled emphasis.
+        handle match {
+          case b: ImageButton => b.setImageAlpha(if v then 255 else 97)
+          case _              => ()
+        }
+
+      case Prop.Glyph(icon) =>
+        handle match {
+          case b: ImageButton => b.setImageDrawable(iconDrawable(icon))
+          case _              => ()
+        }
+
+      // A screen reader reads contentDescription; the tooltip is what a long press or a mouse
+      // hover shows on API 26+.
+      case Prop.AccessibleLabel(text) =>
+        handle.setContentDescription(text)
+        handle.setTooltipText(text)
 
       // Create-only: honouring a change would mean swapping ScrollView for
       // HorizontalScrollView under a live subtree. See Prop.Axis.
@@ -723,6 +749,26 @@ final class AndroidRenderer(context: Context) extends Renderer {
     AndroidRenderer.dateDialog = Some(dialog)
     dialog.show()
   }
+
+  /** A curated icon from the bundled Material Symbols artwork, in the theme's control colour; a platform icon from the
+    * app's own drawables, by name.
+    */
+  private def iconDrawable(icon: Icon): _root_.android.graphics.drawable.Drawable =
+    MaterialSymbols.pathFor(icon) match {
+      case Some(d) =>
+        val tv     = themeAttr(_root_.android.R.attr.colorControlNormal)
+        val colour =
+          if tv.resourceId != 0 then context.getColorStateList(tv.resourceId).getDefaultColor else tv.data
+        IconDrawable(d, dp(24), colour)
+      case None =>
+        val name = icon match {
+          case Icon.Platform(_, _, android) => android
+          case other                        => other.toString
+        }
+        val id = context.getResources.getIdentifier(name, "drawable", context.getPackageName)
+        if id == 0 then throw IllegalArgumentException(s"no drawable named '$name' in ${context.getPackageName}")
+        context.getDrawable(id)
+    }
 
   /** Each segmented control's chosen index, kept here because its RadioButtons are rebuilt when the options change. */
   private val segmentIndex = mutable.Map.empty[RadioGroup, Int]

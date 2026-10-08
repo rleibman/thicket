@@ -18,7 +18,7 @@ package example
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{Alignment, AlertAction, CalendarDate, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{Alignment, AlertAction, CalendarDate, ContentFit, Icon, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
 import thicket.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
@@ -278,6 +278,12 @@ object TodoApp {
           Label(model.items.map(_.size.toString)),
           Label("Done", emphasis = Emphasis.Secondary),
           Label(model.items.map(_.count(_.done).toString))
+        ),
+
+        // Icon-only buttons, each labelled for a screen reader and a tooltip.
+        Row(spacing = 8)(
+          IconButton(Icon.Add, "Add an item")(model.add()),
+          IconButton(Icon.Delete, "Remove the last item")(model.dropLast())
         ),
 
         // Determinate progress driven by the model rather than by a timer: the bar is a

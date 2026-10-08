@@ -11,11 +11,11 @@ catalogue in `docs/07` §7.10.
 | | Count |
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
-| Widgets implemented on at least one renderer | **22** |
-| Widgets implemented on **every** renderer that exists | **21** — measured on all four since #45/#46; `Grid` is on GTK and Android, its Apple half is #62 |
+| Widgets implemented on at least one renderer | **23** |
+| Widgets implemented on **every** renderer that exists | **21** — measured on all four since #45/#46; `Grid` and `IconButton` are on GTK and Android, their Apple halves are #62 and #66 |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
-| Props in the contract | **35** |
-| Props implemented on every renderer | **34** — `Columns` is a no-op on Apple until #62 |
+| Props in the contract | **37** |
+| Props implemented on every renderer | **34** — `Columns` is a no-op on Apple until #62, `Glyph` and `AccessibleLabel` until #66 |
 
 **Twenty-one of thirty-two, every one on every renderer, and measured on every one.** `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
@@ -153,6 +153,7 @@ Slice 2:
 |---|---|---|---|---|---|---|
 | `Slider` | `WidgetKind.Slider` | done | done | done | done | `GtkScale` / `SeekBar`. `Prop.Value` is in the **app's units**, not a fraction |
 | `Picker` | `WidgetKind.Picker` | done | done | done | done | `GtkDropDown` over a `GtkStringList` model / `Spinner` / `NSPopUpButton` / a menu-backed `UIButton` — **not** `UIPickerView`, which is a wheel. Selection is an **index**: two options may share a label |
+| `IconButton` | `WidgetKind.IconButton` | done | done | #66 | #66 | Icon-only, so `Prop.AccessibleLabel` is required (screen reader and tooltip). `GtkButton` with a theme icon / a borderless `ImageButton` drawing bundled Material Symbols / an SF Symbol. Its own kind because Android's icon button is a different class. The 24 curated `Icon`s and the `Icon.Platform` escape hatch are #61 |
 | `Grid` | `WidgetKind.Grid` | done | done | #62 | #62 | **A §12.2a exception** (#60, the project owner's decision): UIKit has no grid view. `GtkGrid` with cells placed through `GtkGridLayoutChild` / `GridLayout`'s own auto-flow / `NSGridView` / a constraint grid on UIKit. Children flow into `Prop.Columns` columns in child order; each column as wide as its widest cell |
 | `DatePicker` | `WidgetKind.DatePicker` | done | done | done | done | The **compact** idiom on all four: a `GtkMenuButton` opening a `GtkCalendar` / a field opening `DatePickerDialog` / a text-field `NSDatePicker` / a `.compact` `UIDatePicker`. The value is a `CalendarDate` — a day, no time, no zone — and crosses the Apple ABI as an epoch day read at midnight UTC |
 | `SegmentedControl` | `WidgetKind.SegmentedControl` | done | done | done | done | **The §12.2a exception**, by the project owner's decision on #50: native only on Apple (`NSSegmentedControl` / `UISegmentedControl`). GTK gets a `linked` box of grouped `GtkToggleButton`s, Android a horizontal `RadioGroup` — each platform's own construction, not an imitation of Apple's. Same props as `Picker` |
@@ -179,12 +180,12 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 | Group | Left to do |
 |---|---|
 | Layout | — |
-| Controls | `IconButton`, `Radio`, `Stepper` |
+| Controls | `Radio`, `Stepper` (both reclassified, §12.2a) |
 | Containers | `TabView` |
 
-`IconButton` is held back on purpose: it needs an icon/resource system, which should not be
-improvised inside a widget. `Link`, held back with it for want of platform URL opening, is
-now a prop — see below.
+`IconButton` and `Link` were held back for the same reason — one needed an icon system, the
+other platform URL opening, and neither should be improvised inside a widget. Both now have
+theirs: `IconButton` sits on the curated `Icon` set (#61), and `Link` is a prop — see below.
 
 ### 12.2a Two entries in §7.10 are not cross-platform widgets
 
