@@ -42,6 +42,13 @@ links with the opener recording, ZStack placement by alignment rect: **48/48** o
 **47/47** on the iOS simulator, where a menu-backed Picker cannot be chosen from code and the
 test says so.
 
+**#62** added the Grid's: each cell's row and column, read from `NSGridView` on AppKit and
+from the construction on UIKit, then a row inserted in the middle by clicking the real button
+and removed again; and, on both, the frames — every column starts at its predecessor's widest
+cell plus the spacing, every row at its tallest. **58/58** on macOS and **57/57** on iOS.
+Falsified on both: ignoring the column count fails five checks, inserting at the end instead
+of in place fails two.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name
