@@ -4,22 +4,35 @@
 // `com.github.sbt.git.GitVersioning` on each project), so its keys need this alias.
 import com.github.sbt.git.SbtGit.GitKeys
 
-
 lazy val SCALA = "3.9.0"
 
-ThisBuild / scalaVersion := SCALA
-ThisBuild / organization := "dev.thicket"
+scalaVersion := SCALA
+organization := "net.leibman"
+// Target the new Sonatype Central Portal repositories
+publishTo := {
+  val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
+  if (version.value.endsWith("-SNAPSHOT"))
+    Some("central-snapshots" at centralSnapshots)
+  else
+    localStaging.value // Stages regular releases for Central Portal upload
+}
+
+pomIncludeRepository := { _ => false }
+publishMavenStyle := true
+
+scmInfo := Some(
+  ScmInfo(
+    uri("https://github.com"),
+    "scm:git@github.com:rleibman/thicket.git"
+  )
+)
+
+
 // NOTE: `version` is NOT set here. `GitVersioning` owns it, and an explicit
 // `ThisBuild / version := ...` is silently overridden — the hard-coded "0.1.0-SNAPSHOT"
 // that used to be on this line never reached a single artefact.
 //
-// What comes out instead:
-//   - on a tag `v0.2.0`              -> 0.2.0
-//   - some commits after that tag    -> 0.2.0-3-gdeadbee
-//   - no tag reachable at all        -> 0.1.0-<sha>-SNAPSHOT  (baseVersion + sha)
-// There are no tags in this repo yet, which is why every module currently reports a bare
-// sha. Tag `v0.1.0` and the versions become readable.
-ThisBuild / GitKeys.baseVersion := "0.1.0"
+
 // `useGitDescribe` is ALSO set per project, in `commonSettings`, and it has to be.
 // GitVersioning sets `useGitDescribe := false` in its own *projectSettings*, which shadows
 // a ThisBuild setting entirely: `ThisBuild / useGitDescribe` read `true` while
@@ -27,33 +40,38 @@ ThisBuild / GitKeys.baseVersion := "0.1.0"
 // baseVersion + sha. `v0.1.0` was tagged and the artefacts still came out as
 // `0.1.0-<sha>` — the tag was inert, which is the sort of thing a release notices far too
 // late.
-ThisBuild / GitKeys.useGitDescribe := true
+GitKeys.useGitDescribe := true
 // Tags are `v`-prefixed; anything else is not a version and is left for `git describe` to
 // render as-is rather than being mangled into one.
-ThisBuild / GitKeys.gitTagToVersionNumber := { tag =>
+GitKeys.gitTagToVersionNumber := { tag =>
   if tag.startsWith("v") && tag.length > 1 then Some(tag.drop(1)) else None
 }
 // `uri`, not `url`: sbt deprecated `url` in 2.0.2.
-ThisBuild / licenses     := Seq("Apache-2.0" -> uri("https://www.apache.org/licenses/LICENSE-2.0"))
+licenses     := Seq("Apache-2.0" -> uri("https://www.apache.org/licenses/LICENSE-2.0"))
 
 // sbt-header cannot auto-detect the licence from `licenses` alone — it needs the owner and
 // the year too, and errors out with "Unable to auto detect project license" without them.
 // Set explicitly rather than left to detection, and matching LICENSE, which says
 // "Copyright 2026 Roberto Leibman".
-ThisBuild / organizationName := "Roberto Leibman"
-ThisBuild / startYear        := Some(2026)
-ThisBuild / headerLicense    := Some(HeaderLicense.ALv2("2026", "Roberto Leibman"))
+organizationName := "Roberto Leibman"
+startYear        := Some(2026)
+headerLicense    := Some(HeaderLicense.ALv2("2026", "Roberto Leibman"))
 
 // POM metadata. `scm` comes from sbt-git via the remote, and `licences`/`organizationName`
 // above fill the rest, so only these three were missing from a publishable POM.
-ThisBuild / homepage := Some(uri("https://github.com/rleibman/thicket"))
-ThisBuild / developers := List(
-  Developer("rleibman", "Roberto Leibman", "roberto@leibman.net", uri("https://github.com/rleibman"))
+homepage := Some(uri("https://github.com/rleibman/thicket"))
+developers := List(
+  Developer(
+    id    = "rleibman",
+    name  = "Roberto Leibman",
+    email = "roberto@leibman.net",
+    url   = uri("https://github.com/rleibman")
+  )
 )
 // Declared so coursier and sbt can tell an eviction from a breaking change rather than
 // guessing from the number. `early-semver` is the right one for a 0.x library that intends
 // to keep binary compatibility within a minor line once it reaches 1.0 — see docs/14.
-ThisBuild / versionScheme := Some("early-semver")
+versionScheme := Some("early-semver")
 
 val zioV = "2.1.26"
 
@@ -114,7 +132,7 @@ lazy val commonSettings = Seq(
 // build is on 0.5.12. Scala Native keeps binary compatibility across 0.5.x patch releases,
 // so this is an eviction *policy* disagreement rather than a real incompatibility, and the
 // scheme says so narrowly instead of turning eviction errors off build-wide.
-ThisBuild / libraryDependencySchemes +=
+libraryDependencySchemes +=
   "org.scala-native" % "test-interface_native0.5_3" % VersionScheme.EarlySemVer
 lazy val zioTestFramework = testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
 
@@ -510,6 +528,7 @@ lazy val galleryIos = project
   */
 lazy val shimGen = project
   .in(file("tools/shim-gen"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
   .settings(commonSettings, zioTestFramework, coverageSettings)
   .settings(
     name           := "thicket-shim-gen",
@@ -563,6 +582,7 @@ lazy val sbtThicket = project
 
 lazy val root = project
   .in(file("."))
+  .enablePlugins(com.github.sbt.git.GitVersioning)
   .aggregate(
     signals.jvm,
     signals.js,
