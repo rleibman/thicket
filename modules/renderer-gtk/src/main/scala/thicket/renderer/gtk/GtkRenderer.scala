@@ -203,6 +203,10 @@ final class GtkRenderer extends Renderer {
         // `placeGridCells`.
         case WidgetKind.Grid => gtk_grid_new()
 
+        // A GtkButton showing an icon name, which is exactly what GTK's own icon buttons are;
+        // the name is set by Prop.Glyph.
+        case WidgetKind.IconButton => gtk_button_new()
+
         case WidgetKind.DatePicker =>
           val button   = gtk_menu_button_new()
           val calendar = gtk_calendar_new()
@@ -685,6 +689,23 @@ final class GtkRenderer extends Renderer {
           gtk_grid_set_column_spacing(handle.asInstanceOf[Ptr[GtkGrid]], toGuint(dp))
         }
 
+      case Prop.Glyph(icon) =>
+        if kinds.get(handle).contains(WidgetKind.IconButton) then
+          Zone(gtk_button_set_icon_name(handle.asInstanceOf[Ptr[GtkButton]], toCString(GtkIcons.name(icon))))
+
+      // Both the accessible name and the tooltip: GNOME shows a tooltip on every icon-only
+      // button, and a screen reader reads the label rather than the icon's file name.
+      case Prop.AccessibleLabel(text) =>
+        Zone {
+          gtk_widget_set_tooltip_text(handle, toCString(text))
+          gtk_accessible_update_property(
+            handle.asInstanceOf[Ptr[GtkAccessible]],
+            GtkAccessibleProperty.GTK_ACCESSIBLE_PROPERTY_LABEL,
+            toCString(text),
+            -1
+          )
+        }
+
       case Prop.Columns(count) =>
         gridColumns(handle) = count
         placeGridCells(handle)
@@ -868,7 +889,7 @@ final class GtkRenderer extends Renderer {
     if !tapIds.contains(handle) then {
       val id = Handles.register(() => fireTap(handle))
       tapIds(handle) = id
-      if kinds.get(handle).contains(WidgetKind.Button) then
+      if kinds.get(handle).exists(k => k == WidgetKind.Button || k == WidgetKind.IconButton) then
         Zone {
           val _ = g_signal_connect_data(
             handle.asInstanceOf[gpointer],

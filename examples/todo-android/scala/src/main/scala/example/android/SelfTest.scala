@@ -19,7 +19,7 @@ package example.android
 import android.util.Log
 import android.view.{Gravity, View, ViewGroup}
 import android.text.InputType
-import android.widget.{EditText, FrameLayout, GridLayout, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Switch, TextView}
+import android.widget.{EditText, FrameLayout, GridLayout, ImageButton, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Switch, TextView}
 import example.TodoApp
 import thicket.core.NavHost
 import thicket.renderer.CalendarDate
@@ -292,6 +292,38 @@ object SelfTest {
         }
       }
     }
+
+    // --- IconButton: an ImageButton drawing bundled Material Symbols artwork ---
+    val iconButtons = findAll(root()) { case _: ImageButton => true; case _ => false }
+      .collect { case b: ImageButton => b }
+    def iconLabelled(l: String) = iconButtons.find(b => String.valueOf(b.getContentDescription) == l)
+    check("two ImageButtons, each with its label as contentDescription and tooltip",
+      iconButtons.length == 2 && iconButtons.forall(b =>
+        b.getContentDescription != null && b.getTooltipText == b.getContentDescription),
+      iconButtons.map(b => s"${b.getContentDescription}/${b.getTooltipText}").toString)
+    // Drawn into a bitmap and counted, because a drawable with a size can still draw nothing:
+    // a path that failed to scale lands outside the bounds, and one that scaled wrong floods
+    // them. An outline icon covers a minority of its square, never none and never all.
+    def coverage(d: _root_.android.graphics.drawable.Drawable): Double = {
+      val size = 96
+      val bmp  = _root_.android.graphics.Bitmap.createBitmap(size, size, _root_.android.graphics.Bitmap.Config.ARGB_8888)
+      d.setBounds(0, 0, size, size)
+      d.draw(_root_.android.graphics.Canvas(bmp))
+      val px = new Array[Int](size * size)
+      bmp.getPixels(px, 0, size, 0, 0, size, size)
+      px.count(p => (p >>> 24) > 0x40).toDouble / px.length
+    }
+    val covered = iconButtons.map(b => Option(b.getDrawable).map(coverage).getOrElse(0.0))
+    check("each draws its icon: some of its square painted, not none and not all",
+      covered.nonEmpty && covered.forall(c => c > 0.03 && c < 0.6),
+      covered.map(c => f"${c * 100}%.1f%%").toString)
+    val sizeBeforeIcons = model.items.now.size
+    iconLabelled("Add an item").foreach(_.performClick())
+    check("tapping Add adds an item", model.items.now.size == sizeBeforeIcons + 1,
+      s"$sizeBeforeIcons -> ${model.items.now.size}")
+    iconLabelled("Remove the last item").foreach(_.performClick())
+    check("tapping Remove takes it away again", model.items.now.size == sizeBeforeIcons,
+      s"$sizeBeforeIcons -> ${model.items.now.size}")
 
     // --- Grid: a GridLayout, its cells placed by GridLayout's own auto-flow ---
     val grids = findAll(root()) { case _: GridLayout => true; case _ => false }

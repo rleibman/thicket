@@ -214,6 +214,26 @@ object GtkInspect {
 
   def isGrid(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_grid_get_type())
 
+  /** The icon name a button shows, or "" for none. */
+  def buttonIconName(widget: Ptr[GtkWidget]): String = {
+    val n = gtk_button_get_icon_name(widget.asInstanceOf[Ptr[GtkButton]])
+    if n == null then "" else fromCString(n)
+  }
+
+  def tooltip(widget: Ptr[GtkWidget]): String = {
+    val t = gtk_widget_get_tooltip_text(widget)
+    if t == null then "" else fromCString(t)
+  }
+
+  /** Whether the icon theme in use can draw `name` — asked of the theme, not of a list, so a name that the user's theme
+    * lacks fails here rather than drawing GTK's missing-image icon.
+    */
+  def themeHasIcon(widget: Ptr[GtkWidget], name: String): Boolean =
+    Zone(
+      gtk_icon_theme_has_icon(gtk_icon_theme_get_for_display(gtk_widget_get_display(widget)), toCString(name))
+        .asInstanceOf[CInt] != 0
+    )
+
   /** Where a `Grid` put a cell, as (column, row), read back from GTK rather than computed. */
   def gridCell(grid: Ptr[GtkWidget], child: Ptr[GtkWidget]): (Int, Int) = {
     val zone = scala.scalanative.unsafe.Zone.open()

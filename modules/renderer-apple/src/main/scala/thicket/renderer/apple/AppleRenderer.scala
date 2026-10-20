@@ -98,6 +98,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.SegmentedControl  => ShimKind.SegmentedControl
       case WidgetKind.DatePicker        => ShimKind.DatePicker
       case WidgetKind.Grid              => ShimKind.Grid
+      case WidgetKind.IconButton        => ShimKind.IconButton
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
@@ -276,6 +277,11 @@ final class AppleRenderer extends Renderer {
 
       // An NSGridView on AppKit; a constraint construction on UIKit, which has no grid view.
       case Prop.Columns(n) => Shim.sui_set_grid_columns(handle, n)
+
+      // Reserved for the Mac (#66): kind code 23 maps, but the SF Symbol (AppleIcons) and the
+      // accessibility label need shim functions that are part of that work.
+      case Prop.Glyph(_)           => ()
+      case Prop.AccessibleLabel(_) => ()
 
       case Prop.OpenUrl(url) => Zone(Shim.sui_set_open_url(handle, toCString(url)))
 

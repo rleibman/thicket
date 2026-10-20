@@ -225,7 +225,8 @@ object Abi {
       "GridView(",
       "GridView(",
       "an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row"
-    )
+    ),
+    Kind(23, "IconButton", None, None, "reserved for the Mac (#66): NSButton / UIButton with an SF Symbol")
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of

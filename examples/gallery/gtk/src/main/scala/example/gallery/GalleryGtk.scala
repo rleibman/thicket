@@ -16,7 +16,8 @@
 
 package example.gallery
 
-import thicket.renderer.gtk.{GtkApp, GtkInspect}
+import thicket.renderer.Icon
+import thicket.renderer.gtk.{GtkApp, GtkIcons, GtkInspect}
 
 /** The gallery on GTK4.
   *
@@ -69,6 +70,7 @@ object GalleryGtk {
       "Layout — Spacer, Grow, Divider, nested Row and Column",
       "ZStack — children drawn over one another, last on top",
       "Grid — cells flow into columns, each as wide as its widest cell",
+      "IconButton — every curated icon, each with its label",
       "Image — the three content fits",
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",
@@ -188,6 +190,27 @@ object GalleryGtk {
       check("and removing it moves them back", at("Volume").contains((0, 1)) && at("Inserted").isEmpty,
         cells.toString)
     }
+
+    // IconButton: a GtkButton showing a theme icon. For every curated icon: the button carries
+    // the mapped name, the installed theme can actually draw it (not GTK's missing-image
+    // icon), and the label reaches the tooltip. Then one is clicked for real.
+    // Ours, by label: GtkCalendar (the DatePicker's popover) has icon buttons of its own for
+    // its month and year arrows, and the first version of this count included them.
+    val ourLabels = Icon.curated.map(_.toString).toSet + "Delete (disabled)"
+    val iconButtons = GtkInspect.findAll(root)(w =>
+      GtkInspect.isButton(w) && GtkInspect.buttonIconName(w).nonEmpty && ourLabels(GtkInspect.tooltip(w)))
+    val byLabel = iconButtons.map(b => GtkInspect.tooltip(b) -> b).toMap
+    check("an icon button per curated icon, plus the disabled one", iconButtons.length == Icon.curated.size + 1,
+      iconButtons.map(b => s"${GtkInspect.buttonIconName(b)}[${GtkInspect.tooltip(b)}]").toString)
+    val wrong = Icon.curated.filterNot { i =>
+      byLabel.get(i.toString).exists(b =>
+        GtkInspect.buttonIconName(b) == GtkIcons.name(i) && GtkInspect.themeHasIcon(b, GtkIcons.name(i)))
+    }
+    check("each shows its mapped icon, and the theme can draw every one", wrong.isEmpty,
+      wrong.map(i => s"$i -> ${GtkIcons.name(i)}").toString)
+    byLabel.get("Share").foreach(GtkInspect.click)
+    check("a tap reaches the app", GtkInspect.allTexts(root).contains("Tapped Share"),
+      GtkInspect.allTexts(root).filter(_.startsWith("Tapped")).toString)
 
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)
 
