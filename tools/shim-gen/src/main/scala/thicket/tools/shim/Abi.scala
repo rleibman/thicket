@@ -219,7 +219,13 @@ object Abi {
       "UIDatePicker(",
       "compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC"
     ),
-    Kind(22, "Grid", None, None, "reserved for the Mac (#62): NSGridView / a constraint grid on UIKit")
+    built(
+      22,
+      "Grid",
+      "GridView(",
+      "GridView(",
+      "an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row"
+    )
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of
@@ -251,6 +257,9 @@ object Abi {
     setter("sui_set_enabled", "on" -> I32),
     setter("sui_set_spacing", "dp" -> I32),
     setter("sui_set_padding", "dp" -> I32),
+    setter("sui_set_grid_columns", "count" -> I32).copy(
+      doc = "How many columns a Grid's cells flow into: cell i at row i / count, column i % count."
+    ),
     setter("sui_set_text_role", "role" -> I32).copy(doc = "role: 0 Title, 1 Body, 2 Caption"),
     setter("sui_set_text_emphasis", "emphasis" -> I32)
       .copy(doc = "emphasis: 0 Normal, 1 Secondary"),
@@ -554,6 +563,13 @@ object Abi {
       Void,
       List(p("h", Handle), p("outX", OutF64), p("outY", OutF64), p("outW", OutF64), p("outH", OutF64)),
       doc = "A view's alignment rect — what Auto Layout positions — in its window, top-left origin."
+    ),
+    Fn(
+      "sui_grid_cell",
+      I32,
+      List(p("h", Handle), p("child", Handle), p("outRow", OutF64), p("outColumn", OutF64)),
+      doc = "Where a Grid has placed a child: the NSGridView's own row and column on AppKit, the\n" +
+        "   construction's on UIKit. 0 when the child is not one of its cells."
     ),
     Fn(
       "sui_record_opened_urls",

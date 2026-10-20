@@ -240,6 +240,137 @@ private final class ZStackView: UIView {
     placed[ObjectIdentifier(subview)] = nil
   }
 }
+/// Kind 22, a `Grid`: cells flow into `columns` columns in order, cell `i` at row
+/// `i / columns`, column `i % columns`, each column as wide as its widest cell and each row
+/// as tall as its tallest.
+///
+/// UIKit has no grid view (a `UICollectionView` is a list of recycled items, not a layout of
+/// given views), so this is the §12.2a construction: a layout guide per column and per row.
+/// Each guide wants to be zero, and each cell sits inside its column's and its row's guide;
+/// so a column settles at its widest cell and a row at its tallest — what `NSGridView`,
+/// `GtkGrid` and `GridLayout` all do by default.
+///
+/// The whole layout is rebuilt on every change, from the order kept here. Every way a cell
+/// leaves comes through [[remove]]: `sui_remove_child` and `sui_destroy` call it.
+private final class GridView: UIView {
+  var columns = 1 {
+    didSet { if columns != oldValue { relayout() } }
+  }
+  var spacing: CGFloat = 0 {
+    didSet { relayout() }
+  }
+  var padding: CGFloat = 0 {
+    didSet { relayout() }
+  }
+  private(set) var cells: [UIView] = []
+  private var laid: [NSLayoutConstraint] = []
+  private var guides: [UILayoutGuide] = []
+
+  init() {
+    super.init(frame: .zero)
+    relayout()
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  func insert(_ c: UIView, after: UIView?) {
+    // A move arrives as an insert of a view that is already a cell.
+    cells.removeAll { $0 === c }
+    let at: Int
+    if let a = after { at = cells.firstIndex(of: a).map { $0 + 1 } ?? cells.count } else { at = 0 }
+    c.translatesAutoresizingMaskIntoConstraints = false
+    cells.insert(c, at: at)
+    if c.superview !== self { addSubview(c) }
+    relayout()
+  }
+
+  func remove(_ c: UIView) {
+    guard let i = cells.firstIndex(of: c) else { return }
+    cells.remove(at: i)
+    relayout()
+  }
+
+  /// Where this construction placed a cell. Ours, so the self-test checks the frames too.
+  func position(of c: UIView) -> (row: Int, column: Int)? {
+    cells.firstIndex(of: c).map { ($0 / columns, $0 % columns) }
+  }
+
+  private func relayout() {
+    NSLayoutConstraint.deactivate(laid)
+    guides.forEach(removeLayoutGuide)
+    laid = []
+    guides = []
+    guard !cells.isEmpty else {
+      laid = [widthAnchor.constraint(equalToConstant: 2 * padding), heightAnchor.constraint(equalToConstant: 2 * padding)]
+      NSLayoutConstraint.activate(laid)
+      return
+    }
+    // As many columns as there are cells to fill them, up to `columns`, as on GTK.
+    let width = min(columns, cells.count)
+    let height = (cells.count + columns - 1) / columns
+    let cols = (0..<width).map { _ in UILayoutGuide() }
+    let rows = (0..<height).map { _ in UILayoutGuide() }
+    guides = cols + rows
+    guides.forEach(addLayoutGuide)
+
+    // A guide's wish to be zero sits between the grid's wish to hug its columns (250, below)
+    // and a cell's compression resistance (750): it gives way to the cells, so a column is
+    // never narrower than its widest one, but not to a parent stretching the grid. At 50 it
+    // lost to the hug, and the stretch went into a column (measured: the first, 264 wide
+    // around a widest cell of 193).
+    func weakly(_ c: NSLayoutConstraint) -> NSLayoutConstraint {
+      c.priority = UILayoutPriority(500)
+      return c
+    }
+    var cs: [NSLayoutConstraint] = []
+    for (j, g) in cols.enumerated() {
+      cs.append(
+        j == 0
+          ? g.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding)
+          : g.leadingAnchor.constraint(equalTo: cols[j - 1].trailingAnchor, constant: spacing)
+      )
+      cs.append(weakly(g.widthAnchor.constraint(equalToConstant: 0)))
+    }
+    for (i, g) in rows.enumerated() {
+      cs.append(
+        i == 0
+          ? g.topAnchor.constraint(equalTo: topAnchor, constant: padding)
+          : g.topAnchor.constraint(equalTo: rows[i - 1].bottomAnchor, constant: spacing)
+      )
+      cs.append(weakly(g.heightAnchor.constraint(equalToConstant: 0)))
+    }
+    // The grid hugs its columns, but a parent that stretches it — a `.fill` stack does — gets
+    // the extra as space after the last column, as GTK leaves it, rather than in a column.
+    func hug(_ edge: NSLayoutConstraint, _ floor: NSLayoutConstraint) -> [NSLayoutConstraint] {
+      edge.priority = .defaultLow
+      return [floor, edge]
+    }
+    cs += hug(
+      trailingAnchor.constraint(equalTo: cols[width - 1].trailingAnchor, constant: padding),
+      trailingAnchor.constraint(greaterThanOrEqualTo: cols[width - 1].trailingAnchor, constant: padding)
+    )
+    cs += hug(
+      bottomAnchor.constraint(equalTo: rows[height - 1].bottomAnchor, constant: padding),
+      bottomAnchor.constraint(greaterThanOrEqualTo: rows[height - 1].bottomAnchor, constant: padding)
+    )
+    // Leading and top, inside the guides: a guide is pushed out to its largest cell, and a
+    // smaller cell keeps its own size rather than being stretched.
+    for (k, c) in cells.enumerated() {
+      let col = cols[k % columns]
+      let row = rows[k / columns]
+      cs += [
+        c.leadingAnchor.constraint(equalTo: col.leadingAnchor),
+        c.trailingAnchor.constraint(lessThanOrEqualTo: col.trailingAnchor),
+        c.topAnchor.constraint(equalTo: row.topAnchor),
+        c.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor)
+      ]
+    }
+    laid = cs
+    NSLayoutConstraint.activate(laid)
+  }
+}
+
+private func gridOf(_ v: UIView) -> GridView? { v.superview as? GridView }
 
 // MARK: - application lifecycle
 
@@ -421,6 +552,9 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 19:
     return retained(ZStackView())
 
+  case 22:
+    return retained(GridView())
+
   case 20:
     let s = UISegmentedControl()
     s.addTarget(proxy, action: #selector(Proxy.segmented(_:)), for: .valueChanged)
@@ -476,6 +610,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   suppressed.remove(id)
   // Detaching is part of destroying, not a separate step the caller performs first.
   if let stack = v.superview as? UIStackView { stack.removeArrangedSubview(v) }
+  gridOf(v)?.remove(v)
   v.removeFromSuperview()
   Unmanaged<UIView>.fromOpaque(h).release()
 }
@@ -540,15 +675,25 @@ public func sui_set_enabled(_ h: UnsafeMutableRawPointer, _ on: Int32) {
 
 @_cdecl("sui_set_spacing")
 public func sui_set_spacing(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
-  (view(h) as? UIStackView)?.spacing = CGFloat(dp)
+  switch view(h) {
+  case let s as UIStackView: s.spacing = CGFloat(dp)
+  case let g as GridView: g.spacing = CGFloat(dp)
+  default: break
+  }
 }
 
 @_cdecl("sui_set_padding")
 public func sui_set_padding(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
+  if let g = view(h) as? GridView { g.padding = CGFloat(dp); return }
   guard let s = view(h) as? UIStackView else { return }
   let p = CGFloat(dp)
   s.isLayoutMarginsRelativeArrangement = true
   s.directionalLayoutMargins = NSDirectionalEdgeInsets(top: p, leading: p, bottom: p, trailing: p)
+}
+
+@_cdecl("sui_set_grid_columns")
+public func sui_set_grid_columns(_ h: UnsafeMutableRawPointer, _ count: Int32) {
+  (view(h) as? GridView)?.columns = max(1, Int(count))
 }
 
 @_cdecl("sui_set_text_role")
@@ -866,6 +1011,11 @@ public func sui_insert_after(
     return
   }
 
+  if let g = p as? GridView {
+    g.insert(c, after: after.map(view))
+    return
+  }
+
   if let scroll = p as? UIScrollView {
     // A scroll view holds exactly one child here, so "insert" is "set".
     scroll.subviews.forEach { $0.removeFromSuperview() }
@@ -1019,6 +1169,7 @@ public func sui_table_live() -> Int32 {
 public func sui_remove_child(_ parent: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer) {
   let c = view(child)
   if let stack = view(parent) as? UIStackView { stack.removeArrangedSubview(c) }
+  (view(parent) as? GridView)?.remove(c)
   c.removeFromSuperview()
 }
 
@@ -1072,6 +1223,7 @@ public func sui_run_on_main_after(_ delayMs: Int32, _ cb: @escaping sui_void_cb,
 
 private func arranged(_ v: UIView) -> [UIView] {
   if let s = v as? UIStackView { return s.arrangedSubviews }
+  if let g = v as? GridView { return g.cells }
   return v.subviews
 }
 
@@ -1707,4 +1859,17 @@ public func sui_opened_url_count() -> Int32 {
 public func sui_opened_url(_ index: Int32) -> UnsafePointer<CChar>? {
   guard let log = openedUrls, index >= 0, Int(index) < log.count else { return nil }
   return scratch(log[Int(index)])
+}
+
+/// Where the construction placed a cell. UIKit has no grid to ask, so the self-test also
+/// measures the frames, which are the platform's.
+@_cdecl("sui_grid_cell")
+public func sui_grid_cell(
+  _ h: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer,
+  _ outRow: UnsafeMutablePointer<Double>, _ outColumn: UnsafeMutablePointer<Double>
+) -> Int32 {
+  guard let g = view(h) as? GridView, let at = g.position(of: view(child)) else { return 0 }
+  outRow.pointee = Double(at.row)
+  outColumn.pointee = Double(at.column)
+  return 1
 }

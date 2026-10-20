@@ -53,7 +53,7 @@ void sui_window_set_title(const char *title);
      19 ZStack             ZStackView()                   ZStackView()      a plain view that pins each child by constraints; later subviews draw on top
      20 SegmentedControl   NSSegmentedControl()           UISegmentedControl()  the picker's options/selection functions drive it; native on both Apple platforms
      21 DatePicker         NSDatePicker()                 UIDatePicker()    compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC
-     22 Grid               -                              -                 reserved for the Mac (#62): NSGridView / a constraint grid on UIKit */
+     22 Grid               GridView()                     GridView()        an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -65,6 +65,8 @@ int32_t sui_get_checked(sui_handle h);
 void sui_set_enabled(sui_handle h, int32_t on);
 void sui_set_spacing(sui_handle h, int32_t dp);
 void sui_set_padding(sui_handle h, int32_t dp);
+/* How many columns a Grid's cells flow into: cell i at row i / count, column i % count. */
+void sui_set_grid_columns(sui_handle h, int32_t count);
 /* role: 0 Title, 1 Body, 2 Caption */
 void sui_set_text_role(sui_handle h, int32_t role);
 /* emphasis: 0 Normal, 1 Secondary */
@@ -231,6 +233,9 @@ int32_t sui_choose(sui_handle h, int32_t index);
 int32_t sui_choose_date(sui_handle h, int32_t epochDay);
 /* A view's alignment rect — what Auto Layout positions — in its window, top-left origin. */
 void sui_get_frame(sui_handle h, double *outX, double *outY, double *outW, double *outH);
+/* Where a Grid has placed a child: the NSGridView's own row and column on AppKit, the
+   construction's on UIKit. 0 when the child is not one of its cells. */
+int32_t sui_grid_cell(sui_handle h, sui_handle child, double *outRow, double *outColumn);
 /* 1: a Link records the URL it would open instead of opening it, so a test can check it
    without launching a browser. 0: open for real again. */
 void sui_record_opened_urls(int32_t on);
