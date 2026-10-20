@@ -167,6 +167,15 @@ object AppleInspect {
     (out(0), out(1), out(2), out(3))
   }
 
+  /** Where a Grid has placed `child`, as (row, column), or `None` if it is not one of its cells. */
+  def gridCell(
+    grid:  Shim.Handle,
+    child: Shim.Handle
+  ): Option[(Int, Int)] = Zone {
+    val out = alloc[Double](2)
+    if Shim.sui_grid_cell(grid, child, out, out + 1) != 0 then Some((out(0).toInt, out(1).toInt)) else None
+  }
+
   /** Records the URLs links would open instead of opening them, until stopped; returns a reader for them. */
   def recordOpenedUrls(): () => List[String] = {
     Shim.sui_record_opened_urls(1)
