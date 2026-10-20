@@ -325,6 +325,28 @@ object SelfTest {
     check("tapping Remove takes it away again", model.items.now.size == sizeBeforeIcons,
       s"$sizeBeforeIcons -> ${model.items.now.size}")
 
+    // --- TabView: a content area and a bottom bar of framework views ---
+    // Found through its bar items, which carry the tab titles as contentDescription.
+    val tabItems = findAll(root())(v => v.getContentDescription != null &&
+      Set("Summary", "Help").contains(v.getContentDescription.toString))
+    check("a bar item per tab, in order", tabItems.map(_.getContentDescription.toString) == List("Summary", "Help"),
+      tabItems.map(_.getContentDescription).toString)
+    tabItems.headOption.map(_.getParent.getParent).collect { case tv: ViewGroup => tv }.foreach { tv =>
+      val content = tv.getChildAt(0).asInstanceOf[ViewGroup]
+      def tabsShown = (0 until content.getChildCount).map(i => content.getChildAt(i).getVisibility == View.VISIBLE).toList
+      check("both tabs are mounted, only the model's shows", content.getChildCount == 2 && tabsShown == List(true, false),
+        s"${content.getChildCount} tabs, shown $tabsShown")
+      val helpText = findAll(content.getChildAt(1)) { case _: TextView => true; case _ => false }
+        .collect { case t: TextView => t.getText.toString }
+      check("the hidden tab's content exists", helpText.contains("Long-press a row for its menu."), helpText.toString)
+      // A real click on the bar item: its listener is the renderer's.
+      tabItems(1).performClick()
+      check("clicking Help shows it and tells the app", model.infoTab.now == 1 && tabsShown == List(false, true),
+        s"model ${model.infoTab.now}, shown $tabsShown")
+      model.infoTab.set(0)
+      check("writing the signal switches back", tabsShown == List(true, false), tabsShown.toString)
+    }
+
     // --- Grid: a GridLayout, its cells placed by GridLayout's own auto-flow ---
     val grids = findAll(root()) { case _: GridLayout => true; case _ => false }
       .collect { case g: GridLayout => g }

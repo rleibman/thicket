@@ -69,6 +69,36 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-08 — **`TabView` is a container of `Tab`s that keeps every tab alive and keeps the
+  user on their tab; Android's is built, and libadwaita needed a workaround** (#61, #69).
+  A `Tab` carries its title (`Prop.Text`) and icon (`Prop.Glyph`) and holds one child, so a
+  title can be reactive. The selection reuses `Picker`'s `Selected`/`OnSelect`. Every tab
+  stays mounted, so a tab keeps its scroll position and state while the user is elsewhere, as
+  every native tab container does.
+  **Inserting or removing tabs keeps the user on the tab they are looking at**, and if that
+  changes its index (a tab added before it, the visible tab removed) the new index is
+  reported through `OnSelect`. The alternative, jumping to whatever now sits at the old
+  index, moves the user because the app changed something else. Found by the gallery's
+  mid-list insert, which first moved the user to the new tab.
+  **GTK**: `AdwViewStack` plus an always-revealed `AdwViewSwitcherBar`. The stack can only
+  append, so a tab inserted mid-list is placed by taking the later pages out and re-adding
+  them, holding a reference while they are out. **libadwaita 1.9.1 has a dangling pointer
+  here**: `stack_remove` clears `visible_child` but not `last_visible_child`, the page a
+  switch is leaving, which is kept until the switch's animation ends on the next frame even
+  with transitions off. Removing that page inside the frame left the stack pointing at freed
+  memory: 3 segfaults and 3 `gtk_widget_set_child_visible` criticals in 6 runs. Hiding a page
+  before removing it makes the stack's own `update_child_visible` clear the pointer; 8/8
+  clean since. Worth reporting upstream.
+  **Android**: every framework tab control is deprecated (`TabHost`, `TabWidget`,
+  `ActionBar.Tab`) and `BottomNavigationView` is Material, so the bar is a row of icon-over-
+  label items from framework views, tinted `colorPrimary` when selected; the tabs sit in a
+  `FrameLayout`, unselected ones `GONE`. `Selected` arrives at create, before any tab exists,
+  so the wanted index is remembered and applied when its tab arrives; falsified, nothing
+  showed at all.
+  The Apple half is #69 (kinds 24 and 25 reserved). With `TabView`, nothing in the v1
+  catalogue is left unbuilt: 24 widgets, 6 entries provided another way, and Radio and
+  Stepper reclassified.
+
 - 2026-10-08 — **Icons are a curated set of 24 meanings, each the platform's own; Android's
   are bundled Material Symbols paths** (#61, both choices the project owner's).
   `Icon.Add` … `Icon.Download` name what an icon *means*. GTK maps each to a

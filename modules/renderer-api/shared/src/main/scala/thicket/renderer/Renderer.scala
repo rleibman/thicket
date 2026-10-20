@@ -234,6 +234,26 @@ enum WidgetKind {
     */
   case IconButton
 
+  /** Top-level sections the user switches between, each kept alive: `AdwViewStack` with an `AdwViewSwitcherBar`,
+    * `UITabBarController`, `NSTabViewController`, and on Android a bottom bar built from framework views.
+    *
+    * **A §12.2a exception** (#61, the project owner's decision): every tab control in Android's framework is deprecated
+    * (`TabHost`, `TabWidget`, `ActionBar.Tab`) and the modern one is Material's, which this project does not depend on,
+    * so Android's is a construction. Its children are [[Tab]]s, in order; which one shows is [[Prop.Selected]], an
+    * index as for `Picker`, and the user's choice is [[Prop.OnSelect]]. Every tab stays mounted, so switching away and
+    * back keeps a tab's scroll position and its state, as the native containers all do.
+    *
+    * Inserting or removing tabs keeps the user on the tab they are looking at. If that changes its index — a tab added
+    * before it, or the visible tab itself removed — the new index is reported through `OnSelect`, so an app that writes
+    * the selection back stays true without doing anything.
+    */
+  case TabView
+
+  /** One page of a [[TabView]]: its title ([[Prop.Text]]), its icon ([[Prop.Glyph]]) and exactly one child, its content
+    * — inserting a second replaces the first, as for `Scroll`.
+    */
+  case Tab
+
   /** Whether this kind is *presented over* the app rather than placed in the tree.
     *
     * A framework-level fact rather than a per-renderer one: an alert is not a child of anything on any of the four

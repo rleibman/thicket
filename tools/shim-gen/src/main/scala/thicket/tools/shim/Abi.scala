@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 Roberto Leibman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package thicket.tools.shim
 
 /** The Scala ⇄ Apple ABI, described once.
@@ -226,7 +242,9 @@ object Abi {
       "GridView(",
       "an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row"
     ),
-    Kind(23, "IconButton", None, None, "reserved for the Mac (#66): NSButton / UIButton with an SF Symbol")
+    Kind(23, "IconButton", None, None, "reserved for the Mac (#66): NSButton / UIButton with an SF Symbol"),
+    Kind(24, "TabView", None, None, "reserved for the Mac (#69): UITabBarController / NSTabViewController"),
+    Kind(25, "Tab", None, None, "reserved for the Mac (#69): one tab of a TabView")
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of

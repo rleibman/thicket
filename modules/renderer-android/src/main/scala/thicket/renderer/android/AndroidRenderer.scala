@@ -142,6 +142,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // is the contract's flow: addView at an index is the whole of inserting a cell.
       case WidgetKind.Grid => GridLayout(context)
 
+      case WidgetKind.TabView => tabs.createTabView()
+      case WidgetKind.Tab     => tabs.createTab()
+
       // An ImageButton on the borderless ripple: Android's icon button, as in a toolbar.
       case WidgetKind.IconButton =>
         val b = ImageButton(context)
@@ -212,6 +215,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   def update(handle: Handle, patch: Seq[Prop]): Unit =
     patch.foreach {
+      case Prop.Text(v) if tabs.isTab(handle) => tabs.setTitle(handle, v)
+
       case Prop.Text(v) =>
         handle match {
           case e: EditText =>
@@ -404,6 +409,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case _              => ()
         }
 
+      case Prop.Glyph(icon) if tabs.isTab(handle) => tabs.setIcon(handle, icon)
+
       case Prop.Glyph(icon) =>
         handle match {
           case b: ImageButton => b.setImageDrawable(iconDrawable(icon))
@@ -495,6 +502,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.OnDateChange(f) =>
         dateChanged(handle) = f
         handle.setOnClickListener((_: View) => openDateDialog(handle))
+
+      case Prop.Selected(index) if tabs.isTabView(handle) => tabs.select(handle, index)
+      case Prop.OnSelect(f) if tabs.isTabView(handle)     => tabs.onSelect(handle, f)
 
       case Prop.Options(values) if handle.isInstanceOf[RadioGroup] =>
         val g = handle.asInstanceOf[RadioGroup]
@@ -750,16 +760,22 @@ final class AndroidRenderer(context: Context) extends Renderer {
     dialog.show()
   }
 
+  /** A theme colour attribute as a colour, whether the theme gives it as a resource or a literal. */
+  private def colourAttr(attr: Int): Int = {
+    val tv = themeAttr(attr)
+    if tv.resourceId != 0 then context.getColorStateList(tv.resourceId).getDefaultColor else tv.data
+  }
+
+  /** TabView and Tab, kept in their own class; see `AndroidTabs`. */
+  private lazy val tabs = AndroidTabs(context, dp, colourAttr, iconDrawable)
+
   /** A curated icon from the bundled Material Symbols artwork, in the theme's control colour; a platform icon from the
     * app's own drawables, by name.
     */
   private def iconDrawable(icon: Icon): _root_.android.graphics.drawable.Drawable =
     MaterialSymbols.pathFor(icon) match {
       case Some(d) =>
-        val tv     = themeAttr(_root_.android.R.attr.colorControlNormal)
-        val colour =
-          if tv.resourceId != 0 then context.getColorStateList(tv.resourceId).getDefaultColor else tv.data
-        IconDrawable(d, dp(24), colour)
+        IconDrawable(d, dp(24), colourAttr(_root_.android.R.attr.colorControlNormal))
       case None =>
         val name = icon match {
           case Icon.Platform(_, _, android) => android
@@ -829,6 +845,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
 
   def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+    if tabs.isTabView(parent) then {
+      tabs.insertAfter(parent, child.asInstanceOf[FrameLayout], after)
+      return
+    }
+    if kinds.get(parent).contains(WidgetKind.Tab) then {
+      tabs.setContent(parent.asInstanceOf[FrameLayout], child)
+      return
+    }
     if kinds.get(parent).contains(WidgetKind.Scroll) then {
       // A scroll view holds one child, so "insert" is "set". Typed as ViewGroup, not
       // ScrollView: a horizontal Scroll is a HorizontalScrollView and the two share no
@@ -867,6 +891,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   def removeChild(parent: Handle, child: Handle): Unit = {
+    if tabs.isTabView(parent) then {
+      tabs.remove(parent, child)
+      return
+    }
     val vg = parent.asInstanceOf[ViewGroup]
     vg.removeView(child)
     vg match {
@@ -877,6 +905,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   def destroy(handle: Handle): Unit = {
+    // A Tab is in its TabView's content area and has an item in its bar; both go.
+    tabs.destroy(handle)
     handle.getParent match {
       case vg: ViewGroup =>
         vg.removeView(handle)
