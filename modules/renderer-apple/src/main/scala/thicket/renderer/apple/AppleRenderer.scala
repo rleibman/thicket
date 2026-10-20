@@ -278,10 +278,8 @@ final class AppleRenderer extends Renderer {
       case Prop.Range(min, max) => Shim.sui_set_range(handle, min, max)
       case Prop.Value(v)        => Shim.sui_set_value(handle, v)
 
-      // Reserved for the Mac (#62): kind code 22 exists so the Scala side compiles and maps
-      // it, but neither shim builds a grid yet, and the setter that carries the column count
-      // is part of that work. Until then a Grid on Apple is not drawn as a grid.
-      case Prop.Columns(_) => ()
+      // An NSGridView on AppKit; a constraint construction on UIKit, which has no grid view.
+      case Prop.Columns(n) => Shim.sui_set_grid_columns(handle, n)
 
       // Reserved for the Mac (#66): kind code 23 maps, but the SF Symbol (AppleIcons) and the
       // accessibility label need shim functions that are part of that work.
