@@ -1011,6 +1011,9 @@ final class GtkRenderer extends Renderer {
     (if b then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean]
 
   def destroy(handle: Handle): Unit = {
+    // Before anything is freed: a focused text widget must be released by GTK's input
+    // method first, or a Wayland race leaves it pointing at freed memory (#56).
+    WaylandFocus.releaseBeforeDestroy(handle)
     tapIds.remove(handle).foreach(Handles.release)
     val _ = appTaps.remove(handle)
     val _ = links.remove(handle)

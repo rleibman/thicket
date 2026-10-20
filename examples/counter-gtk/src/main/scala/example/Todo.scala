@@ -381,17 +381,11 @@ object Todo {
         model.items.now.last.title == "From the sheet",
       model.items.now.map(_.title).toString)
 
-    // Give the main loop a turn before taking the sheet down (#56). The sheet's field is the
-    // first text widget in this run to get input-method focus, and on Wayland that is what
-    // makes GTK create its input-method state — asynchronously, from a registry reply that
-    // only arrives once the main loop runs. Mounting and unmounting it inside one callback
-    // tore the field down before that reply came, GTK could not clear its "current" context,
-    // and the next keyboard-focus event made it dereference the freed one. A user cannot
-    // open a sheet and close it inside one frame; the test no longer does either.
-    GtkApp.postToUi(() => afterSheet())
-  }
-
-  private def afterSheet(): Unit = {
+    // Unmounted in the same callback that mounted it, deliberately (#56). The sheet's field is
+    // the first text widget in this run to get input-method focus, and tearing it down in
+    // the same main-loop turn is exactly the race GTK's Wayland input method loses — it
+    // crashed this test on every run. The renderer now works around it (WaylandFocus), so
+    // this keeps exercising the workaround instead of stepping around the race.
     model.editing.set(false)
     check("unmounting takes the sheet down and leaves the screen",
       GtkInspect.allTexts(GtkApp.rootHandle).contains("Hide completed"))
