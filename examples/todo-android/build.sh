@@ -24,7 +24,7 @@ echo "== sbt: building the Scala JARs =="
 # returned the lot newline-separated, and `cp` failed with a path containing a newline. An
 # mtime heuristic would work until two builds landed in the same second; this is exact.
 # The Scala version too: it is in the jar path, and hard-coding it broke on every Scala bump.
-vers=$(cd "$root" && sbt --error "print signalsJVM/version" "print signalsJVM/scalaVersion" 2>/dev/null | tr -d '\r' | tail -2)
+vers=$(cd "$root" && sbt --error "print signalsJVM/version; print signalsJVM/scalaVersion" 2>/dev/null | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' | grep -E '^[0-9]' | tail -2)
 ver=$(sed -n 1p <<<"$vers")
 sv=$(sed -n 2p <<<"$vers")
 [ -n "$ver" ] && [ -n "$sv" ] || { echo "could not read the project version from sbt" >&2; exit 1; }

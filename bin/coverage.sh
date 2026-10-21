@@ -18,7 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 MODULES=(signalsJVM coreJVM effectZioJVM shimGen)
-SV=$(sbt --error "print signalsJVM/scalaVersion" 2>/dev/null | tr -d '\r' | tail -1)
+SV=$(sbt --error "print signalsJVM/scalaVersion" 2>/dev/null | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' | grep -E '^[0-9]' | tail -1)
 REPORT=target/out/jvm/scala-$SV/thicket/scoverage-report/scoverage.xml
 
 # This clears the machine-wide sbt 2 cache, which every other sbt 2 build on the machine

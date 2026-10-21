@@ -13,7 +13,9 @@ cd "$(dirname "$0")/.."
 # One argument, `;`-separated: the sbt launcher CI installs joins separate arguments with a
 # space, which sbt then cannot parse as two commands.
 sbt --error "galleryGtk/nativeLink; counterGtk/nativeLink"
-sv=$(sbt --error "print galleryGtk/scalaVersion" 2>/dev/null | tr -d '\r' | tail -1)
+# Only the version-shaped line: without a terminal, sbt also prints ANSI control sequences
+# (CI's first run got `scala-\033[0J` as the path).
+sv=$(sbt --error "print galleryGtk/scalaVersion" 2>/dev/null | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' | grep -E '^[0-9]' | tail -1)
 out="target/out/native0.5/scala-$sv"
 logs=target/gtk-selftests
 mkdir -p "$logs"

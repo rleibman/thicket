@@ -19,7 +19,7 @@ echo "== sbt: building the Scala JARs =="
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
 # The version and the Scala version, asked rather than assumed: both are in the jar paths.
-vers=$(cd "$root" && sbt --error "print signalsJVM/version" "print signalsJVM/scalaVersion" 2>/dev/null | tr -d '\r' | tail -2)
+vers=$(cd "$root" && sbt --error "print signalsJVM/version; print signalsJVM/scalaVersion" 2>/dev/null | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' | grep -E '^[0-9]' | tail -2)
 ver=$(sed -n 1p <<<"$vers")
 sv=$(sed -n 2p <<<"$vers")
 [ -n "$ver" ] && [ -n "$sv" ] || { echo "could not read the versions from sbt" >&2; exit 1; }
