@@ -76,7 +76,7 @@ final case class Theme(colors: Map[ColorRole, Rgb] = Map.empty) {
   def withColor(
     role: ColorRole,
     rgb:  Rgb
-  ): Theme = copy(colors = colors.updated(role, rgb))
+  ):                        Theme = copy(colors = colors.updated(role, rgb))
   def get(role: ColorRole): Option[Rgb] =
     role match {
       case ColorRole.OnAccent =>
@@ -97,8 +97,8 @@ object Theme {
 
   private var current: Theme = platform
 
-  /** Installed once by the host, before mounting. Per-subtree overrides (`Provide`) are a later addition; this is
-    * deliberately the smallest thing that lets an app brand itself.
+  /** The app-wide theme, installed once by the host before mounting (`ThicketActivity.theme` on Android). A subtree
+    * overrides it with `Provide`; this is the default that everything outside one gets.
     */
   def install(theme: Theme): Unit = current = theme
   def active:                Theme = current

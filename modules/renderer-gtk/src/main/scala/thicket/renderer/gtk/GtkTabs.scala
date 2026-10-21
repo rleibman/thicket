@@ -20,28 +20,28 @@ import scala.collection.mutable
 import scala.scalanative.unsafe.*
 import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.*
-import sn.gnome.glib.internal.{gchar, gpointer}
+import sn.gnome.glib.internal.gpointer
 import sn.gnome.adwaita.internal.*
-import thicket.renderer.Icon
+import thicket.renderer.{Icon, TabSelection}
 
 /** `TabView` on GTK (#61): an `AdwViewStack` with an `AdwViewSwitcherBar`, libadwaita's own bottom switcher.
   *
   * The `TabView` handle is a vertical box holding the two; each `Tab` handle is a box holding its one content child,
   * and that box is the stack page. Kept apart from `GtkRenderer` because of one awkward fact: `AdwViewStack` has no
-  * insert-at-position, only "add" (append), so a tab inserted in the middle is placed by taking the later pages out
-  * and adding them back, holding a reference while they are out — removing a page drops the stack's reference, which
-  * would otherwise free it.
+  * insert-at-position, only "add" (append), so a tab inserted in the middle is placed by taking the later pages out and
+  * adding them back, holding a reference while they are out — removing a page drops the stack's reference, which would
+  * otherwise free it.
   */
-private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
+final private[gtk] class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
 
   /** For each TabView: its stack, and its tabs in order. Our own order, because selection is by index. */
   private val stacks = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
-  private val order  = mutable.Map.empty[Ptr[GtkWidget], Vector[Ptr[GtkWidget]]]
+  private val order = mutable.Map.empty[Ptr[GtkWidget], Vector[Ptr[GtkWidget]]]
 
   /** For each Tab: its title and icon (kept so a re-added page gets them back), and the TabView it is in. */
   private val titles = mutable.Map.empty[Ptr[GtkWidget], String]
-  private val icons  = mutable.Map.empty[Ptr[GtkWidget], Icon]
-  private val owner  = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
+  private val icons = mutable.Map.empty[Ptr[GtkWidget], Icon]
+  private val owner = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
 
   private val selectIds = mutable.Map.empty[Ptr[GtkWidget], Long]
 
@@ -49,7 +49,7 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     * actually been shown, which is not at create: `Selected` is applied before any tab is mounted, so it is kept in
     * `wanted` and shown when its tab arrives (#70 review, the same thing `AndroidTabs` does).
     */
-  private val known  = mutable.Map.empty[Ptr[GtkWidget], Int]
+  private val known = mutable.Map.empty[Ptr[GtkWidget], Int]
   private val wanted = mutable.Map.empty[Ptr[GtkWidget], Int]
   private val chosen = mutable.Map.empty[Ptr[GtkWidget], Int => Unit]
 
@@ -58,24 +58,22 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     * true. Removing the visible tab is the same case: GTK shows another, and that is reported.
     */
   private def reportIfMoved(view: Ptr[GtkWidget]): Unit = {
-    val now = selectedIndex(view)
-    // Nothing to report while the app's own selection has not been shown yet: the tabs are
-    // still arriving, and a 0 reported now would overwrite what the app asked for.
-    if known.contains(view) && now >= 0 && !known.get(view).contains(now) then {
+    // The rule is TabSelection's; this applies it to the stack.
+    TabSelection.moved(known.get(view), selectedIndex(view)).foreach { now =>
       known(view) = now
       chosen.get(view).foreach(_(now))
     }
   }
 
   def createTabView(): Ptr[GtkWidget] = {
-    val box   = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+    val box = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
     val stack = adw_view_stack_new()
-    gtk_widget_set_vexpand(stack, gbool(true))
+    gtk_widget_set_vexpand(stack, Handles.gbool(true))
     val bar = adw_view_switcher_bar_new()
     adw_view_switcher_bar_set_stack(bar.asInstanceOf[Ptr[AdwViewSwitcherBar]], stack.asInstanceOf[Ptr[AdwViewStack]])
     // Always shown: the bar is the TabView's switcher here, not only the narrow-window
     // fallback for a header-bar switcher.
-    adw_view_switcher_bar_set_reveal(bar.asInstanceOf[Ptr[AdwViewSwitcherBar]], gbool(true))
+    adw_view_switcher_bar_set_reveal(bar.asInstanceOf[Ptr[AdwViewSwitcherBar]], Handles.gbool(true))
     gtk_box_append(box.asInstanceOf[Ptr[GtkBox]], stack)
     gtk_box_append(box.asInstanceOf[Ptr[GtkBox]], bar)
     stacks(box) = stack
@@ -92,25 +90,34 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
   private def page(tab: Ptr[GtkWidget]): Option[Ptr[AdwViewStackPage]] =
     owner.get(tab).map(view => adw_view_stack_get_page(stackOf(view), tab))
 
-  def setTitle(tab: Ptr[GtkWidget], title: String): Unit = {
+  def setTitle(
+    tab:   Ptr[GtkWidget],
+    title: String
+  ): Unit = {
     titles(tab) = title
     page(tab).foreach(p => Zone(adw_view_stack_page_set_title(p, toCString(title))))
   }
 
-  def setIcon(tab: Ptr[GtkWidget], icon: Icon): Unit = {
+  def setIcon(
+    tab:  Ptr[GtkWidget],
+    icon: Icon
+  ): Unit = {
     icons(tab) = icon
     page(tab).foreach(p => Zone(adw_view_stack_page_set_icon_name(p, toCString(GtkIcons.name(icon)))))
   }
 
   /** A tab's content: a Tab holds one child, so inserting is replacing. */
-  def setContent(tab: Ptr[GtkWidget], child: Ptr[GtkWidget]): Unit = {
+  def setContent(
+    tab:   Ptr[GtkWidget],
+    child: Ptr[GtkWidget]
+  ): Unit = {
     var c = gtk_widget_get_first_child(tab)
     while c != null do {
       val next = gtk_widget_get_next_sibling(c)
       gtk_box_remove(tab.asInstanceOf[Ptr[GtkBox]], c)
       c = next
     }
-    gtk_widget_set_vexpand(child, gbool(true))
+    gtk_widget_set_vexpand(child, Handles.gbool(true))
     gtk_box_append(tab.asInstanceOf[Ptr[GtkBox]], child)
   }
 
@@ -122,29 +129,40 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     * `gtk_widget_set_child_visible` on it crashes. Hiding the page first runs the stack's own `update_child_visible`,
     * which does clear `last_visible_child` when it is that page.
     */
-  private def detach(view: Ptr[GtkWidget], tab: Ptr[GtkWidget]): Unit = {
-    gtk_widget_set_visible(tab, gbool(false))
+  private def detach(
+    view: Ptr[GtkWidget],
+    tab:  Ptr[GtkWidget]
+  ): Unit = {
+    gtk_widget_set_visible(tab, Handles.gbool(false))
     adw_view_stack_remove(stackOf(view), tab)
   }
 
-  private def add(view: Ptr[GtkWidget], tab: Ptr[GtkWidget]): Unit = Zone {
-    gtk_widget_set_visible(tab, gbool(true))
-    val _ = adw_view_stack_add_titled_with_icon(
-      stackOf(view),
-      tab,
-      null,
-      toCString(titles.getOrElse(tab, "")),
-      toCString(icons.get(tab).map(GtkIcons.name).getOrElse(""))
-    )
-  }
+  private def add(
+    view: Ptr[GtkWidget],
+    tab:  Ptr[GtkWidget]
+  ): Unit =
+    Zone {
+      gtk_widget_set_visible(tab, Handles.gbool(true))
+      val _ = adw_view_stack_add_titled_with_icon(
+        stackOf(view),
+        tab,
+        null,
+        toCString(titles.getOrElse(tab, "")),
+        toCString(icons.get(tab).map(GtkIcons.name).getOrElse(""))
+      )
+    }
 
   /** Put `tab` after `after` (first when `None`): append it, then take out every page that belongs after it and add
     * them back, so the stack's order is the contract's order.
     */
-  def insertAfter(view: Ptr[GtkWidget], tab: Ptr[GtkWidget], after: Option[Ptr[GtkWidget]]): Unit = {
+  def insertAfter(
+    view:  Ptr[GtkWidget],
+    tab:   Ptr[GtkWidget],
+    after: Option[Ptr[GtkWidget]]
+  ): Unit = {
     val current = order(view).filterNot(_ == tab)
-    val at      = after.map(a => current.indexOf(a) + 1).getOrElse(0)
-    val later   = current.drop(at)
+    val at = after.map(a => current.indexOf(a) + 1).getOrElse(0)
+    val later = current.drop(at)
     // Taking the later pages out may take out the one on screen, and the stack would show
     // another; the user should not move because a tab was added, so it is put back.
     val visible = adw_view_stack_get_visible_child(stackOf(view))
@@ -172,7 +190,10 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     else wanted.get(view).foreach(i => select(view, i))
   }
 
-  def remove(view: Ptr[GtkWidget], tab: Ptr[GtkWidget]): Unit =
+  def remove(
+    view: Ptr[GtkWidget],
+    tab:  Ptr[GtkWidget]
+  ): Unit =
     if owner.remove(tab).isDefined then {
       order(view) = order(view).filterNot(_ == tab)
       suppress += view
@@ -181,7 +202,10 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
       reportIfMoved(view)
     }
 
-  def select(view: Ptr[GtkWidget], index: Int): Unit = {
+  def select(
+    view:  Ptr[GtkWidget],
+    index: Int
+  ): Unit = {
     wanted(view) = index
     // AdwViewStack always shows a page, so -1 ("none") leaves it where it is.
     order(view).lift(index).foreach { tab =>
@@ -198,7 +222,10 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     order(view).indexOf(adw_view_stack_get_visible_child(stackOf(view)))
 
   /** The user's choice, through `notify::visible-child`, read back as an index into our order. */
-  def onSelect(view: Ptr[GtkWidget], f: Int => Unit): Unit = {
+  def onSelect(
+    view: Ptr[GtkWidget],
+    f:    Int => Unit
+  ): Unit = {
     chosen(view) = f
     val report: String => Unit = { s =>
       known(view) = s.toInt
@@ -206,20 +233,11 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     }
     selectIds.get(view) match {
       case Some(id) => Handles.replaceValued(id, report)
-      case None =>
+      case None     =>
         val id = Handles.registerValued(report)
         selectIds(view) = id
         Handles.bindTextSource(id, () => selectedIndex(view), () => suppress.contains(view))
-        Zone {
-          val _ = g_signal_connect_data(
-            stacks(view).asInstanceOf[gpointer],
-            toCString("notify::visible-child").asInstanceOf[Ptr[gchar]],
-            GCallback.fromPtr(Handles.notifiedPtr),
-            Handles.idToPointer(id),
-            null.asInstanceOf[GClosureNotify],
-            GConnectFlags.define(0)
-          )
-        }
+        Handles.connect(stacks(view), "notify::visible-child", Handles.notifiedPtr, id)
     }
   }
 
@@ -242,8 +260,5 @@ private[gtk] final class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
         false
     }
   }
-
-  private def gbool(b: Boolean): sn.gnome.glib.internal.gboolean =
-    (if b then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean]
 
 }

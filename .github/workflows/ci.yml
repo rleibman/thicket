@@ -1,0 +1,72 @@
+# The Linux build: every test, the formatter and licence headers, every renderer and example
+# compiled, and both GTK self-tests run against a real GTK (review 2026-10-20, P2-21).
+#
+# Before this, the only workflow was the self-hosted Mac's, and it runs shim-gen's tests and
+# the Apple self-tests — 15 of 560 tests. Everything else ran only when someone ran it.
+#
+# GitHub-hosted, so unlike apple.yml it is safe on pull_request: a fork's code runs on a
+# throwaway VM with a read-only token.
+
+name: Linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # The platform renderer-android compiles against; the runner image ships the SDK.
+      ANDROID_PLATFORM: android-36
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The version comes from `git describe`, which needs the tags.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: sbt/setup-sbt@ecad189dd245444b9ae0a0cd5922fd938b88906f # v1.5.12
+
+      - name: Native toolchain, GTK 4 and libadwaita
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq clang libunwind-dev zlib1g-dev libgtk-4-dev libadwaita-1-dev xvfb
+
+      - name: android.jar for renderer-android
+        run: |
+          [ -f "$ANDROID_HOME/platforms/$ANDROID_PLATFORM/android.jar" ] \
+            || yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;$ANDROID_PLATFORM" >/dev/null
+          modules/renderer-android/setup.sh
+
+      # testFull, scalafmtCheckAll, headerCheckAll and platforms/Test/compile — see build.sbt.
+      - name: sbt checkLinux
+        run: sbt --error checkLinux
+
+      - name: GTK self-tests
+        env:
+          GDK_BACKEND: x11
+        run: xvfb-run -a bin/gtk-selftests.sh
+
+      - name: Keep the self-test logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gtk-selftests-${{ github.sha }}
+          path: target/gtk-selftests/
+          if-no-files-found: ignore

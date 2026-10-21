@@ -1,0 +1,3 @@
+app/libs/*.jar
+# Copied from docs/assets by build.sh, so the APK carries the same image the other hosts read.
+app/src/main/assets/

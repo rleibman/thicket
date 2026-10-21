@@ -5,12 +5,13 @@
 //  mobile client for meal-o-rama, sharing its domain types with the ZIO/Caliban
 //  server. Read it as a target to design towards, not a promise.
 //
-//  Roughly 15% of this exists today (docs/11 says exactly which).
+//  How much of this exists is in docs/11 §11.4, dated there. A percentage
+//  here went stale, so there is none.
 // =============================================================================
 package mealorama.client
 
 import thicket.*
-import thicket.zio.given
+import thicket.effect.zio.given
 import zio.*
 
 // The domain comes from the *same module the server uses*. No DTOs, no codegen,

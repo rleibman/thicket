@@ -15,7 +15,7 @@ survived four toolkits without changing.
 2. **A phase is done when its exit criterion is a measured number**, recorded in the PR
    description and in `docs/12`. "Works" fails the phase — the same rule phase 0's spikes
    used, and the reason phase 0's findings are trustworthy.
-3. **Apple work is raised as a Forgejo issue, never attempted on Linux.** A phase may
+3. **Apple work is raised as a GitHub issue, never attempted on Linux.** A phase may
    *depend* on an Apple issue; it may not contain one. Phases are sized so that a blocked
    Apple issue never blocks the whole phase.
 4. **A widget is done on every renderer that exists, or it is not done.** Adding a
@@ -31,9 +31,9 @@ survived four toolkits without changing.
 | **0** | — | Feasibility: nine spikes, four renderers, reconciliation, navigation, ZIO bridge | GO gate S1 ∧ S2 ∧ S3 | **done** 2026-09-19 |
 | **1** | `phase/1-shim-generator` | One ABI description; generate the C header, the Scala externs and Swift signature scaffolding; check all four hand-written copies agree | Hand-maintained **declarations** per function drop from **4 to 1**; the generated header and externs declare exactly what the checked-in ones do; the consistency check runs on a machine with no Xcode | **adopted** 2026-09-29 (#3): header and Scala externs are generated and checked byte-for-byte; the two Swift signatures per function stay hand-written and checked, so hand-maintained declarations went **4 → 3**, all checked |
 | **2** | `phase/2-widget-breadth` | **Slice 1:** `Toggle`, `Spacer`, `ProgressBar`, `ActivityIndicator`. **Slice 2:** `Slider`, `SecureField`. `Radio` and `Stepper` were in this phase and were **reclassified, not built** — neither is a cross-platform widget (`docs/12` §12.2a). `IconButton` and `Link` need an icon system and URL opening | **15 of 32** on all four renderers, each with a unit test *and* a self-test check on every host; Apple landed in #4. Measured on both toolkits: progress bar **0.750**, slider **7.0 of 0–11** | **both slices done** |
-| **3** | `phase/3-*` | The ones that are platform *chrome* rather than tree nodes. **Done:** `Alert`, `Sheet` and the `presented` contract they forced; toolbar actions, which `AppRoot` had promised and no host honoured; `Menu`, as a prop. **`TabView` is not built** — Android's `TabHost` is deprecated and the idiom lives in Material, not the platform (§12.2a) | **17 of 32** reachable, 15 on every renderer. GTK 57 self-test checks, Android 48, both green; Apple owes `Alert`, `Sheet` and `ContextMenu` (#18, #19) | **done bar `TabView`** |
+| **3** | `phase/3-*` | The ones that are platform *chrome* rather than tree nodes. **Done:** `Alert`, `Sheet` and the `presented` contract they forced; toolbar actions, which `AppRoot` had promised and no host honoured; `Menu`, as a prop. **`TabView`** was built later as a §12.2a exception (#61, #70): GTK and Android, Apple in #69 | **17 of 32** reachable, 15 on every renderer. GTK 57 self-test checks, Android 48, both green; Apple owes `Alert`, `Sheet` and `ContextMenu` (#18, #19) | **done** (`TabView` in #70) |
 | **4** | `phase/4-*` | Native navigation containers and per-subtree `Provide` theming — the two places the framework still asks an app to accept something non-native | **met.** Every renderer consumes `AppRoot.pages`, so the stack stays alive rather than being rebuilt on a pop: `AdwNavigationView` (#32), `UINavigationController` / macOS sidebar (#29), `FrameLayout` + `android.transition.Slide`. Back gesture and title bar are the platform's own on all four; the back gesture reports to `Nav` rather than diverging from it, checked on GTK and Android. `Provide` scopes a theme to a subtree with 5 tests (#23). Self-tests: GTK **66**, Android **48**, both green. Navigation is **not** a widget kind — §12.2a rejected it, three toolkits out of four do not model it as a view you place | **done** |
-| **5** | `phase/5-release` | Publish `dev.thicket` artefacts, a getting-started, semver policy | A developer who has not seen this repo builds and runs a new app on Android **and** one desktop in **≤ 30 minutes**, measured by watching them | **partly done.** Nine artefacts publish with complete POMs; `early-semver` declared; `docs/14-releasing.md` covers versions and compatibility. A new app **outside** the repo resolves, links and runs on GTK — checked by `bin/verify-getting-started.sh`, not asserted. Still open: the ≤30-minute measurement needs a person; Apple's path needs the Swift shim shipped (#41); and a GTK app still copies our `nativeConfig` because nothing publishes it (#40). No tagged release yet, so every artefact carries a sha |
+| **5** | `phase/5-release` | Publish `dev.thicket` artefacts, a getting-started, semver policy | A developer who has not seen this repo builds and runs a new app on Android **and** one desktop in **≤ 30 minutes**, measured by watching them | **partly done.** Nine artefacts publish with complete POMs; `early-semver` declared; `docs/14-releasing.md` covers versions and compatibility. A new app **outside** the repo resolves, links and runs on GTK — checked by `bin/verify-getting-started.sh`, not asserted. Since then: `sbt-thicket` publishes the link settings (#40), the Apple jar carries the Swift shim (#41), `v0.1.0` is tagged, and the group id is `net.leibman` (2026-10-20). Still open: the ≤30-minute measurement needs a person, and nothing is on Maven Central yet — docs/14 §14.5 is the procedure |
 | **6** | `phase/6-real-app` | The falsification test: the meal-planner client against its Caliban server | Runs on Android, iOS and one desktop; startup and size still inside N-01/N-03 | |
 
 **Out of scope for 0.1**, each with nothing above it that depends on it: Windows
@@ -78,7 +78,17 @@ declarations each, and the catalogue is only 9 of 32.
 
 ## 13.4 Open Apple issues
 
-Tracked in Forgejo, done on the macOS laptop, referenced by the phase that needs them.
+Tracked on GitHub, done on the macOS laptop, referenced by the phase that needs them. The
+table below is the phase-1/2 history; what is open now, as of 2026-10-20:
+
+| Issue | What |
+|---|---|
+| [#66](https://github.com/rleibman/thicket/issues/66) | Icon, IconButton and AccessibleLabel on AppKit and UIKit |
+| [#69](https://github.com/rleibman/thicket/issues/69) | TabView and Tab on AppKit and UIKit |
+| [#72](https://github.com/rleibman/thicket/issues/72) | An unbuilt kind crashes the whole macOS CI run |
+| [#73](https://github.com/rleibman/thicket/issues/73)–[#79](https://github.com/rleibman/thicket/issues/79) | The Apple halves of the 2026-10-20 review: native safety, unbuilt kinds (D9), taps/labels/RTL, safe area and scroll, selection, virtual rows, Swift safety |
+
+The phase-1/2 issues:
 
 | Issue | What | Blocks |
 |---|---|---|

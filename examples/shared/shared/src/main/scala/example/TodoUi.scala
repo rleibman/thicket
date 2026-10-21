@@ -22,14 +22,19 @@ import thicket.signals.Var
 
 /** The todo app's UI, with no reference to any platform.
   *
-  * This same value is mounted by the GTK renderer on Linux and by the Android renderer on
-  * a phone. If the abstraction is worth anything, this file never has to know which.
+  * This same value is mounted by the GTK renderer on Linux and by the Android renderer on a phone. If the abstraction
+  * is worth anything, this file never has to know which.
   */
 object TodoUi {
 
-  final case class Item(id: Int, title: String, done: Boolean)
+  final case class Item(
+    id:    Int,
+    title: String,
+    done:  Boolean
+  )
 
   final class Model {
+
     val items: Var[Seq[Item]] = Var(
       Seq(
         Item(1, "Structural reconciliation", true),
@@ -44,17 +49,20 @@ object TodoUi {
       nextId += 1
     }
 
-    def rotate(): Unit = items.update {
-      case head +: rest => rest :+ head
-      case empty        => empty
-    }
+    def rotate(): Unit =
+      items.update {
+        case head +: rest => rest :+ head
+        case empty        => empty
+      }
 
-    def toggleFirst(): Unit = items.update {
-      case head +: rest => head.copy(done = !head.done) +: rest
-      case empty        => empty
-    }
+    def toggleFirst(): Unit =
+      items.update {
+        case head +: rest => head.copy(done = !head.done) +: rest
+        case empty        => empty
+      }
 
     def dropLast(): Unit = items.update(_.dropRight(1))
+
   }
 
   def bullet(i: Item): String =
@@ -82,4 +90,5 @@ object TodoUi {
 
       Label(model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"))
     )
+
 }

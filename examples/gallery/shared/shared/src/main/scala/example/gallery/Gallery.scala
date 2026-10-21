@@ -18,48 +18,67 @@ package example.gallery
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{AlertAction, Alignment, CalendarDate, Icon, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{
+  AlertAction,
+  Alignment,
+  CalendarDate,
+  ContentFit,
+  Emphasis,
+  Icon,
+  ImageSource,
+  MenuItem,
+  Orientation,
+  TextRole
+}
 import example.gallery.buildinfo.BuildInfo
-import thicket.signals.{Signal, Var}
+import thicket.effect.zio.{UiRuntime, asSignal}
+import thicket.signals.{Owner, Signal, Var}
+import _root_.zio.ZIO
 
 /** Every component the framework has, on one screen, on every platform.
   *
-  * This is a **conformance surface**, not a showcase. The catalogue is the framework's main
-  * claim — "these widgets exist and are native everywhere" — and the only way that claim
-  * stays honest is if one screen exercises all of it and is built on each platform we
-  * support. A widget that renders on GTK and silently does nothing on Android is a failure
+  * This is a **conformance surface**, not a showcase. The catalogue is the framework's main claim — "these widgets
+  * exist and are native everywhere" — and the only way that claim stays honest is if one screen exercises all of it and
+  * is built on each platform we support. A widget that renders on GTK and silently does nothing on Android is a failure
   * the unit tests cannot see, because `TestRenderer` answers for all of them.
   *
-  * **If you add a component, add it here in the same change.** `docs/12-component-status.md`
-  * §12.10 says so too, and that is deliberate repetition: this file is the one a newcomer
-  * reads and that doc is the one a reviewer checks.
+  * **If you add a component, add it here in the same change.** `docs/12-component-status.md` §12.10 says so too, and
+  * that is deliberate repetition: this file is the one a newcomer reads and that doc is the one a reviewer checks.
   *
-  * Kept free of platform types so it compiles for JVM (Android) and Native (GTK, AppKit,
-  * UIKit) alike. Nothing here may import a renderer.
+  * Kept free of platform types so it compiles for JVM (Android) and Native (GTK, AppKit, UIKit) alike. Nothing here may
+  * import a renderer.
   */
 object Gallery {
 
   /** Everything with state lives here, so the screen itself is a pure function of signals. */
   final class Model {
 
-    val text:     Var[String]  = Var("")
-    val secret:   Var[String]  = Var("")
-    val checked:  Var[Boolean] = Var(false)
-    val toggled:  Var[Boolean] = Var(true)
-    val volume:   Var[Double]  = Var(4.0)
-    val picked:   Var[Int]     = Var(1)
-    val span:     Var[Int]     = Var(1)
-    val due:      Var[CalendarDate] = Var(Gallery.firstDue)
-    val linkTaps: Var[Int]     = Var(0)
+    val text:    Var[String] = Var("")
+    val secret:  Var[String] = Var("")
+    val checked: Var[Boolean] = Var(false)
+    val toggled: Var[Boolean] = Var(true)
+    val volume:  Var[Double] = Var(4.0)
+    val picked:  Var[Int] = Var(1)
+    val produce: Var[Seq[String]] = Var(Gallery.fruit)
+    // How many choices the picker has reported: one the user did not make shows up here.
+    val reports:   Var[Int] = Var(0)
+    val span:      Var[Int] = Var(1)
+    val due:       Var[CalendarDate] = Var(Gallery.firstDue)
+    val linkTaps:  Var[Int] = Var(0)
     val gridExtra: Var[Boolean] = Var(false)
-    val lastIcon:  Var[String]  = Var("")
+    val lastIcon:  Var[String] = Var("")
     // Not 0: the platform shows the first tab by default, so starting anywhere else is what
     // proves the app's initial selection reaches it (#70 review: GTK dropped it).
-    val tab: Var[Int] = Var(1)
-    val extraTab:  Var[Boolean] = Var(false)
+    val tab:      Var[Int] = Var(1)
+    val extraTab: Var[Boolean] = Var(false)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
+
+    /** The big list's data. A `Var`, not a constant: a list whose data never changes cannot show that a renderer
+      * re-binds the rows it is showing when it does (review 2026-10-20, P1-3).
+      */
+    val bigRows: Var[Vector[Row_]] = Var(Vector.tabulate(10000)(i => Row_(i, s"Row $i")))
 
     /** Rows for `ForEach`, so keyed reconciliation is exercised rather than described. */
     val rows: Var[Seq[Row_]] = Var(Seq(Row_(1, "First"), Row_(2, "Second"), Row_(3, "Third")))
@@ -76,10 +95,11 @@ object Gallery {
 
     def remove(id: Int): Unit = rows.set(rows.now.filterNot(_.id == id))
 
-    def rotate(): Unit = rows.now match {
-      case Seq()           => ()
-      case head +: rest    => rows.set(rest :+ head)
-    }
+    def rotate(): Unit =
+      rows.now match {
+        case Seq()        => ()
+        case head +: rest => rows.set(rest :+ head)
+      }
 
   }
 
@@ -96,8 +116,19 @@ object Gallery {
   val repoUrl:    String = "https://github.com/rleibman/thicket"
   val licenceUrl: String = "https://www.apache.org/licenses/LICENSE-2.0"
 
+  /** The message of the exception the "Throw from a handler" button raises, so a self-test can tell it apart. */
+  val deliberate: String = "deliberate, from the gallery's Errors section"
+
+  /** The logo, as a file and as the bytes of that file. A host with no filesystem path to it — an APK — passes the
+    * bytes to [[app]] itself; `FromFile` then finds it in the APK's assets at the same relative path.
+    */
+  val logo:      String = "docs/assets/thicket-logo.png"
+  def logoBytes: Array[Byte] =
+    scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(logo))).getOrElse(Array.emptyByteArray)
+
   /** The picker's options. On the object so the self-test can name them. */
-  val fruit: Seq[String] = Seq("Apple", "Banana", "Cherry")
+  val fruit:      Seq[String] = Seq("Apple", "Banana", "Cherry")
+  val vegetables: Seq[String] = Seq("Leek", "Okra", "Pea")
 
   final case class Row_(
     id:    Int,
@@ -106,8 +137,9 @@ object Gallery {
 
   /** A labelled block, so the screen reads as a catalogue rather than a pile of widgets. */
   private def section(
-    name:  String
-  )(body: Element*
+    name: String
+  )(
+    body: Element*
   ): Element =
     Column(spacing = 8)(
       Label(name, style = TextRole.Caption, emphasis = Emphasis.Secondary),
@@ -115,7 +147,14 @@ object Gallery {
       Divider()
     )
 
-  def screen(model: Model): Screen =
+  /** What the effect in the Effects section produces, so a self-test can wait for it. */
+  val effectResult: String = "Loaded 42, on the UI thread"
+
+  def screen(
+    model:  Model,
+    loaded: Signal[RemoteData[Nothing, String]],
+    logo:   Array[Byte]
+  ): Screen =
     Screen(
       title = "Thicket gallery",
       actions = Seq(Action("Add")(model.add()), Action("Rotate")(model.rotate())),
@@ -150,13 +189,30 @@ object Gallery {
             Label(model.toggled.map(b => if b then "on" else "off"))
           ),
           section("Picker — a choice from a fixed list")(
-            Picker(Gallery.fruit, model.picked)(model.picked.set),
+            Picker(model.produce, model.picked) { i =>
+              model.reports.set(model.reports.now + 1)
+              model.picked.set(i)
+            },
+            Label(model.reports.map(n => s"The picker reported $n choices"), style = TextRole.Caption),
             // Observably bound, per the gallery's own rule: the label proves the selection
             // round-tripped rather than the control merely being drawn.
-            Label(model.picked.map(i => Gallery.fruit.lift(i).fold("(nothing selected)")(f => s"Chose $f (index $i)"))),
+            Label(
+              model.produce
+                .zip(model.picked).map(
+                  (
+                    opts,
+                    i
+                  ) => opts.lift(i).fold("(nothing selected)")(f => s"Chose $f (index $i)")
+                )
+            ),
             Row(spacing = 8)(
               Button("Select last")(model.picked.set(Gallery.fruit.length - 1)),
-              Button("Clear")(model.picked.set(-1))
+              Button("Clear")(model.picked.set(-1)),
+              // New options, same length: the selection is an index and must stay where it is,
+              // with no choice reported that the user did not make (review 2026-10-20, P1-10).
+              Button("Swap the options")(
+                model.produce.set(if model.produce.now == Gallery.fruit then Gallery.vegetables else Gallery.fruit)
+              )
             )
           ),
           section("DatePicker — a day, in the platform's own chooser")(
@@ -186,6 +242,8 @@ object Gallery {
             Slider(model.volume, min = 0, max = 11)(model.volume.set),
             // Determinate, driven by the slider above, so the binding is visible.
             ProgressBar(model.progress),
+            // Indeterminate: animates on every platform, which is what tells it apart from 0.
+            ProgressBar(None),
             Row(spacing = 8)(
               Button(model.busy.map(b => if b then "Stop" else "Start"))(model.busy.set(!model.busy.now)),
               Show(model.busy)(Spinner())
@@ -193,14 +251,24 @@ object Gallery {
           ),
           section("Layout — Spacer, Grow, Divider, nested Row and Column")(
             Row(spacing = 8)(Label("left"), Spacer(), Label("right")),
-            Row(spacing = 8)(Label("grown").grow, Label("fixed"))
+            Row(spacing = 8)(Label("grown").grow, Label("fixed")),
+            // A Spacer in a *Column*: Grow is along the parent's main axis, so here it pushes
+            // "bottom" down to line up with the taller column beside it (review 2026-10-20, P1-4).
+            Row(spacing = 8)(
+              Column(spacing = 4)(Label("top"), Spacer(), Label("bottom")),
+              Column(spacing = 4)(Label("one"), Label("two"), Label("three"), Label("four"))
+            ),
+            // Start, Center and End, so a renderer that maps them wrongly — or not RTL-aware — shows it.
+            Label("Start", align = Alignment.Start),
+            Label("Center", align = Alignment.Center),
+            Label("End", align = Alignment.End)
           ),
           section("ZStack — children drawn over one another, last on top")(
             Row(spacing = 16)(
               // The badge case: trailing and top, so the two axes are told apart. The count is
               // the ForEach section's row count, so "Add" in the toolbar proves it is bound.
               ZStack(Alignment.End, Alignment.Start)(
-                Image(ImageSource.FromFile("docs/assets/thicket-logo.png"), fit = ContentFit.Contain),
+                Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Contain),
                 Label(model.rows.map(rs => s"${rs.size} rows"), style = TextRole.Caption)
               ),
               // Centred, the default: a spinner over the content it is waiting on. Always
@@ -257,12 +325,16 @@ object Gallery {
           ),
           section("Image — the three content fits")(
             Row(spacing = 8)(
-              Image(ImageSource.FromFile("docs/assets/thicket-logo.png"), fit = ContentFit.Contain),
-              Image(ImageSource.FromFile("docs/assets/thicket-logo.png"), fit = ContentFit.Cover)
+              Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Contain),
+              Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Cover),
+              // The third fit, and the other source: bytes the app already holds, decoded by the
+              // platform (review 2026-10-20, P2-23).
+              Image(ImageSource.FromBytes(logo), fit = ContentFit.Fill)
             )
           ),
           section("Scroll — horizontal, inside a vertical one")(
-            Scroll(axis = Orientation.Horizontal)(
+            // Padded: on every platform the padding insets the content and scrolls with it.
+            Scroll(padding = 8, axis = Orientation.Horizontal)(
               Row(spacing = 8)(Seq.tabulate(12)(i => Label(s"col $i"))*)
             )
           ),
@@ -283,7 +355,7 @@ object Gallery {
           section("Provide — a theme scoped to one subtree")(
             Row(spacing = 8)(
               Button("App accent")(()),
-              Provide(Theme.active.withColor(ColorRole.Accent, Rgb(0xB0, 0x30, 0x30))) {
+              Provide(Theme.active.withColor(ColorRole.Accent, Rgb(0xb0, 0x30, 0x30))) {
                 Button("Scoped red")(())
               }
             )
@@ -311,6 +383,21 @@ object Gallery {
               emphasis = Emphasis.Secondary
             ),
             Label(s"built ${BuildInfo.builtAtString}", style = TextRole.Caption, emphasis = Emphasis.Secondary)
+          ),
+          // A handler that throws must not take the app down: the renderer reports it to
+          // ErrorSink and returns to the toolkit normally (review 2026-10-20, P0-3).
+          section("Errors — a handler that throws is reported, and the app carries on")(
+            Button("Throw from a handler")(throw RuntimeException(Gallery.deliberate))
+          ),
+          // A real ZIO effect, run on a worker and posted back through UiThread. It only ever
+          // leaves Loading if the host installed a poster (review 2026-10-20, P0-5): before
+          // that, no host did, and this would have sat at Loading on every platform.
+          section("Effects — a ZIO effect, its result posted back to the UI thread")(
+            RemoteData(loaded) {
+              case RemoteData.Loading      => Label("Loading…")
+              case RemoteData.Done(result) => Label(result)
+              case RemoteData.Failed(_)    => Label("Failed")
+            }
           ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
@@ -341,12 +428,24 @@ object Gallery {
     )
 
   /** A second screen, so navigation is exercised: a push, a title and a way back. */
-  private def listScreen(): Screen =
+  private def listScreen(model: Model): Screen =
     Screen(
       title = "10 000 rows",
       content = Column(spacing = 8, padding = 16)(
         Label("LazyColumn — virtualised where the platform has a recycling container.", style = TextRole.Caption),
-        LazyColumn(Signal.const(Seq.tabulate(10000)(i => Row_(i, s"Row $i"))), key = (r: Row_) => r.id) { row =>
+        // Changes the rows on screen without changing what scrolls, so a renderer that only
+        // tracks the count shows stale rows.
+        Row(spacing = 8)(
+          Button("Delete the first row")(model.bigRows.set(model.bigRows.now.drop(1))),
+          Button("Rename the first row")(
+            model.bigRows.set(
+              model.bigRows.now.headOption.fold(Vector.empty[Row_])(r =>
+                r.copy(title = s"Renamed ${r.id}") +: model.bigRows.now.tail
+              )
+            )
+          )
+        ),
+        LazyColumn(model.bigRows, key = (r: Row_) => r.id) { row =>
           Row(spacing = 8)(Label(row.map(_.title)).grow)
         }.grow
       )
@@ -358,15 +457,21 @@ object Gallery {
 
   }
 
+  /** The running app's navigation, for a host's self-test to drive. Set by [[app]]. */
+  var currentNav: Option[Nav[Route]] = None
+
   /** The whole app, for a host to mount. Hosts differ only in how they start. */
-  def app(): AppRoot = {
+  def app(logo: Array[Byte] = logoBytes)(using Owner): AppRoot = {
     val model = Model()
-    val nav   = Nav(Route.Catalogue)
+    given UiRuntime[Any] = UiRuntime.default
+    val loaded = ZIO.succeed(effectResult).asSignal
+    val nav = Nav(Route.Catalogue)
+    currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model)
+        val s = screen(model, loaded, logo)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
-      case Route.Big => listScreen()
+      case Route.Big => listScreen(model)
     }
   }
 

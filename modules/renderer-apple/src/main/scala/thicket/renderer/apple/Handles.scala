@@ -19,6 +19,7 @@ package thicket.renderer.apple
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import scala.scalanative.unsafe.*
+import thicket.core.GcState
 
 /** `Long` id -> closure, because a C function pointer cannot carry one (S4), and an `int64_t` context avoids the `Long`
   * <-> `Ptr` laundering a `void*` forces (S7).
@@ -93,9 +94,9 @@ object Handles {
     f:  Double => Unit
   ): Unit = values.put(id, f)
 
-  /** The `Int` counterpart, for a `Picker`'s selection. `registerInt` and `intTrampoline`
-    * already existed for the virtual-row callbacks; only the replace half was missing, which
-    * is what lets a re-render swap the handler without leaking a table entry per update.
+  /** The `Int` counterpart, for a `Picker`'s selection. `registerInt` and `intTrampoline` already existed for the
+    * virtual-row callbacks; only the replace half was missing, which is what lets a re-render swap the handler without
+    * leaking a table entry per update.
     */
   def replaceInt(
     id: Long,
@@ -125,7 +126,9 @@ object Handles {
     id
   }
 
-  def count: Int = taps.size + texts.size + bools.size + values.size + rows.size
+  // `ints` was missing, so a Picker, SegmentedControl, DatePicker or TabView that leaked its handler
+  // was invisible to every leak check built on this (review 2026-10-20, P2-5).
+  def count: Int = taps.size + texts.size + bools.size + values.size + ints.size + rows.size
 
   /** Row callbacks alone. `count` also moves with every `postToUi` one-shot, which is noise when the question is
     * whether an unmounted virtual list let go of its `RowSource`.
@@ -164,7 +167,7 @@ object Handles {
         index:    CInt,
         recycled: Shim.Handle
       ) =>
-        GcState.guarded {
+        GcState.guardedOr(null.asInstanceOf[Shim.Handle]) {
           val f = rows.get(id)
           if f == null then null.asInstanceOf[Shim.Handle]
           else f(index, if recycled == null then None else Some(recycled))

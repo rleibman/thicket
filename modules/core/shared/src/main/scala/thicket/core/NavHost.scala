@@ -41,7 +41,7 @@ final class NavHost[R] private (
       ForEach(nav.stack.map(_.take(1)), key = (e: Entry[R]) => e.id) { entry =>
         // Safe untracked read: the route is fixed for the lifetime of an entry id, so the
         // content never needs to react to it.
-        screenFor(entry.now.route).content
+        pageFor(entry.now).content
       }
     )
 
@@ -54,30 +54,47 @@ final class NavHost[R] private (
     */
   private val built = scala.collection.mutable.LinkedHashMap.empty[Long, NavPage]
 
+  /** The page for an entry: built the first time it is asked for, the same instance every time after.
+    *
+    * **Every** view of an entry goes through here — its content, its title, its actions. `screen` used to call
+    * `screenFor` itself on every read, so the header bar's actions came from a different `Screen` than the content on
+    * display: a Save action reading the form's `Var` read a fresh, empty one (review 2026-10-20, P1-8). It also rebuilt
+    * the whole content tree on every title or actions read.
+    */
+  private def pageFor(e: Entry[R]): NavPage =
+    built.getOrElseUpdate(
+      e.id, {
+        val s = screenFor(e.route)
+        NavPage(e.id, s, s.content)
+      }
+    )
+
+  /** Forget pages whose entries have left the stack. */
+  private def prune(entries: Seq[Entry[R]]): Unit = {
+    val live = entries.view.map(_.id).toSet
+    built.filterInPlace(
+      (
+        id,
+        _
+      ) => live(id)
+    )
+  }
+
   /** The live stack, bottom first — see `AppRoot.pages`. */
   val pages: Signal[Seq[NavPage]] =
     nav.stack.map { entries =>
-      val live = entries.view.map(_.id).toSet
-      built.filterInPlace(
-        (
-          id,
-          _
-        ) => live(id)
-      )
+      prune(entries)
       // Reversed: `Nav` keeps the top first, because that is what an app asks about, while a
       // navigation container stacks from the root upwards.
-      entries.reverse.map { e =>
-        built.getOrElseUpdate(
-          e.id, {
-            val s = screenFor(e.route)
-            NavPage(e.id, s, s.content)
-          }
-        )
-      }
+      entries.reverse.map(pageFor)
     }
 
-  /** The current screen, for the host to apply chrome from. */
-  val screen: Signal[Screen] = nav.stack.map(es => screenFor(es.head.route))
+  /** The current screen, for the host to apply chrome from. The same instance whose content is on display. */
+  val screen: Signal[Screen] =
+    nav.stack.map { es =>
+      prune(es)
+      pageFor(es.head).screen
+    }
 
   val title:     Signal[String] = screen.map(_.title)
   val actions:   Signal[Seq[Action]] = screen.map(_.actions)

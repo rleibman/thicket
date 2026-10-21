@@ -6,18 +6,20 @@
 `ThisBuild / version := ...` is **silently overridden** — a hard-coded `"0.1.0-SNAPSHOT"` sat
 on that line for a while and never reached a single artefact.
 
-| What git says | What the artefact is called |
-|---|---|
-| on tag `v0.2.0` | `0.2.0` |
-| three commits past `v0.2.0` | `0.2.0-3-gdeadbee` |
-| no tag reachable | `0.1.0-<sha>-SNAPSHOT` (`git.baseVersion` + sha) |
+| What git says | What the artefact is called | Publishable? |
+|---|---|---|
+| on tag `v0.2.0` | `0.2.0` | yes: staged for Central |
+| three commits past `v0.2.0` | `0.2.0-3-gdeadbee` | **no**: `publishTo` is `None`, so `publish` fails |
+| no tag reachable (a shallow clone) | `0.1.0-<sha>` (`git.baseVersion` + sha) | no |
+| uncommitted changes | the above plus `-SNAPSHOT` | to the Central snapshot repository |
 
 Tags are `v`-prefixed; `gitTagToVersionNumber` strips the `v` and ignores anything that is
 not a version, so a tag like `demo-recording` does not become one.
 
-**There are no tags yet**, which is why every artefact currently carries a sha. That is
-correct for a snapshot and useless as something to type in a `libraryDependencies` line, so
-the first real release is a `v0.1.0` tag and nothing else.
+`v0.1.0` is tagged. A release version is `X.Y.Z`, optionally `-M<n>` or `-RC<n>`; anything
+else between tags is for `publishLocal` only. Until 2026-10-20 every non-snapshot version
+was staged as a release, which would have made `0.1.0-3-gdeadbee` a permanent artefact on
+Central (review 2026-10-20, P1-2).
 
 ## 14.2 `early-semver`
 
@@ -46,9 +48,11 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 
 | Artefact | For |
 |---|---|
-| `dev.thicket:thicket-core_3` / `_native0.5_3` | the element tree, signals, navigation |
-| `dev.thicket:thicket-renderer-gtk_native0.5_3` | the GTK4 renderer |
-| `dev.thicket:thicket-effect-zio_3` / `_native0.5_3` | the ZIO bridge, if wanted |
+| `net.leibman:thicket-core_3` / `_native0.5_3` | the element tree, signals, navigation |
+| `net.leibman:thicket-renderer-gtk_native0.5_3` | the GTK4 renderer |
+| `net.leibman:thicket-effect-zio_3` / `_native0.5_3` | the ZIO bridge, if wanted |
+| `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
+| `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
 
 `thicket-signals` and `thicket-renderer-api` come in transitively; naming them is only
 necessary to write a renderer.
@@ -57,11 +61,14 @@ And the plugin, which is what a consumer actually adds:
 
 | Artefact | For |
 |---|---|
-| `dev.thicket:sbt-thicket` (`_sbt2_3`) | the build: GTK link flags, the Scala Native mode and GC, and the two dependencies above |
+| `net.leibman:sbt-thicket` (`_sbt2_3`) | the build: GTK or Apple link flags, the Scala Native mode and GC, and the dependencies above. `ThicketGtkPlugin`, `ThicketMacPlugin`, `ThicketIosPlugin` |
+
+The plugin takes the group id from the build that published it (`BuildInfo.organization`),
+as it takes the version, so it cannot ask for a group the framework was not published under.
 
 ```scala
 // project/plugins.sbt
-addSbtPlugin("dev.thicket" % "sbt-thicket" % thicketVersion)
+addSbtPlugin("net.leibman" % "sbt-thicket" % thicketVersion)
 
 // build.sbt
 lazy val app = project.in(file(".")).enablePlugins(ThicketGtkPlugin)
@@ -83,7 +90,7 @@ so `build.sbt` and `thicketGtkSettings` are the same method on the same bytes, a
 refuses to load if anyone computes the flags in `build.sbt` again.
 `tools/sbt-thicket/README.md` has the detail and what the arrangement costs.
 
-### The part that is still not published
+### Apple (published since #41)
 
 Apple. `ThicketNativeFlags.apple` and `.ios` are shared the same way, and there is no Apple
 plugin, because flags are not what is missing: an Apple consumer needs `libthicketapple.a`,
@@ -114,3 +121,34 @@ failure.
 
 Phase 5's exit criterion is a person getting an app running in under thirty minutes. Only a
 person can measure that; this checks the half that does not need one.
+
+## 14.5 Cutting a release
+
+The group id is `net.leibman` (decision log, 2026-10-20), on the Central Portal.
+
+Prerequisites, once per machine: a GPG key whose public half is on a keyserver, and
+`SONATYPE_USERNAME` / `SONATYPE_PASSWORD` in the environment (a Central Portal user token,
+not the login), which sbt 2's built-in `sonaUpload` reads. Neither goes in the repository;
+`.gitignore` refuses `*.asc`, `*.gpg` and `.env*`.
+
+The jars come from two machines, because `thicket-renderer-apple` carries a Swift library
+only Xcode can build — off a Mac its `publish` is skipped rather than shipping a jar with no
+shim in it.
+
+1. On a clean `main` that CI has passed: `git tag v0.2.0` and push the tag.
+2. Check the version is the release and not a describe version:
+   `sbt "show coreJVM/version"` must print `0.2.0`.
+3. **On the Mac** (it can build every artefact, the Apple one included):
+   ```bash
+   modules/renderer-android/setup.sh                  # android.jar, for the Android renderer
+   sbt "publishSigned; platforms/publishSigned"       # root + renderers, into localStaging
+   sbt sonaUpload                                     # upload; release by hand in the Portal UI
+   ```
+   `sonaRelease` instead of `sonaUpload` publishes as soon as the bundle validates. Prefer
+   `sonaUpload` until the procedure has run once end to end: a Central release cannot be
+   withdrawn.
+4. Run `bin/verify-getting-started.sh` and `bin/verify-getting-started-apple.sh` against the
+   released version (`THICKET_VERSION=0.2.0`) once Central shows it.
+
+The examples have `publish / skip := true`; the `platforms` aggregate publishes only the
+three renderers.

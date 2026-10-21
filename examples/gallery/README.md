@@ -5,7 +5,7 @@ Every component the framework has, on one screen, built for **every platform**.
 | | |
 |---|---|
 | GTK4 (Linux) | `sbt galleryGtk/nativeLink`, then `./target/out/native0.5/scala-3.9.0/gallery-gtk/gallery-gtk` |
-| Android | `sbt galleryAndroid/compile`, then gradle under `android/` |
+| Android | `android/build.sh` — sbt for the Scala jars, then gradle under `android/`; installs and launches on an attached device or emulator |
 | macOS | `modules/renderer-apple/shim/build-shim.sh macos` then `sbt galleryMacos/nativeLink` — needs Xcode, so on a Mac |
 | iOS | `modules/renderer-apple/shim/build-shim.sh ios-sim`, `sbt galleryIos/nativeLink`, then `ios/ios-app/build-app.sh 'iPhone 17'` |
 
@@ -16,7 +16,17 @@ Every host takes the same switch, so one command shape checks any platform:
 ```bash
 THICKET_GALLERY_SELFTEST=1 <the binary>     # GTK, macOS
 ios/ios-app/build-app.sh                   # iOS — sets it for the simulator itself
+SELFTEST=1 android/build.sh                # Android — exits non-zero unless it passed
 ```
+
+**Android (2026-10-20).** The Android gallery had no Gradle project until the whole-repo
+review found it: `GalleryActivity` compiled and could not be launched. It now builds, and its
+self-test (`GallerySelfTest`) reads the views back the way `SelfTest` does for the todo app —
+23/23 on the `s2test` emulator. It is not a line-by-line port of the GTK checks; it covers the
+sections, the effect, the throwing handler, Grow in a Column, the Spinner's selection and
+placeholder, linear spacing (1000 rows 31.9 ms, 2000 rows 56.0 ms) and the LazyColumn's
+re-binding. Popping that list found two crashes on the way: `ListView` refuses both
+`removeView` and `setOnClickListener(null)`, which a page's disposal called.
 
 It reads the mounted tree back out of the toolkit — `GtkInspect` on GTK, `AppleInspect` on
 AppKit and UIKit — and asks the **same questions** on each, because the gallery's claim is
@@ -90,12 +100,14 @@ A component counts as present in the gallery when:
 
 ## What it covers
 
-Labels in every `TextRole`, buttons by role and disabled, `TextField`, `SecureField`,
-`Checkbox`, `Toggle`, every curated `Icon` as an `IconButton`, `SegmentedControl`, a
-`DatePicker` on a leap day, two `Link`s (one also tappable), `Slider`, determinate
-`ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer`, `Grow`, a two-column `Grid` with a
-row inserted in the middle, `ZStack` as a corner badge and as a centred overlay, `Image` in
-two fits, nested and horizontal `Scroll`, keyed `ForEach`, virtualised `LazyColumn`, a
-per-row `ContextMenu`, subtree theming with `Provide`, the two presented widgets (`Alert`
-and `Sheet`), toolbar `Action`s, a navigation push, and a `TabView` with a tab inserted in
-the middle.
+Labels in every `TextRole` and alignment, buttons by role and disabled, `TextField`,
+`SecureField`, `Checkbox`, `Toggle`, a `Picker` whose options can be swapped and its
+selection cleared, every curated `Icon` as an `IconButton`, `SegmentedControl`, a
+`DatePicker` on a leap day, two `Link`s (one also tappable), `Slider`, determinate and
+indeterminate `ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer` in a Row and in a
+Column, `Grow`, a two-column `Grid` with a row inserted in the middle, `ZStack` as a corner
+badge and as a centred overlay, `Image` in all three fits from a file and from bytes, nested
+and horizontal `Scroll` (padded), keyed `ForEach`, virtualised `LazyColumn` whose first row
+can be deleted and renamed, a per-row `ContextMenu`, subtree theming with `Provide`, a
+handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet`), toolbar
+`Action`s, a navigation push, and a `TabView` with a tab inserted in the middle.

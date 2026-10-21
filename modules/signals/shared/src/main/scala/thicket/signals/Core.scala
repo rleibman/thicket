@@ -17,6 +17,7 @@
 package thicket.signals
 
 import scala.collection.mutable
+import scala.util.control.NonFatal
 
 /** Evidence that the surrounding code runs inside a reactive computation, and that reads performed here are therefore
   * *tracked*. Only the library can create it, so `signal()` is impossible outside `computed`/`effect`/`untracked`-free
@@ -41,23 +42,18 @@ private[signals] trait Source {
   /** Bring this node up to date, recomputing if necessary. */
   private[signals] def validate(): Unit
 
-  private[signals] def observers: mutable.ArrayBuffer[Computation]
+  /** Insertion-ordered, so propagation order is still creation order, and a set, so adding and removing one observer is
+    * O(1). It was a buffer scanned on every add and remove, which made N rows reading one shared signal O(N²) to mount
+    * and to unmount (review 2026-10-20, P2-10).
+    */
+  private[signals] def observers: mutable.LinkedHashSet[Computation]
 
-  final private[signals] def addObserver(c: Computation): Unit = if !observers.contains(c) then observers += c
+  final private[signals] def addObserver(c: Computation): Unit = observers += c
 
-  final private[signals] def removeObserver(c: Computation): Unit = {
-    val i = observers.indexOf(c)
-    if i >= 0 then observers.remove(i)
-  }
+  final private[signals] def removeObserver(c: Computation): Unit = observers -= c
 
   /** Push phase: mark direct observers Dirty, transitive observers Check. */
-  final private[signals] def markObserversDirty(): Unit = {
-    var i = 0
-    while i < observers.length do {
-      observers(i).markDirty()
-      i += 1
-    }
-  }
+  final private[signals] def markObserversDirty(): Unit = observers.foreach(_.markDirty())
 
 }
 
@@ -69,12 +65,18 @@ private[signals] trait Computation extends Disposable {
   private[signals] var depVersions: Array[Long] = Array.empty
   private[signals] var disposed:    Boolean = false
 
+  /** Waiting in the runtime's queue. An effect marked Check and then Dirty in one propagation was queued twice. */
+  private[signals] var queued: Boolean = false
+
+  /** The owner that will dispose this, told when it is disposed first so it stops holding it. */
+  private[signals] var ownedBy: Owner | Null = null
+
   /** Effects are scheduled when marked; computeds are pulled lazily. */
   private[signals] def isEffect: Boolean
 
   private[signals] def recompute(): Unit
 
-  private[signals] def observersOfSelf: mutable.ArrayBuffer[Computation]
+  private[signals] def observersOfSelf: mutable.LinkedHashSet[Computation]
 
   final private[signals] def markDirty(): Unit =
     if !disposed && state != State.Dirty then {
@@ -91,14 +93,7 @@ private[signals] trait Computation extends Disposable {
       markDownstreamCheck()
     }
 
-  final private[signals] def markDownstreamCheck(): Unit = {
-    val obs = observersOfSelf
-    var i = 0
-    while i < obs.length do {
-      obs(i).markCheck()
-      i += 1
-    }
-  }
+  final private[signals] def markDownstreamCheck(): Unit = observersOfSelf.foreach(_.markCheck())
 
   /** Pull phase: validate dependencies depth-first, then recompute if needed. */
   final private[signals] def updateIfNecessary(): Unit =
@@ -107,8 +102,12 @@ private[signals] trait Computation extends Disposable {
         var i = 0
         var dirty = false
         while i < deps.length && !dirty do {
-          deps(i).validate()
-          if deps(i).version != depVersions(i) then dirty = true
+          // A dependency that fails to recompute has changed as far as this node is concerned:
+          // recomputing reads it again, which rethrows inside this node's own run, where the
+          // failure is recorded against it rather than leaving it stuck in Check.
+          try deps(i).validate()
+          catch { case NonFatal(_) => dirty = true }
+          if !dirty && deps(i).version != depVersions(i) then dirty = true
           i += 1
         }
         state = if dirty then State.Dirty else State.Clean
@@ -187,11 +186,19 @@ private[signals] trait Computation extends Disposable {
     depVersions = Array.empty
   }
 
+  /** Also lets go of its owner's reference: a computation disposed on its own — an effect a component tore down early —
+    * used to stay in its owner's child list for the owner's whole life (review 2026-10-20, P2-11).
+    */
   def dispose(): Unit =
     if !disposed then {
       disposed = true
       unlinkAll()
       state = State.Clean
+      val o = ownedBy
+      if o != null then {
+        ownedBy = null
+        o.forget(this)
+      }
     }
 
 }
@@ -216,7 +223,11 @@ private[signals] object Runtime {
     if c != null then c += s
   }
 
-  def schedule(c: Computation): Unit = pending += c
+  def schedule(c: Computation): Unit =
+    if !c.queued then {
+      c.queued = true
+      pending += c
+    }
 
   def batched[A](body: => A): A = {
     batchDepth += 1
@@ -230,41 +241,34 @@ private[signals] object Runtime {
   def maybeFlush(): Unit = if batchDepth == 0 then flush()
 
   /** Runs every scheduled effect. Errors are collected so that one failing effect cannot leave the rest of the graph
-    * stale; the first is rethrown afterwards.
+    * stale; the first is rethrown afterwards, to the write that caused them.
+    *
+    * A failed effect is **not** re-queued. It is left Clean, linked to whatever it read before it threw, so the next
+    * change to one of those reruns it — and nothing else does. It used to be re-queued, which made every later write
+    * anywhere in the app re-run it and throw the same error at a writer that had nothing to do with it (review
+    * 2026-10-20, P0-3b).
     */
   def flush(): Unit =
     if !flushing then {
       flushing = true
       var errors: List[Throwable] = Nil
-      var failed: List[Computation] = Nil
       try
         while pending.nonEmpty do {
           val c = pending.removeHead()
+          c.queued = false
           try c.updateIfNecessary()
           catch {
-            case e: Throwable =>
-              errors = e :: errors
-              // Invariant: an effect in a non-Clean state must be scheduled, or a
-              // later write to an already-Dirty dependency will short-circuit and
-              // never reach it. A failed effect is still stale, so re-queue it for
-              // the next flush (outside this loop, to avoid spinning).
-              failed = c :: failed
+            case NonFatal(e) => errors = e :: errors
           }
         }
-      finally {
-        flushing = false
-        failed.reverse.foreach(pending += _)
-      }
+      finally flushing = false
       errors.reverse match {
-        case Nil      => ()
-        case e :: Nil => throw e
+        case Nil       => ()
+        case e :: Nil  => throw e
         case e :: more =>
           more.foreach(e.addSuppressed)
           throw e
       }
     }
-
-  /** Test/benchmark hook: number of effects waiting to run. */
-  def pendingCount: Int = pending.size
 
 }

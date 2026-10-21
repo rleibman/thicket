@@ -17,8 +17,8 @@
 package thicket.renderer.apple
 
 import scala.scalanative.unsafe.*
-import thicket.core.{AppRoot, Mounted, NavPage, Reconciler}
-import thicket.signals.{Owner, Signal, ThreadGuard}
+import thicket.core.{AppRoot, GcState, Host, Mounted, NavPage, Reconciler}
+import thicket.signals.{Owner, Signal}
 
 /** Hosts an element tree in an AppKit window.
   *
@@ -125,10 +125,9 @@ object AppleApp {
   )(
     ui: Owner ?=> AppRoot
   ): Unit = {
-    // The signal graph belongs to whichever thread reaches it first; here that is the main
-    // thread. Installing the guard makes a stray cross-thread write fail loudly instead of
-    // corrupting the graph (docs/05 A-06).
-    ThreadGuard.install(ThreadGuard.owningThread)
+    // The signal graph belongs to the main thread, and anything posted through UiThread is
+    // delivered there — through dispatch_async(main), never a GCD worker (S1).
+    Host.install(postToUi)
     build = ui
 
     // From here AppKit's run loop owns this thread, so Scala must not look Managed to the

@@ -16,83 +16,35 @@
 
 package example.gallery.android
 
-import _root_.android.app.Activity
 import _root_.android.os.Bundle
-import _root_.android.view.{Menu, MenuItem}
 import example.gallery.Gallery
-import thicket.core.{Action, AppRoot, Reconciler}
-import thicket.renderer.android.AndroidRenderer
-import thicket.signals.{Owner, Signal, ThreadGuard}
+import thicket.core.AppRoot
+import thicket.renderer.android.ThicketActivity
+import thicket.signals.Owner
 
 /** The gallery on Android — the same screen the GTK, macOS and iOS hosts mount.
   *
-  * Deliberately plainer than `example.android.MainActivity`: no branding, no back-stack
-  * restore, no insets handling. Those belong to an *app*, and the gallery is a conformance
-  * surface. What it keeps is the part that matters here — chrome applied natively from
-  * `AppRoot`, so the toolbar actions and title come from the same place on every platform.
+  * Everything a host does is `ThicketActivity`'s, so this is only what is particular to the gallery: the logo comes
+  * from the APK's assets, and `--ez selftest true` runs [[GallerySelfTest]].
   *
-  * The theme is left entirely to the platform, on purpose: a branded accent would hide
-  * whether each widget is picking up Android's own tokens, which is the one thing a
-  * cross-platform catalogue is for.
+  * The theme is left entirely to the platform, on purpose: a branded accent would hide whether each widget is picking
+  * up Android's own tokens, which is the one thing a cross-platform catalogue is for.
   */
-class GalleryActivity extends Activity {
+class GalleryActivity extends ThicketActivity {
 
-  private val owner = Owner()
-  private var app: AppRoot = null
+  protected def createApp(saved: Option[Bundle])(using Owner): AppRoot = Gallery.app(logo = assetBytes(Gallery.logo))
 
-  override def onCreate(saved: Bundle): Unit = {
-    super.onCreate(saved)
+  override protected def started(): Unit =
+    if getIntent != null && getIntent.getBooleanExtra("selftest", false) then GallerySelfTest.run(this)
 
-    // Android's main thread owns the signal graph; a stray write from elsewhere should fail
-    // loudly rather than corrupt it (docs/05 A-06).
-    ThreadGuard.install(ThreadGuard.owningThread)
-
-    val renderer = AndroidRenderer(this)
-    given Owner  = owner
-
-    app = Gallery.app()
-    val mounted = Reconciler.mount(renderer, app.element)
-    setContentView(mounted.handle)
-
-    Signal.effect(setTitle(app.title()))
-    Signal.effect {
-      val up = app.canGoBack()
-      Option(getActionBar).foreach(_.setDisplayHomeAsUpEnabled(up))
-    }
-    Signal.effect {
-      currentActions = app.actions()
-      invalidateOptionsMenu()
-    }
-  }
-
-  /** The actions the current screen declares, read by [[onCreateOptionsMenu]].
-    *
-    * A field because Android drives menu construction on its own schedule: the app says
-    * "the menu changed" and the platform asks for it back when it is ready.
+  /** An asset's bytes, or none: a gallery that will not start because an image is missing shows less than one without
+    * it.
     */
-  private var currentActions: Seq[Action] = Nil
-
-  override def onCreateOptionsMenu(menu: Menu): Boolean = {
-    menu.clear()
-    currentActions.zipWithIndex.foreach { (a, i) =>
-      val item = menu.add(Menu.NONE, i, i, a.label)
-      item.setEnabled(a.enabled)
-      // IF_ROOM, not ALWAYS: Android decides whether an action fits on the bar or belongs
-      // in the overflow, and overriding that is how a toolbar ends up clipped on a phone.
-      item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
-    }
-    true
-  }
-
-  override def onOptionsItemSelected(item: MenuItem): Boolean =
-    currentActions.lift(item.getItemId) match {
-      case Some(a) => a.onTap(); true
-      case None    => super.onOptionsItemSelected(item)
-    }
-
-  override def onDestroy(): Unit = {
-    owner.dispose()
-    super.onDestroy()
-  }
+  private def assetBytes(path: String): Array[Byte] =
+    try {
+      val in = getAssets.open(path)
+      try in.readAllBytes()
+      finally in.close()
+    } catch { case _: java.io.IOException => Array.emptyByteArray }
 
 }

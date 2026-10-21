@@ -24,50 +24,96 @@ import android.view.{Gravity, View, ViewGroup, WindowInsets}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, GridLayout, HorizontalScrollView, ImageButton, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
+import android.widget.{
+  AdapterView,
+  ArrayAdapter,
+  BaseAdapter,
+  Button,
+  CheckBox,
+  CompoundButton,
+  EditText,
+  FrameLayout,
+  GridLayout,
+  HorizontalScrollView,
+  ImageButton,
+  ImageView,
+  LinearLayout,
+  ListView,
+  PopupMenu,
+  ProgressBar,
+  RadioButton,
+  RadioGroup,
+  ScrollView,
+  SeekBar,
+  Spinner,
+  Switch,
+  TextView
+}
 import scala.collection.mutable
 import thicket.renderer.*
+import thicket.signals.ErrorSink
 
 /** Android implementation of [[Renderer]], over `android.view.*`.
   *
-  * Note the `_root_.android.R` references: this package is `thicket.renderer.android`, which
-  * shadows the platform's own `android` package — the same trap `thicket.zio` has with `zio`.
+  * Note the `_root_.android.R` references: this package is `thicket.renderer.android`, which shadows the platform's own
+  * `android` package — the same trap `thicket.zio` had with `zio`, before it became `thicket.effect.zio`.
   *
-  * Runs on the JVM: Scala compiles to bytecode, R8 dexes it, ART runs it (S2). Nothing
-  * here is Android-specific beyond the widget calls — the reconciler above is the same
-  * code the GTK renderer drives.
+  * Runs on the JVM: Scala compiles to bytecode, R8 dexes it, ART runs it (S2). Nothing here is Android-specific beyond
+  * the widget calls — the reconciler above is the same code the GTK renderer drives.
   */
 final class AndroidRenderer(context: Context) extends Renderer {
+
   type Handle = View
 
   private val SliderSteps = 1000
 
-  private val kinds  = mutable.Map.empty[View, WidgetKind]
+  // Every per-view table is made through these, which register it; `destroy` sweeps them all.
+  // Keyed by View, an entry left behind keeps the View — and through it the Activity — alive
+  // for the renderer's lifetime, and one was left behind in four tables before this (review
+  // 2026-10-20, P3-1, P2-4). A dialog that is showing is dismissed explicitly first.
+  private val perViewMaps = mutable.ArrayBuffer.empty[mutable.Map[? <: View, ?]]
+  private val perViewSets = mutable.ArrayBuffer.empty[mutable.Set[View]]
 
-  /** True while the renderer writes a value in, so the widget's own change listener can
-    * tell an app-driven update from a user edit. Without it, a signal bound to a text
-    * field loops: write -> listener -> signal -> write.
-    */
-  private val suppress = mutable.Set.empty[View]
+  private def perView[K <: View, V]: mutable.Map[K, V] = {
+    val m = mutable.Map.empty[K, V]
+    perViewMaps += m
+    m
+  }
 
-  /** A slider's app-facing bounds, kept per widget because `SeekBar` has none: it counts
-    * integer steps, and the renderer converts.
+  private def perViewSet: mutable.Set[View] = {
+    val s = mutable.Set.empty[View]
+    perViewSets += s
+    s
+  }
+
+  /** Entries across every per-view table. For the self-tests: it must come back down when widgets go. */
+  def tableEntries: Int = perViewMaps.map(_.size).sum + perViewSets.map(_.size).sum
+
+  private val kinds = perView[View, WidgetKind]
+
+  /** True while the renderer writes a value in, so the widget's own change listener can tell an app-driven update from
+    * a user edit. Without it, a signal bound to a text field loops: write -> listener -> signal -> write.
     */
-  private val ranges = mutable.Map.empty[View, (Double, Double)]
+  private val suppress = perViewSet
+
+  /** A slider's app-facing bounds, kept per widget because `SeekBar` has none: it counts integer steps, and the
+    * renderer converts.
+    */
+  private val ranges = perView[View, (Double, Double)]
 
   // An Alert's state, keyed by its placeholder handle. Held here rather than on the View
   // because the View is a stand-in: the real object is the Dialog, and it does not exist
   // until `present`.
-  private val alertTitle   = mutable.Map.empty[View, String]
-  private val alertMessage = mutable.Map.empty[View, String]
-  private val alertActions = mutable.Map.empty[View, Seq[AlertAction]]
-  private val alertDismiss = mutable.Map.empty[View, () => Unit]
-  private val alertShowing = mutable.Map.empty[View, AlertDialog]
-  private val sheetShowing = mutable.Map.empty[View, AlertDialog]
+  private val alertTitle = perView[View, String]
+  private val alertMessage = perView[View, String]
+  private val alertActions = perView[View, Seq[AlertAction]]
+  private val alertDismiss = perView[View, () => Unit]
+  private val alertShowing = perView[View, AlertDialog]
+  private val sheetShowing = perView[View, AlertDialog]
   private val mainHandler = Handler(Looper.getMainLooper)
 
-  /** Resolve a theme attribute, so colours and backgrounds come from the user's theme
-    * rather than from values we invent. This is what makes dark mode work for free.
+  /** Resolve a theme attribute, so colours and backgrounds come from the user's theme rather than from values we
+    * invent. This is what makes dark mode work for free.
     */
   private def themeAttr(attr: Int): TypedValue = {
     val tv = TypedValue()
@@ -83,13 +129,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   def platform: String = "android"
 
-  /** `LinearLayout` lays out its own children, so every v0 container is toolkit-managed,
-    * exactly as on GTK. A Yoga-driven `FrameLayout` will be `FrameBased` when absolute
-    * layout lands.
+  /** `LinearLayout` lays out its own children, so every v0 container is toolkit-managed, exactly as on GTK. A
+    * Yoga-driven `FrameLayout` will be `FrameBased` when absolute layout lands.
     */
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
 
-  def create(kind: WidgetKind, props: Seq[Prop]): Handle = {
+  def create(
+    kind:  WidgetKind,
+    props: Seq[Prop]
+  ): Handle = {
     val view: View = kind match {
       case WidgetKind.Column =>
         val l = LinearLayout(context)
@@ -198,9 +246,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case _                                 => false
         }
         if horizontal then HorizontalScrollView(context) else ScrollView(context)
-      case WidgetKind.Image => ImageView(context)
+      case WidgetKind.Image   => ImageView(context)
       case WidgetKind.Divider =>
-        val v  = View(context)
+        val v = View(context)
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)))
         v.setLayoutParams(lp)
         // `listDivider` is a *drawable* attribute, not a colour: reading `TypedValue.data`
@@ -213,7 +261,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
     view
   }
 
-  def update(handle: Handle, patch: Seq[Prop]): Unit =
+  def update(
+    handle: Handle,
+    patch:  Seq[Prop]
+  ): Unit =
     patch.foreach {
       case Prop.Text(v) if tabs.isTab(handle) => tabs.setTitle(handle, v)
 
@@ -235,24 +286,39 @@ final class AndroidRenderer(context: Context) extends Renderer {
           // self-tests, which never looked at it, and obvious the moment one was on screen.
           case _ if kinds.get(handle).exists(k => k == WidgetKind.Alert || k == WidgetKind.Sheet) =>
             alertTitle(handle) = v
-          case _                                                 => ()
+          case _ => ()
         }
 
       case Prop.Placeholder(v) =>
         handle match {
           case e: EditText => e.setHint(v)
-          case _           => ()
+          case _ => ()
         }
 
       case Prop.OnTextChange(f) =>
         handle match {
           case e: EditText =>
-            e.addTextChangedListener(new TextWatcher {
-              def beforeTextChanged(s: CharSequence, a: Int, b: Int, c: Int): Unit = ()
-              def onTextChanged(s: CharSequence, a: Int, b: Int, c: Int): Unit     = ()
+            // One watcher per field: a re-applied handler replaces the last, where it used to
+            // add a second and report every keystroke twice (review 2026-10-20, P2-24).
+            watchers.remove(e).foreach(e.removeTextChangedListener)
+            val watcher = new TextWatcher {
+              def beforeTextChanged(
+                s: CharSequence,
+                a: Int,
+                b: Int,
+                c: Int
+              ): Unit = ()
+              def onTextChanged(
+                s: CharSequence,
+                a: Int,
+                b: Int,
+                c: Int
+              ):                                 Unit = ()
               def afterTextChanged(s: Editable): Unit =
-                if !suppress.contains(handle) then f(s.toString)
-            })
+                if !suppress.contains(handle) then appCallback(f(s.toString))
+            }
+            watchers(e) = watcher
+            e.addTextChangedListener(watcher)
           case _ => ()
         }
 
@@ -270,8 +336,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.OnCheckedChange(f) =>
         handle match {
           case c: CompoundButton =>
-            c.setOnCheckedChangeListener { (_: CompoundButton, checked: Boolean) =>
-              if !suppress.contains(handle) then f(checked)
+            c.setOnCheckedChangeListener {
+              (
+                _:       CompoundButton,
+                checked: Boolean
+              ) =>
+                if !suppress.contains(handle) then appCallback(f(checked))
             }
           case _ => ()
         }
@@ -289,26 +359,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case _ => ()
         }
 
-      // Grow means "along the parent's main axis", and a ZStack has none. Ignoring it there
-      // is also what keeps the child's FrameLayout.LayoutParams: replacing them with a
-      // LinearLayout's would make the FrameLayout throw on its next measure.
-      case Prop.Grow(_) if handle.getParent.isInstanceOf[View] && isZStack(handle.getParent.asInstanceOf[View]) => ()
-      // The same for a Grid: it has two axes and no main one, and its children must keep
-      // GridLayout's own params.
-      case Prop.Grow(_) if handle.getParent.isInstanceOf[GridLayout] => ()
-
       case Prop.Grow(v) =>
-        val lp = handle.getLayoutParams match {
-          case p: LinearLayout.LayoutParams => p
-          case _ =>
-            LinearLayout.LayoutParams(
-              ViewGroup.LayoutParams.WRAP_CONTENT,
-              ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-        lp.weight = if v then 1f else 0f
-        if v then lp.width = 0
-        handle.setLayoutParams(lp)
+        grows(handle) = v
+        applyGrow(handle)
 
       case Prop.Tint(color) =>
         // `None` means "leave it to the platform", so the emphasis handling below keeps
@@ -316,7 +369,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         color.foreach { c =>
           handle match {
             case t: TextView => t.setTextColor(argb(c))
-            case _           => ()
+            case _ => ()
           }
         }
 
@@ -327,9 +380,19 @@ final class AndroidRenderer(context: Context) extends Renderer {
         handle match {
           case iv: ImageView =>
             source match {
-              case None => iv.setImageDrawable(null)
+              case None                             => iv.setImageDrawable(null)
               case Some(ImageSource.FromFile(path)) =>
-                iv.setImageBitmap(BitmapFactory.decodeFile(path))
+                // A file first, then the APK's assets at the same relative path: an APK has no
+                // filesystem path, so a relative one could only ever load nothing (review
+                // 2026-10-20, R-M10). Assets are where an app ships its images.
+                val bitmap = Option(BitmapFactory.decodeFile(path)).orElse {
+                  try {
+                    val in = context.getAssets.open(path.stripPrefix("/"))
+                    try Option(BitmapFactory.decodeStream(in))
+                    finally in.close()
+                  } catch { case _: java.io.IOException => None }
+                }
+                iv.setImageBitmap(bitmap.orNull)
               case Some(ImageSource.FromBytes(data)) =>
                 iv.setImageBitmap(BitmapFactory.decodeByteArray(data, 0, data.length))
             }
@@ -406,7 +469,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         // disabled emphasis.
         handle match {
           case b: ImageButton => b.setImageAlpha(if v then 255 else 97)
-          case _              => ()
+          case _ => ()
         }
 
       case Prop.Glyph(icon) if tabs.isTab(handle) => tabs.setIcon(handle, icon)
@@ -414,7 +477,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.Glyph(icon) =>
         handle match {
           case b: ImageButton => b.setImageDrawable(iconDrawable(icon))
-          case _              => ()
+          case _ => ()
         }
 
       // A screen reader reads contentDescription; the tooltip is what a long press or a mouse
@@ -442,9 +505,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
         handle match {
           case s: SeekBar =>
             val (min, max) = ranges.getOrElse(s, (0.0, 1.0))
-            val span       = if max - min == 0.0 then 1.0 else max - min
-            val steps      = (((v - min) / span) * SliderSteps).round.toInt
-            val clamped    = math.max(0, math.min(SliderSteps, steps))
+            val span = if max - min == 0.0 then 1.0 else max - min
+            val steps = (((v - min) / span) * SliderSteps).round.toInt
+            val clamped = math.max(0, math.min(SliderSteps, steps))
             // Same rule as the text field: writing unconditionally fights the user's drag.
             if s.getProgress != clamped then {
               suppress += s
@@ -458,21 +521,29 @@ final class AndroidRenderer(context: Context) extends Renderer {
         // The framework's version of what the demo's Activity used to do by hand (docs/05
         // F-02). targetSdk 35+ forces edge-to-edge, so without this a screen draws behind
         // the status bar and its first row is simply invisible.
+        safeAreas += handle
         if Build.VERSION.SDK_INT >= Build.VERSION_CODES.R then {
-          handle.setOnApplyWindowInsetsListener { (v: View, insets: WindowInsets) =>
-            val bars = insets.getInsets(WindowInsets.Type.systemBars())
-            // Leading/Trailing, not left/right: under an RTL locale the leading edge is the
-            // right-hand one, and `getLayoutDirection` is how Android says which.
-            val rtl = v.getLayoutDirection == View.LAYOUT_DIRECTION_RTL
-            val leading = if rtl then Edge.Trailing else Edge.Leading
-            val trailing = if rtl then Edge.Leading else Edge.Trailing
-            v.setPadding(
-              if edges.contains(leading) then bars.left else 0,
-              if edges.contains(Edge.Top) then bars.top else 0,
-              if edges.contains(trailing) then bars.right else 0,
-              if edges.contains(Edge.Bottom) then bars.bottom else 0
-            )
-            insets
+          handle.setOnApplyWindowInsetsListener {
+            (
+              v:      View,
+              insets: WindowInsets
+            ) =>
+              val bars = insets.getInsets(WindowInsets.Type.systemBars())
+              // Leading/Trailing, not left/right: under an RTL locale the leading edge is the
+              // right-hand one, and `getLayoutDirection` is how Android says which.
+              val rtl = v.getLayoutDirection == View.LAYOUT_DIRECTION_RTL
+              val leading = if rtl then Edge.Trailing else Edge.Leading
+              val trailing = if rtl then Edge.Leading else Edge.Trailing
+              // On top of the app's own padding, which it used to replace (review 2026-10-20,
+              // P1-18): `Column(padding = 16).safeArea()` lost its 16 on every edge.
+              val base = basePadding.getOrElse(v, 0)
+              v.setPadding(
+                base + (if edges.contains(leading) then bars.left else 0),
+                base + (if edges.contains(Edge.Top) then bars.top else 0),
+                base + (if edges.contains(trailing) then bars.right else 0),
+                base + (if edges.contains(Edge.Bottom) then bars.bottom else 0)
+              )
+              insets
           }
           // `requestApplyInsets()` on a DETACHED view is a no-op, and a prop is applied
           // before the reconciler inserts the view — so asking here achieved nothing and the
@@ -496,7 +567,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         dates(handle) = date
         handle match {
           case b: Button => b.setText(formatDate(date))
-          case _         => ()
+          case _ => ()
         }
 
       case Prop.OnDateChange(f) =>
@@ -526,41 +597,32 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.OnSelect(f) if handle.isInstanceOf[RadioGroup] =>
         val g = handle.asInstanceOf[RadioGroup]
-        g.setOnCheckedChangeListener { (group: RadioGroup, checkedId: Int) =>
-          // -1 is clearCheck(), which only the app does.
-          if checkedId != -1 && !suppress.contains(group) then {
-            val i = group.indexOfChild(group.findViewById[View](checkedId))
-            segmentIndex(group) = i
-            f(i)
-          }
+        g.setOnCheckedChangeListener {
+          (
+            group:     RadioGroup,
+            checkedId: Int
+          ) =>
+            // -1 is clearCheck(), which only the app does.
+            if checkedId != -1 && !suppress.contains(group) then {
+              val i = group.indexOfChild(group.findViewById[View](checkedId))
+              segmentIndex(group) = i
+              appCallback(f(i))
+            }
         }
 
       case Prop.Options(values) =>
         handle match {
           case s: Spinner =>
-            // Rebuild the adapter's contents rather than the adapter: a Spinner keeps its
-            // selection by index across a data change, so swapping the adapter would reset
-            // the selection to 0 every time the options were re-set with the same list.
-            val a = s.getAdapter.asInstanceOf[ArrayAdapter[String]]
-            suppress += handle
-            a.clear()
-            values.foreach(a.add)
-            a.notifyDataSetChanged()
-            suppress -= handle
+            spinnerOptions(s) = values
+            renderSpinner(s)
           case _ => ()
         }
 
       case Prop.Selected(index) =>
         handle match {
           case s: Spinner =>
-            // Android has no "nothing selected" for a Spinner - INVALID_POSITION is a read
-            // value, not something you can set - so a negative index leaves it alone rather
-            // than being coerced to 0, which would silently select the first option.
-            if index >= 0 && index < s.getCount && s.getSelectedItemPosition != index then {
-              suppress += handle
-              s.setSelection(index)
-              suppress -= handle
-            }
+            spinnerWanted(s) = index
+            renderSpinner(s)
           case _ => ()
         }
 
@@ -586,7 +648,18 @@ final class AndroidRenderer(context: Context) extends Renderer {
                 view:     View,
                 position: Int,
                 id:       Long
-              ): Unit = if !suppress.contains(s) then f(position)
+              ): Unit = {
+                // Spinner reports selections *later*, from a layout pass, so a flag set around
+                // the app's own write is long cleared by then: every app write came back as a
+                // user choice, and Selected(-1) became 0 at the first layout (review
+                // 2026-10-20, P1-11). So what is reported is compared with what the app
+                // asked for instead, and only a difference is the user's.
+                val index = position - spinnerOffset(s)
+                if index >= 0 && index != spinnerWanted.getOrElse(s, -1) then {
+                  spinnerWanted(s) = index
+                  appCallback(f(index))
+                }
+              }
 
               def onNothingSelected(parent: AdapterView[?]): Unit = ()
 
@@ -598,14 +671,18 @@ final class AndroidRenderer(context: Context) extends Renderer {
         handle match {
           case s: SeekBar =>
             s.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener {
-              def onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean): Unit = {
+              def onProgressChanged(
+                bar:      SeekBar,
+                progress: Int,
+                fromUser: Boolean
+              ): Unit = {
                 if !suppress.contains(bar) then {
                   val (min, max) = ranges.getOrElse(bar, (0.0, 1.0))
-                  f(min + (progress.toDouble / SliderSteps) * (max - min))
+                  appCallback(f(min + (progress.toDouble / SliderSteps) * (max - min)))
                 }
               }
               def onStartTrackingTouch(bar: SeekBar): Unit = ()
-              def onStopTrackingTouch(bar: SeekBar): Unit  = ()
+              def onStopTrackingTouch(bar:  SeekBar): Unit = ()
             })
           case _ => ()
         }
@@ -622,15 +699,19 @@ final class AndroidRenderer(context: Context) extends Renderer {
         // decides how it is summoned.
         handle.setOnLongClickListener { (v: View) =>
           val menu = PopupMenu(context, v)
-          items.zipWithIndex.foreach { (item, i) =>
-            val mi = menu.getMenu.add(_root_.android.view.Menu.NONE, i, i, item.label)
-            mi.setEnabled(item.enabled)
+          items.zipWithIndex.foreach {
+            (
+              item,
+              i
+            ) =>
+              val mi = menu.getMenu.add(_root_.android.view.Menu.NONE, i, i, item.label)
+              mi.setEnabled(item.enabled)
           }
           // `_root_.` because this file's own package is `thicket.renderer.android`, so a bare
           // `android.view` resolves to the wrong thing — the same trap as `_root_.android.R`.
           menu.setOnMenuItemClickListener { (mi: _root_.android.view.MenuItem) =>
             items.lift(mi.getItemId) match {
-              case Some(item) => item.onSelect(); true
+              case Some(item) => appCallback(item.onSelect()); true
               case None       => false
             }
           }
@@ -655,7 +736,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.Padding(v) =>
         val p = dp(v)
-        handle.setPadding(p, p, p, p)
+        basePadding(handle) = p
+        // With a safe area, the insets listener owns the padding: it adds the insets to this.
+        if safeAreas.contains(handle) then handle.requestApplyInsets()
+        else handle.setPadding(p, p, p, p)
 
       case Prop.Spacing(v) =>
         handle match {
@@ -677,56 +761,78 @@ final class AndroidRenderer(context: Context) extends Renderer {
         }
     }
 
-  private val spacing = mutable.Map.empty[LinearLayout, Int]
+  private val spacing = perView[LinearLayout, Int]
 
-  private val gridSpacing = mutable.Map.empty[GridLayout, Int]
+  private val gridSpacing = perView[GridLayout, Int]
 
-  /** GridLayout has no spacing either, so the gap is a margin on each cell that is not first in its row or column. Which
-    * cells those are depends on every index, so it is recomputed whenever the children change, as for LinearLayout.
+  /** GridLayout has no spacing either, so the gap is a margin on each cell that is not first in its row or column.
+    * Which cells those are depends on every index, so it is recomputed whenever the children change, as for
+    * LinearLayout.
     */
-  private def applyGridSpacing(g: GridLayout): Unit = {
-    val gap     = gridSpacing.getOrElse(g, 0)
+  private def applyGridSpacing(
+    g:    GridLayout,
+    from: Int = 0
+  ): Unit = {
+    val gap = gridSpacing.getOrElse(g, 0)
     val columns = math.max(1, g.getColumnCount)
-    var i       = 0
+    var i = from max 0
     while i < g.getChildCount do {
       val child = g.getChildAt(i)
       child.getLayoutParams match {
         case lp: GridLayout.LayoutParams =>
-          lp.leftMargin = if i % columns == 0 then 0 else gap
-          lp.topMargin = if i / columns == 0 then 0 else gap
-          child.setLayoutParams(lp)
+          val left = if i % columns == 0 then 0 else gap
+          val top = if i / columns == 0 then 0 else gap
+          // Only a change is written: every write is a requestLayout.
+          if lp.leftMargin != left || lp.topMargin != top then {
+            lp.leftMargin = left
+            lp.topMargin = top
+            child.setLayoutParams(lp)
+          }
         case _ => ()
       }
       i += 1
     }
   }
 
-  /** `LinearLayout` has no spacing property, so gaps are child margins. They have to be
-    * recomputed whenever the children change, because "which child is first" changes.
+  /** `LinearLayout` has no spacing property, so gaps are child margins. They have to be recomputed whenever the
+    * children change, because "which child is first" changes.
     */
-  private def applySpacing(l: LinearLayout): Unit = {
-    val gap        = spacing.getOrElse(l, 0)
+  /** Children `from` until `until`, or all of them.
+    *
+    * A child's leading gap depends only on whether it is first, so inserting at `i` changes children `i` and `i + 1` at
+    * most, and removing at `i` changes only the child that moves into `i`. Recomputing every child on every change —
+    * and writing its params, which is a requestLayout each — made mounting a list O(n²) (review 2026-10-20, P2-7).
+    */
+  private def applySpacing(
+    l:     LinearLayout,
+    from:  Int = 0,
+    until: Int = Int.MaxValue
+  ): Unit = {
+    val gap = spacing.getOrElse(l, 0)
     val horizontal = l.getOrientation == LinearLayout.HORIZONTAL
-    var i          = 0
-    while i < l.getChildCount do {
+    var i = from max 0
+    val end = until min l.getChildCount
+    while i < end do {
       val child = l.getChildAt(i)
-      val lp = child.getLayoutParams match {
-        case p: LinearLayout.LayoutParams => p
-        case _ =>
-          LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-          )
-      }
       val lead = if i == 0 then 0 else gap
-      if horizontal then lp.leftMargin = lead else lp.topMargin = lead
-      child.setLayoutParams(lp)
+      child.getLayoutParams match {
+        case p: LinearLayout.LayoutParams =>
+          val current = if horizontal then p.leftMargin else p.topMargin
+          if current != lead then {
+            if horizontal then p.leftMargin = lead else p.topMargin = lead
+            child.setLayoutParams(p)
+          }
+        case _ =>
+          val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+          if horizontal then p.leftMargin = lead else p.topMargin = lead
+          child.setLayoutParams(p)
+      }
       i += 1
     }
   }
 
-  private val dates       = mutable.Map.empty[View, CalendarDate]
-  private val dateChanged = mutable.Map.empty[View, CalendarDate => Unit]
+  private val dates = perView[View, CalendarDate]
+  private val dateChanged = perView[View, CalendarDate => Unit]
 
   /** The user's medium date format, at UTC: a [[CalendarDate]] is a day, and formatting midnight UTC in any other zone
     * would show the day before for everyone west of Greenwich.
@@ -742,14 +848,19 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // Android's month counts from 0; the contract's from 1.
     val dialog = _root_.android.app.DatePickerDialog(
       context,
-      (_: _root_.android.widget.DatePicker, y: Int, m: Int, day: Int) => {
+      (
+        _:   _root_.android.widget.DatePicker,
+        y:   Int,
+        m:   Int,
+        day: Int
+      ) => {
         val chosen = CalendarDate(y, m + 1, day)
         dates(field) = chosen
         field match {
           case b: Button => b.setText(formatDate(chosen))
-          case _         => ()
+          case _ => ()
         }
-        dateChanged.get(field).foreach(_(chosen))
+        appCallback(dateChanged.get(field).foreach(_(chosen)))
       },
       d.year,
       d.month - 1,
@@ -767,7 +878,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   /** TabView and Tab, kept in their own class; see `AndroidTabs`. */
-  private lazy val tabs = AndroidTabs(context, dp, colourAttr, iconDrawable)
+  lazy private val tabs = AndroidTabs(context, dp, colourAttr, iconDrawable)
 
   /** A curated icon from the bundled Material Symbols artwork, in the theme's control colour; a platform icon from the
     * app's own drawables, by name.
@@ -787,9 +898,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
 
   /** Each segmented control's chosen index, kept here because its RadioButtons are rebuilt when the options change. */
-  private val segmentIndex = mutable.Map.empty[RadioGroup, Int]
+  private val segmentIndex = perView[RadioGroup, Int]
 
-  private def selectSegment(g: RadioGroup, index: Int): Unit = {
+  private def selectSegment(
+    g:     RadioGroup,
+    index: Int
+  ): Unit = {
     segmentIndex(g) = index
     // check() and clearCheck() both call the listener; an app's own write is not a choice.
     suppress += g
@@ -801,25 +915,87 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * listener, so keeping them apart and dispatching both is what stops `.link(url)` on a tappable row from replacing
     * the tap, or the tap the link.
     */
-  private val appTaps = mutable.Map.empty[View, () => Unit]
-  private val links   = mutable.Map.empty[View, String]
+  private val appTaps = perView[View, () => Unit]
+  private val links = perView[View, String]
 
   /** Setting a listener replaces the previous one, so repeated updates cannot stack handlers — the same property the
     * GTK renderer gets from one connected signal.
     */
   private def connectTap(handle: View): Unit =
     handle.setOnClickListener { (_: View) =>
-      appTaps.get(handle).foreach(_())
-      links.get(handle).foreach(url => AndroidRenderer.urlOpener(context, url))
+      appCallback {
+        appTaps.get(handle).foreach(_())
+        links.get(handle).foreach(url => AndroidRenderer.urlOpener(context, url))
+      }
     }
 
+  /** Widgets that set Grow, either way; their own padding; which of them carry a safe area. */
+  private val grows = perView[View, Boolean]
+  private val basePadding = perView[View, Int]
+  private val safeAreas = perViewSet
+
+  /** Grow is "along the parent's main axis", so it waits for a parent. It used to be applied at create time, always as
+    * `width = 0`: a grown child of a *vertical* Column was zero pixels wide, and the ZStack and Grid guards tested a
+    * parent that did not exist yet (review 2026-10-20, P1-4). A ZStack has no main axis and a Grid two, and both keep
+    * their own params, so there it is ignored.
+    */
+  private def applyGrow(child: View): Unit =
+    grows.get(child).foreach { on =>
+      child.getParent match {
+        case l: LinearLayout if !isZStack(l) =>
+          val horizontal = l.getOrientation == LinearLayout.HORIZONTAL
+          val lp = child.getLayoutParams match {
+            case p: LinearLayout.LayoutParams => p
+            case _ =>
+              LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+          }
+          lp.weight = if on then 1f else 0f
+          val main = if on then 0 else ViewGroup.LayoutParams.WRAP_CONTENT
+          if horizontal then lp.width = main else lp.height = main
+          child.setLayoutParams(lp)
+        case _ => ()
+      }
+    }
+
+  /** A Spinner's options, the selection the app last asked for, and whether a blank placeholder leads the list.
+    *
+    * Android cannot show "nothing selected" — INVALID_POSITION is a read value, not something to set — so while the
+    * selection is -1 a blank entry leads the list and is the one shown, as GTK's drop-down shows an empty button and
+    * Apple's a blank title (D13). It goes as soon as the user, or the app, picks a real one.
+    */
+  private val watchers = perView[EditText, TextWatcher]
+
+  private val spinnerOptions = perView[Spinner, Seq[String]]
+  private val spinnerWanted = perView[Spinner, Int]
+  private def spinnerOffset(s: Spinner):      Int = if spinnerPlaceholder(s) then 1 else 0
+  private def spinnerPlaceholder(s: Spinner): Boolean = {
+    val i = spinnerWanted.getOrElse(s, -1)
+    i < 0 || i >= spinnerOptions.getOrElse(s, Nil).length
+  }
+
+  private def renderSpinner(s: Spinner): Unit = {
+    val shown = (if spinnerPlaceholder(s) then Seq("") else Nil) ++ spinnerOptions.getOrElse(s, Nil)
+    val a = s.getAdapter.asInstanceOf[ArrayAdapter[String]]
+    if (0 until a.getCount).map(a.getItem) != shown then {
+      a.clear()
+      shown.foreach(a.add)
+      a.notifyDataSetChanged()
+    }
+    val position = spinnerWanted.getOrElse(s, -1) max -1
+    val target = if spinnerPlaceholder(s) then 0 else position
+    if s.getSelectedItemPosition != target then s.setSelection(target, false)
+  }
+
   /** Each ZStack's gravity, so a child inserted later is placed like the ones already there. */
-  private val stackGravity = mutable.Map.empty[FrameLayout, Int]
+  private val stackGravity = perView[FrameLayout, Int]
 
   /** Asked of `kinds`, not of the class: a ScrollView is a FrameLayout too, and so is the navigation container. */
   private def isZStack(v: View): Boolean = kinds.get(v).contains(WidgetKind.ZStack)
 
-  private def gravity(h: Alignment, v: Alignment): Int = {
+  private def gravity(
+    h: Alignment,
+    v: Alignment
+  ): Int = {
     // START and END rather than LEFT and RIGHT, so a right-to-left locale mirrors it.
     val x = h match {
       case Alignment.Start  => Gravity.START
@@ -835,7 +1011,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   /** A FrameLayout places each child by that child's own `gravity`, so the stack's alignment is written onto each. */
-  private def placeInStack(stack: FrameLayout, child: View): Unit =
+  private def placeInStack(
+    stack: FrameLayout,
+    child: View
+  ): Unit =
     stackGravity.get(stack).foreach { g =>
       // addView has already converted whatever the child carried into FrameLayout's own
       // params, keeping its size and margins; only the gravity is ours to set.
@@ -844,7 +1023,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
       child.setLayoutParams(lp)
     }
 
-  def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+  def insertAfter(
+    parent: Handle,
+    child:  Handle,
+    after:  Option[Handle]
+  ): Unit = {
     if tabs.isTabView(parent) then {
       tabs.insertAfter(parent, child.asInstanceOf[FrameLayout], after)
       return
@@ -867,9 +1050,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // tail first is the difference between O(n) and O(n^2).
     val count = vg.getChildCount
     val index = after match {
-      case None                                            => 0
+      case None                                                  => 0
       case Some(a) if count > 0 && vg.getChildAt(count - 1) == a => count
-      case Some(a)                                         => vg.indexOfChild(a) + 1
+      case Some(a)                                               => vg.indexOfChild(a) + 1
     }
     // A view that carries no params of its own is given the parent's defaults, and
     // FrameLayout's are MATCH_PARENT both ways where LinearLayout's are WRAP_CONTENT — so
@@ -882,25 +1065,45 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // Index order is drawing order in a FrameLayout, so placing the child by its preceding
     // sibling is also what puts it at the right depth.
     vg.addView(child, index)
+    applyGrow(child)
     vg match {
-      case g: GridLayout                => applyGridSpacing(g)
-      case l: LinearLayout              => applySpacing(l)
+      case g: GridLayout                 => applyGridSpacing(g, from = index)
+      case l: LinearLayout               => applySpacing(l, from = index, until = index + 2)
       case f: FrameLayout if isZStack(f) => placeInStack(f, child)
-      case _                            => ()
+      case _ => ()
     }
   }
 
-  def removeChild(parent: Handle, child: Handle): Unit = {
+  /** A tab reorders in place. The contract's default — remove, then insert — took the tab away first, so the user was
+    * moved off it and the app told of a selection change that never happened (review 2026-10-20, P1-12).
+    * `AndroidTabs.insertAfter` already places a tab that is in the view, keeping the user on theirs.
+    */
+  override def moveAfter(
+    parent: Handle,
+    child:  Handle,
+    after:  Option[Handle]
+  ): Unit =
+    if tabs.isTabView(parent) then tabs.insertAfter(parent, child.asInstanceOf[FrameLayout], after)
+    else {
+      removeChild(parent, child)
+      insertAfter(parent, child, after)
+    }
+
+  def removeChild(
+    parent: Handle,
+    child:  Handle
+  ): Unit = {
     if tabs.isTabView(parent) then {
       tabs.remove(parent, child)
       return
     }
     val vg = parent.asInstanceOf[ViewGroup]
+    val index = vg.indexOfChild(child)
     vg.removeView(child)
     vg match {
-      case g: GridLayout   => applyGridSpacing(g)
-      case l: LinearLayout => applySpacing(l)
-      case _               => ()
+      case g: GridLayout   => applyGridSpacing(g, from = index)
+      case l: LinearLayout => applySpacing(l, from = index, until = index + 1)
+      case _ => ()
     }
   }
 
@@ -908,40 +1111,41 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // A Tab is in its TabView's content area and has an item in its bar; both go.
     tabs.destroy(handle)
     handle.getParent match {
-      case vg: ViewGroup =>
+      // A LazyColumn's row: the ListView owns its children and recycles them, and refuses
+      // removeView outright — so disposing a list page used to throw from here (found by the
+      // gallery's Android self-test, popping its big list). The row is released, not detached.
+      case _:  _root_.android.widget.AdapterView[?] => ()
+      case vg: ViewGroup                            =>
+        val index = vg.indexOfChild(handle)
         vg.removeView(handle)
         vg match {
-          case g: GridLayout   => applyGridSpacing(g)
-          case l: LinearLayout => applySpacing(l)
-          case _               => ()
+          case g: GridLayout   => applyGridSpacing(g, from = index)
+          case l: LinearLayout => applySpacing(l, from = index, until = index + 1)
+          case _ => ()
         }
       case _ => ()
     }
-    handle.setOnClickListener(null)
-    suppress -= handle
-    val _ = kinds.remove(handle)
+    // AdapterView (the LazyColumn's ListView) refuses setOnClickListener even to clear it, and
+    // never had one set.
     handle match {
-      // Before LinearLayout, which a RadioGroup is.
-      case g: RadioGroup   => val _ = segmentIndex.remove(g)
-      case l: LinearLayout => val _ = spacing.remove(l)
-      case f: FrameLayout  => val _ = stackGravity.remove(f)
-      case g: GridLayout   => val _ = gridSpacing.remove(g)
-      case _               => ()
+      case _: _root_.android.widget.AdapterView[?] => ()
+      case v => v.setOnClickListener(null)
     }
-    // Keyed by View, so an entry left behind keeps the View itself alive for the life of
-    // the renderer. Android needs no handle table — the closures sit in these maps and the
-    // GC collects them once nothing references the View — which is exactly why the removal
-    // was easy to forget here and nowhere else.
-    val _ = ranges.remove(handle)
-    val _ = dates.remove(handle)
-    val _ = dateChanged.remove(handle)
-    val _ = appTaps.remove(handle)
-    val _ = links.remove(handle)
-    val _ = alertActions.remove(handle)
-    val _ = alertDismiss.remove(handle)
+    alertShowing.get(handle).foreach(_.dismiss())
+    sheetShowing.get(handle).foreach(_.dismiss())
+    handle match {
+      case e: EditText => watchers.get(e).foreach(e.removeTextChangedListener)
+      case _ => ()
+    }
+    // Everything else keyed by this view, in every table.
+    perViewMaps.foreach(_.asInstanceOf[mutable.Map[View, ?]].remove(handle))
+    perViewSets.foreach(_ -= handle)
   }
 
-  def measure(handle: Handle, constraints: Constraints): Measurement = {
+  def measure(
+    handle:      Handle,
+    constraints: Constraints
+  ): Measurement = {
     def spec(v: Float): Int =
       if v.isNaN then View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
       else View.MeasureSpec.makeMeasureSpec(v.toInt, View.MeasureSpec.AT_MOST)
@@ -955,20 +1159,22 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   /** No-op while every container is toolkit-managed. */
-  def setFrame(handle: Handle, frame: Frame): Unit = ()
+  def setFrame(
+    handle: Handle,
+    frame:  Frame
+  ): Unit = ()
 
-  /** `ListView` materialises only the rows on screen and recycles the rest, which is the
-    * whole point of `LazyColumn`. It is the platform's own widget — no AndroidX dependency.
+  /** `ListView` materialises only the rows on screen and recycles the rest, which is the whole point of `LazyColumn`.
+    * It is the platform's own widget — no AndroidX dependency.
     */
   override def supportsVirtualRows: Boolean = true
 
   /** Uses the platform `android.app.AlertDialog`, not AndroidX's.
     *
-    * The class carries a deprecation flag in android-36's bytecode, though scalac does not
-    * warn on it. Taking the AndroidX dependency to get the undeprecated one would add a
-    * library this renderer otherwise does not need, for a dialog the platform still draws
-    * correctly — and the reason this APK is 165 KB is that it depends on nothing. Revisit
-    * if it is ever actually removed rather than merely discouraged.
+    * The class carries a deprecation flag in android-36's bytecode, though scalac does not warn on it. Taking the
+    * AndroidX dependency to get the undeprecated one would add a library this renderer otherwise does not need, for a
+    * dialog the platform still draws correctly — and the reason this APK is 165 KB is that it depends on nothing.
+    * Revisit if it is ever actually removed rather than merely discouraged.
     */
   override def present(handle: View): Unit =
     if kinds.get(handle).contains(WidgetKind.Sheet) then presentSheet(handle)
@@ -976,12 +1182,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   /** Built on `AlertDialog.Builder().setView(...)`, not a plain `Dialog`.
     *
-    * A plain `Dialog` reserves a title band under the current themes and then draws nothing
-    * in it — a blank strip above the content, whether or not `setTitle` is called, before
-    * or after `setContentView`. `AlertDialog` renders the title properly and handles the
-    * content's padding and insets, and taking a custom view is what its `setView` is for.
-    * It is the Android idiom for a modal with your own content; the plain `Dialog` is the
-    * lower-level thing underneath it.
+    * A plain `Dialog` reserves a title band under the current themes and then draws nothing in it — a blank strip above
+    * the content, whether or not `setTitle` is called, before or after `setContentView`. `AlertDialog` renders the
+    * title properly and handles the content's padding and insets, and taking a custom view is what its `setView` is
+    * for. It is the Android idiom for a modal with your own content; the plain `Dialog` is the lower-level thing
+    * underneath it.
     */
   private def presentSheet(handle: View): Unit = {
     val b = AlertDialog.Builder(context)
@@ -989,7 +1194,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     b.setView(handle)
     // Back gesture and tapping outside, which is what OnDismiss means. Not fired by
     // `dismiss()`, so an app-initiated take-down stays distinguishable.
-    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => f()))
+    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => appCallback(f())))
     val d = b.create()
     sheetShowing(handle) = d
     d.show()
@@ -1005,11 +1210,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // goes to NEGATIVE, the first non-cancel to POSITIVE, and a third to NEUTRAL. An app
     // that assumed its own order would be wrong here and right everywhere else.
     val actions = alertActions.getOrElse(handle, Nil)
-    val cancel  = actions.find(_.cancel)
-    val rest    = actions.filterNot(_.cancel)
+    val cancel = actions.find(_.cancel)
+    val rest = actions.filterNot(_.cancel)
 
     def listener(a: AlertAction): DialogInterface.OnClickListener =
-      (_: DialogInterface, _: Int) => a.onSelect()
+      (
+        _: DialogInterface,
+        _: Int
+      ) => appCallback(a.onSelect())
 
     rest.headOption.foreach(a => b.setPositiveButton(a.label, listener(a)))
     cancel.foreach(a => b.setNegativeButton(a.label, listener(a)))
@@ -1018,7 +1226,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // Dismissal without a choice: back gesture or a tap outside. `setOnCancelListener`
     // fires for exactly those and not for a button, which is the distinction Prop.OnDismiss
     // exists to preserve.
-    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => f()))
+    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => appCallback(f())))
 
     val d = b.create()
     alertShowing(handle) = d
@@ -1033,7 +1241,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // reconciler's destroy runs against a view the dialog still owns.
       handle.getParent match {
         case g: ViewGroup => g.removeView(handle)
-        case _            => ()
+        case _ => ()
       }
     }
   }
@@ -1042,14 +1250,18 @@ final class AndroidRenderer(context: Context) extends Renderer {
     val list = ListView(context)
 
     val adapter = new BaseAdapter {
-      def getCount: Int            = source.count
-      def getItem(i: Int): Object  = Integer.valueOf(i)
-      def getItemId(i: Int): Long  = i.toLong
+      def getCount:          Int = source.count
+      def getItem(i:   Int): Object = Integer.valueOf(i)
+      def getItemId(i: Int): Long = i.toLong
 
-      override def getView(position: Int, convertView: View, parent: ViewGroup): View =
+      override def getView(
+        position:    Int,
+        convertView: View,
+        parent:      ViewGroup
+      ): View =
         // Handing `convertView` back to the framework is what turns a scroll into a few
         // property writes: it re-binds that row's signal rather than building widgets.
-        source.bind(position, Option(convertView))
+        ErrorSink.catching(View(context))(source.bind(position, Option(convertView)))
     }
 
     list.setAdapter(adapter)
@@ -1058,18 +1270,24 @@ final class AndroidRenderer(context: Context) extends Renderer {
     list
   }
 
+  /** Every call into app code from a listener goes through here: an exception escaping an Android listener kills the
+    * process, so it is reported to `ErrorSink` instead (review 2026-10-20, P0-3).
+    */
+  inline private def appCallback(inline body: Unit): Unit = ErrorSink.catching(())(body)
+
   def runOnUiThread(f: () => Unit): Unit =
-    if Looper.myLooper eq Looper.getMainLooper then f()
+    if Looper.myLooper eq Looper.getMainLooper then appCallback(f())
     else {
-      val _ = mainHandler.post(() => f())
+      val _ = mainHandler.post(() => appCallback(f()))
     }
+
 }
 
 object AndroidRenderer {
 
   /** The date dialog on screen, if any. A dialog is not in any view tree, so this is the only way a self-test can find
-    * the one a field opened and choose a date in it — which is the user's own path, through the platform's buttons.
-    * Set when one is shown, cleared when it is dismissed; nothing else should touch it.
+    * the one a field opened and choose a date in it — which is the user's own path, through the platform's buttons. Set
+    * when one is shown, cleared when it is dismissed; nothing else should touch it.
     */
   @volatile var dateDialog: Option[_root_.android.app.DatePickerDialog] = None
 
@@ -1079,22 +1297,26 @@ object AndroidRenderer {
     * Replaceable for one reason: a self-test that clicks a link must not leave the app for a browser half-way through.
     * Nothing else should touch it.
     */
-  @volatile var urlOpener: (Context, String) => Unit = { (context, url) =>
-    val intent = _root_.android.content.Intent(
-      _root_.android.content.Intent.ACTION_VIEW,
-      _root_.android.net.Uri.parse(url)
-    )
-    // Started from a View's context, which need not be an Activity; without NEW_TASK that
-    // throws rather than opening anything.
-    if !context.isInstanceOf[_root_.android.app.Activity] then
-      intent.addFlags(_root_.android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-    try context.startActivity(intent)
-    catch {
-      // Nothing installed handles the scheme. There is nothing the app could do about it,
-      // so it is logged rather than thrown into a click handler.
-      case _: _root_.android.content.ActivityNotFoundException =>
-        val _ = _root_.android.util.Log.w("thicket", s"no app opens $url")
-    }
+  @volatile var urlOpener: (Context, String) => Unit = {
+    (
+      context,
+      url
+    ) =>
+      val intent = _root_.android.content.Intent(
+        _root_.android.content.Intent.ACTION_VIEW,
+        _root_.android.net.Uri.parse(url)
+      )
+      // Started from a View's context, which need not be an Activity; without NEW_TASK that
+      // throws rather than opening anything.
+      if !context.isInstanceOf[_root_.android.app.Activity] then
+        intent.addFlags(_root_.android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+      try context.startActivity(intent)
+      catch {
+        // Nothing installed handles the scheme. There is nothing the app could do about it,
+        // so it is logged rather than thrown into a click handler.
+        case _: _root_.android.content.ActivityNotFoundException =>
+          val _ = _root_.android.util.Log.w("thicket", s"no app opens $url")
+      }
   }
 
 }

@@ -12,7 +12,6 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-root=$(pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -25,7 +24,7 @@ sbt --error \
   "rendererGtk/publishLocal" \
   "sbtThicket/publishLocal"
 
-vers=$(sbt --error "print coreJVM/version" "print sbtThicket/version" | tr -d '\r' | tail -2)
+vers=$(sbt --error "print coreJVM/version; print sbtThicket/version" | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' | grep -E '^[0-9]' | tail -2)
 ver=$(echo "$vers" | head -1)
 pluginver=$(echo "$vers" | tail -1)
 [ -n "$ver" ] || { echo "could not read the version" >&2; exit 1; }

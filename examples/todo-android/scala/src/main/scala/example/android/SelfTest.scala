@@ -19,7 +19,19 @@ package example.android
 import android.util.Log
 import android.view.{Gravity, View, ViewGroup}
 import android.text.InputType
-import android.widget.{EditText, FrameLayout, GridLayout, ImageButton, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Switch, TextView}
+import android.widget.{
+  EditText,
+  FrameLayout,
+  GridLayout,
+  ImageButton,
+  ProgressBar,
+  RadioButton,
+  RadioGroup,
+  ScrollView,
+  SeekBar,
+  Switch,
+  TextView
+}
 import example.TodoApp
 import thicket.core.NavHost
 import thicket.renderer.CalendarDate
@@ -27,23 +39,24 @@ import thicket.renderer.android.AndroidRenderer
 import android.content.DialogInterface
 import scala.collection.mutable
 
-/** Drives navigation and reads the view tree back out of Android — the same checks the GTK
-  * host runs, against a structurally different toolkit.
+/** Drives navigation and reads the view tree back out of Android — the same checks the GTK host runs, against a
+  * structurally different toolkit.
   */
 object SelfTest {
 
-  private val Tag      = "thicket"
+  private val Tag = "thicket"
   private var failures = 0
 
   /** Every piece of text in the subtree, in tree order. */
   /** EditText is a TextView, so it must be matched first or its value is read as a label. */
-  private def allTexts(v: View): List[String] = v match {
-    case e: EditText => List(e.getText.toString)
-    case g: ViewGroup =>
-      (0 until g.getChildCount).toList.flatMap(i => allTexts(g.getChildAt(i)))
-    case t: TextView => List(t.getText.toString)
-    case _           => Nil
-  }
+  private def allTexts(v: View): List[String] =
+    v match {
+      case e: EditText  => List(e.getText.toString)
+      case g: ViewGroup =>
+        (0 until g.getChildCount).toList.flatMap(i => allTexts(g.getChildAt(i)))
+      case t: TextView => List(t.getText.toString)
+      case _ => Nil
+    }
 
   /** The theme's own link colour, resolved independently of the renderer, so the check compares against the theme
     * rather than against whatever the renderer happened to set.
@@ -59,12 +72,16 @@ object SelfTest {
     val here = if p(v) then List(v) else Nil
     val kids = v match {
       case g: ViewGroup => (0 until g.getChildCount).toList.flatMap(i => findAll(g.getChildAt(i))(p))
-      case _            => Nil
+      case _ => Nil
     }
     here ++ kids
   }
 
-  private def check(name: String, cond: Boolean, detail: => String = ""): Unit = {
+  private def check(
+    name:   String,
+    cond:   Boolean,
+    detail: => String = ""
+  ): Unit = {
     if !cond then failures += 1
     Log.i(Tag, s"[selftest] ${if cond then "ok  " else "FAIL"} $name")
     if !cond && detail.nonEmpty then Log.i(Tag, s"[selftest]      $detail")
@@ -72,11 +89,10 @@ object SelfTest {
 
   /** `root` is a thunk, deliberately.
     *
-    * Each entry on the navigation stack is now its own view, so "the screen" is whatever is
-    * on top *now*. A `View` captured once goes stale as soon as the stack changes, and
-    * `navigator.reset` replaces the items page outright — after which every remaining check
-    * was walking a disposed view and finding nothing. Twelve of them failed that way, all
-    * reporting an empty tree, which is a good signature for this mistake.
+    * Each entry on the navigation stack is now its own view, so "the screen" is whatever is on top *now*. A `View`
+    * captured once goes stale as soon as the stack changes, and `navigator.reset` replaces the items page outright —
+    * after which every remaining check was walking a disposed view and finding nothing. Twelve of them failed that way,
+    * all reporting an empty tree, which is a good signature for this mistake.
     */
   def run(
     model: TodoApp.Model,
@@ -106,8 +122,11 @@ object SelfTest {
     check("back is available", app.canGoBack.now)
 
     model.toggle(3)
-    check("toggling from the detail screen updates it", allTexts(root()).contains("Done"),
-      allTexts(root()).toString)
+    check(
+      "toggling from the detail screen updates it",
+      allTexts(root()).contains("Done"),
+      allTexts(root()).toString
+    )
 
     check("back() pops", app.back())
     check("title restored", app.title.now == "Todo")
@@ -120,8 +139,11 @@ object SelfTest {
     app.push(TodoApp.Route.About)
     val saved = app.navigator.routes.now.map(TodoApp.showRoute)
     val parsed = saved.flatMap(TodoApp.parseRoute)
-    check("the back stack round-trips through strings", parsed == app.navigator.routes.now,
-      s"saved=$saved parsed=$parsed")
+    check(
+      "the back stack round-trips through strings",
+      parsed == app.navigator.routes.now,
+      s"saved=$saved parsed=$parsed"
+    )
 
     // SafeArea, which replaced the Activity's hand-rolled inset handling (docs/05 F-02).
     //
@@ -161,9 +183,11 @@ object SelfTest {
       // `Scroll` declares none of its own. An earlier version asked whether ANY view had top
       // padding and passed because the screen's `Column(padding = 16)` has some.
       val scrolls = findAll(stack())(_.isInstanceOf[ScrollView])
-      check("SafeArea pads the view it is applied to",
+      check(
+        "SafeArea pads the view it is applied to",
         scrolls.nonEmpty && scrolls.forall(_.getPaddingTop > 0),
-        s"${scrolls.length} scroll views, top paddings ${scrolls.map(_.getPaddingTop)}")
+        s"${scrolls.length} scroll views, top paddings ${scrolls.map(_.getPaddingTop)}"
+      )
     }
 
     // Restoring the stack must *mount* it, not merely set it.
@@ -175,32 +199,41 @@ object SelfTest {
     // reviewer cannot confirm by reading the diff.
     app.navigator.restore(List(TodoApp.Route.Detail(1), TodoApp.Route.Items))
     val restored = allTexts(stack())
-    check("a restored stack mounts every page, not just the top",
+    check(
+      "a restored stack mounts every page, not just the top",
       restored.contains("Add") && restored.contains("Back"),
-      restored.toString)
+      restored.toString
+    )
     check("and the restored top screen is the one on top", app.title.now == "Item")
 
     val _ = app.navigator.reset(TodoApp.Route.Items)
-    check("reset collapses the stack to one page",
+    check(
+      "reset collapses the stack to one page",
       !app.canGoBack.now && !allTexts(stack()).contains("Back"),
-      allTexts(stack()).toString)
+      allTexts(stack()).toString
+    )
 
     // --- the form: text field and checkbox bound both ways ---
     check("the draft starts empty", model.draft.now.isEmpty)
     check("an empty draft is not valid", !model.draftValid.now)
 
     model.draft.set("Write the catalogue")
-    check("writing the signal reaches the widget",
-      allTexts(root()).contains("Write the catalogue"), allTexts(root()).toString)
+    check(
+      "writing the signal reaches the widget",
+      allTexts(root()).contains("Write the catalogue"),
+      allTexts(root()).toString
+    )
     check("a non-empty draft is valid", model.draftValid.now)
 
     model.draftDone.set(true)
     val sizeBefore = model.items.now.size
     model.addDraft()
-    check("adding appends the drafted item",
+    check(
+      "adding appends the drafted item",
       model.items.now.size == sizeBefore + 1 &&
         model.items.now.last.title == "Write the catalogue",
-      model.items.now.map(_.title).toString)
+      model.items.now.map(_.title).toString
+    )
     check("the committed item kept its done flag", model.items.now.last.done)
     check("the form cleared", model.draft.now.isEmpty && !model.draftDone.now)
 
@@ -211,9 +244,11 @@ object SelfTest {
       check("the switch starts off", !s.isChecked)
       model.hideDone.set(true)
       check("writing the signal flips the switch", s.isChecked)
-      check("hiding completed items shrinks the list",
+      check(
+        "hiding completed items shrinks the list",
         !allTexts(root()).contains("Structural reconciliation"),
-        allTexts(root()).toString)
+        allTexts(root()).toString
+      )
       model.hideDone.set(false)
       check("showing them again restores it", allTexts(root()).contains("Structural reconciliation"))
     }
@@ -224,11 +259,12 @@ object SelfTest {
     // And SeekBar extends ProgressBar, so a slider is a determinate progress bar as far as
     // `isInstanceOf` is concerned. It has to be excluded explicitly — the first version of
     // this check reported two bars once the slider landed.
-    def bars = findAll(root()) {
-      case _: SeekBar     => false
-      case p: ProgressBar => !p.isIndeterminate
-      case _              => false
-    }
+    def bars =
+      findAll(root()) {
+        case _: SeekBar     => false
+        case p: ProgressBar => !p.isIndeterminate
+        case _ => false
+      }
     def spinners = findAll(root()) { case p: ProgressBar => p.isIndeterminate; case _ => false }
 
     check("there is a determinate ProgressBar", bars.length == 1, bars.length.toString)
@@ -236,13 +272,15 @@ object SelfTest {
       // Driven to a genuine fraction: everything is done by now, and 1.0-against-1.0 would
       // also pass if the renderer clamped every value to full.
       model.items.now.take(1).foreach(i => model.toggle(i.id))
-      val xs       = model.items.now
+      val xs = model.items.now
       val expected = xs.count(_.done).toDouble / xs.size
-      val actual   = bar.getProgress.toDouble / bar.getMax
+      val actual = bar.getProgress.toDouble / bar.getMax
       Log.i(Tag, f"[selftest] progress bar: $actual%.3f, expected $expected%.3f")
-      check("the progress bar shows the model's fraction",
+      check(
+        "the progress bar shows the model's fraction",
         expected > 0.0 && expected < 1.0 && math.abs(actual - expected) < 0.002,
-        s"$actual vs $expected")
+        s"$actual vs $expected"
+      )
     }
 
     // A Spinner has no "running" prop: Show is what starts and stops it.
@@ -262,19 +300,24 @@ object SelfTest {
     val start = model.reviewBy.now
     val dateFields = findAll(root()) {
       case b: _root_.android.widget.Button => b.getText.toString == medium(start)
-      case _                                => false
+      case _ => false
     }
-    check("the date field shows the model's date in the user's format", dateFields.length == 1,
-      s"looking for ${medium(start)}")
+    check(
+      "the date field shows the model's date in the user's format",
+      dateFields.length == 1,
+      s"looking for ${medium(start)}"
+    )
     dateFields.headOption.foreach { field =>
       field.performClick()
       val dialog = AndroidRenderer.dateDialog
       check("clicking it opens a DatePickerDialog", dialog.exists(_.isShowing))
       dialog.foreach { d =>
         val p = d.getDatePicker
-        check("the dialog opens on the model's date, leap day and all",
+        check(
+          "the dialog opens on the model's date, leap day and all",
           (p.getYear, p.getMonth + 1, p.getDayOfMonth) == (start.year, start.month, start.day),
-          s"${p.getYear}-${p.getMonth + 1}-${p.getDayOfMonth}")
+          s"${p.getYear}-${p.getMonth + 1}-${p.getDayOfMonth}"
+        )
         d.updateDate(2029, 0, 31)
         d.getButton(DialogInterface.BUTTON_POSITIVE).performClick()
         // AlertDialog delivers a button's listener and its own dismissal as Handler messages,
@@ -282,11 +325,16 @@ object SelfTest {
         // them; like the SafeArea check it logs after the summary, and build.sh's grep for
         // FAIL still catches it. The first version asked straight away and saw nothing.
         field.post { () =>
-          check("choosing a date reaches the app", model.reviewBy.now == CalendarDate(2029, 1, 31),
-            model.reviewBy.now.toString)
-          check("and the field shows it",
+          check(
+            "choosing a date reaches the app",
+            model.reviewBy.now == CalendarDate(2029, 1, 31),
+            model.reviewBy.now.toString
+          )
+          check(
+            "and the field shows it",
             field.asInstanceOf[TextView].getText.toString == medium(CalendarDate(2029, 1, 31)),
-            field.asInstanceOf[TextView].getText.toString)
+            field.asInstanceOf[TextView].getText.toString
+          )
           check("and the dialog has closed", !d.isShowing)
           model.reviewBy.set(start)
         }
@@ -297,16 +345,19 @@ object SelfTest {
     val iconButtons = findAll(root()) { case _: ImageButton => true; case _ => false }
       .collect { case b: ImageButton => b }
     def iconLabelled(l: String) = iconButtons.find(b => String.valueOf(b.getContentDescription) == l)
-    check("two ImageButtons, each with its label as contentDescription and tooltip",
+    check(
+      "two ImageButtons, each with its label as contentDescription and tooltip",
       iconButtons.length == 2 && iconButtons.forall(b =>
-        b.getContentDescription != null && b.getTooltipText == b.getContentDescription),
-      iconButtons.map(b => s"${b.getContentDescription}/${b.getTooltipText}").toString)
+        b.getContentDescription != null && b.getTooltipText == b.getContentDescription
+      ),
+      iconButtons.map(b => s"${b.getContentDescription}/${b.getTooltipText}").toString
+    )
     // Drawn into a bitmap and counted, because a drawable with a size can still draw nothing:
     // a path that failed to scale lands outside the bounds, and one that scaled wrong floods
     // them. An outline icon covers a minority of its square, never none and never all.
     def coverage(d: _root_.android.graphics.drawable.Drawable): Double = {
       val size = 96
-      val bmp  = _root_.android.graphics.Bitmap.createBitmap(size, size, _root_.android.graphics.Bitmap.Config.ARGB_8888)
+      val bmp = _root_.android.graphics.Bitmap.createBitmap(size, size, _root_.android.graphics.Bitmap.Config.ARGB_8888)
       d.setBounds(0, 0, size, size)
       d.draw(_root_.android.graphics.Canvas(bmp))
       val px = new Array[Int](size * size)
@@ -314,35 +365,59 @@ object SelfTest {
       px.count(p => (p >>> 24) > 0x40).toDouble / px.length
     }
     val covered = iconButtons.map(b => Option(b.getDrawable).map(coverage).getOrElse(0.0))
-    check("each draws its icon: some of its square painted, not none and not all",
+    check(
+      "each draws its icon: some of its square painted, not none and not all",
       covered.nonEmpty && covered.forall(c => c > 0.03 && c < 0.6),
-      covered.map(c => f"${c * 100}%.1f%%").toString)
+      covered.map(c => f"${c * 100}%.1f%%").toString
+    )
     val sizeBeforeIcons = model.items.now.size
     iconLabelled("Add an item").foreach(_.performClick())
-    check("tapping Add adds an item", model.items.now.size == sizeBeforeIcons + 1,
-      s"$sizeBeforeIcons -> ${model.items.now.size}")
+    check(
+      "tapping Add adds an item",
+      model.items.now.size == sizeBeforeIcons + 1,
+      s"$sizeBeforeIcons -> ${model.items.now.size}"
+    )
     iconLabelled("Remove the last item").foreach(_.performClick())
-    check("tapping Remove takes it away again", model.items.now.size == sizeBeforeIcons,
-      s"$sizeBeforeIcons -> ${model.items.now.size}")
+    check(
+      "tapping Remove takes it away again",
+      model.items.now.size == sizeBeforeIcons,
+      s"$sizeBeforeIcons -> ${model.items.now.size}"
+    )
 
     // --- TabView: a content area and a bottom bar of framework views ---
     // Found through its bar items, which carry the tab titles as contentDescription.
-    val tabItems = findAll(root())(v => v.getContentDescription != null &&
-      Set("Summary", "Help").contains(v.getContentDescription.toString))
-    check("a bar item per tab, in order", tabItems.map(_.getContentDescription.toString) == List("Summary", "Help"),
-      tabItems.map(_.getContentDescription).toString)
+    val tabItems = findAll(root())(v =>
+      v.getContentDescription != null &&
+        Set("Summary", "Help").contains(v.getContentDescription.toString)
+    )
+    check(
+      "a bar item per tab, in order",
+      tabItems.map(_.getContentDescription.toString) == List("Summary", "Help"),
+      tabItems.map(_.getContentDescription).toString
+    )
     tabItems.headOption.map(_.getParent.getParent).collect { case tv: ViewGroup => tv }.foreach { tv =>
       val content = tv.getChildAt(0).asInstanceOf[ViewGroup]
-      def tabsShown = (0 until content.getChildCount).map(i => content.getChildAt(i).getVisibility == View.VISIBLE).toList
-      check("both tabs are mounted, only the model's shows", content.getChildCount == 2 && tabsShown == List(true, false),
-        s"${content.getChildCount} tabs, shown $tabsShown")
+      def tabsShown =
+        (0 until content.getChildCount).map(i => content.getChildAt(i).getVisibility == View.VISIBLE).toList
+      check(
+        "both tabs are mounted, only the model's shows",
+        content.getChildCount == 2 && tabsShown == List(true, false),
+        s"${content.getChildCount} tabs, shown $tabsShown"
+      )
       val helpText = findAll(content.getChildAt(1)) { case _: TextView => true; case _ => false }
         .collect { case t: TextView => t.getText.toString }
-      check("the hidden tab's content exists", helpText.contains("Long-press a row for its menu."), helpText.toString)
+      check(
+        "the hidden tab's content exists",
+        helpText.contains("Long-press a row for its menu."),
+        helpText.toString
+      )
       // A real click on the bar item: its listener is the renderer's.
       tabItems(1).performClick()
-      check("clicking Help shows it and tells the app", model.infoTab.now == 1 && tabsShown == List(false, true),
-        s"model ${model.infoTab.now}, shown $tabsShown")
+      check(
+        "clicking Help shows it and tells the app",
+        model.infoTab.now == 1 && tabsShown == List(false, true),
+        s"model ${model.infoTab.now}, shown $tabsShown"
+      )
       model.infoTab.set(0)
       check("writing the signal switches back", tabsShown == List(true, false), tabsShown.toString)
     }
@@ -353,14 +428,19 @@ object SelfTest {
     check("the counts are one GridLayout", grids.length == 1, grids.length.toString)
     grids.headOption.foreach { g =>
       val cells = (0 until g.getChildCount).map(g.getChildAt).collect { case t: TextView => t }
-      check("two columns, four cells, in order",
+      check(
+        "two columns, four cells, in order",
         g.getColumnCount == 2 && cells.map(_.getText.toString).take(1) == Seq("Items") &&
           cells.lift(2).map(_.getText.toString).contains("Done"),
-        s"${g.getColumnCount} columns: ${cells.map(_.getText.toString)}")
+        s"${g.getColumnCount} columns: ${cells.map(_.getText.toString)}"
+      )
       // Bound: the Done cell is the model's count, read back out of the TextView.
       def doneCell = cells.lift(3).map(_.getText.toString)
-      check("the Done cell is the model's count",
-        doneCell.contains(model.items.now.count(_.done).toString), doneCell.toString)
+      check(
+        "the Done cell is the model's count",
+        doneCell.contains(model.items.now.count(_.done).toString),
+        doneCell.toString
+      )
       // Geometry only exists after layout, so asked after it (and logged after the summary,
       // like the SafeArea check; build.sh's grep for FAIL still catches it). The claim is
       // the native grid's: a column is as wide as its widest cell, so both cells of a column
@@ -368,10 +448,12 @@ object SelfTest {
       g.post { () =>
         val lefts = cells.map(_.getLeft)
         val widestFirst = cells.zipWithIndex.collect { case (c, i) if i % 2 == 0 => c.getRight }.maxOption.getOrElse(0)
-        check("each column lines up, and the second starts after the widest first cell",
+        check(
+          "each column lines up, and the second starts after the widest first cell",
           cells.length == 4 && lefts(0) == lefts(2) && lefts(1) == lefts(3) && lefts(1) >= widestFirst &&
             cells(2).getTop > cells(0).getTop,
-          s"lefts $lefts, widest first-column right $widestFirst, tops ${cells.map(_.getTop)}")
+          s"lefts $lefts, widest first-column right $widestFirst, tops ${cells.map(_.getTop)}"
+        )
       }
     }
 
@@ -387,9 +469,11 @@ object SelfTest {
         val titles = model.items.now.map(_.title)
         texts.find(t => titles.exists(t.endsWith))
       }
-      check("a RadioButton per option, in order",
+      check(
+        "a RadioButton per option, in order",
         buttons.map(_.getText.toString).toList == List("Oldest first", "Newest first"),
-        buttons.map(_.getText.toString).toString)
+        buttons.map(_.getText.toString).toString
+      )
       check("the model's choice is the checked one", checked == List(true, false), checked.toString)
       val oldestFirst = rowsFirst
       // A real click: RadioButton.performClick checks it, the group's listener runs, and the
@@ -397,8 +481,11 @@ object SelfTest {
       buttons(1).performClick()
       check("clicking a segment reaches the app", model.order.now == 1, model.order.now.toString)
       check("and only that one is checked", checked == List(false, true), checked.toString)
-      check("and the list reverses", rowsFirst != oldestFirst && rowsFirst.nonEmpty,
-        s"$oldestFirst then $rowsFirst")
+      check(
+        "and the list reverses",
+        rowsFirst != oldestFirst && rowsFirst.nonEmpty,
+        s"$oldestFirst then $rowsFirst"
+      )
       model.order.set(0)
       check("writing the signal checks the other segment", checked == List(true, false), checked.toString)
     }
@@ -409,17 +496,22 @@ object SelfTest {
     // That the intent then opens a browser is measured separately, by tapping it from adb.
     val opened = mutable.Buffer.empty[String]
     val realOpener = AndroidRenderer.urlOpener
-    AndroidRenderer.urlOpener = (_, url) => opened += url
+    AndroidRenderer.urlOpener = (
+      _,
+      url
+    ) => opened += url
     val links = findAll(root()) {
       case b: _root_.android.widget.Button => b.getText.toString == "thicket on GitHub"
-      case _                                => false
+      case _ => false
     }.collect { case b: _root_.android.widget.Button => b }
     check("the link is a Button", links.length == 1, links.length.toString)
     links.headOption.foreach { b =>
-      check("drawn in the theme's link colour, underlined",
+      check(
+        "drawn in the theme's link colour, underlined",
         (b.getPaintFlags & _root_.android.graphics.Paint.UNDERLINE_TEXT_FLAG) != 0 &&
           b.getTextColors.getDefaultColor == linkColour(b),
-        f"flags 0x${b.getPaintFlags}%x, colour 0x${b.getTextColors.getDefaultColor}%08x, theme link 0x${linkColour(b)}%08x")
+        f"flags 0x${b.getPaintFlags}%x, colour 0x${b.getTextColors.getDefaultColor}%08x, theme link 0x${linkColour(b)}%08x"
+      )
       b.performClick()
       check("clicking it opens its URL", opened.toList == List(TodoApp.repoUrl), opened.toString)
     }
@@ -431,12 +523,17 @@ object SelfTest {
     spinners.headOption.foreach { sp =>
       sp.getParent match {
         case stack: FrameLayout =>
-          check("the spinner is the stack's last child, so drawn on top",
+          check(
+            "the spinner is the stack's last child, so drawn on top",
             stack.indexOfChild(sp) == stack.getChildCount - 1 && stack.getChildCount == 2,
-            s"index ${stack.indexOfChild(sp)} of ${stack.getChildCount}")
+            s"index ${stack.indexOfChild(sp)} of ${stack.getChildCount}"
+          )
           val g = sp.getLayoutParams.asInstanceOf[FrameLayout.LayoutParams].gravity
-          check("and centred over the picture", g == (Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL),
-            s"gravity 0x${g.toHexString}")
+          check(
+            "and centred over the picture",
+            g == (Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL),
+            s"gravity 0x${g.toHexString}"
+          )
           // Measured, not laid out: FrameLayout measures its children inside its own measure,
           // so this needs no layout pass and asks exactly "is the stack its largest child".
           val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
@@ -444,10 +541,12 @@ object SelfTest {
           val kids = (0 until stack.getChildCount).map(stack.getChildAt)
           val (w, h) = (stack.getMeasuredWidth, stack.getMeasuredHeight)
           val (cw, ch) = (kids.map(_.getMeasuredWidth).max, kids.map(_.getMeasuredHeight).max)
-          check("the stack is as large as its largest child, and no larger",
+          check(
+            "the stack is as large as its largest child, and no larger",
             w == cw + stack.getPaddingLeft + stack.getPaddingRight &&
               h == ch + stack.getPaddingTop + stack.getPaddingBottom && cw > sp.getMeasuredWidth,
-            s"stack ${w}x$h, largest child ${cw}x$ch, spinner ${sp.getMeasuredWidth}x${sp.getMeasuredHeight}")
+            s"stack ${w}x$h, largest child ${cw}x$ch, spinner ${sp.getMeasuredWidth}x${sp.getMeasuredHeight}"
+          )
         case other =>
           check("the spinner sits in a FrameLayout", false, String.valueOf(other))
       }
@@ -461,11 +560,9 @@ object SelfTest {
       // A SeekBar counts integer steps, so the renderer converts. The app's units are
       // 0..11 and it must never see the conversion.
       def units: Double = bar.getProgress.toDouble / bar.getMax * 11.0
-      check("the slider starts at the model's value",
-        math.abs(units - 7.0) < 0.02, units.toString)
+      check("the slider starts at the model's value", math.abs(units - 7.0) < 0.02, units.toString)
       model.volume.set(3.5)
-      check("writing the signal moves the slider",
-        math.abs(units - 3.5) < 0.02, units.toString)
+      check("writing the signal moves the slider", math.abs(units - 3.5) < 0.02, units.toString)
       model.volume.set(7.0)
     }
 
@@ -476,27 +573,38 @@ object SelfTest {
     val masked = fields.filter { e =>
       (e.getInputType & InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0
     }
-    check("exactly one field masks its input",
-      masked.length == 1, s"${masked.length} of ${fields.length} fields")
+    check(
+      "exactly one field masks its input",
+      masked.length == 1,
+      s"${masked.length} of ${fields.length} fields"
+    )
     model.secret.set("hunter2")
-    check("the secure field still holds its value",
+    check(
+      "the secure field still holds its value",
       masked.headOption.exists(_.getText.toString == "hunter2"),
-      "the value must round-trip even though it is not drawn")
+      "the value must round-trip even though it is not drawn"
+    )
 
     // --- toolbar actions, in the action bar rather than the element tree ---
     // Android builds the options menu on its own schedule, so the check is that the app
     // declared them and that invoking one works - the menu itself belongs to the platform
     // and is not in this View tree by design.
-    check("the items screen declares actions", app.actions.now.map(_.label) == Seq("Add", "Note", "About"),
-      app.actions.now.map(_.label).toString)
+    check(
+      "the items screen declares actions",
+      app.actions.now.map(_.label) == Seq("Add", "Note", "About"),
+      app.actions.now.map(_.label).toString
+    )
 
     val sizeBeforeAction = model.items.now.size
     app.actions.now.find(_.label == "Add").foreach(_.onTap())
     check("invoking a toolbar action runs it", model.items.now.size == sizeBeforeAction + 1)
 
     app.push(TodoApp.Route.Detail(1))
-    check("a screen with no actions declares none", app.actions.now.isEmpty,
-      app.actions.now.map(_.label).toString)
+    check(
+      "a screen with no actions declares none",
+      app.actions.now.isEmpty,
+      app.actions.now.map(_.label).toString
+    )
     val _ = app.back()
     check("and they come back on return", app.actions.now.map(_.label) == Seq("Add", "Note", "About"))
 
@@ -506,14 +614,20 @@ object SelfTest {
     // the rows are long-clickable at all - the renderer set a listener - and the real
     // gesture is driven from adb in the build script's screenshot pass.
     val longClickable = findAll(root())(v => v.isLongClickable)
-    check("list rows are long-clickable", longClickable.nonEmpty,
-      "a row with a ContextMenu must accept the platform's gesture for one")
+    check(
+      "list rows are long-clickable",
+      longClickable.nonEmpty,
+      "a row with a ContextMenu must accept the platform's gesture for one"
+    )
 
     // --- Sheet: a presented *container*, with a live subtree inside it ---
     check("no sheet before it is asked for", !model.editing.now)
     model.editing.set(true)
-    check("the screen behind is untouched", allTexts(root()).contains("Hide completed"),
-      allTexts(root()).toString)
+    check(
+      "the screen behind is untouched",
+      allTexts(root()).contains("Hide completed"),
+      allTexts(root()).toString
+    )
 
     val sizeBeforeSheet = model.items.now.size
     model.draft.set("From the sheet")
@@ -523,31 +637,40 @@ object SelfTest {
     // `presented` means. It is asserted at the renderer boundary instead, in SheetSpec,
     // which is where the observation is actually available.
 
-    check("the sheet's bound field drives the same model",
+    check(
+      "the sheet's bound field drives the same model",
       model.items.now.size == sizeBeforeSheet + 1 &&
         model.items.now.last.title == "From the sheet",
-      model.items.now.map(_.title).toString)
+      model.items.now.map(_.title).toString
+    )
 
     model.editing.set(false)
-    check("unmounting takes the sheet down and leaves the screen",
-      allTexts(root()).contains("Hide completed"))
+    check(
+      "unmounting takes the sheet down and leaves the screen",
+      allTexts(root()).contains("Hide completed")
+    )
 
     // --- Alert: presented by a signal, dismissed by unmounting ---
     check("no alert is up to begin with", model.lastAlertChoice.now.isEmpty)
     val itemsBeforeAlert = model.items.now.size
 
     model.confirmingDrop.set(true)
-    check("presenting an alert leaves the screen intact",
-      allTexts(root()).contains("Hide completed"), allTexts(root()).toString)
+    check(
+      "presenting an alert leaves the screen intact",
+      allTexts(root()).contains("Hide completed"),
+      allTexts(root()).toString
+    )
 
     // Unmounting is the whole of dismissing, and it must NOT report a user dismissal: the
     // app asked for it to go away, which is not the user declining to choose. On Android
     // that distinction is real - setOnCancelListener fires for the back gesture and a tap
     // outside, but not for Dialog.dismiss().
     model.confirmingDrop.set(false)
-    check("dismissing from the app does not report a user dismissal",
+    check(
+      "dismissing from the app does not report a user dismissal",
       model.lastAlertChoice.now.isEmpty,
-      s"choice was '${model.lastAlertChoice.now}'")
+      s"choice was '${model.lastAlertChoice.now}'"
+    )
     check("and nothing was dropped", model.items.now.size == itemsBeforeAlert)
 
     Log.i(
@@ -556,4 +679,5 @@ object SelfTest {
       else s"[selftest] $failures CHECK(S) FAILED"
     )
   }
+
 }

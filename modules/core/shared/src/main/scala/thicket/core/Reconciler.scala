@@ -37,6 +37,12 @@ import thicket.signals.{Owner, Signal, Var}
   */
 object Reconciler {
 
+  /** Builds `element` into native widgets through `renderer` and keeps them in step with the signals it reads.
+    *
+    * Everything the tree creates — effects, child owners, the widgets' handlers — lives under `owner`. The returned
+    * [[Mounted]] destroys the widgets; disposing `owner` stops the effects. A host does both when a screen goes, and
+    * the root of the tree is not attached to anything: the host puts [[Mounted.handle]] where it belongs.
+    */
   def mount[H](
     renderer:    Renderer { type Handle = H },
     element:     Element
@@ -123,7 +129,7 @@ private[core] object Slot {
             renderer,
             Element.Widget(
               thicket.renderer.WidgetKind.Column,
-              Nil,
+              l.attrs,
               Seq(Element.ForEach(l.items, l.key, l.body))
             ),
             parent,
@@ -140,8 +146,25 @@ private[core] object Slot {
   ): Slot[H] = {
     val statics = w.attrs.collect { case Attr.Static(p) => p }
     val handle = renderer.create(w.kind, statics)
+    bindReactive(renderer, handle, w.attrs)
 
-    w.attrs.foreach {
+    val children = mountChildren(renderer, w.children, handle)
+    // A presented kind is shown over the app rather than attached to a parent — see
+    // WidgetKind.presented. Mounting is what presents it, so `Show(flag)(Alert(...))` is
+    // the whole of opening and closing one.
+    if w.kind.presented then renderer.present(handle)
+    else parent.foreach(p => renderer.insertAfter(p, handle, anchor()))
+    WidgetSlot(renderer, handle, children, presented = w.kind.presented)
+  }
+
+  /** One effect per reactive attribute, writing its prop to `handle` when it changes. */
+  private def bindReactive[H](
+    renderer:    Renderer { type Handle = H },
+    handle:      H,
+    attrs:       Seq[Attr]
+  )(using owner: Owner
+  ): Unit =
+    attrs.foreach {
       case r: Attr.Reactive[?] =>
         // `Signal.map` is a stateless view and does not memoise, so a coarse source can
         // re-fire an effect whose derived value is unchanged. Deduplicating here puts the
@@ -158,15 +181,6 @@ private[core] object Slot {
       case Attr.Static(_) => ()
     }
 
-    val children = mountChildren(renderer, w.children, handle)
-    // A presented kind is shown over the app rather than attached to a parent — see
-    // WidgetKind.presented. Mounting is what presents it, so `Show(flag)(Alert(...))` is
-    // the whole of opening and closing one.
-    if w.kind.presented then renderer.present(handle)
-    else parent.foreach(p => renderer.insertAfter(p, handle, anchor()))
-    WidgetSlot(renderer, handle, children, presented = w.kind.presented)
-  }
-
   private def fragment[H](
     renderer: Renderer { type Handle = H },
     kids:     Seq[Element],
@@ -175,20 +189,40 @@ private[core] object Slot {
   )(using Owner
   ): Slot[H] =
     parent match {
-      case None =>
-        // A fragment at the root has nothing to attach to.
-        FragmentSlot(Vector.empty)
+      case None if kids.isEmpty => FragmentSlot(Vector.empty)
+      case None                 =>
+        // The same rule, and the same message, as a root Show or ForEach. A root Fragment
+        // with children used to mount nothing and say nothing (review 2026-10-20, P1-4).
+        throw new IllegalArgumentException(
+          "a Fragment needs a parent widget to put its children in; wrap it in a Column or Row"
+        )
       case Some(p) =>
         val slots = mutable.ArrayBuffer.empty[Slot[H]]
         kids.foreach { kid =>
-          val here = slots.toVector
-          val a: () => Option[H] = () =>
-            here.reverseIterator
-              .map(_.lastHandle).collectFirst { case Some(h) => h }
-              .orElse(anchor())
+          val a = precedingAnchor(slots, slots.length, anchor)
           slots += build(renderer, kid, Some(p), a)
         }
         FragmentSlot(slots.toVector)
+    }
+
+  /** The anchor for the child at `index`: the last handle of the nearest preceding sibling that has one, else `outer`.
+    *
+    * Reads the shared buffer by index rather than capturing a copy of it per child, which made mounting k children
+    * O(k²) (review 2026-10-20, P2-12). The buffer only grows, so the first `index` entries are fixed.
+    */
+  private def precedingAnchor[H](
+    slots: mutable.ArrayBuffer[Slot[H]],
+    index: Int,
+    outer: () => Option[H]
+  ): () => Option[H] =
+    () => {
+      var i = index - 1
+      var found: Option[H] = None
+      while found.isEmpty && i >= 0 do {
+        found = slots(i).lastHandle
+        i -= 1
+      }
+      found.orElse(outer())
     }
 
   /** Mounts a widget's children, giving each the anchor of its preceding siblings. */
@@ -200,9 +234,7 @@ private[core] object Slot {
   ): Vector[Slot[H]] = {
     val slots = mutable.ArrayBuffer.empty[Slot[H]]
     kids.foreach { kid =>
-      val preceding = slots.toVector
-      val anchor: () => Option[H] = () => preceding.reverseIterator.map(_.lastHandle).collectFirst { case Some(h) => h }
-      slots += build(renderer, kid, Some(parent), anchor)
+      slots += build(renderer, kid, Some(parent), precedingAnchor(slots, slots.length, () => None))
     }
     slots.toVector
   }
@@ -217,12 +249,16 @@ private[core] object Slot {
   ): Slot[H] = {
     val source = new VirtualRows[H, A, K](renderer, spec, owner)
     val handle = renderer.createVirtualList(source)
+    // The list's own props. `.grow` on a LazyColumn used to be dropped by the DSL, so the
+    // list never grew on any renderer (review 2026-10-20, P1-4).
+    val statics = spec.attrs.collect { case Attr.Static(p) => p }
+    if statics.nonEmpty then renderer.update(handle, statics)
+    bindReactive(renderer, handle, spec.attrs)
     parent.foreach(p => renderer.insertAfter(p, handle, anchor()))
     // One effect for the whole list: the renderer is told the data changed and re-pulls
     // whatever it is showing. Individual rows still update through their own signals.
     val _ = Signal.effect {
-      val n = spec.items().length
-      source.setCount(n)
+      source.setItems(spec.items())
       source.invalidate()
     }
     VirtualListSlot(renderer, handle, source)
@@ -264,14 +300,19 @@ final private class WidgetSlot[H](
   def handles:               Vector[H] = if presented then Vector.empty else Vector(handle)
   override def ownedHandles: Vector[H] = Vector(handle)
 
-  def dispose(): Unit = {
-    children.foreach(_.dispose())
-    // A presented widget is dismissed before it is destroyed. `destroy` detaches, and a
-    // presented widget was never attached — so without this the alert would be freed while
-    // still on screen.
-    if presented then renderer.dismiss(handle)
-    renderer.destroy(handle)
-  }
+  private var disposed = false
+
+  /** Idempotent: a second dispose would destroy native handles that are already freed. */
+  def dispose(): Unit =
+    if !disposed then {
+      disposed = true
+      children.foreach(_.dispose())
+      // A presented widget is dismissed before it is destroyed. `destroy` detaches, and a
+      // presented widget was never attached — so without this the alert would be freed while
+      // still on screen.
+      if presented then renderer.dismiss(handle)
+      renderer.destroy(handle)
+    }
 
 }
 
@@ -284,11 +325,15 @@ final private class VirtualListSlot[H](
   source:     VirtualRows[H, ?, ?]
 ) extends Slot[H] {
 
-  def handles: Vector[H] = Vector(handle)
-  def dispose(): Unit = {
-    source.disposeAll()
-    renderer.destroy(handle)
-  }
+  private var disposed = false
+
+  def handles:   Vector[H] = Vector(handle)
+  def dispose(): Unit =
+    if !disposed then {
+      disposed = true
+      source.disposeAll()
+      renderer.destroy(handle)
+    }
 
 }
 
@@ -309,24 +354,26 @@ final private class VirtualRows[H, A, K](
 
   private val rows = scala.collection.mutable.Map.empty[H, Row]
   private var listeners = () => ()
-  private var total = 0
+  // The items as of the last change, indexed: `bind` runs once per row the toolkit shows, and
+  // re-reading the signal there — then indexing a `List` — made each bind O(n) (review
+  // 2026-10-20, P2-9).
+  private var items: IndexedSeq[A] = IndexedSeq.empty
   private var disposed = false
 
   // After the container is gone the source reports an empty list and stops notifying, so a
   // late data change cannot mount rows into a destroyed container. The list's *effect* is
   // owned by the enclosing `Owner`, which may outlive the slot — disposing the widgets and
   // disposing the effects are separate acts.
-  def count:                                 Int = if disposed then 0 else total
-  private[core] def setCount(n: Int):        Unit = total = n
-  def onInvalidate(callback:    () => Unit): Unit = listeners = callback
-  private[core] def invalidate():            Unit = if !disposed then listeners()
+  def count:                                  Int = if disposed then 0 else items.length
+  private[core] def setItems(xs: Seq[A]):     Unit = items = xs.toIndexedSeq
+  def onInvalidate(callback:     () => Unit): Unit = listeners = callback
+  private[core] def invalidate():             Unit = if !disposed then listeners()
 
   def bind(
     index:    Int,
     recycled: Option[H]
   ): H = {
     if disposed then throw new IllegalStateException("bind on a disposed LazyColumn")
-    val items = Signal.untracked(spec.items())
     if index < 0 || index >= items.length then throw new IndexOutOfBoundsException(s"row $index of ${items.length}")
     val item = items(index)
 
@@ -438,6 +485,17 @@ final private class RegionSlot[H](
 
   def handles: Vector[H] = entries.flatMap(_.slot.handles)
 
+  /** Without building [[handles]]: a following sibling asks this on every insert. */
+  override def lastHandle: Option[H] = {
+    var i = entries.length - 1
+    var found: Option[H] = None
+    while found.isEmpty && i >= 0 do {
+      found = entries(i).slot.lastHandle
+      i -= 1
+    }
+    found
+  }
+
   def dispose(): Unit = {
     entries.foreach(disposeEntry)
     entries = Vector.empty
@@ -481,33 +539,38 @@ final private class RegionSlot[H](
     * Position is assigned in the same pass that mounts, so a new entry is inserted once, at its final place — inserting
     * during `Slot.build` and again here would duplicate it.
     */
-  def reconcile(next: Vector[(Any, Any)])(using parentOwner: Owner): Unit = {
+  def reconcile(incoming: Vector[(Any, Any)])(using parentOwner: Owner): Unit = {
     // Fast path: the same keys in the same order, which is what every data-only change
     // looks like — an item edited, a checkbox toggled, a field typed into. The general
     // path below builds a key map, a key set, a filtered list and a fresh vector, which
     // for a 10 000-row list costs ~19 ms: a dropped frame on every keystroke. Here there
     // is nothing to allocate and nothing to move; `Var.set` no-ops on an unchanged value,
     // so untouched rows cost one comparison each.
-    if next.length == entries.length then {
+    if incoming.length == entries.length then {
       var i = 0
       var same = true
       while (i < entries.length && same) {
-        if entries(i).key != next(i)._1 then same = false
+        if entries(i).key != incoming(i)._1 then same = false
         i += 1
       }
       if same then {
         i = 0
         while (i < entries.length) {
-          entries(i).value.set(next(i)._2)
+          entries(i).value.set(incoming(i)._2)
           i += 1
         }
         return
       }
     }
 
+    // Past the fast path, where keys can change, duplicates are possible: the fast path's keys
+    // are the mounted entries' own, which are distinct.
+    val next = distinctKeys(incoming)
+
     // Fast path 2: everything currently mounted is a prefix of what is wanted — an append.
     // Chat messages, log lines, an infinite scroll. The general path below is O(existing)
-    // with a large constant; this is O(added).
+    // with a large constant; this touches only the added entries' widgets (the key check
+    // above is one hash per key).
     if next.length > entries.length then {
       var i = 0
       var same = true
@@ -538,40 +601,80 @@ final private class RegionSlot[H](
     val byKey = entries.iterator.map(e => e.key -> e).toMap
     val wanted = next.iterator.map(_._1).toSet
 
-    // Drop what is gone first, so removals do not disturb the positions computed below.
-    entries.filterNot(e => wanted.contains(e.key)).foreach(disposeEntry)
+    // Drop what is gone first, so removals do not disturb the positions computed below —
+    // and take them out of `entries` at once, so nothing that throws later can dispose them
+    // a second time (review 2026-10-20, P1-7).
+    val (kept, gone) = entries.partition(e => wanted.contains(e.key))
+    entries = kept
+    gone.foreach(disposeEntry)
 
     var previous = anchor()
+    val rebuilt = Vector.newBuilder[RegionEntry[H]]
+    val placed = mutable.HashSet.empty[Any]
 
-    val rebuilt = next.map {
-      (
-        key,
-        value
-      ) =>
-        val entry = byKey.get(key) match {
-          case Some(existing) =>
-            // Same key, possibly new data: push it through the Var and let the row's own
-            // effects patch whatever depends on it.
-            existing.value.set(value)
-            val hs = existing.slot.handles
-            if hs.nonEmpty && existing.after != previous then {
-              var prev = previous
-              hs.foreach { h =>
-                renderer.moveAfter(parent, h, prev)
-                prev = Some(h)
+    // A throw while mounting an entry leaves `entries` holding exactly what is mounted:
+    // everything placed so far, then every survivor not yet reached. Each live entry is in
+    // it once, so a later dispose destroys each widget once.
+    try
+      next.foreach {
+        (
+          key,
+          value
+        ) =>
+          val entry = byKey.get(key) match {
+            case Some(existing) =>
+              // Same key, possibly new data: push it through the Var and let the row's own
+              // effects patch whatever depends on it.
+              existing.value.set(value)
+              val hs = existing.slot.handles
+              if hs.nonEmpty && existing.after != previous then {
+                var prev = previous
+                hs.foreach { h =>
+                  renderer.moveAfter(parent, h, prev)
+                  prev = Some(h)
+                }
               }
-            }
-            existing.after = previous
-            existing
+              existing.after = previous
+              existing
 
-          case None => mountEntry(key, value, previous)
-        }
+            case None => mountEntry(key, value, previous)
+          }
 
-        entry.slot.lastHandle.foreach(h => previous = Some(h))
-        entry
-
+          entry.slot.lastHandle.foreach(h => previous = Some(h))
+          rebuilt += entry
+          placed += key
+      }
+    finally {
+      val done = rebuilt.result()
+      entries = done ++ kept.filterNot(e => placed.contains(e.key))
     }
-    entries = rebuilt
+  }
+
+  /** The first entry for each key; a later duplicate is reported and left out.
+    *
+    * Keys identify entries, so two items with one key cannot both be mounted. `toMap` used to keep the *last* entry per
+    * key, and the first one's widget and owner were never disposed — a ghost row whose effects kept running (review
+    * 2026-10-20, P1-7a). A duplicate is a bug in the app's key function, so it is reported rather than thrown: the rest
+    * of the list still renders.
+    */
+  private def distinctKeys(next: Vector[(Any, Any)]): Vector[(Any, Any)] = {
+    val seen = mutable.HashSet.empty[Any]
+    var dup: Option[Any] = None
+    val out = next.filter {
+      (
+        k,
+        _
+      ) =>
+        val fresh = seen.add(k)
+        if !fresh && dup.isEmpty then dup = Some(k)
+        fresh
+    }
+    dup.foreach(k =>
+      thicket.signals.ErrorSink.report(
+        IllegalArgumentException(s"ForEach: duplicate key $k; only the first item with it is shown")
+      )
+    )
+    out
   }
 
 }

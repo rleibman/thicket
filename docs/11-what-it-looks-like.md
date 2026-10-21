@@ -69,6 +69,10 @@ The last column is the pitch. If it does not hold, there is no reason to build t
 
 ## 11.4 What exists today, honestly
 
+*A snapshot, dated where each figure is. For the current state of every widget and prop, see
+`docs/12-component-status.md`, which is kept up to date; this section is not re-measured on
+every change (2026-10-20).*
+
 Of the mockup, roughly **40%** is real. Concretely, after M0 + structural reconciliation:
 
 | Real now | Invented in the mockup |

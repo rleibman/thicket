@@ -142,7 +142,7 @@ object AppleSelfTest {
     check("the button row has its own horizontal scroller", horizontal.isDefined)
     horizontal.foreach { sw =>
       val viewport: Double = probe.measure(sw, Constraints.unbounded).natW.toDouble
-      val content: Double =
+      val content:  Double =
         AppleInspect.children(sw).map(probe.measure(_, Constraints.unbounded).natW.toDouble).maxOption.getOrElse(0.0)
       println(s"[selftest] button row: content wants ${content.toInt}px, viewport asks ${viewport.toInt}px")
 
@@ -491,7 +491,7 @@ object AppleSelfTest {
   ): Unit = {
     def caption = screenTexts.find(_.matches("""\d+ of \d+ done"""))
     visible.headOption match {
-      case None => done()
+      case None         => done()
       case Some(target) =>
         val row = withMenus.find(h => AppleInspect.allTexts(h).contains(target.title))
         check("the target row has a menu", row.isDefined, target.title)

@@ -26,7 +26,7 @@ import thicket.sbt.buildinfo.BuildInfo
   *
   * ```scala
   * // project/plugins.sbt
-  * addSbtPlugin("dev.thicket" % "sbt-thicket" % "<version>")
+  * addSbtPlugin("net.leibman" % "sbt-thicket" % "<version>")
   *
   * // build.sbt
   * lazy val app = project.in(file(".")).enablePlugins(ThicketGtkPlugin)
@@ -59,8 +59,8 @@ object ThicketGtkPlugin extends AutoPlugin {
       thicketVersion := BuildInfo.version,
       // sbt 2 has no `%%%`, so Scala Native artefacts carry explicit suffixes.
       libraryDependencies ++= Seq(
-        "dev.thicket" % "thicket-core_native0.5_3"         % thicketVersion.value,
-        "dev.thicket" % "thicket-renderer-gtk_native0.5_3" % thicketVersion.value
+        BuildInfo.organization % "thicket-core_native0.5_3"         % thicketVersion.value,
+        BuildInfo.organization % "thicket-renderer-gtk_native0.5_3" % thicketVersion.value
       ),
       nativeConfig ~= ThicketNativeFlags.gtk
     )

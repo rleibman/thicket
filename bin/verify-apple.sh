@@ -83,7 +83,11 @@ macos_selftest() {
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   cat "$log"
-  grep -q "ALL CHECKS PASSED" "$log"
+  # Removed once read, on both paths: these accumulated in $TMPDIR, one per app per run.
+  local passed=0
+  grep -q "ALL CHECKS PASSED" "$log" || passed=1
+  rm -f "$log"
+  return $passed
 }
 
 native() { find "$root/target/out" -type f -perm -u+x -name "$1" 2>/dev/null | head -1; }

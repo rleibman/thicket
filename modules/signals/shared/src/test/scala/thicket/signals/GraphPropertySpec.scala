@@ -51,7 +51,7 @@ object GraphPropertySpec extends ZIOSpecDefault {
     for {
       nVars  <- Gen.int(1, 5)
       nNodes <- Gen.int(1, 12)
-      nodes <- Gen.collectAll(
+      nodes  <- Gen.collectAll(
         (0 until nNodes).map { i =>
           Gen.listOfBounded(1, nVars + i)(Gen.int(0, nVars + i - 1)).map(_.distinct.toVector)
         }

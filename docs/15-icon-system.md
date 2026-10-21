@@ -1,8 +1,22 @@
 # 15 — Icons: a design for review (#61)
 
-**Status: draft for the project owner's decisions.** Nothing here is built. #61 orders the
-work as icons first, then `IconButton`, then `TabView`, and says the icon system needs a
-design before code. This is that design. §15.9 lists the decisions it needs.
+**Status (2026-10-20): built on GTK and Android in #68; the Apple half is #66.** What was
+built differs from this design in four places, all decided in #68 — the rest of this
+document is the design as it was reviewed, kept for its reasoning:
+
+- **No `Icon.Custom`.** An app's own icon is `Icon.Platform(gtk, sfSymbol, androidDrawable)`,
+  naming each platform's own artwork, instead of an SVG path turned into data at build time.
+  So §15.5's custom-icon pipeline, and the `Custom` rows in §15.3 and §15.7, were not built.
+- **No `Favorite` / `FavoriteFilled`.** Adwaita has no heart and GNOME uses a star, so the
+  curated set is 24 meanings with `Star`; `Icon.curated` is the list.
+- **No `tools/icon-gen`.** The 24 Material Symbols are checked in as path data in
+  `MaterialSymbols.scala` (Apache-2.0, credited in `NOTICE`), parsed by `SvgPath`, which is
+  tested on every backend.
+- **`AccessibleLabel`** is a prop on any widget, and `IconButton` requires one.
+
+The original status line: *draft for the project owner's decisions; nothing built. #61 orders
+the work as icons first, then `IconButton`, then `TabView`, and says the icon system needs a
+design before code. This is that design. §15.9 lists the decisions it needs.*
 
 ## 15.1 What it has to do
 

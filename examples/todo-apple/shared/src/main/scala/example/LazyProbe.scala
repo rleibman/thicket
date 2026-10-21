@@ -23,10 +23,9 @@ import thicket.signals.Var
 
 /** A 10 000-row screen and nothing else, for measuring virtualisation (Forgejo #5).
   *
-  * Separate from [[AppleSelfTest]] on purpose. The shared `TodoApp` uses `Toggle`, `Spacer`, `ProgressBar`, `Spinner`,
-  * `Slider` and `SecureField`, all of which `AppleRenderer` throws on until Forgejo #9, so the demo cannot start on
-  * Apple at all and the measurement this issue asks for would be unreachable behind an unrelated gap. This uses only
-  * `Column`, `Label` and `LazyColumn`, which the Apple shim has had since phase 0.
+  * Separate from [[AppleSelfTest]] on purpose: a measurement of virtualisation should have nothing else on screen. It
+  * was first separated because `AppleRenderer` could not yet build several of the todo app's widgets (Forgejo #9); that
+  * gap is closed, and the probe stays for the cleaner measurement. It uses only `Column`, `Label` and `LazyColumn`.
   *
   * Run with `THICKET_LAZYTEST=1`.
   */

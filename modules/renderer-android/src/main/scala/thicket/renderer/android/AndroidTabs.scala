@@ -21,7 +21,8 @@ import _root_.android.graphics.drawable.Drawable
 import _root_.android.view.{Gravity, View, ViewGroup}
 import _root_.android.widget.{FrameLayout, ImageView, LinearLayout, TextView}
 import scala.collection.mutable
-import thicket.renderer.Icon
+import thicket.renderer.{Icon, TabSelection}
+import thicket.signals.ErrorSink
 
 /** `TabView` on Android (#61): a content area and a bottom bar, built from framework views.
   *
@@ -47,7 +48,7 @@ final private[android] class AndroidTabs(
   ) {
 
     var tabs:     Vector[FrameLayout] = Vector.empty
-    var selected: Int                 = -1
+    var selected: Int = -1
     var onSelect: Option[Int => Unit] = None
 
     /** The app's selection, kept because `Selected` arrives at create, before any tab exists to show. */
@@ -55,14 +56,14 @@ final private[android] class AndroidTabs(
 
   }
 
-  private val views  = mutable.Map.empty[View, Parts]
-  private val items  = mutable.Map.empty[View, LinearLayout] // tab -> its bar item
+  private val views = mutable.Map.empty[View, Parts]
+  private val items = mutable.Map.empty[View, LinearLayout] // tab -> its bar item
   private val titles = mutable.Map.empty[View, String]
   private val glyphs = mutable.Map.empty[View, Icon]
-  private val owner  = mutable.Map.empty[View, View]         // tab -> its TabView
+  private val owner = mutable.Map.empty[View, View] // tab -> its TabView
 
   def isTabView(v: View): Boolean = views.contains(v)
-  def isTab(v: View): Boolean     = titles.contains(v) || glyphs.contains(v) || owner.contains(v)
+  def isTab(v:     View): Boolean = titles.contains(v) || glyphs.contains(v) || owner.contains(v)
 
   def createTabView(): View = {
     val root = LinearLayout(context)
@@ -70,10 +71,16 @@ final private[android] class AndroidTabs(
     val content = FrameLayout(context)
     // WRAP_CONTENT plus weight, not 0 plus weight: inside a Scroll the TabView's own height
     // is wrap_content, and a zero-height weighted child of that is zero high.
-    root.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    root.addView(
+      content,
+      LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+    )
     val bar = LinearLayout(context)
     bar.setOrientation(LinearLayout.HORIZONTAL)
-    root.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    root.addView(
+      bar,
+      LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    )
     views(root) = Parts(content, bar)
     root
   }
@@ -85,17 +92,26 @@ final private[android] class AndroidTabs(
   }
 
   /** A Tab holds one child, so inserting its content is replacing it. */
-  def setContent(tab: FrameLayout, child: View): Unit = {
+  def setContent(
+    tab:   FrameLayout,
+    child: View
+  ): Unit = {
     tab.removeAllViews()
     tab.addView(child)
   }
 
-  def setTitle(tab: View, title: String): Unit = {
+  def setTitle(
+    tab:   View,
+    title: String
+  ): Unit = {
     titles(tab) = title
     items.get(tab).foreach(item => label(item).setText(title))
   }
 
-  def setIcon(tab: View, i: Icon): Unit = {
+  def setIcon(
+    tab: View,
+    i:   Icon
+  ): Unit = {
     glyphs(tab) = i
     items.get(tab).foreach(item => image(item).setImageDrawable(icon(i)))
   }
@@ -103,7 +119,10 @@ final private[android] class AndroidTabs(
   private def label(item: LinearLayout): TextView = item.getChildAt(1).asInstanceOf[TextView]
   private def image(item: LinearLayout): ImageView = item.getChildAt(0).asInstanceOf[ImageView]
 
-  private def newItem(view: View, tab: View): LinearLayout = {
+  private def newItem(
+    view: View,
+    tab:  View
+  ): LinearLayout = {
     val item = LinearLayout(context)
     item.setOrientation(LinearLayout.VERTICAL)
     item.setGravity(Gravity.CENTER)
@@ -125,7 +144,7 @@ final private[android] class AndroidTabs(
       val i = p.tabs.indexOf(tab)
       if i >= 0 && i != p.selected then {
         show(p, i)
-        p.onSelect.foreach(_(i))
+        p.onSelect.foreach(f => ErrorSink.catching(())(f(i)))
       }
     }
     item
@@ -138,64 +157,92 @@ final private[android] class AndroidTabs(
   }
 
   /** Show tab `i`, hide the others, and tint the bar to match. */
-  private def show(p: Parts, i: Int): Unit = {
+  private def show(
+    p: Parts,
+    i: Int
+  ): Unit = {
     p.selected = i
-    val on  = colourOf(_root_.android.R.attr.colorPrimary)
+    val on = colourOf(_root_.android.R.attr.colorPrimary)
     val off = colourOf(_root_.android.R.attr.textColorSecondary)
-    p.tabs.zipWithIndex.foreach { (t, j) =>
-      t.setVisibility(if j == i then View.VISIBLE else View.GONE)
-      items.get(t).foreach { item =>
-        val c = if j == i then on else off
-        image(item).setColorFilter(c)
-        label(item).setTextColor(c)
-        item.setSelected(j == i)
-      }
+    p.tabs.zipWithIndex.foreach {
+      (
+        t,
+        j
+      ) =>
+        t.setVisibility(if j == i then View.VISIBLE else View.GONE)
+        items.get(t).foreach { item =>
+          val c = if j == i then on else off
+          image(item).setColorFilter(c)
+          label(item).setTextColor(c)
+          item.setSelected(j == i)
+        }
     }
   }
 
-  def select(view: View, index: Int): Unit = {
+  def select(
+    view:  View,
+    index: Int
+  ): Unit = {
     val p = views(view)
     p.wanted = index
     // -1, or past the end: keep showing what is shown, as GTK's stack does.
     if index >= 0 && index < p.tabs.length && index != p.selected then show(p, index)
   }
 
-  def onSelect(view: View, f: Int => Unit): Unit = views(view).onSelect = Some(f)
+  def onSelect(
+    view: View,
+    f:    Int => Unit
+  ): Unit = views(view).onSelect = Some(f)
 
   /** Keep the user on the tab they are looking at when tabs come and go; if its index moved, tell the app. */
-  private def keepSelection(p: Parts, visible: Option[View]): Unit =
-    visible.map(v => p.tabs.indexOf(v)).filter(_ >= 0) match {
-      case Some(i) =>
-        val moved = i != p.selected
+  private def keepSelection(
+    p:       Parts,
+    visible: Option[View]
+  ): Unit =
+    // The rule is TabSelection's; this applies it to the views.
+    TabSelection.afterChange(p.tabs, visible, p.selected) match {
+      case (-1, _)     => p.selected = -1
+      case (i, report) =>
         show(p, i)
-        if moved then p.onSelect.foreach(_(i))
-      case None if p.tabs.nonEmpty =>
-        // The visible tab was removed: the platform's answer is the nearest one, which is reported.
-        val i = math.min(math.max(p.selected, 0), p.tabs.length - 1)
-        show(p, i)
-        p.onSelect.foreach(_(i))
-      case None => p.selected = -1
+        if report then p.onSelect.foreach(_(i))
     }
 
-  def insertAfter(view: View, tab: FrameLayout, after: Option[View]): Unit = {
-    val p       = views(view)
+  def insertAfter(
+    view:  View,
+    tab:   FrameLayout,
+    after: Option[View]
+  ): Unit = {
+    val p = views(view)
     val visible = p.tabs.lift(p.selected)
     val current = p.tabs.filterNot(_ == tab)
-    val at      = after.map(a => current.indexOf(a) + 1).getOrElse(0)
+    val at = after.map(a => current.indexOf(a) + 1).getOrElse(0)
     if tab.getParent != null then p.content.removeView(tab)
     items.remove(tab).foreach(p.bar.removeView)
-    p.content.addView(tab, at, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    p.content.addView(
+      tab,
+      at,
+      FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    )
     val item = newItem(view, tab)
     items(tab) = item
     p.bar.addView(item, at, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     owner(tab) = view
     p.tabs = current.take(at) ++ (tab +: current.drop(at))
     if p.selected >= 0 then keepSelection(p, visible)
-    else if p.wanted >= 0 && p.wanted < p.tabs.length then show(p, p.wanted)
-    else tab.setVisibility(View.GONE) // nothing chosen yet; Selected will show one
+    else
+      // Nothing shown yet: the app's choice once its tab exists, the first for -1 (a blank
+      // content area is not a state any tab bar has, and -1 used to leave one, R-L6), and
+      // otherwise wait for the wanted tab to arrive.
+      TabSelection.initial(p.wanted, p.tabs.length) match {
+        case Some(i) => show(p, i)
+        case None    => tab.setVisibility(View.GONE)
+      }
   }
 
-  def remove(view: View, tab: View): Unit =
+  def remove(
+    view: View,
+    tab:  View
+  ): Unit =
     views.get(view).foreach { p =>
       val visible = p.tabs.lift(p.selected).filterNot(_ == tab)
       p.content.removeView(tab)

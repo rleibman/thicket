@@ -193,18 +193,18 @@ final class TestRenderer extends Renderer {
       case Prop.TextEmphasis(e)    => n.props("emphasis") = e.toString
       case Prop.Tint(c)            => c.foreach(v => n.props("tint") = s"${v.r},${v.g},${v.b}")
       case Prop.Fill(c)            => c.foreach(v => n.props("fill") = s"${v.r},${v.g},${v.b}")
-      case Prop.Picture(src) =>
+      case Prop.Picture(src)       =>
         n.props("picture") = src match {
           case Some(thicket.renderer.ImageSource.FromFile(p))  => s"file:$p"
           case Some(thicket.renderer.ImageSource.FromBytes(b)) => s"bytes:${b.length}"
           case None                                            => "none"
         }
-      case Prop.Fit(f)  => n.props("fit") = f.toString
-      case Prop.Axis(a) => n.props("axis") = a.toString
+      case Prop.Fit(f)      => n.props("fit") = f.toString
+      case Prop.Axis(a)     => n.props("axis") = a.toString
       case Prop.Progress(v) =>
         n.props("progress") = v.fold("indeterminate")(_ => "determinate")
         v.foreach(d => n.nums("progress") = d)
-      case Prop.Value(v) => n.nums("value") = v
+      case Prop.Value(v)      => n.nums("value") = v
       case Prop.Range(lo, hi) =>
         n.nums("rangeMin") = lo
         n.nums("rangeMax") = hi
@@ -216,20 +216,20 @@ final class TestRenderer extends Renderer {
       // Options as a list, not a joined string: a test that asserts on "a,b" cannot tell an
       // option containing a comma from two options, and the whole point of an index-based
       // selection is that labels are not identities.
-      case Prop.Options(vs)        => n.options = vs
-      case Prop.Selected(i)        => n.nums("selected") = i.toDouble
-      case Prop.OnSelect(f)        => n.onSelect = Some(f)
-      case Prop.Columns(count)     => n.nums("columns") = count.toDouble
-      case Prop.Glyph(icon)        => n.props("icon") = icon.toString
-      case Prop.AccessibleLabel(t) => n.props("label") = t
-      case Prop.OpenUrl(u)         => n.props("url") = u
-      case Prop.DateValue(d)       => n.props("date") = d.toString
-      case Prop.OnDateChange(f)    => n.onDateChange = Some(f)
+      case Prop.Options(vs)          => n.options = vs
+      case Prop.Selected(i)          => n.nums("selected") = i.toDouble
+      case Prop.OnSelect(f)          => n.onSelect = Some(f)
+      case Prop.Columns(count)       => n.nums("columns") = count.toDouble
+      case Prop.Glyph(icon)          => n.props("icon") = icon.toString
+      case Prop.AccessibleLabel(t)   => n.props("label") = t
+      case Prop.OpenUrl(u)           => n.props("url") = u
+      case Prop.DateValue(d)         => n.props("date") = d.toString
+      case Prop.OnDateChange(f)      => n.onDateChange = Some(f)
       case Prop.StackAlignment(h, v) =>
         n.props("horizontal") = h.toString
         n.props("vertical") = v.toString
-      case Prop.Message(v)   => n.props("message") = v
-      case Prop.OnDismiss(f) => n.onDismiss = Some(f)
+      case Prop.Message(v)         => n.props("message") = v
+      case Prop.OnDismiss(f)       => n.onDismiss = Some(f)
       case Prop.ContextMenu(items) =>
         n.menu = items
         n.props("menu") = items.map(_.label).mkString(",")
@@ -298,7 +298,7 @@ final class TestRenderer extends Renderer {
   def setFrame(
     handle: Handle,
     frame:  Frame
-  ): Unit = ()
+  ):                                Unit = ()
   def runOnUiThread(f: () => Unit): Unit = f()
 
   // -- test helpers ---------------------------------------------------------

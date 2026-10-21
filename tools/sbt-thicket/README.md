@@ -4,7 +4,7 @@ The link settings a Thicket app needs, published instead of copied.
 
 ```scala
 // project/plugins.sbt
-addSbtPlugin("dev.thicket" % "sbt-thicket" % "<version>")
+addSbtPlugin("net.leibman" % "sbt-thicket" % "<version>")
 
 // build.sbt
 lazy val app = project.in(file(".")).enablePlugins(ThicketGtkPlugin)

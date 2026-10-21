@@ -6,36 +6,53 @@ import com.github.sbt.git.SbtGit.GitKeys
 
 lazy val SCALA = "3.9.0"
 
+/** Building the Apple shim needs Xcode. */
+lazy val isMac = sys.props.getOrElse("os.name", "").toLowerCase.contains("mac")
+
 scalaVersion := SCALA
 organization := "net.leibman"
-// Target the new Sonatype Central Portal repositories
+
+/** Central Portal: `-SNAPSHOT` to the snapshot repository, a release version to `localStaging` for `sonaUpload`, and
+  * nothing else anywhere.
+  *
+  * The "anything else" is the point. Between tags, `git describe` makes versions like `0.1.0-3-gdeadbee`: neither a
+  * snapshot nor a release. Treating every non-snapshot as a release staged those for Central, where a release is
+  * permanent. `None` makes `publish` fail with "Repository for publishing is not specified" instead; `publishLocal`
+  * is unaffected. docs/14 has the procedure.
+  */
+lazy val releaseVersion = """\d+\.\d+\.\d+(-(M|RC)\d+)?""".r
 publishTo := {
-  val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
-  if (version.value.endsWith("-SNAPSHOT"))
-    Some("central-snapshots" at centralSnapshots)
-  else
-    localStaging.value // Stages regular releases for Central Portal upload
+  val v = version.value
+  if v.endsWith("-SNAPSHOT") then Some("central-snapshots" at "https://central.sonatype.com/repository/maven-snapshots/")
+  else if releaseVersion.matches(v) then localStaging.value
+  else None
 }
 
 pomIncludeRepository := { _ => false }
-publishMavenStyle := true
 
 scmInfo := Some(
   ScmInfo(
-    uri("https://github.com"),
-    "scm:git@github.com:rleibman/thicket.git"
+    uri("https://github.com/rleibman/thicket"),
+    "scm:git:git@github.com:rleibman/thicket.git"
   )
 )
 
-
 // NOTE: `version` is NOT set here. `GitVersioning` owns it, and an explicit
-// `ThisBuild / version := ...` is silently overridden — the hard-coded "0.1.0-SNAPSHOT"
-// that used to be on this line never reached a single artefact.
+// `version := ...` is silently overridden — the hard-coded "0.1.0-SNAPSHOT" that used to be
+// on this line never reached a single artefact.
 //
-
+// What comes out instead:
+//   - on a tag `v0.2.0`              -> 0.2.0
+//   - some commits after that tag    -> 0.2.0-3-gdeadbee   (not publishable: see publishTo)
+//   - no tag reachable at all        -> 0.1.0-<sha>        (baseVersion + sha; a shallow clone)
+// Build scope: sbt-git reads it there, and a bare (per-project) setting is silently unused.
+ThisBuild / GitKeys.baseVersion := "0.1.0"
+// GitVersioning also sets `ThisBuild / version`, which every project then overrides with its
+// own; sbt's lint reports the build-level one as unused on every load.
+Global / excludeLintKeys += version
 // `useGitDescribe` is ALSO set per project, in `commonSettings`, and it has to be.
 // GitVersioning sets `useGitDescribe := false` in its own *projectSettings*, which shadows
-// a ThisBuild setting entirely: `ThisBuild / useGitDescribe` read `true` while
+// a build-level setting entirely: `ThisBuild / useGitDescribe` once read `true` while
 // `coreJVM / useGitDescribe` read `false`, so every project ignored the tag and fell back to
 // baseVersion + sha. `v0.1.0` was tagged and the artefacts still came out as
 // `0.1.0-<sha>` — the tag was inert, which is the sort of thing a release notices far too
@@ -57,8 +74,7 @@ organizationName := "Roberto Leibman"
 startYear        := Some(2026)
 headerLicense    := Some(HeaderLicense.ALv2("2026", "Roberto Leibman"))
 
-// POM metadata. `scm` comes from sbt-git via the remote, and `licences`/`organizationName`
-// above fill the rest, so only these three were missing from a publishable POM.
+// POM metadata, with `scmInfo` above and `licences`/`organizationName`.
 homepage := Some(uri("https://github.com/rleibman/thicket"))
 developers := List(
   Developer(
@@ -152,13 +168,20 @@ lazy val zioTestNative =
   * with hand-written code. For a `crossProject` the package is deliberately the *same* on
   * every platform: shared source has to be able to name it.
   *
-  * `BuildInfoOption.BuildTime` rather than a `buildTime` setting key — a setting is
-  * evaluated once per sbt session, so it would record when the shell was started, not when
-  * the artefact was built.
+  * `buildTime` adds `BuildInfoOption.BuildTime` rather than a `buildTime` setting key — a setting is evaluated once per
+  * sbt session, so it would record when the shell was started, not when the artefact was built. **Off by default**:
+  * a timestamp makes every build of a published jar differ from the last, so the same commit never produces the same
+  * artefact (review 2026-10-20, P2-31). The gallery, which shows it, opts in.
   */
-def thicketBuildInfo(pkg: String): Seq[Setting[?]] = Seq(
+def thicketBuildInfo(
+  pkg:       String,
+  buildTime: Boolean = false
+): Seq[Setting[?]] = Seq(
   buildInfoPackage := pkg,
   buildInfoKeys := Seq[BuildInfoKey](
+    // sbt-thicket's dependencies are built from this, so the plugin cannot name a group the framework was not published
+    // under — which is how #70's move to `net.leibman` left it asking for `dev.thicket`.
+    organization,
     name,
     version,
     scalaVersion,
@@ -170,7 +193,7 @@ def thicketBuildInfo(pkg: String): Seq[Setting[?]] = Seq(
     GitKeys.gitHeadCommit,
     GitKeys.gitUncommittedChanges
   ),
-  buildInfoOptions += BuildInfoOption.BuildTime
+  buildInfoOptions ++= (if buildTime then Seq(BuildInfoOption.BuildTime) else Nil)
 )
 
 /** Fine-grained reactive core. No dependencies beyond the Scala library (S5). */
@@ -305,20 +328,29 @@ lazy val rendererApple = project
   // of the renderer and nothing to link its `sui_*` symbols against, because `libthicketapple.a` is built by a shell
   // script here and was never published. Built at *package* time, not on every compile: it needs Xcode, and it is
   // only wanted when a jar is being made. `sbt-thicket`'s Apple plugins unpack it from the resolved jar.
+  //
+  // Off a Mac there is no Xcode, so the shim is not built and the jar holds only the Scala half. That jar is fine to
+  // *compile against* — sbt 2 puts jars, not class directories, on dependants' classpaths, so before this guard the
+  // Apple example apps could not even be type-checked on Linux — and wrong to *publish*, so publishing it is skipped
+  // anywhere but a Mac.
   .settings(
+    publish / skip := !isMac,
     Compile / packageBin / mappings ++= {
       val shim = (ThisBuild / baseDirectory).value / "modules" / "renderer-apple" / "shim"
-      for target <- Seq("macos", "ios-sim") do {
-        val code = scala.sys.process.Process(Seq("bash", (shim / "build-shim.sh").getAbsolutePath, target), shim).!
-        if code != 0 then sys.error(s"build-shim.sh $target failed with exit $code")
-      }
       val conv = fileConverter.value
-      Seq(
-        shim / "build" / "libthicketapple.a"       -> "thicket-apple/macos/libthicketapple.a",
-        shim / "build-ios" / "libthicketapple.a"   -> "thicket-apple/ios-sim/libthicketapple.a",
-        shim / "include" / "thicket_apple.h"       -> "thicket-apple/include/thicket_apple.h",
-        shim / "include" / "thicket_apple_types.h" -> "thicket-apple/include/thicket_apple_types.h"
-      ).map((f, path) => conv.toVirtualFile(f.toPath) -> path)
+      if !isMac then Seq.empty
+      else {
+        for target <- Seq("macos", "ios-sim") do {
+          val code = scala.sys.process.Process(Seq("bash", (shim / "build-shim.sh").getAbsolutePath, target), shim).!
+          if code != 0 then sys.error(s"build-shim.sh $target failed with exit $code")
+        }
+        Seq(
+          shim / "build" / "libthicketapple.a"       -> "thicket-apple/macos/libthicketapple.a",
+          shim / "build-ios" / "libthicketapple.a"   -> "thicket-apple/ios-sim/libthicketapple.a",
+          shim / "include" / "thicket_apple.h"       -> "thicket-apple/include/thicket_apple.h",
+          shim / "include" / "thicket_apple_types.h" -> "thicket-apple/include/thicket_apple_types.h"
+        ).map((f, path) => conv.toVirtualFile(f.toPath) -> path)
+      }
     }
   )
 
@@ -331,7 +363,7 @@ lazy val effectZio = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/effect-zio"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
-  .settings(thicketBuildInfo("thicket.zio.buildinfo"))
+  .settings(thicketBuildInfo("thicket.effect.zio.buildinfo"))
   .dependsOn(core % "compile->compile;test->test")
   .settings(commonSettings, zioTestFramework, coverageSettings, name := "thicket-effect-zio")
   .jvmSettings(
@@ -453,9 +485,10 @@ lazy val todoAndroid = project
 lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("examples/gallery/shared"))
-  .dependsOn(core)
+  // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
+  .dependsOn(core, effectZio)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
-  .settings(thicketBuildInfo("example.gallery.buildinfo"))
+  .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
   .jvmSettings(scalacOptions ++= Seq("-release", "17"))
 
@@ -568,17 +601,54 @@ lazy val sbtThicket = project
     sbtPlugin := true,
     // org.scala-sbt:main_3:2.0.9 depends on scala3-library_3 3.8.4. Raise this only together with sbt.
     scalaVersion := "3.8.4",
+    // ...and 3.8.4 has no 3.9 source level to ask for.
+    scalacOptions -= "-source:3.9",
     // One copy of the flags, compiled twice. See `project/build.sbt`.
     Compile / unmanagedSourceDirectories += baseDirectory.value / "shared" / "src" / "main" / "scala",
     // The plugin needs `nativeConfig`, so it depends on the plugin that defines it — which also means a consumer's
     // `project/plugins.sbt` no longer adds sbt-scala-native itself, and `enablePlugins(ThicketGtkPlugin)` enables
     // `ScalaNativePlugin` too.
     addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12"),
-    libraryDependencies ++= Seq(
-      "dev.zio" %% "zio-test"     % zioV % Test,
-      "dev.zio" %% "zio-test-sbt" % zioV % Test
-    )
+    libraryDependencies ++= zioTestJvm
   )
+
+/** Everything that is not in `root`: the renderers and every example.
+  *
+  * Kept out of `root` because compiling it needs things a fresh clone does not have — `android.jar` (run
+  * `modules/renderer-android/setup.sh`) for the Android projects. `sbt platforms/Test/compile` builds all of it on this
+  * box, the Apple apps included: their Scala type-checks anywhere, and only *linking* them needs Xcode.
+  *
+  * It is not invisible to the root, though. `scalafmtAll`, `scalafmtCheckAll`, `headerCreateAll` and `headerCheckAll`
+  * at the root reach into it (see `root` below), because none of those compile anything, and a formatter that skips
+  * the renderers is how 26 files drifted before this existed.
+  */
+lazy val platforms = project
+  .in(file("target/platforms-aggregate"))
+  .enablePlugins(com.github.sbt.git.GitVersioning)
+  .aggregate(
+    rendererGtk,
+    rendererAndroid,
+    rendererApple,
+    examplesShared.jvm,
+    examplesShared.native,
+    counterGtk,
+    todoAndroid,
+    todoMacos,
+    todoIos,
+    galleryShared.jvm,
+    galleryShared.native,
+    galleryGtk,
+    galleryAndroid,
+    galleryMacos,
+    galleryIos
+  )
+  .settings(publish / skip := true, name := "thicket-platforms")
+
+/** The source-only tasks, run over `platforms` as well as `root`'s own aggregate. */
+lazy val platformsFilter = ScopeFilter(inAggregates(platforms, includeRoot = false))
+// sbt-header's tasks live per configuration, scalafmt's per project.
+lazy val platformsConfigFilter =
+  ScopeFilter(inAggregates(platforms, includeRoot = false), inConfigurations(Compile, Test))
 
 lazy val root = project
   .in(file("."))
@@ -598,4 +668,15 @@ lazy val root = project
     shimGen,
     sbtThicket
   )
-  .settings(publish / skip := true, name := "thicket")
+  .settings(
+    publish / skip := true,
+    name           := "thicket",
+    scalafmtAll := Def.uncached { val _ = scalafmtAll.all(platformsFilter).value },
+    scalafmtCheckAll := Def.uncached { val _ = scalafmtCheckAll.all(platformsFilter).value },
+    Compile / headerCreateAll := Def.uncached(headerCreateAll.all(platformsConfigFilter).value.flatten),
+    Compile / headerCheckAll := Def.uncached(headerCheckAll.all(platformsConfigFilter).value.flatten)
+  )
+
+// What CI runs on Linux, and what to run before pushing. `testFull`, not `test`: sbt 2's `test` is incremental and
+// runs nothing when nothing changed, which reads as a pass.
+addCommandAlias("checkLinux", ";testFull;scalafmtCheckAll;headerCheckAll;platforms/Test/compile")
