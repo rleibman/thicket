@@ -744,17 +744,25 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * Which cells those are depends on every index, so it is recomputed whenever the children change, as for
     * LinearLayout.
     */
-  private def applyGridSpacing(g: GridLayout): Unit = {
+  private def applyGridSpacing(
+    g:    GridLayout,
+    from: Int = 0
+  ): Unit = {
     val gap = gridSpacing.getOrElse(g, 0)
     val columns = math.max(1, g.getColumnCount)
-    var i = 0
+    var i = from max 0
     while i < g.getChildCount do {
       val child = g.getChildAt(i)
       child.getLayoutParams match {
         case lp: GridLayout.LayoutParams =>
-          lp.leftMargin = if i % columns == 0 then 0 else gap
-          lp.topMargin = if i / columns == 0 then 0 else gap
-          child.setLayoutParams(lp)
+          val left = if i % columns == 0 then 0 else gap
+          val top = if i / columns == 0 then 0 else gap
+          // Only a change is written: every write is a requestLayout.
+          if lp.leftMargin != left || lp.topMargin != top then {
+            lp.leftMargin = left
+            lp.topMargin = top
+            child.setLayoutParams(lp)
+          }
         case _ => ()
       }
       i += 1
@@ -764,23 +772,36 @@ final class AndroidRenderer(context: Context) extends Renderer {
   /** `LinearLayout` has no spacing property, so gaps are child margins. They have to be recomputed whenever the
     * children change, because "which child is first" changes.
     */
-  private def applySpacing(l: LinearLayout): Unit = {
+  /** Children `from` until `until`, or all of them.
+    *
+    * A child's leading gap depends only on whether it is first, so inserting at `i` changes children `i` and `i + 1` at
+    * most, and removing at `i` changes only the child that moves into `i`. Recomputing every child on every change —
+    * and writing its params, which is a requestLayout each — made mounting a list O(n²) (review 2026-10-20, P2-7).
+    */
+  private def applySpacing(
+    l:     LinearLayout,
+    from:  Int = 0,
+    until: Int = Int.MaxValue
+  ): Unit = {
     val gap = spacing.getOrElse(l, 0)
     val horizontal = l.getOrientation == LinearLayout.HORIZONTAL
-    var i = 0
-    while i < l.getChildCount do {
+    var i = from max 0
+    val end = until min l.getChildCount
+    while i < end do {
       val child = l.getChildAt(i)
-      val lp = child.getLayoutParams match {
-        case p: LinearLayout.LayoutParams => p
-        case _ =>
-          LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-          )
-      }
       val lead = if i == 0 then 0 else gap
-      if horizontal then lp.leftMargin = lead else lp.topMargin = lead
-      child.setLayoutParams(lp)
+      child.getLayoutParams match {
+        case p: LinearLayout.LayoutParams =>
+          val current = if horizontal then p.leftMargin else p.topMargin
+          if current != lead then {
+            if horizontal then p.leftMargin = lead else p.topMargin = lead
+            child.setLayoutParams(p)
+          }
+        case _ =>
+          val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+          if horizontal then p.leftMargin = lead else p.topMargin = lead
+          child.setLayoutParams(p)
+      }
       i += 1
     }
   }
@@ -963,8 +984,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // sibling is also what puts it at the right depth.
     vg.addView(child, index)
     vg match {
-      case g: GridLayout                 => applyGridSpacing(g)
-      case l: LinearLayout               => applySpacing(l)
+      case g: GridLayout                 => applyGridSpacing(g, from = index)
+      case l: LinearLayout               => applySpacing(l, from = index, until = index + 2)
       case f: FrameLayout if isZStack(f) => placeInStack(f, child)
       case _ => ()
     }
@@ -979,10 +1000,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
       return
     }
     val vg = parent.asInstanceOf[ViewGroup]
+    val index = vg.indexOfChild(child)
     vg.removeView(child)
     vg match {
-      case g: GridLayout   => applyGridSpacing(g)
-      case l: LinearLayout => applySpacing(l)
+      case g: GridLayout   => applyGridSpacing(g, from = index)
+      case l: LinearLayout => applySpacing(l, from = index, until = index + 1)
       case _ => ()
     }
   }
@@ -992,10 +1014,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
     tabs.destroy(handle)
     handle.getParent match {
       case vg: ViewGroup =>
+        val index = vg.indexOfChild(handle)
         vg.removeView(handle)
         vg match {
-          case g: GridLayout   => applyGridSpacing(g)
-          case l: LinearLayout => applySpacing(l)
+          case g: GridLayout   => applyGridSpacing(g, from = index)
+          case l: LinearLayout => applySpacing(l, from = index, until = index + 1)
           case _ => ()
         }
       case _ => ()
@@ -1004,8 +1027,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
     suppress -= handle
     val _ = kinds.remove(handle)
     handle match {
-      // Before LinearLayout, which a RadioGroup is.
-      case g: RadioGroup   => val _ = segmentIndex.remove(g)
+      // Before LinearLayout, which a RadioGroup is — and it has spacing too.
+      case g: RadioGroup =>
+        val _ = segmentIndex.remove(g)
+        val _ = spacing.remove(g)
       case l: LinearLayout => val _ = spacing.remove(l)
       case f: FrameLayout  => val _ = stackGravity.remove(f)
       case g: GridLayout   => val _ = gridSpacing.remove(g)
@@ -1022,6 +1047,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
     val _ = links.remove(handle)
     val _ = alertActions.remove(handle)
     val _ = alertDismiss.remove(handle)
+    // These were missing: a closed Sheet's dialog — its subtree and the Activity context —
+    // stayed reachable from the renderer (review 2026-10-20, P2-4).
+    val _ = alertTitle.remove(handle)
+    val _ = alertMessage.remove(handle)
+    alertShowing.remove(handle).foreach(_.dismiss())
+    sheetShowing.remove(handle).foreach(_.dismiss())
   }
 
   def measure(

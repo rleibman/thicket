@@ -59,6 +59,9 @@ object GtkInspect {
     */
   def liveCallbacks: Int = Handles.liveCount
 
+  /** CSS providers on the display, one per live themed widget; it must fall when themed widgets go. */
+  def liveCssProviders: Int = Handles.cssProvidersLive.get()
+
   /** Bind, unbind and teardown callbacks held for mounted LazyColumns — three each. */
   def liveListBinders: Int = Handles.listBinderCount
 
@@ -83,6 +86,21 @@ object GtkInspect {
     * walking and invisible to a child count — which is the distinction a `ContextMenu` prop is meant to have.
     */
   def isPopover(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_popover_get_type())
+
+  def isPicture(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_picture_get_type())
+
+  /** The picture's content fit, by name, and whether it has something to paint. */
+  def pictureState(widget: Ptr[GtkWidget]): (String, Boolean) = {
+    val p = widget.asInstanceOf[Ptr[GtkPicture]]
+    val fit = gtk_picture_get_content_fit(p) match {
+      case GtkContentFit.GTK_CONTENT_FIT_CONTAIN    => "Contain"
+      case GtkContentFit.GTK_CONTENT_FIT_COVER      => "Cover"
+      case GtkContentFit.GTK_CONTENT_FIT_FILL       => "Fill"
+      case GtkContentFit.GTK_CONTENT_FIT_SCALE_DOWN => "ScaleDown"
+      case _                                        => "?"
+    }
+    (fit, gtk_picture_get_paintable(p) != null)
+  }
 
   def scaleValue(widget: Ptr[GtkWidget]): Double =
     gtk_range_get_value(widget.asInstanceOf[Ptr[GtkRange]])

@@ -117,6 +117,14 @@ final class GtkRenderer extends Renderer {
     val provider = cssProviders.getOrElseUpdate(
       handle, {
         val fresh = gtk_css_provider_new()
+        // Added to the display once, when made — not on every restyle, which re-added the same
+        // provider each time — and removed in `destroy` (review 2026-10-20, P2-1).
+        gtk_style_context_add_provider_for_display(
+          gtk_widget_get_display(handle),
+          fresh.asInstanceOf[Ptr[GtkStyleProvider]],
+          600.toUInt.asInstanceOf[sn.gnome.glib.internal.guint] // above the theme, below user CSS
+        )
+        Handles.cssProvidersLive.incrementAndGet()
         // Tell us when GTK rejects what we wrote. Connected once per provider, at creation,
         // because a stylesheet this renderer generates is always a bug if it does not parse
         // — and GTK's own response is a stderr warning nobody reads.
@@ -137,12 +145,6 @@ final class GtkRenderer extends Renderer {
       if childDeclaration.isEmpty then s".$cls { $declaration }"
       else s".$cls { $declaration } .$cls > * { $childDeclaration }"
     Zone(gtk_css_provider_load_from_string(provider, toCString(sheet)))
-    val display = gtk_widget_get_display(handle)
-    gtk_style_context_add_provider_for_display(
-      display,
-      provider.asInstanceOf[Ptr[GtkStyleProvider]],
-      600.toUInt.asInstanceOf[sn.gnome.glib.internal.guint] // above the theme, below user CSS
-    )
   }
 
   private val cssClasses = mutable.Map.empty[Ptr[GtkWidget], String]
@@ -642,22 +644,27 @@ final class GtkRenderer extends Renderer {
           case Some(ImageSource.FromFile(path)) =>
             Zone(gtk_picture_set_filename(picture, toCString(path)))
           case Some(ImageSource.FromBytes(data)) =>
-            Zone {
-              // Decoding happens here, on the UI thread. For anything large an app should
-              // decode off-thread and hand over a file; see the note in the DSL.
-              val buf = alloc[Byte](data.length)
-              var i = 0
-              while (i < data.length) { buf(i) = data(i); i += 1 }
+            // Decoding happens here, on the UI thread. For anything large an app should decode
+            // off-thread and hand over a file; see the note in the DSL.
+            //
+            // g_bytes_new copies, so it reads the array in place — no byte-by-byte copy into a
+            // zone first. Both the GBytes and the texture are released once the picture holds
+            // what it needs; neither was before, so every image set leaked the encoded and the
+            // decoded data (review 2026-10-20, P2-6).
+            if data.nonEmpty then {
               val bytes = sn.gnome.glib.internal.g_bytes_new(
-                buf.asInstanceOf[sn.gnome.glib.internal.gconstpointer],
-                data.length.toULong.asInstanceOf[sn.gnome.glib.internal.gsize]
+                data.at(0).asInstanceOf[sn.gnome.glib.internal.gconstpointer],
+                data.length.toUSize.asInstanceOf[sn.gnome.glib.internal.gsize]
               )
               val texture = sn.gnome.gdk4.internal.gdk_texture_new_from_bytes(bytes, null)
-              if texture != null then
+              sn.gnome.glib.internal.g_bytes_unref(bytes)
+              if texture != null then {
                 gtk_picture_set_paintable(
                   picture,
                   texture.asInstanceOf[Ptr[sn.gnome.gdk4.internal.GdkPaintable]]
                 )
+                g_object_unref(texture.asInstanceOf[gpointer])
+              }
             }
         }
 
@@ -1180,7 +1187,16 @@ final class GtkRenderer extends Renderer {
     // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
     // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox
     // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
-    val _ = cssProviders.remove(handle)
+    // A provider is added to the whole display, so leaving it there kept every themed widget's
+    // stylesheet in GTK's cascade for the life of the process, re-matched on every restyle.
+    cssProviders.remove(handle).foreach { p =>
+      gtk_style_context_remove_provider_for_display(
+        gtk_widget_get_display(handle),
+        p.asInstanceOf[Ptr[GtkStyleProvider]]
+      )
+      g_object_unref(p.asInstanceOf[gpointer])
+      Handles.cssProvidersLive.decrementAndGet()
+    }
     val _ = cssClasses.remove(handle)
     // A popover is parented to its widget, so it must be unparented before the widget
     // goes — GTK4 frees a widget's children with it, and the popover is not in the child

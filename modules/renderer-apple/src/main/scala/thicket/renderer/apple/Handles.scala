@@ -126,7 +126,9 @@ object Handles {
     id
   }
 
-  def count: Int = taps.size + texts.size + bools.size + values.size + rows.size
+  // `ints` was missing, so a Picker, SegmentedControl, DatePicker or TabView that leaked its handler
+  // was invisible to every leak check built on this (review 2026-10-20, P2-5).
+  def count: Int = taps.size + texts.size + bools.size + values.size + ints.size + rows.size
 
   /** Row callbacks alone. `count` also moves with every `postToUi` one-shot, which is noise when the question is
     * whether an unmounted virtual list let go of its `RowSource`.

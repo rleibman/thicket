@@ -352,6 +352,15 @@ object GalleryGtk {
 
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)
 
+    // Image: one GtkPicture per fit, each with something to paint — the bytes-backed one
+    // included, so a decode that produced nothing would show.
+    val pictures = GtkInspect.findAll(root)(GtkInspect.isPicture).map(GtkInspect.pictureState)
+    check(
+      "the three content fits, each with a picture to paint",
+      List("Contain", "Cover", "Fill").forall(f => pictures.contains((f, true))),
+      pictures.toString
+    )
+
     // ZStack is a GtkOverlay. Child order is paint order, so the badge being *last* is the
     // claim that it is drawn on top; and the stack's size is the largest child's, which is
     // what `measure` on every overlay buys — without it a GtkOverlay with no main child
@@ -437,7 +446,10 @@ object GalleryGtk {
     GtkInspect.allTexts(GtkApp.rootHandle).filter(t => t.startsWith("Row ") || t.startsWith("Renamed "))
 
   /** The 10 000-row LazyColumn after its data changes under it (review 2026-10-20, P1-3, P2-2). */
-  private def lazyList(baseline: Int): Unit = {
+  private def lazyList(
+    baseline:  Int,
+    providers: Int
+  ): Unit = {
     def click(label: String) =
       GtkInspect
         .findAll(GtkApp.rootHandle)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List(label))
@@ -468,6 +480,13 @@ object GalleryGtk {
           )
           // Not equal: the root page the reset replaced is released in the meantime too,
           // which is the same fix seen from the other side.
+          // The reset replaced the catalogue with an identical one, and the old one's themed
+          // widgets have gone: one stylesheet each, as many as before — not twice as many.
+          check(
+            "the replaced catalogue's CSS providers were removed from the display",
+            GtkInspect.liveCssProviders == providers && providers > 0,
+            s"$providers before the reset, ${GtkInspect.liveCssProviders} after"
+          )
           check(
             "and the page's other callbacks with it: no more are held than before it was pushed",
             GtkInspect.liveCallbacks <= baseline,
@@ -527,6 +546,7 @@ object GalleryGtk {
     // The page releases below wait for pages to be freed, which happens when their transition
     // ends; without transitions that is at once, whatever the compositor is doing.
     GtkApp.animateTransitions(false)
+    val providersBefore = GtkInspect.liveCssProviders
 
     // Reset from one page deep. AdwNavigationView will not pop its root, so the old root
     // used to stay underneath the new one.
@@ -551,7 +571,7 @@ object GalleryGtk {
     )
     when(50)(listTexts.nonEmpty) {
       check("the mounted list holds bind, unbind and teardown callbacks", GtkInspect.liveListBinders == 3)
-      lazyList(beforeList)
+      lazyList(beforeList, providersBefore)
     }
   }
 

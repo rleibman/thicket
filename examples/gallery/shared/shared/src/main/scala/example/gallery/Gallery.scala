@@ -116,6 +116,11 @@ object Gallery {
   /** The message of the exception the "Throw from a handler" button raises, so a self-test can tell it apart. */
   val deliberate: String = "deliberate, from the gallery's Errors section"
 
+  /** The logo, as a file and as the bytes of that file. */
+  val logo:           String = "docs/assets/thicket-logo.png"
+  lazy val logoBytes: Array[Byte] =
+    scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(logo))).getOrElse(Array.emptyByteArray)
+
   /** The picker's options. On the object so the self-test can name them. */
   val fruit: Seq[String] = Seq("Apple", "Banana", "Cherry")
 
@@ -284,8 +289,11 @@ object Gallery {
           ),
           section("Image — the three content fits")(
             Row(spacing = 8)(
-              Image(ImageSource.FromFile("docs/assets/thicket-logo.png"), fit = ContentFit.Contain),
-              Image(ImageSource.FromFile("docs/assets/thicket-logo.png"), fit = ContentFit.Cover)
+              Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Contain),
+              Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Cover),
+              // The third fit, and the other source: bytes the app already holds, decoded by the
+              // platform (review 2026-10-20, P2-23).
+              Image(ImageSource.FromBytes(Gallery.logoBytes), fit = ContentFit.Fill)
             )
           ),
           section("Scroll — horizontal, inside a vertical one")(

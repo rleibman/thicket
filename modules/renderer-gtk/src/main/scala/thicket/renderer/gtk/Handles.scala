@@ -292,6 +292,9 @@ private[gtk] object Handles {
     */
   private val cssErrors = new AtomicLong(0L)
 
+  /** CSS providers the renderers have added to the display and not yet removed: one per live themed widget. */
+  val cssProvidersLive = new java.util.concurrent.atomic.AtomicInteger(0)
+
   def cssParseErrors: Long = cssErrors.get()
 
   /** `parsing-error` is `(GtkCssProvider*, GtkCssSection*, GError*, gpointer)`. None of the arguments are needed: that
