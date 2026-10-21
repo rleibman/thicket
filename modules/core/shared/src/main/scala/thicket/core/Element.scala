@@ -56,10 +56,11 @@ object Attr {
 
 /** The declarative description of a UI.
   *
-  * Most of a tree is [[Element.Widget]], which is fixed once mounted — only its properties change. The two *dynamic*
-  * cases are where structure changes over time, and they are deliberately the only two: everything else a UI needs to
-  * do structurally (switch, optional, tabs) can be expressed with them, and each one costs real complexity in the
-  * reconciler.
+  * Most of a tree is [[Element.Widget]], which is fixed once mounted — only its properties change. The *dynamic* cases
+  * are where structure changes over time: `Show` (and `Switch`, built on it) and `ForEach`, plus `LazyColumn`, which is
+  * `ForEach` asking the renderer for a recycling container. `Fragment` and `Provide` contribute no node of their own.
+  * Each dynamic case costs real complexity in the reconciler, which is why there are this few; tabs, an optional
+  * section and a switch are all expressed with them.
   */
 sealed trait Element
 
@@ -146,6 +147,9 @@ object dsl {
       case s: Signal[String] @unchecked => Reactive(s, Prop.Text(_))
     }
 
+  /** Text. `value` may be a signal; `style` picks the platform's own type role, `align` its horizontal alignment (start
+    * and end follow the reading direction where the platform does), `emphasis` a secondary colour.
+    */
   def Label(
     value:    String | Signal[String],
     style:    TextRole = TextRole.Body,
@@ -187,6 +191,9 @@ object dsl {
     Widget(WidgetKind.Image, Seq(attr, Static(Prop.Fit(fit))), Nil)
   }
 
+  /** A push button running `onTap`. Disabled when `enabled` is false; `role` picks the platform's accent or destructive
+    * styling.
+    */
   def Button(
     value:   String | Signal[String],
     enabled: Boolean = true,
@@ -303,6 +310,9 @@ object dsl {
       Nil
     )
 
+  /** A check box with a label, bound to `checked`; `onChange` receives the user's new value. An app write to `checked`
+    * does not call `onChange` back.
+    */
   def Checkbox(
     checked: Boolean | Signal[Boolean],
     label:   String = ""
@@ -574,6 +584,9 @@ object dsl {
       Seq(child)
     )
 
+  /** Children stacked top to bottom, `spacing` apart and inset by `padding`. A child with `.grow` takes the height the
+    * others leave.
+    */
   def Column(
     spacing: Int = 0,
     padding: Int = 0
@@ -614,6 +627,9 @@ object dsl {
     )
   }
 
+  /** Children left to right (right to left under an RTL locale), `spacing` apart and inset by `padding`. A child with
+    * `.grow` takes the width the others leave.
+    */
   def Row(
     spacing: Int = 0,
     padding: Int = 0

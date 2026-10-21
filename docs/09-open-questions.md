@@ -408,3 +408,16 @@ should not be made until M1.
   reached from the build machine). Until then, the only renderer-side workarounds found are
   worse than the bug (§ the 2026-10-07 decision-log entry).
 
+
+## 9.9 Notes added 2026-10-20 (the whole-repo review)
+
+- **§9.8 has a workaround after all.** #71 (`WaylandFocus`, in `renderer-gtk`) releases a
+  focused text widget from GTK's input method before it is destroyed, which closes the
+  Wayland race on the renderer side; §9.8's "the only renderer-side workarounds found are
+  worse than the bug" predates it. The upstream one-line fix is still the right one.
+- **§9.1–9.3 were answered by the spikes**, in §9.3a–g; the questions above them are left as
+  they were asked.
+- **New, from the review (open):** the coverage figure has not been measuring `signals` or
+  `core` since its last real reading (#80); and some record of a previous compile survives a
+  private sbt 2 cache, a fresh `sbt.cacheversion` and cleared `target/streams`, so
+  `bin/coverage.sh` still has to wipe the machine-wide cache.

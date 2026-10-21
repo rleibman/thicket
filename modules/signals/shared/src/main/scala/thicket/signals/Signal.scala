@@ -129,7 +129,13 @@ final class Var[A] private (initial: A) extends Signal[A] with Source {
     value
   }
 
-  /** Writes the value. No-op if `a == current` (equality cutoff). */
+  /** Writes the value. No-op if `a == current` (equality cutoff). Effects that depend on it run before this returns.
+    *
+    * **Throws** `IllegalStateException` on a thread other than the graph's, once a host has installed
+    * `ThreadGuard.owningThread` (every host does): signals are single-threaded, and a write from elsewhere has to be
+    * posted through `thicket.core.UiThread`. Also rethrows, to this caller, an exception an effect it triggered threw;
+    * the effect stays subscribed and the rest of the graph is unaffected.
+    */
   def set(a: A): Unit = {
     ThreadGuard.check("Var.set")
     if value != a then {

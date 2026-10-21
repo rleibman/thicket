@@ -4,7 +4,8 @@
 renderer lands — unlike `docs/01`–`docs/09`, which are frozen. The target is the v1
 catalogue in `docs/07` §7.10.
 
-**Last updated:** 2026-10-07 (the remaining Apple controls run and measured, #45/#46).
+**Last updated:** 2026-10-20 (the whole-repo review and its fixes: counts re-measured, the
+Android gallery built, Apple gaps the review found filed as #73–#79).
 
 ## 12.1 Scoreboard
 
@@ -25,6 +26,17 @@ run are the three that choose an alert action and the two that choose a menu ite
 (UIKit offers no public way to do either), and each says so rather than passing. The
 button-row overflow check is not exercised on either any more: as a page, the screen fills
 the window, and five buttons fit in 480 px.
+
+**2026-10-20, the whole-repo review** (`docs/phase-reviews/2026-10-20/`). "Every one on every
+renderer" above was true of *construction*, and the review found places where a prop is
+handled but not honoured. Fixed on Linux in the same PR: `Grow` along a Column on GTK and
+Android, Android's Spinner selection and its `-1`, Android tab reordering, `SafeArea` padding
+on Android, GTK's `Scroll(padding)` and indeterminate `ProgressBar`, and the GTK `LazyColumn`
+showing stale rows after an edit. Open, on Apple: taps on leaf views, the UIKit Checkbox's
+label and right-to-left alignment (#75), `SafeArea` and `Scroll` padding (#76), selection
+when options change and `-1` (#77), unbuilt kinds (#74). The Android gallery, which this
+document and its README said was built, had no Gradle project until then; it now builds and
+self-tests (24/24 on the `s2test` emulator).
 
 The first nine were, deliberately, the ones that forced the contract to be right: a
 tappable container, a two-way-bound field, a recycling list and a viewport between them
@@ -226,22 +238,21 @@ every remaining entry before it is built, not after.
 | Navigation | `Nav`, `NavHost`, `AppRoot` | done — stack, title, Up and toolbar actions are native chrome, and every renderer now consumes `AppRoot.pages` so the stack stays alive: `AdwNavigationView` on GTK (#32), `UINavigationController` on iOS and a sidebar on macOS (#29), a `FrameLayout` plus `android.transition.Slide` on Android. Android deliberately avoids Fragments — `android.app.Fragment` is deprecated and the AndroidX one would be a new dependency |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, **per-subtree `Provide`**; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
-| UI-thread seam | `UiThread` | done |
-| Apple ABI description + consistency check | `tools/shim-gen` | done — 38 functions and 17 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
+| UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
+| Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (99 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
 
 ## 12.4 Props
 
-All four renderers handle all 22 props, because `Prop` is an `enum` and the match is
+All four renderers handle all **37** props, because `Prop` is an `enum` and the match is
 exhaustive under `-Werror` — a new prop breaks every renderer until it is handled, which is
-the point of doing this in Scala.
+the point of doing this in Scala. (This section said 22, and then thirty, after more had
+been added; the enum is the count.)
 
-`Text`, `OnTap`, `Spacing`, `Padding`, `Enabled`, `Placeholder`, `OnTextChange`, `Checked`,
-`OnCheckedChange`, `Style`, `Grow`, `Align`, `Tint`, `Fill`, `Picture`, `Fit`,
-`TextEmphasis`, `Axis`, `Progress`, `Value`, `Range`, `OnValueChange`.
-
-**"Handled" is not "honoured."** All thirty are honoured everywhere. `Message`, `Actions`
+**"Handled" is not "honoured."** As of 2026-10-20, honoured everywhere except: `Glyph` and
+`AccessibleLabel` on Apple (#66); `OnTap` on Apple leaf views and `Text` on the UIKit
+Checkbox (#75); `SafeArea` and `Padding` on a `Scroll` on Apple (#76). `Message`, `Actions`
 and `OnDismiss` were unreachable on Apple until `Alert` could be presented (#18), and
-`ContextMenu` was the last, until #19.
+`ContextMenu` until #19.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
 until Forgejo **#4**.
 
@@ -258,7 +269,9 @@ until Forgejo **#4**.
 
 No renderer uses `LayoutMode.FrameBased` yet, which means **Yoga is not wired in**: every
 container lays out its own children the platform way. S4 proved Yoga is reachable; nothing
-depends on it until `Grid` or absolute positioning does.
+depends on it until `Grid` or absolute positioning does. The layout half of the `Renderer`
+contract (`measure`, `setFrame`, `layoutMode`) has no caller for the same reason; it stays,
+dormant, until a frame-based renderer needs it (decision log 2026-10-20, D11).
 
 ## 12.6 What this list is for
 
@@ -266,7 +279,8 @@ depends on it until `Grid` or absolute positioning does.
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
-are done; #28 (a vertical `Scroll` that opens at the bottom on AppKit) is next. Everything else is built and measured on the
+are done. Open for the Mac: #66 and #69 (IconButton, TabView), #72 (an unbuilt kind crashes
+the macOS run), and the review's #73–#79. Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:
@@ -313,11 +327,17 @@ someone who did not write the framework, running on all three targets.
 
 | Target | Tests |
 |---|---|
-| `signalsJVM` / `signalsNative` | 21 |
-| `signalsJS` | 19 — no `ThreadGuardSpec`, JS has no threads |
-| `coreJVM` / `coreJS` / `coreNative` | 73 |
-| `effectZioJVM` | 13 |
-| `shimGen` | 10 |
+| `signalsJVM` / `signalsNative` | 30 |
+| `signalsJS` | 28 — no `ThreadGuardSpec`, JS has no threads |
+| `coreJVM` / `coreJS` / `coreNative` | 170 |
+| `effectZioJVM` / `effectZioNative` | 25 — Native ran none until 2026-10-20: the specs were JVM-only |
+| `shimGen` | 15 |
+| `sbtThicket` | 9 |
+
+Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run. On top of
+these, the self-tests drive the real toolkits: GTK gallery **114** and todo **69**
+(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **24** and
+todo **84** on the `s2test` emulator.
 
 Four rules the migration established:
 
@@ -356,7 +376,12 @@ backends.** Phase 2 shipped a test that only ever passed on the JVM.
 | `thicket.tools.shim` | 94.31% |
 | `thicket.signals` | 91.71% |
 | `thicket.core` | 89.94% |
-| `thicket.zio` | 69.44% |
+| `thicket.zio` (now `thicket.effect.zio`) | 69.44% |
+
+**Not measuring, as of 2026-10-20 (#80).** `bin/coverage.sh` reports `thicket.signals`
+0.00% and `thicket.core` 0.35% on `9c98d28` — the tests run, their measurements are lost —
+so the 91.10% above is the last real reading, not the current one, and the ratchet below has
+not been checking anything since. effect-zio's own figure, which is measured, is 90.37%.
 
 `build.sbt` sets a ratchet just under the measured figure — 87% statement, 83% branch,
 `coverageFailOnMinimum := true`. It exists to stop coverage sliding, not to be hit exactly.
@@ -365,8 +390,8 @@ Raise it when the real number moves up.
 ### What the number does *not* cover
 
 **The three renderers.** GTK, Android and Apple are Scala Native and ART code, exercised by
-self-tests that drive the real toolkit in a real process — 42 checks on GTK, 35 on Android,
-27 and 26 on macOS and iOS. scoverage instruments none of that, so those modules contribute
+self-tests that drive the real toolkit in a real process — 114 + 69 checks on GTK and 24 + 84
+on Android (2026-10-20), 87 and 82 on macOS and iOS. scoverage instruments none of that, so those modules contribute
 nothing to the figure above and **their absence is not a gap in testing**. The number is
 coverage of the effect-free core, and quoting it as "the project's coverage" would be
 wrong in both directions at once.

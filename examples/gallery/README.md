@@ -100,12 +100,14 @@ A component counts as present in the gallery when:
 
 ## What it covers
 
-Labels in every `TextRole`, buttons by role and disabled, `TextField`, `SecureField`,
-`Checkbox`, `Toggle`, every curated `Icon` as an `IconButton`, `SegmentedControl`, a
-`DatePicker` on a leap day, two `Link`s (one also tappable), `Slider`, determinate
-`ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer`, `Grow`, a two-column `Grid` with a
-row inserted in the middle, `ZStack` as a corner badge and as a centred overlay, `Image` in
-two fits, nested and horizontal `Scroll`, keyed `ForEach`, virtualised `LazyColumn`, a
-per-row `ContextMenu`, subtree theming with `Provide`, the two presented widgets (`Alert`
-and `Sheet`), toolbar `Action`s, a navigation push, and a `TabView` with a tab inserted in
-the middle.
+Labels in every `TextRole` and alignment, buttons by role and disabled, `TextField`,
+`SecureField`, `Checkbox`, `Toggle`, a `Picker` whose options can be swapped and its
+selection cleared, every curated `Icon` as an `IconButton`, `SegmentedControl`, a
+`DatePicker` on a leap day, two `Link`s (one also tappable), `Slider`, determinate and
+indeterminate `ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer` in a Row and in a
+Column, `Grow`, a two-column `Grid` with a row inserted in the middle, `ZStack` as a corner
+badge and as a centred overlay, `Image` in all three fits from a file and from bytes, nested
+and horizontal `Scroll` (padded), keyed `ForEach`, virtualised `LazyColumn` whose first row
+can be deleted and renamed, a per-row `ContextMenu`, subtree theming with `Provide`, a
+handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet`), toolbar
+`Action`s, a navigation push, and a `TabView` with a tab inserted in the middle.

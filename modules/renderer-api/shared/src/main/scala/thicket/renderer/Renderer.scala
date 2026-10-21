@@ -724,6 +724,19 @@ trait RowSource[H] {
 
 }
 
+/** The contract between the framework and a toolkit: everything the reconciler asks of GTK, Android views, AppKit or
+  * UIKit, and nothing about any of them.
+  *
+  * A renderer turns [[WidgetKind]]s and [[Prop]]s into the platform's own widgets and keeps them in step: `create` with
+  * the initial props, `update` with changes, `insertAfter` / `moveAfter` / `removeChild` for structure, `destroy` to
+  * detach and release, `present` / `dismiss` for widgets shown over the app rather than placed in it, and
+  * `createVirtualList` for a list that materialises only what is on screen. It is not thread-safe: every call is on the
+  * UI thread, and `runOnUiThread` is how anything else gets there.
+  *
+  * Both enums are exhaustive under `-Werror`, so a new kind or prop breaks every renderer until it is handled — on
+  * purpose; docs/14 §14.2 says what that means for compatibility. The layout half (`layoutMode`, `measure`, `setFrame`)
+  * has no caller yet: every renderer lays out the toolkit's way (decision log, 2026-10-20, D11).
+  */
 trait Renderer {
 
   /** An opaque per-renderer widget reference. */

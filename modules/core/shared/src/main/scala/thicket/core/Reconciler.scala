@@ -37,6 +37,12 @@ import thicket.signals.{Owner, Signal, Var}
   */
 object Reconciler {
 
+  /** Builds `element` into native widgets through `renderer` and keeps them in step with the signals it reads.
+    *
+    * Everything the tree creates — effects, child owners, the widgets' handlers — lives under `owner`. The returned
+    * [[Mounted]] destroys the widgets; disposing `owner` stops the effects. A host does both when a screen goes, and
+    * the root of the tree is not attached to anything: the host puts [[Mounted.handle]] where it belongs.
+    */
   def mount[H](
     renderer:    Renderer { type Handle = H },
     element:     Element

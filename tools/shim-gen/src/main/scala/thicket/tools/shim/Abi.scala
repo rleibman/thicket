@@ -169,8 +169,11 @@ object Abi {
     * to check it does. So a shim that quietly builds a different widget, or handles a code this table does not know,
     * fails on any machine.
     *
-    * `None` is a code that is reserved and not built by that shim (write it as `Kind(code, name, None, None, why)`);
-    * Scala refuses to create it rather than let it reach the shim's `default:` branch. Since #18 every code is built.
+    * `None` is a code that is reserved and not built by that shim (write it as `Kind(code, name, None, None, why)`).
+    * **What happens to one today:** nothing stops it — `AppleRenderer` hands it to the shim, whose `default:` branch
+    * builds a plain view, so a "TabView" stacks its tabs' children with no error (review 2026-10-20, P1-15). This
+    * comment used to say Scala refused it. The decided behaviour, a visible placeholder and a throw under self-test
+    * (D9), is #74; codes 23–25 are reserved for #66 and #69.
     */
   final case class Kind(
     code:    Int,

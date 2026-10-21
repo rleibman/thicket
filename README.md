@@ -40,8 +40,9 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | Windows | Not started, and out of the 0.1 scope |
 
 This is early, and the honest shape of it is: the parts that exist are finished on all four
-platforms rather than sketched on one. Twenty-one widgets, every one on every renderer, with
-a self-test on each host that reads the tree back out of the real toolkit.
+platforms rather than sketched on one. Twenty-two widgets on every renderer and two more on
+GTK and Android, with a self-test on each host that reads the tree back out of the real
+toolkit. Where a prop is handled but not yet honoured on a platform, docs/12 §12.4 says which.
 
 What is genuinely missing: nothing from the v1 catalogue — its last two entries, Radio and
 Stepper, fail §12.2a and are deliberately not built — and Maven Central publishing. An app can be built from
@@ -163,8 +164,8 @@ cp -r templates/hello-thicket ~/my-app && cd ~/my-app
 sbt nativeLink && ./target/out/native0.5/scala-3.9.0/hello-thicket/hello-thicket
 ```
 
-It depends on published artefacts rather than on this repo. Until there is a tagged release
-you need a local publish first:
+It depends on published artefacts rather than on this repo. Until a release is on Maven
+Central you need a local publish first:
 
 ```bash
 cd /path/to/thicket && sbt 'signalsNative/publishLocal; rendererApiNative/publishLocal; coreNative/publishLocal; rendererGtk/publishLocal; sbtThicket/publishLocal'
@@ -275,9 +276,10 @@ The app is a function; each host mounts it.
 // Linux
 GtkApp.run("dev.example.app", 460, 440) { MyApp(model) }
 
-// Android, in onCreate
-val mounted = Reconciler.mount(AndroidRenderer(this), app.element)
-setContentView(mounted.handle)
+// Android: extend ThicketActivity, which mounts the pages and applies title, Up, menu and Back
+class MainActivity extends ThicketActivity {
+  protected def createApp(saved: Option[Bundle])(using Owner) = TodoApp(model)
+}
 ```
 
 `examples/shared/TodoApp.scala` knows nothing about any platform; `counter-gtk`,
@@ -312,28 +314,40 @@ modules/
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)
 examples/
   shared/            TodoApp — the platform-free demo every host mounts
-  counter-gtk/  todo-android/  todo-apple/
-docs/                the plan, the findings, the living status
-spikes/              phase 0, one directory and REPORT.md per spike
+  counter-gtk/       the todo app on GTK (the name predates it)
+  todo-android/  todo-apple/
+  gallery/           every component on one screen, for every platform, with self-tests
+tools/               shim-gen (the Apple ABI), sbt-thicket (the published plugin)
+bin/                 checks: GTK self-tests, getting-started, coverage, the Mac's verify-apple
+docs/                the plan, the findings, the living status, phase reviews
+spikes/              phase 0's briefs and reports (the code is at commit 01ffc3d)
 ```
 
-Writing a renderer means implementing one trait — `create`, `update`, `insertAfter`,
-`removeChild`, `destroy`, `measure`. It has absorbed four structurally different toolkits
-without changing: [`modules/renderer-api`](modules/renderer-api/shared/src/main/scala/thicket/renderer/Renderer.scala).
+Writing a renderer means implementing one trait, `Renderer`: creating, updating, inserting,
+moving, removing and destroying widgets, presenting the ones that float (`Alert`, `Sheet`),
+a virtualising list, posting to the UI thread, and a layout half that no renderer uses yet.
+It has absorbed four structurally different toolkits; when it grows, every renderer breaks
+until it is handled, which is the point:
+[`modules/renderer-api`](modules/renderer-api/shared/src/main/scala/thicket/renderer/Renderer.scala).
 
 ## Development
 
 ```bash
-sbt --error "signalsJVM/testOnly *; coreJVM/testOnly *; effectZioJVM/testOnly *"   # 98 tests
-
-THICKET_SELFTEST=1 ./target/out/native0.5/scala-3.9.0/counter-gtk/counter-gtk       # GTK self-test
-adb shell am start -n dev.thicket.todo/example.android.MainActivity --ez selftest true
+sbt --error checkLinux      # every test on every backend, format, headers, every renderer and example compiled
+bin/gtk-selftests.sh        # both GTK self-tests; fails on a failed check or any Gtk-CRITICAL
+SELFTEST=1 examples/gallery/android/build.sh   # the gallery on an Android device or emulator
+SELFTEST=1 examples/todo-android/build.sh
 ```
+
+`checkLinux` is what CI runs (`.github/workflows/ci.yml`), with the GTK self-tests under
+xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 2026-10-20:
+signals 30, core 170 and effect-zio 25 per backend, shim-gen 15, sbt-thicket 9; GTK 114 + 69
+self-test checks, Android 24 + 84.
 
 Coverage over the JVM-tested modules:
 
 ```bash
-./bin/coverage.sh          # 91.10% statement, 87.64% branch
+./bin/coverage.sh          # 91.10% statement, 87.64% branch on 2026-09-29 — not measuring now, #80
 ```
 
 It clears the sbt disk cache first, and that is not optional — see `docs/12` §12.9. The
@@ -371,15 +385,18 @@ the framework's source.*
 |---|---|---|
 | 12 | [docs/12-component-status.md](docs/12-component-status.md) | **Start here.** Done vs left, per widget and per renderer |
 | 13 | [docs/13-phases.md](docs/13-phases.md) | Phases, branches, PRs, exit criteria |
-| 14 | [docs/14-releasing.md](docs/14-releasing.md) | Versions from tags, `early-semver`, what a consumer needs |
+| 14 | [docs/14-releasing.md](docs/14-releasing.md) | Versions from tags, `early-semver`, what a consumer needs, how to cut a release |
+| 15 | [docs/15-icon-system.md](docs/15-icon-system.md) | The icon system: the design, and where what was built differs |
 | 11 | [docs/11-what-it-looks-like.md](docs/11-what-it-looks-like.md) | The design ideas, and the gap each one exposed |
 | 10 | [docs/10-phase-0-findings.md](docs/10-phase-0-findings.md) | Every phase-0 measurement and the GO decision |
 | — | [docs/decisions.md](docs/decisions.md) | Versions, tooling, the dated decision log |
 | — | [docs/screenshots/](docs/screenshots/) | What it looks like, read critically |
 | 1–9 | [docs/](docs/) | The original plan: vision, landscape, requirements, architecture options, technical design, roadmap, open questions |
 
-Docs 10–13 and `decisions.md` are living. Docs 01–09 are frozen background; facts marked
-**[unverified]** there are claims a spike had not yet settled.
+Docs 11–15 and every README are living; `decisions.md`, 09 and 10 take dated additions;
+01–08 are frozen background, and facts marked **[unverified]** there are claims a spike had
+not yet settled (decision log, 2026-10-20). Whole-repository reviews are in
+[docs/phase-reviews/](docs/phase-reviews/README.md).
 
 ## Contributing
 

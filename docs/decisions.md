@@ -3,6 +3,9 @@
 These are the choices an agent would otherwise make arbitrarily. Change them by
 adding a dated entry to the Decision log at the bottom, not by editing the table.
 
+*2026-10-20: the tables below were written for phase 0. Where a log entry has since
+superseded a row, the row says so; the log, newest first, is authoritative (D2).*
+
 ## Build, language, versions
 
 | Topic        | Decision                                                                                                                                                                                                                                                      | Notes                                                              |
@@ -14,8 +17,8 @@ adding a dated entry to the Decision log at the bottom, not by editing the table
 | Scala.js | **1.22.0**. Scala 3 has Scala.js support in the compiler itself (no separate compiler plugin), so it does not constrain the Scala version. | |
 | sbt-crossproject | 1.4.0 (`org.portable-scala`, both `sbt-scalajs-crossproject` and `sbt-scala-native-crossproject`). | |
 | ZIO | **2.1.26** (`dev.zio::zio`, `zio-streams`); `_native0.5_3` artefacts confirmed. **Requires `io.github.cquiroz::scala-java-time` 2.7.0 on Scala Native** — `zio.Duration` *is* `java.time.Duration` and Scala Native has no `java.time`, so nothing links without it (S8). | S8, M0. |
-| munit | **1.3.6**; `munit-scalacheck` is versioned separately at **1.3.1**. | All spikes. |
-| scalafmt | 3.11.5 (`.scalafmt.conf` in `spikes/_template/`). | |
+| munit | ~~**1.3.6**; `munit-scalacheck` is versioned separately at **1.3.1**.~~ *Superseded: every module tests with **zio-test** (`build.sbt`, docs/12 §12.8).* | All spikes. |
+| scalafmt | 3.11.5 (`.scalafmt.conf` in `spikes/_template/`). *2026-10-20: the one config is the repository root's `.scalafmt.conf`, at 3.11.5 — see the log.* | |
 | JDK | JDK 21 LTS for Android work. The Linux box has **OpenJDK 23-ea** on `PATH`; S5 ran fine on it, but AGP requires a non-EA JDK ≥ 17 — install 21 via `cs java --jvm temurin:21` for S2. | |
 | Android | min SDK 26, compile/target SDK **36**, AGP **9.4.1**, Gradle **9.7.1**, build-tools 37.0.0. SDK installed at `~/Android/Sdk` (2026-09-18) with an `android-36 google_apis x86_64` image; AVD `s2test`. **Three mandatory settings for Scala** — `android.enableR8.fullMode=false`, the `*$lzy*` keep rule, and excluding `**/*.tasty` from packaging (S2). | Note `platforms;android-37` is listed by sdkmanager but is not installable. |
 | iOS/macOS | Xcode latest stable; deployment target iOS 17 / macOS 13; Swift 5 language mode in the shim. **Three mandatory settings (S1, S8):** (1) linktime property `scala.scalanative.meta.linktimeinfo.target.os = "darwin"`, or `java.lang.Thread` does not link (javalib's `isMac` does not recognise the iOS triple); (2) **immix is the only working GC** — commix and boehm do not compile for iOS; (3) shipping config is `releaseFast` + `LTO.full` + `-lc++` at the final link, which is the difference between 7.73 MB (over N-03) and 5.75 MB (under). App templates must be **`UIScene`-based**: iOS 27 traps at launch on the old `UIApplicationDelegate` lifecycle (S3). | Mirrors the Android "three mandatory settings" row. |
@@ -46,11 +49,11 @@ adding a dated entry to the Decision log at the bottom, not by editing the table
 |---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Working name        | `thicket` (repo), root package **`thicket`**. Renaming is a product question (Q14) — do not bikeshed.                                                                                                                                                       |
 | Licence             | Apache-2.0. Add `LICENSE` at M0, not during spikes.                                                                                                                                                                                                          |
-| Repo layout         | `docs/` plan · `spikes/sN-<slug>/` one self-contained sbt (or Gradle/Xcode) project per spike, each with `BRIEF.md` and `REPORT.md` · `modules/` framework code, **empty until M0** · `shims/` Swift/C++ shims (M1+) · `tooling/` plugins/CLI (M5).          |
+| Repo layout         | `docs/` plan · `spikes/sN-<slug>/` one self-contained sbt (or Gradle/Xcode) project per spike, each with `BRIEF.md` and `REPORT.md` · `modules/` framework code, **empty until M0** · `shims/` Swift/C++ shims (M1+) · `tooling/` plugins/CLI (M5). *As built: `modules/`, `examples/`, `tools/` (shim-gen, sbt-thicket), `bin/`, `templates/`; the Swift shim is `modules/renderer-apple/shim`; spikes archived 2026-10-20.* |
 | Spike independence  | Spikes never depend on each other's code. Copying a file between spikes is allowed; importing a spike as a dependency is not.                                                                                                                                |
-| Module naming (M0+) | `thicket-core`, `thicket-signals`, `thicket-renderer-api`, `thicket-effect-api`, `thicket-effect-zio`, `thicket-renderer-<platform>`, `thicket-layout-yoga`. Group id decided at M0.                                                                  |
+| Module naming (M0+) | `thicket-core`, `thicket-signals`, `thicket-renderer-api`, `thicket-effect-api`, `thicket-effect-zio`, `thicket-renderer-<platform>`, `thicket-layout-yoga`. Group id decided at M0. *Group id: **`net.leibman`** (log, 2026-10-20). `thicket-effect-api` deferred (log, 2026-10-20).* |
 | Code style | Scala 3 syntax, **braces — not significant indentation, and not the "fewer braces" colon form**. Every build sets `-no-indent`, which makes the compiler reject both rather than merely permit braces. `given`/`using`, `enum`, no `implicit` keyword, no `null`, no exceptions for control flow in library code. One `.scalafmt.conf` at the repo root (`maxColumn = 120`), shared by every module and spike. |
-| Tests               | munit (cross-published for all three backends) + munit-scalacheck for property tests.                                                                                                                                                                        |
+| Tests               | ~~munit (cross-published for all three backends) + munit-scalacheck for property tests.~~ *zio-test on every backend; property tests through its `check`/`Gen`.* |
 
 ## Execution order for phase 0
 
@@ -69,6 +72,18 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-20 — **Docs policy, unbuilt kinds, the layout contract, Picker `-1`** (review
+  2026-10-20 D2, D9, D11, D13).
+  **D2:** docs 01–08 are frozen (the plan as written); `decisions.md`, 09 and 10 are
+  append-only — a superseded table row may say so and point here; 11–15, the phase-review
+  index and every README are living, kept true in the change that makes them false.
+  `CLAUDE.md` used to freeze everything but the log and 09, which is how 12–15 drifted.
+  **D9:** a renderer given a kind it has not built shows a visible placeholder in normal
+  runs and throws under a self-test (#74, for Apple). **D11:** the layout half of the
+  `Renderer` contract (`measure`, `setFrame`, `layoutMode`) has no caller; it stays, dormant,
+  until a frame-based renderer needs it. **D13:** `Picker` with `Selected(-1)` shows a blank
+  placeholder on every platform — GTK's empty drop-down, a leading blank entry on Android
+  (WP-11), and #77 for Apple.
 - 2026-10-20 — **Spikes archived** (review 2026-10-20 D6). `spikes/` keeps each spike's
   `BRIEF.md` and `REPORT.md`, which the docs and code comments cite, and loses the code: no
   build used it, nothing depended on it, ~160 files still carried the `dev.scalaui`

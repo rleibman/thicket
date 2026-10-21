@@ -1,0 +1,10 @@
+Thicket
+Copyright 2026 Roberto Leibman
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes path data from Material Symbols, by Google
+(https://github.com/google/material-design-icons), licensed under the Apache License,
+Version 2.0. It is in modules/renderer-api/shared/src/main/scala/thicket/renderer/MaterialSymbols.scala,
+one string per icon, each marked with the symbol it came from. The copyright notice at the
+head of that file covers the code around the path data, not the path data itself.

@@ -20,8 +20,9 @@ package thicket.renderer
   *
   * Path data from **Material Symbols** (Outlined, weight 400, 24px), by Google, licensed under the Apache License 2.0:
   * https://github.com/google/material-design-icons, `symbols/web/<name>/materialsymbolsoutlined/<name>_24px.svg`. Each
-  * line names the symbol it came from. Every path is in the symbols' own `0 -960 960 960` view box — a 960-unit square
-  * whose top edge is at y = -960 — and parses with [[SvgPath]], which a test checks for every entry.
+  * line names the symbol it came from. The path data is Google's, credited in the repository's `NOTICE`; the copyright
+  * header above covers this file's code, not that data. Every path is in the symbols' own `0 -960 960 960` view box — a
+  * 960-unit square whose top edge is at y = -960 — and parses with [[SvgPath]], which a test checks for every entry.
   *
   * Not a resource: the renderer ships as a plain jar, which cannot carry Android resources, so the artwork travels as
   * data and is drawn as a tinted vector path.
