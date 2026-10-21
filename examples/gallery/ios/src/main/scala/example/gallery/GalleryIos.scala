@@ -21,16 +21,15 @@ import thicket.renderer.apple.{AppleApp, GcState}
 
 /** The gallery on iOS (UIKit) — the same tree, the same renderer, a different entry shape.
   *
-  * No `main`: iOS refuses to launch an app that does not adopt the UIScene lifecycle (S3),
-  * and a scene delegate cannot live in the static library Scala Native produces, so the
-  * entry point belongs to the Swift host. The host creates the window, hands its root view
-  * to the shim and calls this, on the main thread — the only non-Scala thread allowed to
+  * No `main`: iOS refuses to launch an app that does not adopt the UIScene lifecycle (S3), and a scene delegate cannot
+  * live in the static library Scala Native produces, so the entry point belongs to the Swift host. The host creates the
+  * window, hands its root view to the shim and calls this, on the main thread — the only non-Scala thread allowed to
   * enter Scala (S1).
   */
 object GalleryIos {
 
-  /** Called by the Swift host. `guarded` because this is a host -> Scala entry and the main
-    * thread is Unmanaged while the run loop owns it (S3).
+  /** Called by the Swift host. `guarded` because this is a host -> Scala entry and the main thread is Unmanaged while
+    * the run loop owns it (S3).
     */
   @exported("thicket_gallery_start")
   def thicket_gallery_start(): Unit =

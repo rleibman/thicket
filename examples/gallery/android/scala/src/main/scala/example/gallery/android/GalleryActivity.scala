@@ -26,14 +26,12 @@ import thicket.signals.{Owner, Signal, ThreadGuard}
 
 /** The gallery on Android — the same screen the GTK, macOS and iOS hosts mount.
   *
-  * Deliberately plainer than `example.android.MainActivity`: no branding, no back-stack
-  * restore, no insets handling. Those belong to an *app*, and the gallery is a conformance
-  * surface. What it keeps is the part that matters here — chrome applied natively from
-  * `AppRoot`, so the toolbar actions and title come from the same place on every platform.
+  * Deliberately plainer than `example.android.MainActivity`: no branding, no back-stack restore, no insets handling.
+  * Those belong to an *app*, and the gallery is a conformance surface. What it keeps is the part that matters here —
+  * chrome applied natively from `AppRoot`, so the toolbar actions and title come from the same place on every platform.
   *
-  * The theme is left entirely to the platform, on purpose: a branded accent would hide
-  * whether each widget is picking up Android's own tokens, which is the one thing a
-  * cross-platform catalogue is for.
+  * The theme is left entirely to the platform, on purpose: a branded accent would hide whether each widget is picking
+  * up Android's own tokens, which is the one thing a cross-platform catalogue is for.
   */
 class GalleryActivity extends Activity {
 
@@ -48,7 +46,7 @@ class GalleryActivity extends Activity {
     ThreadGuard.install(ThreadGuard.owningThread)
 
     val renderer = AndroidRenderer(this)
-    given Owner  = owner
+    given Owner = owner
 
     app = Gallery.app()
     val mounted = Reconciler.mount(renderer, app.element)
@@ -67,19 +65,23 @@ class GalleryActivity extends Activity {
 
   /** The actions the current screen declares, read by [[onCreateOptionsMenu]].
     *
-    * A field because Android drives menu construction on its own schedule: the app says
-    * "the menu changed" and the platform asks for it back when it is ready.
+    * A field because Android drives menu construction on its own schedule: the app says "the menu changed" and the
+    * platform asks for it back when it is ready.
     */
   private var currentActions: Seq[Action] = Nil
 
   override def onCreateOptionsMenu(menu: Menu): Boolean = {
     menu.clear()
-    currentActions.zipWithIndex.foreach { (a, i) =>
-      val item = menu.add(Menu.NONE, i, i, a.label)
-      item.setEnabled(a.enabled)
-      // IF_ROOM, not ALWAYS: Android decides whether an action fits on the bar or belongs
-      // in the overflow, and overriding that is how a toolbar ends up clipped on a phone.
-      item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+    currentActions.zipWithIndex.foreach {
+      (
+        a,
+        i
+      ) =>
+        val item = menu.add(Menu.NONE, i, i, a.label)
+        item.setEnabled(a.enabled)
+        // IF_ROOM, not ALWAYS: Android decides whether an action fits on the bar or belongs
+        // in the overflow, and overriding that is how a toolbar ends up clipped on a phone.
+        item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
     }
     true
   }

@@ -18,58 +18,56 @@ package thicket.renderer.gtk
 
 import scala.scalanative.unsafe.*
 import sn.gnome.gtk4.internal.*
-import sn.gnome.gobject.internal.{g_type_check_instance_is_a, GType, GTypeInstance}
+import sn.gnome.gobject.internal.{GType, GTypeInstance, g_type_check_instance_is_a}
 
 /** Reads the widget tree back out of GTK.
   *
-  * Used by the demos to verify that the renderer's calls produce the intended result in a
-  * real toolkit — the unit tests prove the reconciler against an in-memory renderer, which
-  * cannot catch a wrong GTK call.
+  * Used by the demos to verify that the renderer's calls produce the intended result in a real toolkit — the unit tests
+  * prove the reconciler against an in-memory renderer, which cannot catch a wrong GTK call.
   *
-  * Type tests go through `g_type_check_instance_is_a`, which is GTK's own mechanism. An
-  * earlier version compared `gtk_widget_get_css_name`, which is a presentation detail and
-  * does not reliably identify a widget class.
+  * Type tests go through `g_type_check_instance_is_a`, which is GTK's own mechanism. An earlier version compared
+  * `gtk_widget_get_css_name`, which is a presentation detail and does not reliably identify a widget class.
   */
 object GtkInspect {
 
-  private def isA(widget: Ptr[GtkWidget], tpe: GType): Boolean =
+  private def isA(
+    widget: Ptr[GtkWidget],
+    tpe:    GType
+  ): Boolean =
     widget != null &&
       g_type_check_instance_is_a(widget.asInstanceOf[Ptr[GTypeInstance]], tpe)
         .asInstanceOf[CInt] != 0
 
   /** How many stylesheets this renderer wrote that GTK could not parse. Should be zero.
     *
-    * Exposed here rather than from `Handles`, which is `private[gtk]` and should stay that
-    * way: this is a question a self-test asks of the toolkit, which is what `GtkInspect` is
-    * for.
+    * Exposed here rather than from `Handles`, which is `private[gtk]` and should stay that way: this is a question a
+    * self-test asks of the toolkit, which is what `GtkInspect` is for.
     *
-    * Why it is a counter and not a log grep: GTK reports bad CSS with a `Gtk-WARNING` and
-    * then carries on with whatever parsed. The renderer asked for CSS nesting, which GTK4
-    * does not support, from the day theming landed — 26 warnings per run of the demo, the
-    * child rule silently discarded, and nothing failed, because the self-tests grep for
+    * Why it is a counter and not a log grep: GTK reports bad CSS with a `Gtk-WARNING` and then carries on with whatever
+    * parsed. The renderer asked for CSS nesting, which GTK4 does not support, from the day theming landed — 26 warnings
+    * per run of the demo, the child rule silently discarded, and nothing failed, because the self-tests grep for
     * `Gtk-CRITICAL` (#30).
     */
   def cssParseErrors: Long = Handles.cssParseErrors
 
   /** Callbacks the handle table is holding right now.
     *
-    * A `destroy` that forgets to release an id leaves its closure here for the life of the
-    * process, and the closure can capture a whole subtree. Comparing the count across a
-    * mount-then-unmount is the cheap way to notice; `valueIds` leaked from the day `Slider`
-    * landed and nothing saw it.
+    * A `destroy` that forgets to release an id leaves its closure here for the life of the process, and the closure can
+    * capture a whole subtree. Comparing the count across a mount-then-unmount is the cheap way to notice; `valueIds`
+    * leaked from the day `Slider` landed and nothing saw it.
     */
   def liveCallbacks: Int = Handles.liveCount
 
   /** Whether the pointer still refers to a live `GtkWidget`.
     *
-    * On a toolkit where a container owns its children, freeing a container frees its
-    * descendants, so a renderer can be handed a pointer the toolkit has already reclaimed.
+    * On a toolkit where a container owns its children, freeing a container frees its descendants, so a renderer can be
+    * handed a pointer the toolkit has already reclaimed.
     */
   def isWidget(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_widget_get_type())
 
-  def isLabel(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_label_get_type())
-  def isEntry(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_entry_get_type())
-  def isSwitch(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_switch_get_type())
+  def isLabel(widget:   Ptr[GtkWidget]): Boolean = isA(widget, gtk_label_get_type())
+  def isEntry(widget:   Ptr[GtkWidget]): Boolean = isA(widget, gtk_entry_get_type())
+  def isSwitch(widget:  Ptr[GtkWidget]): Boolean = isA(widget, gtk_switch_get_type())
   def isSpinner(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_spinner_get_type())
 
   def isProgressBar(widget: Ptr[GtkWidget]): Boolean =
@@ -77,9 +75,8 @@ object GtkInspect {
 
   def isScale(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_scale_get_type())
 
-  /** A context menu's popover. Parented to its widget but not in the parent box's child
-    * list, so it is reachable by walking and invisible to a child count — which is the
-    * distinction a `ContextMenu` prop is meant to have.
+  /** A context menu's popover. Parented to its widget but not in the parent box's child list, so it is reachable by
+    * walking and invisible to a child count — which is the distinction a `ContextMenu` prop is meant to have.
     */
   def isPopover(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_popover_get_type())
 
@@ -96,8 +93,8 @@ object GtkInspect {
     here ++ children(widget).flatMap(c => findAll(c)(p))
   }
 
-  /** What the switch actually shows, read back out of GTK rather than out of the signal
-    * that drove it — which is the only way to know the renderer wrote it.
+  /** What the switch actually shows, read back out of GTK rather than out of the signal that drove it — which is the
+    * only way to know the renderer wrote it.
     */
   def switchActive(widget: Ptr[GtkWidget]): Boolean =
     gtk_switch_get_active(widget.asInstanceOf[Ptr[GtkSwitch]]).asInstanceOf[CInt] != 0
@@ -107,7 +104,7 @@ object GtkInspect {
 
   /** Direct children of `widget`, in GTK's own order. */
   def children(widget: Ptr[GtkWidget]): List[Ptr[GtkWidget]] = {
-    val out   = scala.collection.mutable.ListBuffer.empty[Ptr[GtkWidget]]
+    val out = scala.collection.mutable.ListBuffer.empty[Ptr[GtkWidget]]
     var child = gtk_widget_get_first_child(widget)
     while (child != null) {
       out += child
@@ -118,20 +115,23 @@ object GtkInspect {
 
   /** The width GTK would give `widget` if nothing constrained it.
     *
-    * A horizontal scroller is doing its job exactly when its own natural width is far
-    * below its content's: the content overflows, and the viewport asks for a fraction of
-    * it rather than forcing the window wider or clipping the surplus.
+    * A horizontal scroller is doing its job exactly when its own natural width is far below its content's: the content
+    * overflows, and the viewport asks for a fraction of it rather than forcing the window wider or clipping the
+    * surplus.
     */
   def naturalWidth(widget: Ptr[GtkWidget]): Int = natural(widget, GtkOrientation.GTK_ORIENTATION_HORIZONTAL)
 
   def naturalHeight(widget: Ptr[GtkWidget]): Int = natural(widget, GtkOrientation.GTK_ORIENTATION_VERTICAL)
 
-  private def natural(widget: Ptr[GtkWidget], axis: GtkOrientation): Int = {
+  private def natural(
+    widget: Ptr[GtkWidget],
+    axis:   GtkOrientation
+  ): Int = {
     val zone = scala.scalanative.unsafe.Zone.open()
     try {
       given Zone = zone
-      val min    = alloc[CInt](1)
-      val nat    = alloc[CInt](1)
+      val min = alloc[CInt](1)
+      val nat = alloc[CInt](1)
       gtk_widget_measure(widget, axis, -1, min, nat, null, null)
       !nat
     } finally zone.close()
@@ -145,7 +145,12 @@ object GtkInspect {
     */
   def interceptUrls(): scala.collection.mutable.Buffer[String] = {
     val opened = scala.collection.mutable.Buffer.empty[String]
-    UrlOpener.replace((url, _) => opened += url)
+    UrlOpener.replace(
+      (
+        url,
+        _
+      ) => opened += url
+    )
     opened
   }
 
@@ -163,7 +168,10 @@ object GtkInspect {
       )
     )
 
-  def hasCssClass(widget: Ptr[GtkWidget], name: String): Boolean =
+  def hasCssClass(
+    widget: Ptr[GtkWidget],
+    name:   String
+  ): Boolean =
     Zone(gtk_widget_has_css_class(widget, toCString(name)).asInstanceOf[CInt] != 0)
 
   def isToggleButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_toggle_button_get_type())
@@ -196,7 +204,12 @@ object GtkInspect {
   /** Choose a day as a click on it does: move the calendar there and emit "day-selected", which is the signal a click
     * on a day emits — so the renderer's own handler is what reports it.
     */
-  def chooseDay(calendar: Ptr[GtkWidget], year: Int, month: Int, day: Int): Unit = {
+  def chooseDay(
+    calendar: Ptr[GtkWidget],
+    year:     Int,
+    month:    Int,
+    day:      Int
+  ): Unit = {
     val c = calendar.asInstanceOf[Ptr[GtkCalendar]]
     gtk_calendar_set_day(c, 1)
     gtk_calendar_set_year(c, year)
@@ -256,14 +269,20 @@ object GtkInspect {
   /** Whether the icon theme in use can draw `name` — asked of the theme, not of a list, so a name that the user's theme
     * lacks fails here rather than drawing GTK's missing-image icon.
     */
-  def themeHasIcon(widget: Ptr[GtkWidget], name: String): Boolean =
+  def themeHasIcon(
+    widget: Ptr[GtkWidget],
+    name:   String
+  ): Boolean =
     Zone(
       gtk_icon_theme_has_icon(gtk_icon_theme_get_for_display(gtk_widget_get_display(widget)), toCString(name))
         .asInstanceOf[CInt] != 0
     )
 
   /** Where a `Grid` put a cell, as (column, row), read back from GTK rather than computed. */
-  def gridCell(grid: Ptr[GtkWidget], child: Ptr[GtkWidget]): (Int, Int) = {
+  def gridCell(
+    grid:  Ptr[GtkWidget],
+    child: Ptr[GtkWidget]
+  ): (Int, Int) = {
     val zone = scala.scalanative.unsafe.Zone.open()
     try {
       given Zone = zone
@@ -292,11 +311,11 @@ object GtkInspect {
     if isA(widget, gtk_scrolled_window_get_type()) then Some(widget)
     else children(widget).view.flatMap(findScroller).headOption
 
-  /** Every piece of text in the subtree, in tree order: label text, the label of a button
-    * (which GTK nests as a child `GtkLabel`), and the contents of a text entry.
+  /** Every piece of text in the subtree, in tree order: label text, the label of a button (which GTK nests as a child
+    * `GtkLabel`), and the contents of a text entry.
     *
-    * Entries are checked *before* recursing: a `GtkEntry` has internal children of its own,
-    * and walking into them would report its private structure instead of its value.
+    * Entries are checked *before* recursing: a `GtkEntry` has internal children of its own, and walking into them would
+    * report its private structure instead of its value.
     */
   def allTexts(widget: Ptr[GtkWidget]): List[String] =
     if isEntry(widget) then {
@@ -317,4 +336,5 @@ object GtkInspect {
       val t = gtk_label_get_text(c.asInstanceOf[Ptr[GtkLabel]])
       if t == null then None else Some(fromCString(t))
     }
+
 }

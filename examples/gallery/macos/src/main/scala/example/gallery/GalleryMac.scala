@@ -20,13 +20,11 @@ import thicket.renderer.apple.AppleApp
 
 /** The gallery on macOS (AppKit).
   *
-  * AppKit apps own their own process: `main` starts, `AppleApp.run` hands the thread to
-  * `NSApp.run()` and never returns. Compare [[GalleryIos]], where the process is already
-  * running by the time Scala is reached.
+  * AppKit apps own their own process: `main` starts, `AppleApp.run` hands the thread to `NSApp.run()` and never
+  * returns. Compare [[GalleryIos]], where the process is already running by the time Scala is reached.
   *
-  * Not verified on Linux — see the gallery issue on the tracker. The point of the file
-  * existing now is that `galleryMacos/nativeLink` is a real target on a Mac rather than
-  * something still to be written.
+  * Not verified on Linux — see the gallery issue on the tracker. The point of the file existing now is that
+  * `galleryMacos/nativeLink` is a real target on a Mac rather than something still to be written.
   */
 object GalleryMac {
 

@@ -19,13 +19,12 @@ package example.gallery
 import thicket.renderer.{CalendarDate, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleInspect}
 
-/** The gallery's conformance check on AppKit and UIKit — the same questions the GTK host
-  * asks, through `AppleInspect` instead of `GtkInspect`.
+/** The gallery's conformance check on AppKit and UIKit — the same questions the GTK host asks, through `AppleInspect`
+  * instead of `GtkInspect`.
   *
-  * Deliberately the *same* checks, not Apple-flavoured ones. The gallery's whole claim is
-  * that one screen renders natively on every platform, and that claim is only tested if
-  * each platform is asked the same thing. Where a check has to differ it is because the
-  * platform genuinely differs, and that is noted at the check.
+  * Deliberately the *same* checks, not Apple-flavoured ones. The gallery's whole claim is that one screen renders
+  * natively on every platform, and that claim is only tested if each platform is asked the same thing. Where a check
+  * has to differ it is because the platform genuinely differs, and that is noted at the check.
   *
   * Shared by both Apple hosts: one screen, one set of checks, two entry shapes.
   */
@@ -46,10 +45,9 @@ object GallerySelfTest {
     }
 
   def run(): Unit = {
-    val root  = AppleApp.rootHandle
-    val all   = AppleInspect.all(root)
+    val root = AppleApp.rootHandle
+    val all = AppleInspect.all(root)
     val texts = AppleInspect.allTexts(root)
-
 
     List(
       "Label — every text role",
@@ -72,10 +70,12 @@ object GallerySelfTest {
       "Presented — Sheet and Alert are shown over the app, never inserted"
     ).foreach(h => check(s"section is on screen: $h", texts.contains(h)))
 
-    check("labels in every role", texts.contains("Title") && texts.contains("Body") &&
-      texts.contains("Caption") && texts.contains("Secondary"))
-    check("a disabled button is on screen, not just a reachable state",
-      texts.contains("Disabled"))
+    check(
+      "labels in every role",
+      texts.contains("Title") && texts.contains("Body") &&
+        texts.contains("Caption") && texts.contains("Secondary")
+    )
+    check("a disabled button is on screen, not just a reachable state", texts.contains("Disabled"))
 
     // Two text fields, exactly one of which hides its characters. `isSecure` is the only
     // observable difference between a TextField and a SecureField.
@@ -85,8 +85,11 @@ object GallerySelfTest {
     // The slider drives the progress bar, so a progress value in (0, 1) proves both the
     // bar exists and the binding ran — the initial volume is 4 of 11.
     val progressed = all.map(AppleInspect.progress).filter(p => p > 0.0 && p < 1.0)
-    check("a ProgressBar is bound to the Slider above it",
-      progressed.nonEmpty, s"progress values: $progressed")
+    check(
+      "a ProgressBar is bound to the Slider above it",
+      progressed.nonEmpty,
+      s"progress values: $progressed"
+    )
     val values = all.map(AppleInspect.value).filter(_ > 0.0)
     check("a Slider carries its value", values.contains(4.0), s"values: $values")
 
@@ -95,9 +98,11 @@ object GallerySelfTest {
     // views have menu items", not "how many popovers are in the tree".
     val withMenus = all.filter(h => AppleInspect.menuItems(h).nonEmpty)
     check("one context menu per row", withMenus.length >= 3, s"${withMenus.length} views with menus")
-    check("the menus hold the menu's items",
+    check(
+      "the menus hold the menu's items",
       withMenus.exists(h => AppleInspect.menuItems(h).contains("Remove")),
-      withMenus.map(AppleInspect.menuItems).toString)
+      withMenus.map(AppleInspect.menuItems).toString
+    )
 
     // The Image section's heading being on screen says nothing about the pictures: an image
     // view whose file did not load is an empty frame of the right size. So ask each image
@@ -108,26 +113,31 @@ object GallerySelfTest {
     // image views of its own, and an unfiltered walk counted ten where the screen has two.
     val imageWidgets = all.filter(h => AppleApp.renderer.kindOf(h).contains(WidgetKind.Image))
     val images = imageWidgets.flatMap(h => AppleInspect.hasImage(h))
-    check("every Image shows its picture", images.nonEmpty && images.forall(identity),
-      s"${images.count(identity)} of ${images.size} Image widgets hold an image")
+    check(
+      "every Image shows its picture",
+      images.nonEmpty && images.forall(identity),
+      s"${images.count(identity)} of ${images.size} Image widgets hold an image"
+    )
 
     newControls(all)
 
     // Presented widgets must not be in the tree until asked for.
-    check("nothing is presented before it is asked for",
-      AppleInspect.presentedCount == 0, s"${AppleInspect.presentedCount} presented")
+    check(
+      "nothing is presented before it is asked for",
+      AppleInspect.presentedCount == 0,
+      s"${AppleInspect.presentedCount} presented"
+    )
 
     if failures == 0 then println("[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
   }
 
-
   /** The questions the GTK gallery asks of the controls #45 and #46 added, asked of AppKit and UIKit.
     *
     * Each control is found through the renderer (which handles are the framework's own Picker, ZStack, …) and every
     * answer is read from the platform's control, so a renderer that drew the right widget and bound it wrongly fails.
-    * Choices are made through the control's own action, the path a user's click takes; where UIKit offers no way to
-    * do that from code — a `UIAction` cannot be performed — the check says so instead of passing.
+    * Choices are made through the control's own action, the path a user's click takes; where UIKit offers no way to do
+    * that from code — a `UIAction` cannot be performed — the check says so instead of passing.
     */
   private def newControls(all: List[thicket.renderer.apple.Shim.Handle]): Unit = {
     def ofKind(k: WidgetKind) = all.filter(h => AppleApp.renderer.kindOf(h).contains(k))
@@ -137,7 +147,11 @@ object GallerySelfTest {
     val pickers = ofKind(WidgetKind.Picker)
     check("one Picker", pickers.length == 1, pickers.length.toString)
     pickers.headOption.foreach { p =>
-      check("the Picker offers its options", AppleInspect.options(p) == Gallery.fruit, AppleInspect.options(p).toString)
+      check(
+        "the Picker offers its options",
+        AppleInspect.options(p) == Gallery.fruit,
+        AppleInspect.options(p).toString
+      )
       check("and shows the model's selection", AppleInspect.selected(p) == 1, AppleInspect.selected(p).toString)
       if AppleInspect.choose(p, Gallery.fruit.length - 1) then
         check(
@@ -159,20 +173,39 @@ object GallerySelfTest {
       )
       val target = CalendarDate(2029, 1, 31)
       check("a day can be chosen", AppleInspect.chooseDate(d, target.toEpochDay))
-      check("choosing a day reaches the app", texts.contains("Due 2029-01-31"), texts.filter(_.startsWith("Due")).toString)
-      check("and the control holds it", AppleInspect.date(d) == target.toEpochDay,
-        CalendarDate.fromEpochDay(AppleInspect.date(d)).toString)
+      check(
+        "choosing a day reaches the app",
+        texts.contains("Due 2029-01-31"),
+        texts.filter(_.startsWith("Due")).toString
+      )
+      check(
+        "and the control holds it",
+        AppleInspect.date(d) == target.toEpochDay,
+        CalendarDate.fromEpochDay(AppleInspect.date(d)).toString
+      )
     }
 
     // --- SegmentedControl ---
     val segmented = ofKind(WidgetKind.SegmentedControl)
     check("one SegmentedControl", segmented.length == 1, segmented.length.toString)
     segmented.headOption.foreach { s =>
-      check("a segment per option, in order", AppleInspect.options(s) == Gallery.spans, AppleInspect.options(s).toString)
-      check("the model's selection is the selected segment", AppleInspect.selected(s) == 1, AppleInspect.selected(s).toString)
+      check(
+        "a segment per option, in order",
+        AppleInspect.options(s) == Gallery.spans,
+        AppleInspect.options(s).toString
+      )
+      check(
+        "the model's selection is the selected segment",
+        AppleInspect.selected(s) == 1,
+        AppleInspect.selected(s).toString
+      )
       check("a segment can be chosen", AppleInspect.choose(s, 2))
       check("choosing one selects it", AppleInspect.selected(s) == 2, AppleInspect.selected(s).toString)
-      check("and reaches the app", texts.contains("Showing a Month"), texts.filter(_.startsWith("Showing")).toString)
+      check(
+        "and reaches the app",
+        texts.contains("Showing a Month"),
+        texts.filter(_.startsWith("Showing")).toString
+      )
     }
 
     // --- Link: clicked for real, with the opener recording instead of launching a browser ---
@@ -184,9 +217,16 @@ object GallerySelfTest {
     }
     linkTitled("Apache License 2.0").foreach { l =>
       AppleInspect.click(l)
-      check("a link with a tap opens its URL", opened().lastOption.contains(Gallery.licenceUrl), opened().toString)
-      check("and runs the tap as well", texts.contains("The licence link was tapped 1 times"),
-        texts.filter(_.contains("licence")).toString)
+      check(
+        "a link with a tap opens its URL",
+        opened().lastOption.contains(Gallery.licenceUrl),
+        opened().toString
+      )
+      check(
+        "and runs the tap as well",
+        texts.contains("The licence link was tapped 1 times"),
+        texts.filter(_.contains("licence")).toString
+      )
     }
     check("both links were found and clicked", opened().length == 2, opened().toString)
     AppleInspect.stopRecordingUrls()
@@ -194,7 +234,10 @@ object GallerySelfTest {
     // --- ZStack: paint order is subview order; placement and size read as frames ---
     val stacks = ofKind(WidgetKind.ZStack)
     check("two ZStacks", stacks.length == 2, stacks.length.toString)
-    def near(a: Double, b: Double) = math.abs(a - b) <= 1.0
+    def near(
+      a: Double,
+      b: Double
+    ) = math.abs(a - b) <= 1.0
     stacks.headOption.foreach { badge =>
       val kids = AppleInspect.children(badge)
       check(
@@ -205,11 +248,18 @@ object GallerySelfTest {
       val (sx, sy, sw, sh) = AppleInspect.frame(badge)
       kids.lastOption.foreach { b =>
         val (bx, by, bw, _) = AppleInspect.frame(b)
-        check("the badge sits top-trailing", near(bx + bw, sx + sw) && near(by, sy), s"badge ($bx,$by,$bw) in stack ($sx,$sy,$sw,$sh)")
+        check(
+          "the badge sits top-trailing",
+          near(bx + bw, sx + sw) && near(by, sy),
+          s"badge ($bx,$by,$bw) in stack ($sx,$sy,$sw,$sh)"
+        )
       }
       val (cw, ch) = (kids.map(k => AppleInspect.frame(k)._3).max, kids.map(k => AppleInspect.frame(k)._4).max)
-      check("the stack is as large as its largest child", near(sw, cw) && near(sh, ch) && sw > 0 && sh > 0,
-        s"stack ${sw}x$sh, largest child ${cw}x$ch")
+      check(
+        "the stack is as large as its largest child",
+        near(sw, cw) && near(sh, ch) && sw > 0 && sh > 0,
+        s"stack ${sw}x$sh, largest child ${cw}x$ch"
+      )
     }
     stacks.lift(1).foreach { centred =>
       val kids = AppleInspect.children(centred)
@@ -219,8 +269,11 @@ object GallerySelfTest {
         AppleApp.renderer.kindOf(k).contains(WidgetKind.ActivityIndicator) &&
         near(x + w / 2, sx + sw / 2) && near(y + h / 2, sy + sh / 2)
       }
-      check("the spinner is over its content, centred", kids.length == 2 && spinnerCentred,
-        kids.map(k => AppleInspect.frame(k)).toString)
+      check(
+        "the spinner is over its content, centred",
+        kids.length == 2 && spinnerCentred,
+        kids.map(k => AppleInspect.frame(k)).toString
+      )
     }
 
     // --- Grid: the questions GtkGrid answers, asked of NSGridView's rows and columns on AppKit
@@ -230,16 +283,38 @@ object GallerySelfTest {
     check("one Grid", grids.length == 1, grids.length.toString)
     grids.headOption.foreach { grid =>
       def cells = AppleInspect.children(grid).map(c => (AppleInspect.allTexts(c).mkString, c))
-      def at(text: String) = cells.find(_._1 == text).flatMap((_, c) => AppleInspect.gridCell(grid, c))
-      def placement = cells.map((t, c) => t -> AppleInspect.gridCell(grid, c)).toString
+      def at(text: String) =
+        cells
+          .find(_._1 == text).flatMap(
+            (
+              _,
+              c
+            ) => AppleInspect.gridCell(grid, c)
+          )
+      def placement =
+        cells
+          .map(
+            (
+              t,
+              c
+            ) => t -> AppleInspect.gridCell(grid, c)
+          ).toString
       // Each column starts where the one before it ends, at its widest cell, plus the 8 of
       // spacing; each row likewise at its tallest cell. Every cell's leading and top edge is
       // its column's and its row's. Within a point, as the ZStack's checks are.
       def laidOut: (Boolean, String) = {
-        val placed = cells.flatMap((_, c) => AppleInspect.gridCell(grid, c).map(_ -> AppleInspect.frame(c)))
-        val byCol  = placed.groupBy(_._1._2).toList.sortBy(_._1).map(_._2.map(_._2))
-        val byRow  = placed.groupBy(_._1._1).toList.sortBy(_._1).map(_._2.map(_._2))
-        def near(a: Double, b: Double) = math.abs(a - b) <= 1.0
+        val placed = cells.flatMap(
+          (
+            _,
+            c
+          ) => AppleInspect.gridCell(grid, c).map(_ -> AppleInspect.frame(c))
+        )
+        val byCol = placed.groupBy(_._1._2).toList.sortBy(_._1).map(_._2.map(_._2))
+        val byRow = placed.groupBy(_._1._1).toList.sortBy(_._1).map(_._2.map(_._2))
+        def near(
+          a: Double,
+          b: Double
+        ) = math.abs(a - b) <= 1.0
         val colsLine = byCol.forall(fs => fs.forall(f => near(f._1, fs.head._1)))
         val rowsLine = byRow.forall(fs => fs.forall(f => near(f._2, fs.head._2)))
         val colsStep = byCol.sliding(2).forall {
@@ -250,27 +325,45 @@ object GallerySelfTest {
           case List(a, b) => near(b.head._2, a.head._2 + a.map(_._4).max + 8)
           case _          => true
         }
-        (colsLine && rowsLine && colsStep && rowsStep,
+        (
+          colsLine && rowsLine && colsStep && rowsStep,
           s"cols line=$colsLine step=$colsStep rows line=$rowsLine step=$rowsStep " +
-            byCol.map(_.map(f => f"(${f._1}%.0f,${f._2}%.0f ${f._3}%.0fx${f._4}%.0f)")).toString)
+            byCol.map(_.map(f => f"(${f._1}%.0f,${f._2}%.0f ${f._3}%.0fx${f._4}%.0f)")).toString
+        )
       }
       def button(t: String) = ofKind(WidgetKind.Button).find(h => AppleInspect.text(h).contains(t))
 
-      check("cells flow row by row into two columns",
+      check(
+        "cells flow row by row into two columns",
         at("Typed above").contains((0, 0)) && at("Volume").contains((1, 0)) &&
           at("A much longer label than the others").contains((2, 0)) && at("short").contains((2, 1)),
-        placement)
-      check("the bound cell sits beside its label",
-        cells.exists((t, c) => t.matches("""\d+\.\d""") && AppleInspect.gridCell(grid, c).contains((1, 1))), placement)
+        placement
+      )
+      check(
+        "the bound cell sits beside its label",
+        cells.exists(
+          (
+            t,
+            c
+          ) => t.matches("""\d+\.\d""") && AppleInspect.gridCell(grid, c).contains((1, 1))
+        ),
+        placement
+      )
       val (ok, how) = laidOut
       check("columns as wide as their widest cell, rows as tall as their tallest, 8 apart", ok, how)
       println(s"[gallery]   grid frames: $how")
 
       button("Insert a row").foreach(AppleInspect.click)
-      check("a row inserted in the middle lands there",
-        at("Inserted").contains((1, 0)) && at("a whole row").contains((1, 1)), placement)
-      check("and every cell after it moves down a row", at("Volume").contains((2, 0)) && at("short").contains((3, 1)),
-        placement)
+      check(
+        "a row inserted in the middle lands there",
+        at("Inserted").contains((1, 0)) && at("a whole row").contains((1, 1)),
+        placement
+      )
+      check(
+        "and every cell after it moves down a row",
+        at("Volume").contains((2, 0)) && at("short").contains((3, 1)),
+        placement
+      )
       val (ok2, how2) = laidOut
       check("and the layout follows", ok2, how2)
 

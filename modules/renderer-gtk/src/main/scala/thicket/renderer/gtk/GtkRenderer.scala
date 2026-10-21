@@ -23,84 +23,82 @@ import thicket.renderer.*
 import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.*
 import sn.gnome.glib.internal.{gchar, gpointer}
-import sn.gnome.glib.internal.{g_idle_add, GSourceFunc}
+import sn.gnome.glib.internal.{GSourceFunc, g_idle_add}
 import sn.gnome.gio.internal.{GAsyncReadyCallback, GCancellable, g_cancellable_cancel, g_cancellable_new}
 
 /** GTK4 implementation of [[Renderer]]. */
 final class GtkRenderer extends Renderer {
+
   type Handle = Ptr[GtkWidget]
 
-  private val kinds    = mutable.Map.empty[Ptr[GtkWidget], WidgetKind]
-  private val tapIds   = mutable.Map.empty[Ptr[GtkWidget], Long]
-  private val editIds  = mutable.Map.empty[Ptr[GtkWidget], Long]
+  private val kinds = mutable.Map.empty[Ptr[GtkWidget], WidgetKind]
+  private val tapIds = mutable.Map.empty[Ptr[GtkWidget], Long]
+  private val editIds = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val toggleIds = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val selectIds = mutable.Map.empty[Ptr[GtkWidget], Long]
-  private val valueIds  = mutable.Map.empty[Ptr[GtkWidget], Long]
+  private val valueIds = mutable.Map.empty[Ptr[GtkWidget], Long]
 
   // An Alert's state, keyed by its placeholder handle. The GtkAlertDialog itself does not
   // exist until `present`, because GtkAlertDialog is a GObject and cannot be a Handle.
-  private val alertTitle   = mutable.Map.empty[Ptr[GtkWidget], String]
-  private val alertDetail  = mutable.Map.empty[Ptr[GtkWidget], String]
+  private val alertTitle = mutable.Map.empty[Ptr[GtkWidget], String]
+  private val alertDetail = mutable.Map.empty[Ptr[GtkWidget], String]
   private val alertActions = mutable.Map.empty[Ptr[GtkWidget], Seq[AlertAction]]
   private val alertDismiss = mutable.Map.empty[Ptr[GtkWidget], () => Unit]
 
-  /** The cancellable behind a showing alert. Cancelling it is the only way GTK offers to
-    * take one down without the user choosing, so `dismiss` needs it — and it also tells the
-    * response callback apart from a user dismissal, since both arrive as index -1.
+  /** The cancellable behind a showing alert. Cancelling it is the only way GTK offers to take one down without the user
+    * choosing, so `dismiss` needs it — and it also tells the response callback apart from a user dismissal, since both
+    * arrive as index -1.
     */
-  private val alertCancel  = mutable.Map.empty[Ptr[GtkWidget], Ptr[GCancellable]]
+  private val alertCancel = mutable.Map.empty[Ptr[GtkWidget], Ptr[GCancellable]]
 
   /** The modal window carrying a showing sheet, and the close-request callback id. */
-  private val sheetWindow  = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWindow]]
+  private val sheetWindow = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWindow]]
   private val sheetCloseId = mutable.Map.empty[Ptr[GtkWidget], Long]
 
-  /** A widget's context-menu popover and the callback ids behind its items, so `destroy`
-    * can unparent the popover and release them rather than leaking one per menu.
+  /** A widget's context-menu popover and the callback ids behind its items, so `destroy` can unparent the popover and
+    * release them rather than leaking one per menu.
     */
   private val menuPopover = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
-  private val menuIds     = mutable.Map.empty[Ptr[GtkWidget], mutable.ArrayBuffer[Long]]
+  private val menuIds = mutable.Map.empty[Ptr[GtkWidget], mutable.ArrayBuffer[Long]]
 
-  /** True while the renderer is writing a value into a widget, so the widget's own change
-    * signal can tell an app-driven update from a user edit and stay silent for the former.
-    * Without this, binding a signal to a text field is an infinite loop.
+  /** True while the renderer is writing a value into a widget, so the widget's own change signal can tell an app-driven
+    * update from a user edit and stay silent for the former. Without this, binding a signal to a text field is an
+    * infinite loop.
     */
   private val suppress = mutable.Set.empty[Ptr[GtkWidget]]
+
   /** Children attached through a *setter* rather than through a container's child list.
     *
-    * `gtk_scrolled_window_set_child` wraps its child in an internal `GtkViewport`, and the
-    * scrolled window keeps its own pointer to it. Detaching that child with the generic
-    * `gtk_widget_unparent` — which is what its *actual* parent, the viewport, would want —
-    * leaves the scrolled window's pointer dangling, and disposing it then unparents freed
-    * memory: `gtk_widget_unparent: assertion 'GTK_IS_WIDGET (widget)' failed`.
+    * `gtk_scrolled_window_set_child` wraps its child in an internal `GtkViewport`, and the scrolled window keeps its
+    * own pointer to it. Detaching that child with the generic `gtk_widget_unparent` — which is what its *actual*
+    * parent, the viewport, would want — leaves the scrolled window's pointer dangling, and disposing it then unparents
+    * freed memory: `gtk_widget_unparent: assertion 'GTK_IS_WIDGET (widget)' failed`.
     *
-    * The rule this encodes: **a widget attached through a setter must be detached through
-    * that setter.**
+    * The rule this encodes: **a widget attached through a setter must be detached through that setter.**
     */
   private val setterParent = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
 
   /** One CSS provider per themed widget.
     *
-    * GTK has no per-widget colour setter, so an override becomes a tiny stylesheet scoped
-    * to that widget by a generated class. Widgets the app did not override get no provider
-    * at all — which is the point: they keep following the user's GTK theme.
+    * GTK has no per-widget colour setter, so an override becomes a tiny stylesheet scoped to that widget by a generated
+    * class. Widgets the app did not override get no provider at all — which is the point: they keep following the
+    * user's GTK theme.
     */
   private val cssProviders = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkCssProvider]]
   private var nextCssClass = 0
 
   /** Attach a stylesheet to one widget, and optionally to its direct children.
     *
-    * `childDeclaration` is a *separate flat rule*, not CSS nesting. GTK4's parser has no `&`
-    * selector: the previous version emitted `.sui-1 { color: X; & > * { color: X; } }` and
-    * GTK answered
+    * `childDeclaration` is a *separate flat rule*, not CSS nesting. GTK4's parser has no `&` selector: the previous
+    * version emitted `.sui-1 { color: X; & > * { color: X; } }` and GTK answered
     *
     * {{{
     * Gtk-WARNING: Theme parser error: <data>:1:26-27: Expected an identifier
     * }}}
     *
-    * — column 26 being the `&`. It then abandoned the rest of the block, so the child rule
-    * never applied and a tinted container's children kept the platform's colour. It had been
-    * doing that since theming landed, 26 times per run of the demo, and nothing noticed
-    * because the self-tests grep for `Gtk-CRITICAL` while this is a `Gtk-WARNING`.
+    * — column 26 being the `&`. It then abandoned the rest of the block, so the child rule never applied and a tinted
+    * container's children kept the platform's colour. It had been doing that since theming landed, 26 times per run of
+    * the demo, and nothing noticed because the self-tests grep for `Gtk-CRITICAL` while this is a `Gtk-WARNING`.
     */
   private def applyCss(
     handle:           Ptr[GtkWidget],
@@ -109,7 +107,7 @@ final class GtkRenderer extends Renderer {
   ): Unit = {
     val cls = cssProviders.get(handle) match {
       case Some(_) => cssClassOf(handle)
-      case None =>
+      case None    =>
         nextCssClass += 1
         val c = s"sui-$nextCssClass"
         cssClasses(handle) = c
@@ -152,8 +150,8 @@ final class GtkRenderer extends Renderer {
 
   def platform: String = "gtk4"
 
-  /** Every GTK container in the v0 vocabulary lays out its own children. Nothing here is
-    * FrameBased yet; a Yoga-driven `GtkFixed` container will be when absolute layout lands.
+  /** Every GTK container in the v0 vocabulary lays out its own children. Nothing here is FrameBased yet; a Yoga-driven
+    * `GtkFixed` container will be when absolute layout lands.
     */
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
 
@@ -164,11 +162,14 @@ final class GtkRenderer extends Renderer {
   private def isEntryKind(handle: Handle): Boolean =
     kinds.get(handle).exists(k => k == WidgetKind.TextField || k == WidgetKind.SecureField)
 
-  def create(kind: WidgetKind, props: Seq[Prop]): Handle = {
+  def create(
+    kind:  WidgetKind,
+    props: Seq[Prop]
+  ): Handle = {
     val w = Zone {
       kind match {
-        case WidgetKind.Column => gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
-        case WidgetKind.Row    => gtk_box_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0)
+        case WidgetKind.Column    => gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+        case WidgetKind.Row       => gtk_box_new(GtkOrientation.GTK_ORIENTATION_HORIZONTAL, 0)
         case WidgetKind.Label     => gtk_label_new(toCString(""))
         case WidgetKind.Button    => gtk_button_new_with_label(toCString(""))
         case WidgetKind.TextField => gtk_entry_new()
@@ -211,9 +212,9 @@ final class GtkRenderer extends Renderer {
         case WidgetKind.Tab     => tabs.createTab()
 
         case WidgetKind.DatePicker =>
-          val button   = gtk_menu_button_new()
+          val button = gtk_menu_button_new()
           val calendar = gtk_calendar_new()
-          val popover  = gtk_popover_new()
+          val popover = gtk_popover_new()
           gtk_popover_set_child(popover.asInstanceOf[Ptr[GtkPopover]], calendar)
           gtk_menu_button_set_popover(button.asInstanceOf[Ptr[GtkMenuButton]], popover)
           calendars(button) = calendar
@@ -283,7 +284,10 @@ final class GtkRenderer extends Renderer {
     w
   }
 
-  def update(handle: Handle, patch: Seq[Prop]): Unit =
+  def update(
+    handle: Handle,
+    patch:  Seq[Prop]
+  ): Unit =
     patch.foreach {
       case Prop.Text(v) =>
         Zone {
@@ -296,13 +300,13 @@ final class GtkRenderer extends Renderer {
               gtk_check_button_set_label(handle.asInstanceOf[Ptr[GtkCheckButton]], toCString(v))
             case Some(WidgetKind.Tab) => tabs.setTitle(handle, v)
             // An Alert's title arrives as Prop.Text on its placeholder handle.
-            case Some(WidgetKind.Alert) | Some(WidgetKind.Sheet) => alertTitle(handle) = v
+            case Some(WidgetKind.Alert) | Some(WidgetKind.Sheet)           => alertTitle(handle) = v
             case Some(WidgetKind.TextField) | Some(WidgetKind.SecureField) =>
               // Only write when the value actually differs. Setting the text unconditionally
               // would move the caret to the end on every keystroke, because the app writes
               // back what the user just typed.
               val editable = handle.asInstanceOf[Ptr[GtkEditable]]
-              val current  = gtk_editable_get_text(editable)
+              val current = gtk_editable_get_text(editable)
               val existing = if current == null then "" else fromCString(current)
               if existing != v then {
                 suppress += handle
@@ -320,7 +324,7 @@ final class GtkRenderer extends Renderer {
       case Prop.OnTextChange(f) =>
         editIds.get(handle) match {
           case Some(id) => Handles.replaceValued(id, s => f(s))
-          case None =>
+          case None     =>
             val id = Handles.registerValued(s => f(s))
             editIds(handle) = id
             Handles.bindTextSource(id, () => readText(handle), () => suppress.contains(handle))
@@ -338,7 +342,7 @@ final class GtkRenderer extends Renderer {
 
       case Prop.Checked(v) =>
         if isSwitch(handle) then {
-          val sw     = handle.asInstanceOf[Ptr[GtkSwitch]]
+          val sw = handle.asInstanceOf[Ptr[GtkSwitch]]
           val active = gtk_switch_get_active(sw).asInstanceOf[CInt] != 0
           if active != v then {
             suppress += handle
@@ -358,18 +362,18 @@ final class GtkRenderer extends Renderer {
       case Prop.OnCheckedChange(f) =>
         toggleIds.get(handle) match {
           case Some(id) => Handles.replaceValued(id, s => f(s == "true"))
-          case None =>
+          case None     =>
             val id = Handles.registerValued(s => f(s == "true"))
             toggleIds(handle) = id
             val sw = isSwitch(handle)
             Handles.bindTextSource(
               id,
               () =>
-                if sw then
-                  gtk_switch_get_active(handle.asInstanceOf[Ptr[GtkSwitch]]).asInstanceOf[CInt] != 0
+                if sw then gtk_switch_get_active(handle.asInstanceOf[Ptr[GtkSwitch]]).asInstanceOf[CInt] != 0
                 else
                   gtk_check_button_get_active(handle.asInstanceOf[Ptr[GtkCheckButton]])
-                    .asInstanceOf[CInt] != 0,
+                    .asInstanceOf[CInt] != 0
+              ,
               () => suppress.contains(handle)
             )
             Zone {
@@ -420,8 +424,8 @@ final class GtkRenderer extends Renderer {
       case Prop.OnSelect(f) if tabs.isTabView(handle)     => tabs.onSelect(handle, f)
 
       case Prop.Options(values) if isSegmented(handle) => setSegments(handle, values)
-      case Prop.Selected(index) if isSegmented(handle)  => selectSegment(handle, index)
-      case Prop.OnSelect(f) if isSegmented(handle)      => segmentChosen(handle) = f
+      case Prop.Selected(index) if isSegmented(handle) => selectSegment(handle, index)
+      case Prop.OnSelect(f) if isSegmented(handle)     => segmentChosen(handle) = f
 
       case Prop.Options(values) =>
         // Refill the model in place. GtkStringList has no "clear", so splice removes the old
@@ -433,7 +437,12 @@ final class GtkRenderer extends Renderer {
         Zone {
           // NULL-terminated, which is what splice wants for "the strings to insert".
           val arr = alloc[CString]((values.length + 1).toUInt)
-          values.zipWithIndex.foreach { (s, i) => arr(i) = toCString(s) }
+          values.zipWithIndex.foreach {
+            (
+              s,
+              i
+            ) => arr(i) = toCString(s)
+          }
           arr(values.length) = null
           gtk_string_list_splice(list, toGuint(0), toGuint(existing), arr)
         }
@@ -463,7 +472,7 @@ final class GtkRenderer extends Renderer {
       case Prop.OnSelect(f) =>
         selectIds.get(handle) match {
           case Some(id) => Handles.replaceValued(id, s => f(s.toInt))
-          case None =>
+          case None     =>
             val id = Handles.registerValued(s => f(s.toInt))
             selectIds(handle) = id
             Handles.bindTextSource(
@@ -489,7 +498,7 @@ final class GtkRenderer extends Renderer {
         gtk_range_set_range(handle.asInstanceOf[Ptr[GtkRange]], min, max)
 
       case Prop.Value(v) =>
-        val range   = handle.asInstanceOf[Ptr[GtkRange]]
+        val range = handle.asInstanceOf[Ptr[GtkRange]]
         val current = gtk_range_get_value(range)
         // Same rule as the text field: writing unconditionally fights the user's drag,
         // because the app writes back the value the drag just produced.
@@ -502,7 +511,7 @@ final class GtkRenderer extends Renderer {
       case Prop.OnValueChange(f) =>
         valueIds.get(handle) match {
           case Some(id) => Handles.replaceValued(id, s => f(s.toDouble))
-          case None =>
+          case None     =>
             val id = Handles.registerValued(s => f(s.toDouble))
             valueIds(handle) = id
             Handles.bindTextSource(
@@ -543,8 +552,7 @@ final class GtkRenderer extends Renderer {
       // anything else the URL is behaviour only, like OnTap.
       case Prop.OpenUrl(url) =>
         links(handle) = url
-        if kinds.get(handle).contains(WidgetKind.Button) then
-          Zone(gtk_widget_add_css_class(handle, toCString("link")))
+        if kinds.get(handle).contains(WidgetKind.Button) then Zone(gtk_widget_add_css_class(handle, toCString("link")))
         connectTap(handle)
 
       case Prop.ContextMenu(items) =>
@@ -555,7 +563,7 @@ final class GtkRenderer extends Renderer {
         // menu appearance without inventing an action-name namespace. Worth revisiting if
         // keyboard navigation or accessibility differs in practice.
         val popover = gtk_popover_new()
-        val box     = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+        val box = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
         Zone {
           gtk_widget_add_css_class(popover, toCString("menu"))
           gtk_popover_set_has_arrow(popover.asInstanceOf[Ptr[GtkPopover]], gbool(false))
@@ -609,9 +617,7 @@ final class GtkRenderer extends Renderer {
         // GTK's own type scale, via the style classes Adwaita defines, rather than a pixel
         // size chosen by us.
         Zone {
-          List("title-1", "body", "caption").foreach(c =>
-            gtk_widget_remove_css_class(handle, toCString(c))
-          )
+          List("title-1", "body", "caption").foreach(c => gtk_widget_remove_css_class(handle, toCString(c)))
           val cls = role match {
             case TextRole.Title   => "title-1"
             case TextRole.Body    => "body"
@@ -632,7 +638,7 @@ final class GtkRenderer extends Renderer {
       case Prop.Picture(source) =>
         val picture = handle.asInstanceOf[Ptr[GtkPicture]]
         source match {
-          case None => gtk_picture_set_paintable(picture, null)
+          case None                             => gtk_picture_set_paintable(picture, null)
           case Some(ImageSource.FromFile(path)) =>
             Zone(gtk_picture_set_filename(picture, toCString(path)))
           case Some(ImageSource.FromBytes(data)) =>
@@ -640,7 +646,7 @@ final class GtkRenderer extends Renderer {
               // Decoding happens here, on the UI thread. For anything large an app should
               // decode off-thread and hand over a file; see the note in the DSL.
               val buf = alloc[Byte](data.length)
-              var i   = 0
+              var i = 0
               while (i < data.length) { buf(i) = data(i); i += 1 }
               val bytes = sn.gnome.glib.internal.g_bytes_new(
                 buf.asInstanceOf[sn.gnome.glib.internal.gconstpointer],
@@ -752,19 +758,29 @@ final class GtkRenderer extends Renderer {
   /** A GtkOverlay places an overlay child by that child's own halign/valign, so the stack's alignment is written onto
     * each child. Nothing else in this renderer sets either, so there is nothing of the child's to overwrite.
     */
-  private def alignInStack(stack: Handle, child: Handle): Unit =
-    stackAlignment.get(stack).foreach { (h, v) =>
-      gtk_widget_set_halign(child, h)
-      gtk_widget_set_valign(child, v)
+  private def alignInStack(
+    stack: Handle,
+    child: Handle
+  ): Unit =
+    stackAlignment.get(stack).foreach {
+      (
+        h,
+        v
+      ) =>
+        gtk_widget_set_halign(child, h)
+        gtk_widget_set_valign(child, v)
     }
 
   // -- DatePicker ------------------------------------------------------------
 
-  private val calendars   = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
-  private val dateIds     = mutable.Map.empty[Ptr[GtkWidget], Long]
+  private val calendars = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
+  private val dateIds = mutable.Map.empty[Ptr[GtkWidget], Long]
   private val dateChanged = mutable.Map.empty[Ptr[GtkWidget], CalendarDate => Unit]
 
-  private def showDate(button: Handle, date: CalendarDate): Unit =
+  private def showDate(
+    button: Handle,
+    date:   CalendarDate
+  ): Unit =
     calendars.get(button).foreach { c =>
       val calendar = c.asInstanceOf[Ptr[GtkCalendar]]
       // Day 1 first: moving from the 31st to a 30-day month would otherwise pass through a
@@ -781,20 +797,25 @@ final class GtkRenderer extends Renderer {
   /** The locale's own date format (`%x`), from glib, so the button reads as dates do on this desktop. At midnight UTC
     * on a UTC date-time: the date is a calendar day, and no zone may move it.
     */
-  private def formatDate(date: CalendarDate): String = Zone {
-    import sn.gnome.glib.internal.{gdouble, gint}
-    val dt = sn.gnome.glib.internal.g_date_time_new_utc(gint(date.year), gint(date.month), gint(date.day), gint(0), gint(0), gdouble(0.0))
-    val f  = sn.gnome.glib.internal.g_date_time_format(dt, toCString("%x").asInstanceOf[Ptr[gchar]])
-    sn.gnome.glib.internal.g_date_time_unref(dt)
-    val out = fromCString(f.asInstanceOf[CString])
-    sn.gnome.glib.internal.g_free(f.asInstanceOf[gpointer])
-    out
-  }
+  private def formatDate(date: CalendarDate): String =
+    Zone {
+      import sn.gnome.glib.internal.{gdouble, gint}
+      val dt = sn.gnome.glib.internal
+        .g_date_time_new_utc(gint(date.year), gint(date.month), gint(date.day), gint(0), gint(0), gdouble(0.0))
+      val f = sn.gnome.glib.internal.g_date_time_format(dt, toCString("%x").asInstanceOf[Ptr[gchar]])
+      sn.gnome.glib.internal.g_date_time_unref(dt)
+      val out = fromCString(f.asInstanceOf[CString])
+      sn.gnome.glib.internal.g_free(f.asInstanceOf[gpointer])
+      out
+    }
 
   /** "day-selected" also fires when the app moves the calendar, so the suppress guard is what keeps an app's write from
     * being reported back as a choice.
     */
-  private def dateChosen(button: Handle, c: Ptr[GtkWidget]): Unit =
+  private def dateChosen(
+    button: Handle,
+    c:      Ptr[GtkWidget]
+  ): Unit =
     if !suppress.contains(button) then {
       val calendar = c.asInstanceOf[Ptr[GtkCalendar]]
       val chosen = CalendarDate(
@@ -812,52 +833,75 @@ final class GtkRenderer extends Renderer {
   // options change, and the index has to survive that. Each button's "toggled" handler is
   // its own Handles id, released when the buttons are replaced and when the control goes.
 
-  private val segments      = mutable.Map.empty[Ptr[GtkWidget], Vector[(Ptr[GtkWidget], Long)]]
-  private val segmentIndex  = mutable.Map.empty[Ptr[GtkWidget], Int]
+  private val segments = mutable.Map.empty[Ptr[GtkWidget], Vector[(Ptr[GtkWidget], Long)]]
+  private val segmentIndex = mutable.Map.empty[Ptr[GtkWidget], Int]
   private val segmentChosen = mutable.Map.empty[Ptr[GtkWidget], Int => Unit]
 
   private def isSegmented(handle: Handle): Boolean = kinds.get(handle).contains(WidgetKind.SegmentedControl)
 
-  private def setSegments(control: Handle, values: Seq[String]): Unit = {
+  private def setSegments(
+    control: Handle,
+    values:  Seq[String]
+  ): Unit = {
     releaseSegments(control)
-    val built = values.zipWithIndex.map { (label, i) =>
-      val b = Zone(gtk_toggle_button_new_with_label(toCString(label)))
-      val toggle = b.asInstanceOf[Ptr[GtkToggleButton]]
-      // Grouped to the first, which is what makes them mutually exclusive: GTK deactivates
-      // the old one when a new one is pressed.
-      val id = Handles.register { () =>
-        // "toggled" fires for the button going off as well as the one coming on; only the
-        // one coming on is a choice, and only when the user made it.
-        if gtk_toggle_button_get_active(toggle).asInstanceOf[CInt] != 0 && !suppress.contains(control) then {
-          segmentIndex(control) = i
-          segmentChosen.get(control).foreach(_(i))
+    val built = values.zipWithIndex.map {
+      (
+        label,
+        i
+      ) =>
+        val b = Zone(gtk_toggle_button_new_with_label(toCString(label)))
+        val toggle = b.asInstanceOf[Ptr[GtkToggleButton]]
+        // Grouped to the first, which is what makes them mutually exclusive: GTK deactivates
+        // the old one when a new one is pressed.
+        val id = Handles.register { () =>
+          // "toggled" fires for the button going off as well as the one coming on; only the
+          // one coming on is a choice, and only when the user made it.
+          if gtk_toggle_button_get_active(toggle).asInstanceOf[CInt] != 0 && !suppress.contains(control) then {
+            segmentIndex(control) = i
+            segmentChosen.get(control).foreach(_(i))
+          }
         }
-      }
-      Zone {
-        val _ = g_signal_connect_data(
-          b.asInstanceOf[gpointer],
-          toCString("toggled").asInstanceOf[Ptr[gchar]],
-          GCallback.fromPtr(Handles.clickedPtr),
-          Handles.idToPointer(id),
-          null.asInstanceOf[GClosureNotify],
-          GConnectFlags.define(0)
-        )
-      }
-      (b, id)
+        Zone {
+          val _ = g_signal_connect_data(
+            b.asInstanceOf[gpointer],
+            toCString("toggled").asInstanceOf[Ptr[gchar]],
+            GCallback.fromPtr(Handles.clickedPtr),
+            Handles.idToPointer(id),
+            null.asInstanceOf[GClosureNotify],
+            GConnectFlags.define(0)
+          )
+        }
+        (b, id)
     }.toVector
-    built.headOption.foreach { (first, _) =>
-      built.drop(1).foreach { (b, _) =>
-        gtk_toggle_button_set_group(b.asInstanceOf[Ptr[GtkToggleButton]], first.asInstanceOf[Ptr[GtkToggleButton]])
-      }
+    built.headOption.foreach {
+      (
+        first,
+        _
+      ) =>
+        built.drop(1).foreach {
+          (
+            b,
+            _
+          ) =>
+            gtk_toggle_button_set_group(b.asInstanceOf[Ptr[GtkToggleButton]], first.asInstanceOf[Ptr[GtkToggleButton]])
+        }
     }
-    built.foreach((b, _) => gtk_box_append(control.asInstanceOf[Ptr[GtkBox]], b))
+    built.foreach(
+      (
+        b,
+        _
+      ) => gtk_box_append(control.asInstanceOf[Ptr[GtkBox]], b)
+    )
     segments(control) = built
     // The index survives a change of options; re-applying it is what keeps "Week" chosen
     // when the list is refilled, or clears it when the list got shorter.
     selectSegment(control, segmentIndex.getOrElse(control, -1))
   }
 
-  private def selectSegment(control: Handle, index: Int): Unit = {
+  private def selectSegment(
+    control: Handle,
+    index:   Int
+  ): Unit = {
     val buttons = segments.getOrElse(control, Vector.empty)
     segmentIndex(control) = index
     // Writing `active` fires "toggled", which would report the app's own write back to it
@@ -867,24 +911,35 @@ final class GtkRenderer extends Renderer {
       gtk_toggle_button_set_active(buttons(index)._1.asInstanceOf[Ptr[GtkToggleButton]], gbool(true))
     else
       // -1, or past the end: nothing chosen. A GTK toggle group allows none active.
-      buttons.foreach((b, _) => gtk_toggle_button_set_active(b.asInstanceOf[Ptr[GtkToggleButton]], gbool(false)))
+      buttons.foreach(
+        (
+          b,
+          _
+        ) => gtk_toggle_button_set_active(b.asInstanceOf[Ptr[GtkToggleButton]], gbool(false))
+      )
     suppress -= control
   }
 
-  /** Disconnect nothing — the buttons are freed with the box — but release each button's handler, which the table
-    * would otherwise keep, with its closure, forever.
+  /** Disconnect nothing — the buttons are freed with the box — but release each button's handler, which the table would
+    * otherwise keep, with its closure, forever.
     */
   private def releaseSegments(control: Handle): Unit =
-    segments.remove(control).foreach(_.foreach { (b, id) =>
-      Handles.release(id)
-      gtk_box_remove(control.asInstanceOf[Ptr[GtkBox]], b)
-    })
+    segments
+      .remove(control).foreach(_.foreach {
+        (
+          b,
+          id
+        ) =>
+          Handles.release(id)
+          gtk_box_remove(control.asInstanceOf[Ptr[GtkBox]], b)
+      })
 
   /** What a tap on each widget does: the app's own handler and, separately, the URL it opens. Kept apart and dispatched
-    * from one connection, so `.link(url)` on a row that is also tappable runs both instead of whichever was applied last.
+    * from one connection, so `.link(url)` on a row that is also tappable runs both instead of whichever was applied
+    * last.
     */
   private val appTaps = mutable.Map.empty[Ptr[GtkWidget], () => Unit]
-  private val links   = mutable.Map.empty[Ptr[GtkWidget], String]
+  private val links = mutable.Map.empty[Ptr[GtkWidget], String]
 
   private def fireTap(handle: Handle): Unit = {
     appTaps.get(handle).foreach(_())
@@ -942,14 +997,14 @@ final class GtkRenderer extends Renderer {
   /** Put every cell where its index says: row `i / columns`, column `i % columns`.
     *
     * The order is the grid's own child order, which `insertAfter` and `moveAfter` keep right, so a cell inserted in the
-    * middle moves every later one along. Re-placed through each child's `GtkGridLayoutChild` rather than by removing and
-    * re-attaching it: `gtk_grid_remove` drops the grid's reference, which frees the child.
+    * middle moves every later one along. Re-placed through each child's `GtkGridLayoutChild` rather than by removing
+    * and re-attaching it: `gtk_grid_remove` drops the grid's reference, which frees the child.
     */
   private def placeGridCells(grid: Handle): Unit = {
     val columns = gridColumns.getOrElse(grid, 1)
-    val layout  = gtk_widget_get_layout_manager(grid)
-    var child   = gtk_widget_get_first_child(grid)
-    var i       = 0
+    val layout = gtk_widget_get_layout_manager(grid)
+    var child = gtk_widget_get_first_child(grid)
+    var i = 0
     while child != null do {
       val cell = gtk_layout_manager_get_layout_child(layout, child).asInstanceOf[Ptr[GtkGridLayoutChild]]
       gtk_grid_layout_child_set_row(cell, i / columns)
@@ -962,7 +1017,11 @@ final class GtkRenderer extends Renderer {
   /** TabView and Tab, kept in their own class; see `GtkTabs`. */
   private val tabs = GtkTabs(suppress)
 
-  def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+  def insertAfter(
+    parent: Handle,
+    child:  Handle,
+    after:  Option[Handle]
+  ): Unit = {
     if tabs.isTabView(parent) then {
       tabs.insertAfter(parent, child, after)
       return
@@ -1002,7 +1061,10 @@ final class GtkRenderer extends Renderer {
     }
   }
 
-  def removeChild(parent: Handle, child: Handle): Unit =
+  def removeChild(
+    parent: Handle,
+    child:  Handle
+  ): Unit =
     if tabs.isTabView(parent) then tabs.remove(parent, child)
     else if kinds.get(parent).contains(WidgetKind.Tab) then gtk_box_remove(parent.asInstanceOf[Ptr[GtkBox]], child)
     else if isGrid(parent) then {
@@ -1015,10 +1077,14 @@ final class GtkRenderer extends Renderer {
       val _ = setterParent.remove(child)
     } else gtk_box_remove(parent.asInstanceOf[Ptr[GtkBox]], child)
 
-  /** GTK can reorder in place, so override the contract's remove+insert default: a
-    * detach/attach cycle would drop focus and restart any running animation.
+  /** GTK can reorder in place, so override the contract's remove+insert default: a detach/attach cycle would drop focus
+    * and restart any running animation.
     */
-  override def moveAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+  override def moveAfter(
+    parent: Handle,
+    child:  Handle,
+    after:  Option[Handle]
+  ): Unit = {
     if tabs.isTabView(parent) then {
       tabs.insertAfter(parent, child, after)
       return
@@ -1042,9 +1108,8 @@ final class GtkRenderer extends Renderer {
     if t == null then "" else fromCString(t)
   }
 
-  /** glib's `guint` and `gboolean` are *opaque* aliases of unsigned/CInt, so
-    * `asInstanceOf[CInt]` on one compiles and then throws `ClassCastException` at runtime.
-    * Going through the unsigned type is the only safe route.
+  /** glib's `guint` and `gboolean` are *opaque* aliases of unsigned/CInt, so `asInstanceOf[CInt]` on one compiles and
+    * then throws `ClassCastException` at runtime. Going through the unsigned type is the only safe route.
     */
   private def toInt(u: sn.gnome.glib.internal.guint): Int =
     u.asInstanceOf[scala.scalanative.unsigned.UInt].toInt
@@ -1072,7 +1137,15 @@ final class GtkRenderer extends Renderer {
     // self-test check is what stops a third.
     valueIds.remove(handle).foreach(Handles.release)
     selectIds.remove(handle).foreach(Handles.release)
-    segments.remove(handle).foreach(_.foreach((_, id) => Handles.release(id)))
+    segments
+      .remove(handle).foreach(
+        _.foreach(
+          (
+            _,
+            id
+          ) => Handles.release(id)
+        )
+      )
     dateIds.remove(handle).foreach(Handles.release)
     val _ = calendars.remove(handle)
     val _ = dateChanged.remove(handle)
@@ -1104,7 +1177,7 @@ final class GtkRenderer extends Renderer {
         gtk_window_set_child(win, null)
         gtk_window_destroy(win)
       case None if tabs.destroy(handle) => ()
-      case None =>
+      case None                         =>
         setterParent.remove(handle) match {
           case Some(scroll) =>
             gtk_scrolled_window_set_child(scroll.asInstanceOf[Ptr[GtkScrolledWindow]], null)
@@ -1124,87 +1197,94 @@ final class GtkRenderer extends Renderer {
     if kinds.get(handle).contains(WidgetKind.Sheet) then presentSheet(handle)
     else presentAlert(handle)
 
-  private def presentSheet(handle: Handle): Unit = Zone {
-    val win = gtk_window_new().asInstanceOf[Ptr[GtkWindow]]
-    gtk_window_set_modal(win, gbool(true))
-    gtk_window_set_transient_for(win, GtkApp.window)
-    alertTitle.get(handle).filter(_.nonEmpty).foreach(t => gtk_window_set_title(win, toCString(t)))
-    gtk_window_set_child(win, handle)
+  private def presentSheet(handle: Handle): Unit =
+    Zone {
+      val win = gtk_window_new().asInstanceOf[Ptr[GtkWindow]]
+      gtk_window_set_modal(win, gbool(true))
+      gtk_window_set_transient_for(win, GtkApp.window)
+      alertTitle.get(handle).filter(_.nonEmpty).foreach(t => gtk_window_set_title(win, toCString(t)))
+      gtk_window_set_child(win, handle)
 
-    // The window manager's close button and Escape both arrive as close-request. Let the
-    // close proceed and report it: the app owns the signal that mounted this, so it is the
-    // app that has to take it down — exactly as with Alert.
-    alertDismiss.get(handle).foreach { f =>
-      val id = Handles.register { () =>
-        val _ = sheetWindow.remove(handle)
-        f()
+      // The window manager's close button and Escape both arrive as close-request. Let the
+      // close proceed and report it: the app owns the signal that mounted this, so it is the
+      // app that has to take it down — exactly as with Alert.
+      alertDismiss.get(handle).foreach { f =>
+        val id = Handles.register { () =>
+          val _ = sheetWindow.remove(handle)
+          f()
+        }
+        sheetCloseId(handle) = id
+        val _ = g_signal_connect_data(
+          win.asInstanceOf[gpointer],
+          toCString("close-request").asInstanceOf[Ptr[gchar]],
+          GCallback.fromPtr(Handles.closeRequestPtr),
+          Handles.idToPointer(id),
+          null.asInstanceOf[GClosureNotify],
+          GConnectFlags.define(0)
+        )
       }
-      sheetCloseId(handle) = id
-      val _ = g_signal_connect_data(
-        win.asInstanceOf[gpointer],
-        toCString("close-request").asInstanceOf[Ptr[gchar]],
-        GCallback.fromPtr(Handles.closeRequestPtr),
-        Handles.idToPointer(id),
-        null.asInstanceOf[GClosureNotify],
-        GConnectFlags.define(0)
+
+      sheetWindow(handle) = win
+      gtk_window_present(win)
+    }
+
+  private def presentAlert(handle: Handle): Unit =
+    Zone {
+      val actions = alertActions.getOrElse(handle, Nil)
+      // An empty format, not "%s" and not null. `gtk_alert_dialog_new` is printf-style
+      // variadic: "%s" declares a conversion with no argument pushed, so g_strdup_vprintf
+      // reads a register that was never set — undefined behaviour that happens to work.
+      // `null` is not the fix; GTK hands the format straight to g_strdup_vprintf and
+      // segfaults. An empty string declares no conversions, so nothing is read, and the
+      // message it produces is overwritten by set_message on the next line anyway.
+      val dialog = gtk_alert_dialog_new(toCString(""))
+
+      gtk_alert_dialog_set_message(dialog, toCString(alertTitle.getOrElse(handle, "")))
+      alertDetail.get(handle).filter(_.nonEmpty).foreach { d =>
+        gtk_alert_dialog_set_detail(dialog, toCString(d))
+      }
+
+      // GTK takes the labels as one NULL-terminated array and answers with an index, so the
+      // order given is the order shown — unlike Android, which has three fixed slots.
+      if actions.nonEmpty then {
+        val labels = alloc[CString](actions.length + 1)
+        actions.zipWithIndex.foreach(
+          (
+            a,
+            i
+          ) => labels(i) = toCString(a.label)
+        )
+        labels(actions.length) = null
+        gtk_alert_dialog_set_buttons(dialog, labels)
+        // Escape and the window-close button both activate the cancel button when one is
+        // declared, which is why a cancel action arrives as a *choice* here and as a
+        // dismissal on Android. Declaring it is what makes Escape do the expected thing.
+        actions.indexWhere(_.cancel) match {
+          case -1 => ()
+          case i  => gtk_alert_dialog_set_cancel_button(dialog, i)
+        }
+      }
+
+      val cancellable = g_cancellable_new()
+      alertCancel(handle) = cancellable
+
+      val dismissed = alertDismiss.get(handle)
+      val id = Handles.registerChosen { index =>
+        // -1 is "no choice": either our own `dismiss` cancelled it, or GTK closed it without
+        // a cancel button to activate. The first is not the app's business; the second is
+        // exactly what OnDismiss is for.
+        if index >= 0 && index < actions.length then actions(index).onSelect()
+        else if alertCancel.contains(handle) then dismissed.foreach(_())
+      }
+
+      gtk_alert_dialog_choose(
+        dialog,
+        GtkApp.window,
+        cancellable,
+        GAsyncReadyCallback.fromPtr(Handles.alertChosenPtr),
+        Handles.idToPointer(id)
       )
     }
-
-    sheetWindow(handle) = win
-    gtk_window_present(win)
-  }
-
-  private def presentAlert(handle: Handle): Unit = Zone {
-    val actions = alertActions.getOrElse(handle, Nil)
-    // An empty format, not "%s" and not null. `gtk_alert_dialog_new` is printf-style
-    // variadic: "%s" declares a conversion with no argument pushed, so g_strdup_vprintf
-    // reads a register that was never set — undefined behaviour that happens to work.
-    // `null` is not the fix; GTK hands the format straight to g_strdup_vprintf and
-    // segfaults. An empty string declares no conversions, so nothing is read, and the
-    // message it produces is overwritten by set_message on the next line anyway.
-    val dialog  = gtk_alert_dialog_new(toCString(""))
-
-    gtk_alert_dialog_set_message(dialog, toCString(alertTitle.getOrElse(handle, "")))
-    alertDetail.get(handle).filter(_.nonEmpty).foreach { d =>
-      gtk_alert_dialog_set_detail(dialog, toCString(d))
-    }
-
-    // GTK takes the labels as one NULL-terminated array and answers with an index, so the
-    // order given is the order shown — unlike Android, which has three fixed slots.
-    if actions.nonEmpty then {
-      val labels = alloc[CString](actions.length + 1)
-      actions.zipWithIndex.foreach((a, i) => labels(i) = toCString(a.label))
-      labels(actions.length) = null
-      gtk_alert_dialog_set_buttons(dialog, labels)
-      // Escape and the window-close button both activate the cancel button when one is
-      // declared, which is why a cancel action arrives as a *choice* here and as a
-      // dismissal on Android. Declaring it is what makes Escape do the expected thing.
-      actions.indexWhere(_.cancel) match {
-        case -1 => ()
-        case i  => gtk_alert_dialog_set_cancel_button(dialog, i)
-      }
-    }
-
-    val cancellable = g_cancellable_new()
-    alertCancel(handle) = cancellable
-
-    val dismissed = alertDismiss.get(handle)
-    val id = Handles.registerChosen { index =>
-      // -1 is "no choice": either our own `dismiss` cancelled it, or GTK closed it without
-      // a cancel button to activate. The first is not the app's business; the second is
-      // exactly what OnDismiss is for.
-      if index >= 0 && index < actions.length then actions(index).onSelect()
-      else if alertCancel.contains(handle) then dismissed.foreach(_())
-    }
-
-    gtk_alert_dialog_choose(
-      dialog,
-      GtkApp.window,
-      cancellable,
-      GAsyncReadyCallback.fromPtr(Handles.alertChosenPtr),
-      Handles.idToPointer(id)
-    )
-  }
 
   override def dismiss(handle: Handle): Unit = {
     // Removing it first is what tells the response callback this was us rather than the
@@ -1217,7 +1297,10 @@ final class GtkRenderer extends Renderer {
     sheetCloseId.remove(handle).foreach(Handles.release)
   }
 
-  def measure(handle: Handle, constraints: Constraints): Measurement = {
+  def measure(
+    handle:      Handle,
+    constraints: Constraints
+  ): Measurement = {
     val minW = stackalloc[CInt]()
     val natW = stackalloc[CInt]()
     val minH = stackalloc[CInt]()
@@ -1230,12 +1313,14 @@ final class GtkRenderer extends Renderer {
   }
 
   /** No-op: every v0 container is ToolkitManaged, so GTK positions its own children. */
-  def setFrame(handle: Handle, frame: Frame): Unit = ()
+  def setFrame(
+    handle: Handle,
+    frame:  Frame
+  ): Unit = ()
 
-  /** GTK4's `GtkListView` materialises only the rows on screen, the same as Android's
-    * `ListView`. This is `RowSource`'s second implementation, and the contract needed no
-    * changes to accommodate it — which is the first evidence it is an abstraction rather
-    * than a description of Android.
+  /** GTK4's `GtkListView` materialises only the rows on screen, the same as Android's `ListView`. This is `RowSource`'s
+    * second implementation, and the contract needed no changes to accommodate it — which is the first evidence it is an
+    * abstraction rather than a description of Android.
     */
   override def supportsVirtualRows: Boolean = true
 
@@ -1252,7 +1337,7 @@ final class GtkRenderer extends Renderer {
       if position >= 0 && position < source.count then {
         // Whatever this list item last held is the recycled handle.
         val recycled = Option(gtk_list_item_get_child(listItem)).filter(_ != null)
-        val child    = source.bind(position, recycled)
+        val child = source.bind(position, recycled)
         gtk_list_item_set_child(listItem, child)
       }
     }
@@ -1291,10 +1376,13 @@ final class GtkRenderer extends Renderer {
 
   private val virtualModels = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkStringList]]
 
-  /** Make the model's length match the data. The strings are placeholders; only the count
-    * matters, because the factory supplies every widget.
+  /** Make the model's length match the data. The strings are placeholders; only the count matters, because the factory
+    * supplies every widget.
     */
-  private def syncModel(model: Ptr[GtkStringList], count: Int): Unit = {
+  private def syncModel(
+    model: Ptr[GtkStringList],
+    count: Int
+  ): Unit = {
     val current = toInt(
       sn.gnome.gio.internal.g_list_model_get_n_items(
         model.asInstanceOf[Ptr[sn.gnome.gio.internal.GListModel]]
@@ -1303,17 +1391,17 @@ final class GtkRenderer extends Renderer {
     if count > current then
       Zone {
         val additions = alloc[CString](count - current + 1)
-        var i         = 0
+        var i = 0
         while (i < count - current) { additions(i) = toCString(""); i += 1 }
         additions(count - current) = null
         gtk_string_list_splice(model, toGuint(current), toGuint(0), additions)
       }
-    else if count < current then
-      gtk_string_list_splice(model, toGuint(count), toGuint(current - count), null)
+    else if count < current then gtk_string_list_splice(model, toGuint(count), toGuint(current - count), null)
   }
 
   def runOnUiThread(f: () => Unit): Unit = {
     val id = Handles.register(f)
-    val _  = g_idle_add(GSourceFunc(Handles.idle), Handles.idToPointer(id))
+    val _ = g_idle_add(GSourceFunc(Handles.idle), Handles.idToPointer(id))
   }
+
 }

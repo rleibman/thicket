@@ -23,8 +23,8 @@ import thicket.renderer.{MaterialSymbols, SvgPath}
 /** A curated icon drawn from its Material Symbols path data (#61), filled in one colour.
   *
   * A drawable rather than a resource because the renderer ships as a plain jar, which cannot carry Android resources.
-  * The path is parsed once; drawing scales it from the symbols' `0 -960 960 960` view box into whatever bounds the
-  * view gives it, so it is sharp at every density. 24dp intrinsic, the size Material uses for an icon.
+  * The path is parsed once; drawing scales it from the symbols' `0 -960 960 960` view box into whatever bounds the view
+  * gives it, so it is sharp at every density. 24dp intrinsic, the size Material uses for an icon.
   */
 final class IconDrawable(
   pathData: String,
@@ -35,10 +35,10 @@ final class IconDrawable(
   private val source: Path = {
     val p = Path()
     SvgPath.parse(pathData).foreach {
-      case SvgPath.Cmd.MoveTo(x, y)           => p.moveTo(x, y)
-      case SvgPath.Cmd.LineTo(x, y)           => p.lineTo(x, y)
-      case SvgPath.Cmd.QuadTo(cx, cy, x, y)   => p.quadTo(cx, cy, x, y)
-      case SvgPath.Cmd.Close                  => p.close()
+      case SvgPath.Cmd.MoveTo(x, y)         => p.moveTo(x, y)
+      case SvgPath.Cmd.LineTo(x, y)         => p.lineTo(x, y)
+      case SvgPath.Cmd.QuadTo(cx, cy, x, y) => p.quadTo(cx, cy, x, y)
+      case SvgPath.Cmd.Close                => p.close()
     }
     p
   }
@@ -60,7 +60,7 @@ final class IconDrawable(
     canvas.drawPath(scaled, paint)
   }
 
-  override def getIntrinsicWidth: Int  = sizePx
+  override def getIntrinsicWidth:  Int = sizePx
   override def getIntrinsicHeight: Int = sizePx
 
   override def setAlpha(alpha: Int): Unit = { paint.setAlpha(alpha); invalidateSelf() }

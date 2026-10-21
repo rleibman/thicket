@@ -124,7 +124,7 @@ final class Var[A] private (initial: A) extends Signal[A] with Source {
   private[signals] def version:    Long = ver
   private[signals] def validate(): Unit = () // roots are always current
 
-  def now: A = value
+  def now:                     A = value
   def apply()(using Tracking): A = {
     Runtime.track(this)
     value

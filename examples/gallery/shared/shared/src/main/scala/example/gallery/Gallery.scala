@@ -18,45 +18,54 @@ package example.gallery
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{AlertAction, Alignment, CalendarDate, Icon, ContentFit, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{
+  AlertAction,
+  Alignment,
+  CalendarDate,
+  ContentFit,
+  Emphasis,
+  Icon,
+  ImageSource,
+  MenuItem,
+  Orientation,
+  TextRole
+}
 import example.gallery.buildinfo.BuildInfo
 import thicket.signals.{Signal, Var}
 
 /** Every component the framework has, on one screen, on every platform.
   *
-  * This is a **conformance surface**, not a showcase. The catalogue is the framework's main
-  * claim — "these widgets exist and are native everywhere" — and the only way that claim
-  * stays honest is if one screen exercises all of it and is built on each platform we
-  * support. A widget that renders on GTK and silently does nothing on Android is a failure
+  * This is a **conformance surface**, not a showcase. The catalogue is the framework's main claim — "these widgets
+  * exist and are native everywhere" — and the only way that claim stays honest is if one screen exercises all of it and
+  * is built on each platform we support. A widget that renders on GTK and silently does nothing on Android is a failure
   * the unit tests cannot see, because `TestRenderer` answers for all of them.
   *
-  * **If you add a component, add it here in the same change.** `docs/12-component-status.md`
-  * §12.10 says so too, and that is deliberate repetition: this file is the one a newcomer
-  * reads and that doc is the one a reviewer checks.
+  * **If you add a component, add it here in the same change.** `docs/12-component-status.md` §12.10 says so too, and
+  * that is deliberate repetition: this file is the one a newcomer reads and that doc is the one a reviewer checks.
   *
-  * Kept free of platform types so it compiles for JVM (Android) and Native (GTK, AppKit,
-  * UIKit) alike. Nothing here may import a renderer.
+  * Kept free of platform types so it compiles for JVM (Android) and Native (GTK, AppKit, UIKit) alike. Nothing here may
+  * import a renderer.
   */
 object Gallery {
 
   /** Everything with state lives here, so the screen itself is a pure function of signals. */
   final class Model {
 
-    val text:     Var[String]  = Var("")
-    val secret:   Var[String]  = Var("")
-    val checked:  Var[Boolean] = Var(false)
-    val toggled:  Var[Boolean] = Var(true)
-    val volume:   Var[Double]  = Var(4.0)
-    val picked:   Var[Int]     = Var(1)
-    val span:     Var[Int]     = Var(1)
-    val due:      Var[CalendarDate] = Var(Gallery.firstDue)
-    val linkTaps: Var[Int]     = Var(0)
+    val text:      Var[String] = Var("")
+    val secret:    Var[String] = Var("")
+    val checked:   Var[Boolean] = Var(false)
+    val toggled:   Var[Boolean] = Var(true)
+    val volume:    Var[Double] = Var(4.0)
+    val picked:    Var[Int] = Var(1)
+    val span:      Var[Int] = Var(1)
+    val due:       Var[CalendarDate] = Var(Gallery.firstDue)
+    val linkTaps:  Var[Int] = Var(0)
     val gridExtra: Var[Boolean] = Var(false)
-    val lastIcon:  Var[String]  = Var("")
+    val lastIcon:  Var[String] = Var("")
     // Not 0: the platform shows the first tab by default, so starting anywhere else is what
     // proves the app's initial selection reaches it (#70 review: GTK dropped it).
-    val tab: Var[Int] = Var(1)
-    val extraTab:  Var[Boolean] = Var(false)
+    val tab:      Var[Int] = Var(1)
+    val extraTab: Var[Boolean] = Var(false)
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
@@ -76,10 +85,11 @@ object Gallery {
 
     def remove(id: Int): Unit = rows.set(rows.now.filterNot(_.id == id))
 
-    def rotate(): Unit = rows.now match {
-      case Seq()           => ()
-      case head +: rest    => rows.set(rest :+ head)
-    }
+    def rotate(): Unit =
+      rows.now match {
+        case Seq()        => ()
+        case head +: rest => rows.set(rest :+ head)
+      }
 
   }
 
@@ -106,8 +116,9 @@ object Gallery {
 
   /** A labelled block, so the screen reads as a catalogue rather than a pile of widgets. */
   private def section(
-    name:  String
-  )(body: Element*
+    name: String
+  )(
+    body: Element*
   ): Element =
     Column(spacing = 8)(
       Label(name, style = TextRole.Caption, emphasis = Emphasis.Secondary),
@@ -283,7 +294,7 @@ object Gallery {
           section("Provide — a theme scoped to one subtree")(
             Row(spacing = 8)(
               Button("App accent")(()),
-              Provide(Theme.active.withColor(ColorRole.Accent, Rgb(0xB0, 0x30, 0x30))) {
+              Provide(Theme.active.withColor(ColorRole.Accent, Rgb(0xb0, 0x30, 0x30))) {
                 Button("Scoped red")(())
               }
             )
@@ -361,7 +372,7 @@ object Gallery {
   /** The whole app, for a host to mount. Hosts differ only in how they start. */
   def app(): AppRoot = {
     val model = Model()
-    val nav   = Nav(Route.Catalogue)
+    val nav = Nav(Route.Catalogue)
     NavHost(nav) {
       case Route.Catalogue =>
         val s = screen(model)

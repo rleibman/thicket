@@ -103,7 +103,7 @@ object Abi {
         case CType.I64  => Repr.I64
         case CType.F64  => Repr.F64
 
-        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle => Repr.Pointer
+        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle                                  => Repr.Pointer
         case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb | CType.ValueCb | CType.IntCb =>
           Repr.FnPointer
       }

@@ -18,57 +18,76 @@ package example
 
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.{Alignment, AlertAction, CalendarDate, ContentFit, Icon, Emphasis, ImageSource, MenuItem, Orientation, TextRole}
+import thicket.renderer.{
+  AlertAction,
+  Alignment,
+  CalendarDate,
+  ContentFit,
+  Emphasis,
+  Icon,
+  ImageSource,
+  MenuItem,
+  Orientation,
+  TextRole
+}
 import thicket.signals.{Signal, Var}
 
 /** A two-screen todo app, with no reference to any platform.
   *
-  * The same value is mounted by the GTK host on Linux and the Android host on a phone, and
-  * each applies its own chrome — a header bar with a back arrow, an action bar with Up and
-  * the system Back button — from `AppRoot`.
+  * The same value is mounted by the GTK host on Linux and the Android host on a phone, and each applies its own chrome
+  * — a header bar with a back arrow, an action bar with Up and the system Back button — from `AppRoot`.
   */
 object TodoApp {
 
-  final case class Item(id: Int, title: String, done: Boolean)
+  final case class Item(
+    id:    Int,
+    title: String,
+    done:  Boolean
+  )
 
-  /** Navigation is an ADT: a screen cannot be reached without its arguments, the back stack
-    * is `List[Route]`, and the `screenFor` match below is checked for exhaustiveness.
+  /** Navigation is an ADT: a screen cannot be reached without its arguments, the back stack is `List[Route]`, and the
+    * `screenFor` match below is checked for exhaustiveness.
     */
   enum Route {
+
     case Items
     case Detail(id: Int)
     case About
 
     /** A deliberately huge list, to show `LazyColumn` materialising only what is visible. */
     case Big
+
   }
 
   /** A route is a value, so persisting the back stack is ordinary serialisation.
     *
     * Hand-written here; `derives Routable` in the mockup is what this should become.
     */
-  def showRoute(r: Route): String = r match {
-    case Route.Big       => "big"
-    case Route.Items     => "items"
-    case Route.Detail(i) => s"detail/$i"
-    case Route.About     => "about"
-  }
+  def showRoute(r: Route): String =
+    r match {
+      case Route.Big       => "big"
+      case Route.Items     => "items"
+      case Route.Detail(i) => s"detail/$i"
+      case Route.About     => "about"
+    }
 
-  def parseRoute(s: String): Option[Route] = s match {
-    case "items" => Some(Route.Items)
-    case "big"   => Some(Route.Big)
-    case "about" => Some(Route.About)
-    case other   =>
-      other.split("/") match {
-        case Array("detail", id) => id.toIntOption.map(Route.Detail(_))
-        case _                   => None
-      }
-  }
+  def parseRoute(s: String): Option[Route] =
+    s match {
+      case "items" => Some(Route.Items)
+      case "big"   => Some(Route.Big)
+      case "about" => Some(Route.About)
+      case other   =>
+        other.split("/") match {
+          case Array("detail", id) => id.toIntOption.map(Route.Detail(_))
+          case _                   => None
+        }
+    }
 
   final class Model {
+
     /** The "add item" form's live state. */
-    val draft: Var[String]     = Var("")
-    val draftDone: Var[Boolean] = Var(false)
+    val draft:      Var[String] = Var("")
+    val draftDone:  Var[Boolean] = Var(false)
     val draftValid: Signal[Boolean] = draft.map(_.trim.nonEmpty)
 
     /** Drives the settings-row `Toggle`. */
@@ -124,10 +143,11 @@ object TodoApp {
         draftDone.set(false)
       }
 
-    def rotate(): Unit = items.update {
-      case head +: rest => rest :+ head
-      case empty        => empty
-    }
+    def rotate(): Unit =
+      items.update {
+        case head +: rest => rest :+ head
+        case empty        => empty
+      }
 
     def toggle(id: Int): Unit =
       items.update(_.map(i => if i.id == id then i.copy(done = !i.done) else i))
@@ -138,14 +158,15 @@ object TodoApp {
 
     def itemSignal(id: Int): Signal[Option[Item]] = items.map(_.find(_.id == id))
 
-    /** What the list actually shows. A derived view, so flicking the switch re-renders the
-      * list and nothing else — the caption, the progress bar and the form are untouched.
+    /** What the list actually shows. A derived view, so flicking the switch re-renders the list and nothing else — the
+      * caption, the progress bar and the form are untouched.
       */
     val visibleItems: Signal[Seq[Item]] =
       items.zip(hideDone).zip(order).map { case ((xs, hide), o) =>
         val shown = if hide then xs.filterNot(_.done) else xs
         if o == 1 then shown.reverse else shown
       }
+
   }
 
   def bullet(i: Item): String =
@@ -157,13 +178,15 @@ object TodoApp {
 
   /** `logo` is supplied by the *host*, not baked in here.
     *
-    * The framework renders bytes and does not fetch (docs/11 §11.9), and where those bytes
-    * live is a platform question: GTK reads a file beside the binary, Android reads an
-    * asset out of the APK — `BitmapFactory.decodeFile` cannot see inside one. So the app
-    * declares "show this image" and each host answers with an `ImageSource`, which is the
-    * same split the rest of the framework uses.
+    * The framework renders bytes and does not fetch (docs/11 §11.9), and where those bytes live is a platform question:
+    * GTK reads a file beside the binary, Android reads an asset out of the APK — `BitmapFactory.decodeFile` cannot see
+    * inside one. So the app declares "show this image" and each host answers with an `ImageSource`, which is the same
+    * split the rest of the framework uses.
     */
-  def apply(model: Model, logo: Option[ImageSource] = None): NavHost[Route] = {
+  def apply(
+    model: Model,
+    logo:  Option[ImageSource] = None
+  ): NavHost[Route] = {
     val nav = Nav[Route](Route.Items)
 
     NavHost(nav) {
@@ -174,7 +197,11 @@ object TodoApp {
     }
   }
 
-  private def itemsScreen(model: Model, nav: Nav[Route], logo: Option[ImageSource]): Screen =
+  private def itemsScreen(
+    model: Model,
+    nav:   Nav[Route],
+    logo:  Option[ImageSource]
+  ): Screen =
     Screen(
       title = "Todo",
       // Toolbar actions: a GTK header-bar button, an Android action-bar item. They are
@@ -190,171 +217,177 @@ object TodoApp {
       // up looking like neither platform.
       // `.safeArea()` rather than the Android host padding by hand: this is the same
       // declaration on every platform, and a no-op on GTK where the window has no insets.
-      content = Scroll()(Column(spacing = 16, padding = 16)(
-        // Shown when the host supplies one, so every screenshot of this screen carries it.
-        // The spinner is drawn *over* it while busy: a ZStack, with the spinner last so it
-        // paints on top, and mounted after the picture so its insert has to land above it.
-        ZStack()(
-          Fragment(logo.map(src => Image(src, fit = ContentFit.Contain)).toSeq*),
-          // The spinner has no "running" prop. `Show` is what starts and stops it.
-          Show(model.busy)(Spinner())
-        ),
-        // Leaves the app, so it is drawn as a link rather than as a button.
-        Link("thicket on GitHub", TodoApp.repoUrl),
-        // A small form: a bound text field, a bound checkbox, and a button whose enabled
-        // state is derived from the model rather than remembered.
-        Row(spacing = 8)(
-          TextField(model.draft, placeholder = "What needs doing?")(model.draft.set),
-          Checkbox(model.draftDone, "Done")(model.draftDone.set)
-        ),
-        Button("Add item")(model.addDraft()),
-
-        // A real list row: a tappable *container*, not a button pretending to be one.
-        // The title grows to fill the row and the status sits at the trailing edge.
-        Column(spacing = 0)(
-          ForEach(model.visibleItems, key = (i: Item) => i.id) { item =>
-            Fragment(
-              Row(spacing = 12, padding = 12)(
-                Label(item.map(_.title)).grow,
-                Label(
-                  item.map(i => if i.done then "\u2713" else ""),
-                  style = TextRole.Caption,
-                  align = Alignment.End,
-                  emphasis = Emphasis.Secondary
-                )
-              ).onTap(nav.push(Route.Detail(item.now.id)))
-                // Secondary click on a desktop, long press on a phone — the platform's own
-                // gesture, which is why the app does not say which.
-                .contextMenu(
-                  MenuItem("Toggle done")(model.toggle(item.now.id)),
-                  MenuItem("Delete")(model.remove(item.now.id))
-                ),
-              Divider()
-            )
-          }
-        ),
-        Show(model.items.map(_.isEmpty))(Label("Nothing left to do.")),
-        // Five buttons do not fit one line on a phone, and a `Row` on its own clips
-        // them: there is no wrapping and no ellipsis. A horizontal `Scroll` is the
-        // framework's answer — every toolkit here has a scroller, only some have a
-        // wrapping box — and it costs the app one word.
-        Scroll(axis = Orientation.Horizontal)(
+      content = Scroll()(
+        Column(spacing = 16, padding = 16)(
+          // Shown when the host supplies one, so every screenshot of this screen carries it.
+          // The spinner is drawn *over* it while busy: a ZStack, with the spinner last so it
+          // paints on top, and mounted after the picture so its insert has to land above it.
+          ZStack()(
+            Fragment(logo.map(src => Image(src, fit = ContentFit.Contain)).toSeq*),
+            // The spinner has no "running" prop. `Show` is what starts and stops it.
+            Show(model.busy)(Spinner())
+          ),
+          // Leaves the app, so it is drawn as a link rather than as a button.
+          Link("thicket on GitHub", TodoApp.repoUrl),
+          // A small form: a bound text field, a bound checkbox, and a button whose enabled
+          // state is derived from the model rather than remembered.
           Row(spacing = 8)(
-            Button("Add")(model.add()),
-            Button("Rotate")(model.rotate()),
-            // One destructive button branded red, without restyling anything else. The
-            // theme is scoped to this subtree; its siblings keep the app's green accent.
-            Provide(Theme.platform.withColor(ColorRole.Accent, Rgb(0xB0, 0x30, 0x30))) {
-              Button("Drop")(model.confirmingDrop.set(true))
-            },
-            Button("About")(nav.push(Route.About)),
-            Button("10 000 rows")(nav.push(Route.Big))
-          )
-        ),
-        Label(
-          model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"),
-          style = TextRole.Caption,
-          emphasis = Emphasis.Secondary
-        ),
+            TextField(model.draft, placeholder = "What needs doing?")(model.draft.set),
+            Checkbox(model.draftDone, "Done")(model.draftDone.set)
+          ),
+          Button("Add item")(model.addDraft()),
 
-        Divider(),
-
-        // A settings row, which is the shape a switch takes on every platform here: the
-        // caption is a sibling, not a property of the control, because a GtkSwitch and a
-        // UISwitch have nowhere to put one. `Spacer` is what pushes them apart.
-        Row(spacing = 8)(
-          Label("Hide completed"),
-          Spacer(),
-          Toggle(model.hideDone)(model.hideDone.set)
-        ),
-        Row(spacing = 8)(
-          Label("Review by"),
-          Spacer(),
-          DatePicker(model.reviewBy)(model.reviewBy.set)
-        ),
-        // Two short options, both worth seeing: a segmented control rather than a Picker.
-        SegmentedControl(Seq("Oldest first", "Newest first"), model.order)(model.order.set),
-
-        // The counts behind the bar, as a two-column grid so the numbers line up, in a TabView
-        // beside a short help page: both tabs stay mounted, only one shows.
-        TabView(model.infoTab)(model.infoTab.set)(
-          Tab("Summary", Icon.Info)(
-            Grid(columns = 2, spacing = 8)(
-              Label("Items", emphasis = Emphasis.Secondary),
-              Label(model.items.map(_.size.toString)),
-              Label("Done", emphasis = Emphasis.Secondary),
-              Label(model.items.map(_.count(_.done).toString))
+          // A real list row: a tappable *container*, not a button pretending to be one.
+          // The title grows to fill the row and the status sits at the trailing edge.
+          Column(spacing = 0)(
+            ForEach(model.visibleItems, key = (i: Item) => i.id) { item =>
+              Fragment(
+                Row(spacing = 12, padding = 12)(
+                  Label(item.map(_.title)).grow,
+                  Label(
+                    item.map(i => if i.done then "\u2713" else ""),
+                    style = TextRole.Caption,
+                    align = Alignment.End,
+                    emphasis = Emphasis.Secondary
+                  )
+                ).onTap(nav.push(Route.Detail(item.now.id)))
+                  // Secondary click on a desktop, long press on a phone — the platform's own
+                  // gesture, which is why the app does not say which.
+                  .contextMenu(
+                    MenuItem("Toggle done")(model.toggle(item.now.id)),
+                    MenuItem("Delete")(model.remove(item.now.id))
+                  ),
+                Divider()
+              )
+            }
+          ),
+          Show(model.items.map(_.isEmpty))(Label("Nothing left to do.")),
+          // Five buttons do not fit one line on a phone, and a `Row` on its own clips
+          // them: there is no wrapping and no ellipsis. A horizontal `Scroll` is the
+          // framework's answer — every toolkit here has a scroller, only some have a
+          // wrapping box — and it costs the app one word.
+          Scroll(axis = Orientation.Horizontal)(
+            Row(spacing = 8)(
+              Button("Add")(model.add()),
+              Button("Rotate")(model.rotate()),
+              // One destructive button branded red, without restyling anything else. The
+              // theme is scoped to this subtree; its siblings keep the app's green accent.
+              Provide(Theme.platform.withColor(ColorRole.Accent, Rgb(0xb0, 0x30, 0x30))) {
+                Button("Drop")(model.confirmingDrop.set(true))
+              },
+              Button("About")(nav.push(Route.About)),
+              Button("10 000 rows")(nav.push(Route.Big))
             )
           ),
-          Tab("Help", Icon.Warning)(Label("Long-press a row for its menu."))
-        ),
+          Label(
+            model.items.map(xs => s"${xs.count(_.done)} of ${xs.size} done"),
+            style = TextRole.Caption,
+            emphasis = Emphasis.Secondary
+          ),
 
-        // Icon-only buttons, each labelled for a screen reader and a tooltip.
-        Row(spacing = 8)(
-          IconButton(Icon.Add, "Add an item")(model.add()),
-          IconButton(Icon.Delete, "Remove the last item")(model.dropLast())
-        ),
+          Divider(),
 
-        // Determinate progress driven by the model rather than by a timer: the bar is a
-        // view of the data, exactly as the caption above it is.
-        ProgressBar(model.items.map { xs =>
-          if xs.isEmpty then None else Some(xs.count(_.done).toDouble / xs.size)
-        }),
+          // A settings row, which is the shape a switch takes on every platform here: the
+          // caption is a sibling, not a property of the control, because a GtkSwitch and a
+          // UISwitch have nowhere to put one. `Spacer` is what pushes them apart.
+          Row(spacing = 8)(
+            Label("Hide completed"),
+            Spacer(),
+            Toggle(model.hideDone)(model.hideDone.set)
+          ),
+          Row(spacing = 8)(
+            Label("Review by"),
+            Spacer(),
+            DatePicker(model.reviewBy)(model.reviewBy.set)
+          ),
+          // Two short options, both worth seeing: a segmented control rather than a Picker.
+          SegmentedControl(Seq("Oldest first", "Newest first"), model.order)(model.order.set),
 
-        // A slider in the app's own units: 0 to 11, never a fraction. The renderer whose
-        // control is integral underneath does that conversion, because only it knows its
-        // own resolution.
-        Row(spacing = 8)(
-          Label("Volume"),
-          Spacer(),
-          Label(model.volume.map(v => f"$v%.1f"), style = TextRole.Caption)
-        ),
-        Slider(model.volume, min = 0, max = 11)(model.volume.set),
+          // The counts behind the bar, as a two-column grid so the numbers line up, in a TabView
+          // beside a short help page: both tabs stay mounted, only one shows.
+          TabView(model.infoTab)(model.infoTab.set)(
+            Tab("Summary", Icon.Info)(
+              Grid(columns = 2, spacing = 8)(
+                Label("Items", emphasis = Emphasis.Secondary),
+                Label(model.items.map(_.size.toString)),
+                Label("Done", emphasis = Emphasis.Secondary),
+                Label(model.items.map(_.count(_.done).toString))
+              )
+            ),
+            Tab("Help", Icon.Warning)(Label("Long-press a row for its menu."))
+          ),
 
-        // Same shape as TextField; a separate widget only because NSSecureTextField is a
-        // separate class.
-        SecureField(model.secret, placeholder = "Passphrase")(model.secret.set),
+          // Icon-only buttons, each labelled for a screen reader and a tooltip.
+          Row(spacing = 8)(
+            IconButton(Icon.Add, "Add an item")(model.add()),
+            IconButton(Icon.Delete, "Remove the last item")(model.dropLast())
+          ),
 
-        // A modal sheet: the app's own content, presented over the app. Same lifecycle as
-        // the alert below, but it holds an element subtree rather than a list of buttons.
-        Show(model.editing) {
-          Sheet("Quick note")(
-            TextField(model.draft, placeholder = "What needs doing?")(model.draft.set),
-            Row(spacing = 8)(
-              Button("Save") {
-                model.addDraft()
-                model.editing.set(false)
+          // Determinate progress driven by the model rather than by a timer: the bar is a
+          // view of the data, exactly as the caption above it is.
+          ProgressBar(model.items.map { xs =>
+            if xs.isEmpty then None else Some(xs.count(_.done).toDouble / xs.size)
+          }),
+
+          // A slider in the app's own units: 0 to 11, never a fraction. The renderer whose
+          // control is integral underneath does that conversion, because only it knows its
+          // own resolution.
+          Row(spacing = 8)(
+            Label("Volume"),
+            Spacer(),
+            Label(model.volume.map(v => f"$v%.1f"), style = TextRole.Caption)
+          ),
+          Slider(model.volume, min = 0, max = 11)(model.volume.set),
+
+          // Same shape as TextField; a separate widget only because NSSecureTextField is a
+          // separate class.
+          SecureField(model.secret, placeholder = "Passphrase")(model.secret.set),
+
+          // A modal sheet: the app's own content, presented over the app. Same lifecycle as
+          // the alert below, but it holds an element subtree rather than a list of buttons.
+          Show(model.editing) {
+            Sheet("Quick note")(
+              TextField(model.draft, placeholder = "What needs doing?")(model.draft.set),
+              Row(spacing = 8)(
+                Button("Save") {
+                  model.addDraft()
+                  model.editing.set(false)
+                },
+                Button("Close")(model.editing.set(false))
+              )
+            )(model.editing.set(false))
+          },
+
+          // A modal alert, presented by a signal rather than by a call. Flipping
+          // `confirmingDrop` off is the whole of dismissing it.
+          Show(model.confirmingDrop) {
+            Alert("Drop the last item?", "This cannot be undone.")(
+              AlertAction("Drop", destructive = true) {
+                model.dropLast()
+                model.lastAlertChoice.set("drop")
+                model.confirmingDrop.set(false)
               },
-              Button("Close")(model.editing.set(false))
-            )
-          )(model.editing.set(false))
-        },
-
-        // A modal alert, presented by a signal rather than by a call. Flipping
-        // `confirmingDrop` off is the whole of dismissing it.
-        Show(model.confirmingDrop) {
-          Alert("Drop the last item?", "This cannot be undone.")(
-            AlertAction("Drop", destructive = true) {
-              model.dropLast()
-              model.lastAlertChoice.set("drop")
-              model.confirmingDrop.set(false)
-            },
-            AlertAction("Cancel", cancel = true) {
-              model.lastAlertChoice.set("cancel")
+              AlertAction("Cancel", cancel = true) {
+                model.lastAlertChoice.set("cancel")
+                model.confirmingDrop.set(false)
+              }
+            ) {
+              // A platform dismissal - back gesture, tap outside - does not unmount the
+              // alert, so the app has to take it down itself. Without this the signal stays
+              // true, the native dialog is already gone, and `Drop` can never reopen it.
+              model.lastAlertChoice.set("dismissed")
               model.confirmingDrop.set(false)
             }
-          ) {
-            // A platform dismissal - back gesture, tap outside - does not unmount the
-            // alert, so the app has to take it down itself. Without this the signal stays
-            // true, the native dialog is already gone, and `Drop` can never reopen it.
-            model.lastAlertChoice.set("dismissed")
-            model.confirmingDrop.set(false)
           }
-        }
-      )).safeArea()
+        )
+      ).safeArea()
     )
 
-  private def detailScreen(model: Model, nav: Nav[Route], id: Int): Screen = {
+  private def detailScreen(
+    model: Model,
+    nav:   Nav[Route],
+    id:    Int
+  ): Screen = {
     val item = model.itemSignal(id)
     Screen(
       title = "Item",
@@ -373,9 +406,8 @@ object TodoApp {
     )
   }
 
-  /** 10 000 rows through `LazyColumn`. On Android that is a `ListView`, so only the rows on
-    * screen exist; on a renderer without a virtualising container every row is mounted and
-    * the screen still works, just heavier.
+  /** 10 000 rows through `LazyColumn`. On Android that is a `ListView`, so only the rows on screen exist; on a renderer
+    * without a virtualising container every row is mounted and the screen still works, just heavier.
     */
   private def bigScreen(nav: Nav[Route]): Screen = {
     val many = Signal.const((1 to 10000).map(i => Item(i, s"Row $i", i % 7 == 0)))
@@ -407,4 +439,5 @@ object TodoApp {
         Label("One element tree, rendered by GTK4 on Linux and android.view on Android.")
       )
     )
+
 }

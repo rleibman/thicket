@@ -137,7 +137,6 @@ object AppleInspect {
   /** How far a vertical scroller is from the top of its content; 0 at the top, -1 if `h` is not a scroller. */
   def scrollOffset(h: Shim.Handle): Double = Shim.sui_scroll_offset(h)
 
-
   /** The options a Picker or SegmentedControl holds, as the platform's control has them. */
   def options(h: Shim.Handle): List[String] =
     (0 until Shim.sui_option_count(h)).toList.flatMap(i => str(Shim.sui_option_label(h, i)))
@@ -161,20 +160,22 @@ object AppleInspect {
   ): Boolean = Shim.sui_choose_date(h, epochDay) != 0
 
   /** A view's frame in its window, top-left origin: (x, y, width, height). */
-  def frame(h: Shim.Handle): (Double, Double, Double, Double) = Zone {
-    val out = alloc[Double](4)
-    Shim.sui_get_frame(h, out, out + 1, out + 2, out + 3)
-    (out(0), out(1), out(2), out(3))
-  }
+  def frame(h: Shim.Handle): (Double, Double, Double, Double) =
+    Zone {
+      val out = alloc[Double](4)
+      Shim.sui_get_frame(h, out, out + 1, out + 2, out + 3)
+      (out(0), out(1), out(2), out(3))
+    }
 
   /** Where a Grid has placed `child`, as (row, column), or `None` if it is not one of its cells. */
   def gridCell(
     grid:  Shim.Handle,
     child: Shim.Handle
-  ): Option[(Int, Int)] = Zone {
-    val out = alloc[Double](2)
-    if Shim.sui_grid_cell(grid, child, out, out + 1) != 0 then Some((out(0).toInt, out(1).toInt)) else None
-  }
+  ): Option[(Int, Int)] =
+    Zone {
+      val out = alloc[Double](2)
+      if Shim.sui_grid_cell(grid, child, out, out + 1) != 0 then Some((out(0).toInt, out(1).toInt)) else None
+    }
 
   /** Records the URLs links would open instead of opening them, until stopped; returns a reader for them. */
   def recordOpenedUrls(): () => List[String] = {

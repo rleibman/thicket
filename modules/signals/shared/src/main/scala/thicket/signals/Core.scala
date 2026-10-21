@@ -256,8 +256,8 @@ private[signals] object Runtime {
         failed.reverse.foreach(pending += _)
       }
       errors.reverse match {
-        case Nil      => ()
-        case e :: Nil => throw e
+        case Nil       => ()
+        case e :: Nil  => throw e
         case e :: more =>
           more.foreach(e.addSuppressed)
           throw e

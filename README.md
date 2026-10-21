@@ -344,8 +344,13 @@ Three things that will bite you:
 
 - **`sbt test` is incremental on sbt 2** and will run *zero* tests and report success.
   Always `testOnly *`.
-- **The Apple modules are not in the root aggregate**, on purpose, so Linux and Android
-  builds are unaffected by them. Build them on a Mac.
+- **The renderers and examples are not in the root aggregate**, so `sbt testFull` works on
+  a fresh clone. They are aggregated by `platforms` instead: `sbt platforms/Test/compile`
+  type-checks all of them on Linux, the Apple apps included (run
+  `modules/renderer-android/setup.sh` first). Root `scalafmtAll` and `headerCheckAll` reach
+  into `platforms` too. `sbt checkLinux` is what CI runs. Linking an Apple app needs a Mac.
+- **The heap is set in `.jvmopts` (4G).** At sbt's default 1G, `testFull` runs out of memory
+  compiling the JS and Native tests in parallel.
 - **Braces, not significant indentation.** `-no-indent` is on; the compiler rejects it.
 
 Apple work is done on a macOS laptop and raised as issues rather than attempted elsewhere.

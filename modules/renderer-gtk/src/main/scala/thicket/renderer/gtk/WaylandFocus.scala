@@ -19,15 +19,15 @@ package thicket.renderer.gtk
 import scala.scalanative.unsafe.*
 import scala.scalanative.posix.dlfcn
 import sn.gnome.gtk4.internal.*
-import sn.gnome.gobject.internal.{g_type_name_from_instance, GTypeInstance}
+import sn.gnome.gobject.internal.{GTypeInstance, g_type_name_from_instance}
 
 /** Works around a race in GTK's Wayland input method (#56), in the renderer, so an app cannot hit it.
   *
   * GTK creates its Wayland input-method state on the first text-input focus, and only gets the `text_input` it needs to
-  * *clear* its "current" context from a registry reply that arrives on a later main-loop turn. Until then
-  * `focus_out` does nothing. So if the first text widget ever focused is destroyed in the same turn — an autofocused
-  * form dismissed at once, a sheet opened and closed in one callback — GTK keeps a pointer to a freed context, and the
-  * next `zwp_text_input_v3.enter` (the window regaining keyboard focus) crashes on it.
+  * *clear* its "current" context from a registry reply that arrives on a later main-loop turn. Until then `focus_out`
+  * does nothing. So if the first text widget ever focused is destroyed in the same turn — an autofocused form dismissed
+  * at once, a sheet opened and closed in one callback — GTK keeps a pointer to a freed context, and the next
+  * `zwp_text_input_v3.enter` (the window regaining keyboard focus) crashes on it.
   *
   * Before a focused widget is destroyed, this does one `wl_display_roundtrip`, which delivers the pending registry
   * reply now, and then takes the focus off it, so GTK's own focus-out and unrealize release the context normally. The
@@ -43,7 +43,7 @@ private[gtk] object WaylandFocus {
   private type Roundtrip = CFuncPtr1[Ptr[Byte], CInt]
   private type WlDisplay = CFuncPtr1[Ptr[Byte], Ptr[Byte]]
 
-  private lazy val functions: Option[(WlDisplay, Roundtrip)] = Zone {
+  lazy private val functions: Option[(WlDisplay, Roundtrip)] = Zone {
     val self = dlfcn.dlopen(null, dlfcn.RTLD_LAZY)
     def sym(name: String): Option[Ptr[Byte]] =
       Option(dlfcn.dlsym(self, toCString(name)).asInstanceOf[Ptr[Byte]]).filter(_ != null)
@@ -67,13 +67,17 @@ private[gtk] object WaylandFocus {
 
   private def settle(widget: Ptr[GtkWidget]): Unit = {
     val display = gtk_widget_get_display(widget)
-    val name    = g_type_name_from_instance(display.asInstanceOf[Ptr[GTypeInstance]])
+    val name = g_type_name_from_instance(display.asInstanceOf[Ptr[GTypeInstance]])
     // Only on Wayland: on X11 there is no such reply to wait for, and the GDK function
     // below would refuse a non-Wayland display with a critical.
     if name != null && fromCString(name.asInstanceOf[CString]) == "GdkWaylandDisplay" then
-      functions.foreach { (wlDisplay, roundtrip) =>
-        val wl = wlDisplay(display.asInstanceOf[Ptr[Byte]])
-        if wl != null then { val _ = roundtrip(wl) }
+      functions.foreach {
+        (
+          wlDisplay,
+          roundtrip
+        ) =>
+          val wl = wlDisplay(display.asInstanceOf[Ptr[Byte]])
+          if wl != null then { val _ = roundtrip(wl) }
       }
   }
 

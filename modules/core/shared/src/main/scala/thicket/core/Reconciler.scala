@@ -284,7 +284,7 @@ final private class VirtualListSlot[H](
   source:     VirtualRows[H, ?, ?]
 ) extends Slot[H] {
 
-  def handles: Vector[H] = Vector(handle)
+  def handles:   Vector[H] = Vector(handle)
   def dispose(): Unit = {
     source.disposeAll()
     renderer.destroy(handle)

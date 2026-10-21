@@ -6,6 +6,9 @@ import com.github.sbt.git.SbtGit.GitKeys
 
 lazy val SCALA = "3.9.0"
 
+/** Building the Apple shim needs Xcode. */
+lazy val isMac = sys.props.getOrElse("os.name", "").toLowerCase.contains("mac")
+
 scalaVersion := SCALA
 organization := "net.leibman"
 // Target the new Sonatype Central Portal repositories
@@ -305,20 +308,29 @@ lazy val rendererApple = project
   // of the renderer and nothing to link its `sui_*` symbols against, because `libthicketapple.a` is built by a shell
   // script here and was never published. Built at *package* time, not on every compile: it needs Xcode, and it is
   // only wanted when a jar is being made. `sbt-thicket`'s Apple plugins unpack it from the resolved jar.
+  //
+  // Off a Mac there is no Xcode, so the shim is not built and the jar holds only the Scala half. That jar is fine to
+  // *compile against* — sbt 2 puts jars, not class directories, on dependants' classpaths, so before this guard the
+  // Apple example apps could not even be type-checked on Linux — and wrong to *publish*, so publishing it is skipped
+  // anywhere but a Mac.
   .settings(
+    publish / skip := !isMac,
     Compile / packageBin / mappings ++= {
       val shim = (ThisBuild / baseDirectory).value / "modules" / "renderer-apple" / "shim"
-      for target <- Seq("macos", "ios-sim") do {
-        val code = scala.sys.process.Process(Seq("bash", (shim / "build-shim.sh").getAbsolutePath, target), shim).!
-        if code != 0 then sys.error(s"build-shim.sh $target failed with exit $code")
-      }
       val conv = fileConverter.value
-      Seq(
-        shim / "build" / "libthicketapple.a"       -> "thicket-apple/macos/libthicketapple.a",
-        shim / "build-ios" / "libthicketapple.a"   -> "thicket-apple/ios-sim/libthicketapple.a",
-        shim / "include" / "thicket_apple.h"       -> "thicket-apple/include/thicket_apple.h",
-        shim / "include" / "thicket_apple_types.h" -> "thicket-apple/include/thicket_apple_types.h"
-      ).map((f, path) => conv.toVirtualFile(f.toPath) -> path)
+      if !isMac then Seq.empty
+      else {
+        for target <- Seq("macos", "ios-sim") do {
+          val code = scala.sys.process.Process(Seq("bash", (shim / "build-shim.sh").getAbsolutePath, target), shim).!
+          if code != 0 then sys.error(s"build-shim.sh $target failed with exit $code")
+        }
+        Seq(
+          shim / "build" / "libthicketapple.a"       -> "thicket-apple/macos/libthicketapple.a",
+          shim / "build-ios" / "libthicketapple.a"   -> "thicket-apple/ios-sim/libthicketapple.a",
+          shim / "include" / "thicket_apple.h"       -> "thicket-apple/include/thicket_apple.h",
+          shim / "include" / "thicket_apple_types.h" -> "thicket-apple/include/thicket_apple_types.h"
+        ).map((f, path) => conv.toVirtualFile(f.toPath) -> path)
+      }
     }
   )
 
@@ -580,6 +592,44 @@ lazy val sbtThicket = project
     )
   )
 
+/** Everything that is not in `root`: the renderers and every example.
+  *
+  * Kept out of `root` because compiling it needs things a fresh clone does not have — `android.jar` (run
+  * `modules/renderer-android/setup.sh`) for the Android projects. `sbt platforms/Test/compile` builds all of it on this
+  * box, the Apple apps included: their Scala type-checks anywhere, and only *linking* them needs Xcode.
+  *
+  * It is not invisible to the root, though. `scalafmtAll`, `scalafmtCheckAll`, `headerCreateAll` and `headerCheckAll`
+  * at the root reach into it (see `root` below), because none of those compile anything, and a formatter that skips
+  * the renderers is how 26 files drifted before this existed.
+  */
+lazy val platforms = project
+  .in(file("target/platforms-aggregate"))
+  .enablePlugins(com.github.sbt.git.GitVersioning)
+  .aggregate(
+    rendererGtk,
+    rendererAndroid,
+    rendererApple,
+    examplesShared.jvm,
+    examplesShared.native,
+    counterGtk,
+    todoAndroid,
+    todoMacos,
+    todoIos,
+    galleryShared.jvm,
+    galleryShared.native,
+    galleryGtk,
+    galleryAndroid,
+    galleryMacos,
+    galleryIos
+  )
+  .settings(publish / skip := true, name := "thicket-platforms")
+
+/** The source-only tasks, run over `platforms` as well as `root`'s own aggregate. */
+lazy val platformsFilter = ScopeFilter(inAggregates(platforms, includeRoot = false))
+// sbt-header's tasks live per configuration, scalafmt's per project.
+lazy val platformsConfigFilter =
+  ScopeFilter(inAggregates(platforms, includeRoot = false), inConfigurations(Compile, Test))
+
 lazy val root = project
   .in(file("."))
   .enablePlugins(com.github.sbt.git.GitVersioning)
@@ -598,4 +648,15 @@ lazy val root = project
     shimGen,
     sbtThicket
   )
-  .settings(publish / skip := true, name := "thicket")
+  .settings(
+    publish / skip := true,
+    name           := "thicket",
+    scalafmtAll := Def.uncached { val _ = scalafmtAll.all(platformsFilter).value },
+    scalafmtCheckAll := Def.uncached { val _ = scalafmtCheckAll.all(platformsFilter).value },
+    Compile / headerCreateAll := Def.uncached(headerCreateAll.all(platformsConfigFilter).value.flatten),
+    Compile / headerCheckAll := Def.uncached(headerCheckAll.all(platformsConfigFilter).value.flatten)
+  )
+
+// What CI runs on Linux, and what to run before pushing. `testFull`, not `test`: sbt 2's `test` is incremental and
+// runs nothing when nothing changed, which reads as a pass.
+addCommandAlias("checkLinux", ";testFull;scalafmtCheckAll;headerCheckAll;platforms/Test/compile")

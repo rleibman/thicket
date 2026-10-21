@@ -36,7 +36,7 @@ object IconSpec extends ZIOSpecDefault {
         val chk = Checks()
         Icon.curated.foreach { icon =>
           MaterialSymbols.pathFor(icon) match {
-            case None => chk.yes(false, s"$icon has no artwork")
+            case None    => chk.yes(false, s"$icon has no artwork")
             case Some(d) =>
               val cmds = scala.util.Try(SvgPath.parse(d))
               chk.yes(cmds.isSuccess, s"$icon: ${cmds.failed.map(_.getMessage).getOrElse("")}")

@@ -55,8 +55,8 @@ object RemoteScreenTests {
     Column(spacing = 8, padding = 16)(
       Label("Recipes"),
       RemoteData(recipes) {
-        case RemoteData.Loading   => Label("Loading…")
-        case RemoteData.Failed(e) => Label(s"Could not load: ${e.message}")
+        case RemoteData.Loading     => Label("Loading…")
+        case RemoteData.Failed(e)   => Label(s"Could not load: ${e.message}")
         case RemoteData.Done(items) =>
           Column(spacing = 4)(
             ForEach(thicket.signals.Signal.const(items), key = (r: Recipe) => r.id)(r => Label(r.map(_.name)))

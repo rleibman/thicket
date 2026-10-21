@@ -31,10 +31,9 @@ import thicket.signals.{Owner, Signal, ThreadGuard}
 
 /** The Android host for [[TodoApp]] — the same app the GTK host mounts.
   *
-  * Chrome comes from `AppRoot`, applied natively: the action bar title follows the top
-  * screen, Up appears when the stack is deep, and the system Back button pops. When the
-  * stack is at its root `back()` returns false and the Activity finishes, which is the
-  * behaviour Android users expect.
+  * Chrome comes from `AppRoot`, applied natively: the action bar title follows the top screen, Up appears when the
+  * stack is deep, and the system Back button pops. When the stack is at its root `back()` returns false and the
+  * Activity finishes, which is the behaviour Android users expect.
   */
 class MainActivity extends Activity {
 
@@ -52,10 +51,10 @@ class MainActivity extends Activity {
     // Brand exactly one role and leave the rest to the platform. Buttons pick up the
     // accent; text, dividers, the check box and the action bar keep following the user's
     // Android theme, including dark mode.
-    Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2E, 0x6F, 0x40)))
+    Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2e, 0x6f, 0x40)))
 
     val renderer = AndroidRenderer(this)
-    given Owner  = owner
+    given Owner = owner
 
     // The logo lives in the APK's assets, which has no filesystem path —
     // `BitmapFactory.decodeFile` cannot see inside an APK. So the host reads the bytes and
@@ -114,9 +113,9 @@ class MainActivity extends Activity {
 
   /** Bring the container in line with `AppRoot.pages`.
     *
-    * Only the top page is visible; the ones beneath stay in the view tree, which is the
-    * whole point. `TransitionManager` animates the change with the platform's own Slide, so
-    * a push looks like a push rather than a swap.
+    * Only the top page is visible; the ones beneath stay in the view tree, which is the whole point.
+    * `TransitionManager` animates the change with the platform's own Slide, so a push looks like a push rather than a
+    * swap.
     */
   private def syncPages(
     renderer:  AndroidRenderer,
@@ -132,10 +131,15 @@ class MainActivity extends Activity {
     // children. The GTK host learned this the hard way.
     Signal.untracked {
       livePages.keys.toSeq.reverse.filterNot(live).foreach { id =>
-        livePages.remove(id).foreach { (view, mounted, owner) =>
-          container.removeView(view)
-          mounted.dispose()
-          owner.dispose()
+        livePages.remove(id).foreach {
+          (
+            view,
+            mounted,
+            owner
+          ) =>
+            container.removeView(view)
+            mounted.dispose()
+            owner.dispose()
         }
       }
 
@@ -152,36 +156,43 @@ class MainActivity extends Activity {
       // The platform's transition, then show only the top.
       TransitionManager.beginDelayedTransition(container, new Slide())
       val top = livePages.lastOption.map(_._1)
-      livePages.foreach { (id, entry) =>
-        entry._1.setVisibility(if top.contains(id) then View.VISIBLE else View.GONE)
+      livePages.foreach {
+        (
+          id,
+          entry
+        ) =>
+          entry._1.setVisibility(if top.contains(id) then View.VISIBLE else View.GONE)
       }
     }
   }
 
   /** The actions the current screen declares, read by [[onCreateOptionsMenu]].
     *
-    * Held in a field because Android drives menu construction on its own schedule: the app
-    * says "the menu changed", and the platform asks for it back when it is ready.
+    * Held in a field because Android drives menu construction on its own schedule: the app says "the menu changed", and
+    * the platform asks for it back when it is ready.
     */
   private var currentActions: Seq[Action] = Nil
 
   override def onCreateOptionsMenu(menu: Menu): Boolean = {
     menu.clear()
-    currentActions.zipWithIndex.foreach { (a, i) =>
-      val item = menu.add(Menu.NONE, i, i, a.label)
-      item.setEnabled(a.enabled)
-      // SHOW_AS_ACTION_IF_ROOM, not ALWAYS: Android decides whether an action fits on the
-      // bar or belongs in the overflow, and overriding that is how a toolbar ends up
-      // clipped on a narrow phone.
-      item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+    currentActions.zipWithIndex.foreach {
+      (
+        a,
+        i
+      ) =>
+        val item = menu.add(Menu.NONE, i, i, a.label)
+        item.setEnabled(a.enabled)
+        // SHOW_AS_ACTION_IF_ROOM, not ALWAYS: Android decides whether an action fits on the
+        // bar or belongs in the overflow, and overriding that is how a toolbar ends up
+        // clipped on a narrow phone.
+        item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
     }
     true
   }
 
-
-  /** Android 13+ replaced `onBackPressed` with a dispatcher that also drives the predictive
-    * back gesture — the animated peek at the previous screen. Registering here is what makes
-    * the app behave like a platform app rather than one that merely intercepts a key.
+  /** Android 13+ replaced `onBackPressed` with a dispatcher that also drives the predictive back gesture — the animated
+    * peek at the previous screen. Registering here is what makes the app behave like a platform app rather than one
+    * that merely intercepts a key.
     */
   private def registerBackHandler(): Unit =
     if Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU then
@@ -202,10 +213,9 @@ class MainActivity extends Activity {
   override def onBackPressed(): Unit =
     if !app.back() then super.onBackPressed()
 
-  /** One handler for both: Android routes the Up arrow and the screen's own actions
-    * through the same callback, distinguished by item id. Up is checked first because
-    * `android.R.id.home` is a platform id and could otherwise collide with an action
-    * index.
+  /** One handler for both: Android routes the Up arrow and the screen's own actions through the same callback,
+    * distinguished by item id. Up is checked first because `android.R.id.home` is a platform id and could otherwise
+    * collide with an action index.
     */
   override def onOptionsItemSelected(item: MenuItem): Boolean =
     if item.getItemId == android.R.id.home then {
@@ -222,8 +232,8 @@ class MainActivity extends Activity {
     super.onDestroy()
   }
 
-  /** The bundled logo, as bytes. `None` rather than a crash if it is missing: a demo that
-    * will not start because an image is absent is worse than a demo without a logo.
+  /** The bundled logo, as bytes. `None` rather than a crash if it is missing: a demo that will not start because an
+    * image is absent is worse than a demo without a logo.
     */
   private def logoBytes: Option[Array[Byte]] =
     try {
@@ -233,4 +243,5 @@ class MainActivity extends Activity {
     } catch { case _: java.io.IOException => None }
 
   private val StackKey = "thicket.backstack"
+
 }

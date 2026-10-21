@@ -69,6 +69,17 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-20 — **Build surface: a `platforms` aggregate, a committed heap, scalafmt 3.11.5**
+  (review 2026-10-20 D3, D5, D12). The renderers and examples stay out of `root`, so a fresh
+  clone's `testFull` needs no `android.jar`, and are aggregated by `platforms` instead; root
+  `scalafmtAll`/`scalafmtCheckAll`/`headerCreateAll`/`headerCheckAll` reach into it, since
+  none of them compile. `checkLinux` is the alias CI runs. `.jvmopts` sets `-Xmx4G`: at the
+  launcher's 1G, `testFull` died of OutOfMemoryError after 6 minutes; at 4G it passes in
+  1m13s (measured 2026-10-20, 16 cores). scalafmt moves 3.9.0 → 3.11.5, the latest
+  (`cs complete-dep org.scalameta:scalafmt-core_2.13:`); the reformat is one commit, and the
+  duplicate `trailingCommas` (`always`, then `never`) keeps the one that was in effect,
+  `never`. Off a Mac, `rendererApple`'s jar carries no shim and is not published; it can
+  still be compiled against, which is what lets the Apple apps type-check on Linux.
 - 2026-10-08 — **`TabView` is a container of `Tab`s that keeps every tab alive and keeps the
   user on their tab; Android's is built, and libadwaita needed a workaround** (#61, #69).
   A `Tab` carries its title (`Prop.Text`) and icon (`Prop.Glyph`) and holds one child, so a

@@ -24,41 +24,64 @@ import android.view.{Gravity, View, ViewGroup, WindowInsets}
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.text.{Editable, InputType, TextWatcher}
-import android.widget.{AdapterView, ArrayAdapter, BaseAdapter, Button, CheckBox, CompoundButton, EditText, FrameLayout, GridLayout, HorizontalScrollView, ImageButton, ImageView, LinearLayout, ListView, PopupMenu, ProgressBar, RadioButton, RadioGroup, ScrollView, SeekBar, Spinner, Switch, TextView}
+import android.widget.{
+  AdapterView,
+  ArrayAdapter,
+  BaseAdapter,
+  Button,
+  CheckBox,
+  CompoundButton,
+  EditText,
+  FrameLayout,
+  GridLayout,
+  HorizontalScrollView,
+  ImageButton,
+  ImageView,
+  LinearLayout,
+  ListView,
+  PopupMenu,
+  ProgressBar,
+  RadioButton,
+  RadioGroup,
+  ScrollView,
+  SeekBar,
+  Spinner,
+  Switch,
+  TextView
+}
 import scala.collection.mutable
 import thicket.renderer.*
 
 /** Android implementation of [[Renderer]], over `android.view.*`.
   *
-  * Note the `_root_.android.R` references: this package is `thicket.renderer.android`, which
-  * shadows the platform's own `android` package — the same trap `thicket.zio` has with `zio`.
+  * Note the `_root_.android.R` references: this package is `thicket.renderer.android`, which shadows the platform's own
+  * `android` package — the same trap `thicket.zio` has with `zio`.
   *
-  * Runs on the JVM: Scala compiles to bytecode, R8 dexes it, ART runs it (S2). Nothing
-  * here is Android-specific beyond the widget calls — the reconciler above is the same
-  * code the GTK renderer drives.
+  * Runs on the JVM: Scala compiles to bytecode, R8 dexes it, ART runs it (S2). Nothing here is Android-specific beyond
+  * the widget calls — the reconciler above is the same code the GTK renderer drives.
   */
 final class AndroidRenderer(context: Context) extends Renderer {
+
   type Handle = View
 
   private val SliderSteps = 1000
 
-  private val kinds  = mutable.Map.empty[View, WidgetKind]
+  private val kinds = mutable.Map.empty[View, WidgetKind]
 
-  /** True while the renderer writes a value in, so the widget's own change listener can
-    * tell an app-driven update from a user edit. Without it, a signal bound to a text
-    * field loops: write -> listener -> signal -> write.
+  /** True while the renderer writes a value in, so the widget's own change listener can tell an app-driven update from
+    * a user edit. Without it, a signal bound to a text field loops: write -> listener -> signal -> write.
     */
   private val suppress = mutable.Set.empty[View]
 
-  /** A slider's app-facing bounds, kept per widget because `SeekBar` has none: it counts
-    * integer steps, and the renderer converts.
+  /** A slider's app-facing bounds, kept per widget because `SeekBar` has none: it counts integer steps, and the
+    * renderer converts.
     */
   private val ranges = mutable.Map.empty[View, (Double, Double)]
 
   // An Alert's state, keyed by its placeholder handle. Held here rather than on the View
   // because the View is a stand-in: the real object is the Dialog, and it does not exist
   // until `present`.
-  private val alertTitle   = mutable.Map.empty[View, String]
+  private val alertTitle = mutable.Map.empty[View, String]
   private val alertMessage = mutable.Map.empty[View, String]
   private val alertActions = mutable.Map.empty[View, Seq[AlertAction]]
   private val alertDismiss = mutable.Map.empty[View, () => Unit]
@@ -66,8 +89,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
   private val sheetShowing = mutable.Map.empty[View, AlertDialog]
   private val mainHandler = Handler(Looper.getMainLooper)
 
-  /** Resolve a theme attribute, so colours and backgrounds come from the user's theme
-    * rather than from values we invent. This is what makes dark mode work for free.
+  /** Resolve a theme attribute, so colours and backgrounds come from the user's theme rather than from values we
+    * invent. This is what makes dark mode work for free.
     */
   private def themeAttr(attr: Int): TypedValue = {
     val tv = TypedValue()
@@ -83,13 +106,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   def platform: String = "android"
 
-  /** `LinearLayout` lays out its own children, so every v0 container is toolkit-managed,
-    * exactly as on GTK. A Yoga-driven `FrameLayout` will be `FrameBased` when absolute
-    * layout lands.
+  /** `LinearLayout` lays out its own children, so every v0 container is toolkit-managed, exactly as on GTK. A
+    * Yoga-driven `FrameLayout` will be `FrameBased` when absolute layout lands.
     */
   def layoutMode(kind: WidgetKind): LayoutMode = LayoutMode.ToolkitManaged
 
-  def create(kind: WidgetKind, props: Seq[Prop]): Handle = {
+  def create(
+    kind:  WidgetKind,
+    props: Seq[Prop]
+  ): Handle = {
     val view: View = kind match {
       case WidgetKind.Column =>
         val l = LinearLayout(context)
@@ -198,9 +223,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case _                                 => false
         }
         if horizontal then HorizontalScrollView(context) else ScrollView(context)
-      case WidgetKind.Image => ImageView(context)
+      case WidgetKind.Image   => ImageView(context)
       case WidgetKind.Divider =>
-        val v  = View(context)
+        val v = View(context)
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)))
         v.setLayoutParams(lp)
         // `listDivider` is a *drawable* attribute, not a colour: reading `TypedValue.data`
@@ -213,7 +238,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
     view
   }
 
-  def update(handle: Handle, patch: Seq[Prop]): Unit =
+  def update(
+    handle: Handle,
+    patch:  Seq[Prop]
+  ): Unit =
     patch.foreach {
       case Prop.Text(v) if tabs.isTab(handle) => tabs.setTitle(handle, v)
 
@@ -235,21 +263,31 @@ final class AndroidRenderer(context: Context) extends Renderer {
           // self-tests, which never looked at it, and obvious the moment one was on screen.
           case _ if kinds.get(handle).exists(k => k == WidgetKind.Alert || k == WidgetKind.Sheet) =>
             alertTitle(handle) = v
-          case _                                                 => ()
+          case _ => ()
         }
 
       case Prop.Placeholder(v) =>
         handle match {
           case e: EditText => e.setHint(v)
-          case _           => ()
+          case _ => ()
         }
 
       case Prop.OnTextChange(f) =>
         handle match {
           case e: EditText =>
             e.addTextChangedListener(new TextWatcher {
-              def beforeTextChanged(s: CharSequence, a: Int, b: Int, c: Int): Unit = ()
-              def onTextChanged(s: CharSequence, a: Int, b: Int, c: Int): Unit     = ()
+              def beforeTextChanged(
+                s: CharSequence,
+                a: Int,
+                b: Int,
+                c: Int
+              ): Unit = ()
+              def onTextChanged(
+                s: CharSequence,
+                a: Int,
+                b: Int,
+                c: Int
+              ):                                 Unit = ()
               def afterTextChanged(s: Editable): Unit =
                 if !suppress.contains(handle) then f(s.toString)
             })
@@ -270,8 +308,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.OnCheckedChange(f) =>
         handle match {
           case c: CompoundButton =>
-            c.setOnCheckedChangeListener { (_: CompoundButton, checked: Boolean) =>
-              if !suppress.contains(handle) then f(checked)
+            c.setOnCheckedChangeListener {
+              (
+                _:       CompoundButton,
+                checked: Boolean
+              ) =>
+                if !suppress.contains(handle) then f(checked)
             }
           case _ => ()
         }
@@ -316,7 +358,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         color.foreach { c =>
           handle match {
             case t: TextView => t.setTextColor(argb(c))
-            case _           => ()
+            case _ => ()
           }
         }
 
@@ -327,7 +369,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         handle match {
           case iv: ImageView =>
             source match {
-              case None => iv.setImageDrawable(null)
+              case None                             => iv.setImageDrawable(null)
               case Some(ImageSource.FromFile(path)) =>
                 iv.setImageBitmap(BitmapFactory.decodeFile(path))
               case Some(ImageSource.FromBytes(data)) =>
@@ -406,7 +448,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         // disabled emphasis.
         handle match {
           case b: ImageButton => b.setImageAlpha(if v then 255 else 97)
-          case _              => ()
+          case _ => ()
         }
 
       case Prop.Glyph(icon) if tabs.isTab(handle) => tabs.setIcon(handle, icon)
@@ -414,7 +456,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.Glyph(icon) =>
         handle match {
           case b: ImageButton => b.setImageDrawable(iconDrawable(icon))
-          case _              => ()
+          case _ => ()
         }
 
       // A screen reader reads contentDescription; the tooltip is what a long press or a mouse
@@ -442,9 +484,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
         handle match {
           case s: SeekBar =>
             val (min, max) = ranges.getOrElse(s, (0.0, 1.0))
-            val span       = if max - min == 0.0 then 1.0 else max - min
-            val steps      = (((v - min) / span) * SliderSteps).round.toInt
-            val clamped    = math.max(0, math.min(SliderSteps, steps))
+            val span = if max - min == 0.0 then 1.0 else max - min
+            val steps = (((v - min) / span) * SliderSteps).round.toInt
+            val clamped = math.max(0, math.min(SliderSteps, steps))
             // Same rule as the text field: writing unconditionally fights the user's drag.
             if s.getProgress != clamped then {
               suppress += s
@@ -459,20 +501,24 @@ final class AndroidRenderer(context: Context) extends Renderer {
         // F-02). targetSdk 35+ forces edge-to-edge, so without this a screen draws behind
         // the status bar and its first row is simply invisible.
         if Build.VERSION.SDK_INT >= Build.VERSION_CODES.R then {
-          handle.setOnApplyWindowInsetsListener { (v: View, insets: WindowInsets) =>
-            val bars = insets.getInsets(WindowInsets.Type.systemBars())
-            // Leading/Trailing, not left/right: under an RTL locale the leading edge is the
-            // right-hand one, and `getLayoutDirection` is how Android says which.
-            val rtl = v.getLayoutDirection == View.LAYOUT_DIRECTION_RTL
-            val leading = if rtl then Edge.Trailing else Edge.Leading
-            val trailing = if rtl then Edge.Leading else Edge.Trailing
-            v.setPadding(
-              if edges.contains(leading) then bars.left else 0,
-              if edges.contains(Edge.Top) then bars.top else 0,
-              if edges.contains(trailing) then bars.right else 0,
-              if edges.contains(Edge.Bottom) then bars.bottom else 0
-            )
-            insets
+          handle.setOnApplyWindowInsetsListener {
+            (
+              v:      View,
+              insets: WindowInsets
+            ) =>
+              val bars = insets.getInsets(WindowInsets.Type.systemBars())
+              // Leading/Trailing, not left/right: under an RTL locale the leading edge is the
+              // right-hand one, and `getLayoutDirection` is how Android says which.
+              val rtl = v.getLayoutDirection == View.LAYOUT_DIRECTION_RTL
+              val leading = if rtl then Edge.Trailing else Edge.Leading
+              val trailing = if rtl then Edge.Leading else Edge.Trailing
+              v.setPadding(
+                if edges.contains(leading) then bars.left else 0,
+                if edges.contains(Edge.Top) then bars.top else 0,
+                if edges.contains(trailing) then bars.right else 0,
+                if edges.contains(Edge.Bottom) then bars.bottom else 0
+              )
+              insets
           }
           // `requestApplyInsets()` on a DETACHED view is a no-op, and a prop is applied
           // before the reconciler inserts the view — so asking here achieved nothing and the
@@ -496,7 +542,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         dates(handle) = date
         handle match {
           case b: Button => b.setText(formatDate(date))
-          case _         => ()
+          case _ => ()
         }
 
       case Prop.OnDateChange(f) =>
@@ -526,13 +572,17 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.OnSelect(f) if handle.isInstanceOf[RadioGroup] =>
         val g = handle.asInstanceOf[RadioGroup]
-        g.setOnCheckedChangeListener { (group: RadioGroup, checkedId: Int) =>
-          // -1 is clearCheck(), which only the app does.
-          if checkedId != -1 && !suppress.contains(group) then {
-            val i = group.indexOfChild(group.findViewById[View](checkedId))
-            segmentIndex(group) = i
-            f(i)
-          }
+        g.setOnCheckedChangeListener {
+          (
+            group:     RadioGroup,
+            checkedId: Int
+          ) =>
+            // -1 is clearCheck(), which only the app does.
+            if checkedId != -1 && !suppress.contains(group) then {
+              val i = group.indexOfChild(group.findViewById[View](checkedId))
+              segmentIndex(group) = i
+              f(i)
+            }
         }
 
       case Prop.Options(values) =>
@@ -598,14 +648,18 @@ final class AndroidRenderer(context: Context) extends Renderer {
         handle match {
           case s: SeekBar =>
             s.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener {
-              def onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean): Unit = {
+              def onProgressChanged(
+                bar:      SeekBar,
+                progress: Int,
+                fromUser: Boolean
+              ): Unit = {
                 if !suppress.contains(bar) then {
                   val (min, max) = ranges.getOrElse(bar, (0.0, 1.0))
                   f(min + (progress.toDouble / SliderSteps) * (max - min))
                 }
               }
               def onStartTrackingTouch(bar: SeekBar): Unit = ()
-              def onStopTrackingTouch(bar: SeekBar): Unit  = ()
+              def onStopTrackingTouch(bar:  SeekBar): Unit = ()
             })
           case _ => ()
         }
@@ -622,9 +676,13 @@ final class AndroidRenderer(context: Context) extends Renderer {
         // decides how it is summoned.
         handle.setOnLongClickListener { (v: View) =>
           val menu = PopupMenu(context, v)
-          items.zipWithIndex.foreach { (item, i) =>
-            val mi = menu.getMenu.add(_root_.android.view.Menu.NONE, i, i, item.label)
-            mi.setEnabled(item.enabled)
+          items.zipWithIndex.foreach {
+            (
+              item,
+              i
+            ) =>
+              val mi = menu.getMenu.add(_root_.android.view.Menu.NONE, i, i, item.label)
+              mi.setEnabled(item.enabled)
           }
           // `_root_.` because this file's own package is `thicket.renderer.android`, so a bare
           // `android.view` resolves to the wrong thing — the same trap as `_root_.android.R`.
@@ -681,13 +739,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   private val gridSpacing = mutable.Map.empty[GridLayout, Int]
 
-  /** GridLayout has no spacing either, so the gap is a margin on each cell that is not first in its row or column. Which
-    * cells those are depends on every index, so it is recomputed whenever the children change, as for LinearLayout.
+  /** GridLayout has no spacing either, so the gap is a margin on each cell that is not first in its row or column.
+    * Which cells those are depends on every index, so it is recomputed whenever the children change, as for
+    * LinearLayout.
     */
   private def applyGridSpacing(g: GridLayout): Unit = {
-    val gap     = gridSpacing.getOrElse(g, 0)
+    val gap = gridSpacing.getOrElse(g, 0)
     val columns = math.max(1, g.getColumnCount)
-    var i       = 0
+    var i = 0
     while i < g.getChildCount do {
       val child = g.getChildAt(i)
       child.getLayoutParams match {
@@ -701,13 +760,13 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
   }
 
-  /** `LinearLayout` has no spacing property, so gaps are child margins. They have to be
-    * recomputed whenever the children change, because "which child is first" changes.
+  /** `LinearLayout` has no spacing property, so gaps are child margins. They have to be recomputed whenever the
+    * children change, because "which child is first" changes.
     */
   private def applySpacing(l: LinearLayout): Unit = {
-    val gap        = spacing.getOrElse(l, 0)
+    val gap = spacing.getOrElse(l, 0)
     val horizontal = l.getOrientation == LinearLayout.HORIZONTAL
-    var i          = 0
+    var i = 0
     while i < l.getChildCount do {
       val child = l.getChildAt(i)
       val lp = child.getLayoutParams match {
@@ -725,7 +784,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
   }
 
-  private val dates       = mutable.Map.empty[View, CalendarDate]
+  private val dates = mutable.Map.empty[View, CalendarDate]
   private val dateChanged = mutable.Map.empty[View, CalendarDate => Unit]
 
   /** The user's medium date format, at UTC: a [[CalendarDate]] is a day, and formatting midnight UTC in any other zone
@@ -742,12 +801,17 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // Android's month counts from 0; the contract's from 1.
     val dialog = _root_.android.app.DatePickerDialog(
       context,
-      (_: _root_.android.widget.DatePicker, y: Int, m: Int, day: Int) => {
+      (
+        _:   _root_.android.widget.DatePicker,
+        y:   Int,
+        m:   Int,
+        day: Int
+      ) => {
         val chosen = CalendarDate(y, m + 1, day)
         dates(field) = chosen
         field match {
           case b: Button => b.setText(formatDate(chosen))
-          case _         => ()
+          case _ => ()
         }
         dateChanged.get(field).foreach(_(chosen))
       },
@@ -767,7 +831,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   /** TabView and Tab, kept in their own class; see `AndroidTabs`. */
-  private lazy val tabs = AndroidTabs(context, dp, colourAttr, iconDrawable)
+  lazy private val tabs = AndroidTabs(context, dp, colourAttr, iconDrawable)
 
   /** A curated icon from the bundled Material Symbols artwork, in the theme's control colour; a platform icon from the
     * app's own drawables, by name.
@@ -789,7 +853,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
   /** Each segmented control's chosen index, kept here because its RadioButtons are rebuilt when the options change. */
   private val segmentIndex = mutable.Map.empty[RadioGroup, Int]
 
-  private def selectSegment(g: RadioGroup, index: Int): Unit = {
+  private def selectSegment(
+    g:     RadioGroup,
+    index: Int
+  ): Unit = {
     segmentIndex(g) = index
     // check() and clearCheck() both call the listener; an app's own write is not a choice.
     suppress += g
@@ -802,7 +869,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * the tap, or the tap the link.
     */
   private val appTaps = mutable.Map.empty[View, () => Unit]
-  private val links   = mutable.Map.empty[View, String]
+  private val links = mutable.Map.empty[View, String]
 
   /** Setting a listener replaces the previous one, so repeated updates cannot stack handlers — the same property the
     * GTK renderer gets from one connected signal.
@@ -819,7 +886,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
   /** Asked of `kinds`, not of the class: a ScrollView is a FrameLayout too, and so is the navigation container. */
   private def isZStack(v: View): Boolean = kinds.get(v).contains(WidgetKind.ZStack)
 
-  private def gravity(h: Alignment, v: Alignment): Int = {
+  private def gravity(
+    h: Alignment,
+    v: Alignment
+  ): Int = {
     // START and END rather than LEFT and RIGHT, so a right-to-left locale mirrors it.
     val x = h match {
       case Alignment.Start  => Gravity.START
@@ -835,7 +905,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   /** A FrameLayout places each child by that child's own `gravity`, so the stack's alignment is written onto each. */
-  private def placeInStack(stack: FrameLayout, child: View): Unit =
+  private def placeInStack(
+    stack: FrameLayout,
+    child: View
+  ): Unit =
     stackGravity.get(stack).foreach { g =>
       // addView has already converted whatever the child carried into FrameLayout's own
       // params, keeping its size and margins; only the gravity is ours to set.
@@ -844,7 +917,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
       child.setLayoutParams(lp)
     }
 
-  def insertAfter(parent: Handle, child: Handle, after: Option[Handle]): Unit = {
+  def insertAfter(
+    parent: Handle,
+    child:  Handle,
+    after:  Option[Handle]
+  ): Unit = {
     if tabs.isTabView(parent) then {
       tabs.insertAfter(parent, child.asInstanceOf[FrameLayout], after)
       return
@@ -867,9 +944,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // tail first is the difference between O(n) and O(n^2).
     val count = vg.getChildCount
     val index = after match {
-      case None                                            => 0
+      case None                                                  => 0
       case Some(a) if count > 0 && vg.getChildAt(count - 1) == a => count
-      case Some(a)                                         => vg.indexOfChild(a) + 1
+      case Some(a)                                               => vg.indexOfChild(a) + 1
     }
     // A view that carries no params of its own is given the parent's defaults, and
     // FrameLayout's are MATCH_PARENT both ways where LinearLayout's are WRAP_CONTENT — so
@@ -883,14 +960,17 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // sibling is also what puts it at the right depth.
     vg.addView(child, index)
     vg match {
-      case g: GridLayout                => applyGridSpacing(g)
-      case l: LinearLayout              => applySpacing(l)
+      case g: GridLayout                 => applyGridSpacing(g)
+      case l: LinearLayout               => applySpacing(l)
       case f: FrameLayout if isZStack(f) => placeInStack(f, child)
-      case _                            => ()
+      case _ => ()
     }
   }
 
-  def removeChild(parent: Handle, child: Handle): Unit = {
+  def removeChild(
+    parent: Handle,
+    child:  Handle
+  ): Unit = {
     if tabs.isTabView(parent) then {
       tabs.remove(parent, child)
       return
@@ -900,7 +980,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     vg match {
       case g: GridLayout   => applyGridSpacing(g)
       case l: LinearLayout => applySpacing(l)
-      case _               => ()
+      case _ => ()
     }
   }
 
@@ -913,7 +993,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         vg match {
           case g: GridLayout   => applyGridSpacing(g)
           case l: LinearLayout => applySpacing(l)
-          case _               => ()
+          case _ => ()
         }
       case _ => ()
     }
@@ -926,7 +1006,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case l: LinearLayout => val _ = spacing.remove(l)
       case f: FrameLayout  => val _ = stackGravity.remove(f)
       case g: GridLayout   => val _ = gridSpacing.remove(g)
-      case _               => ()
+      case _ => ()
     }
     // Keyed by View, so an entry left behind keeps the View itself alive for the life of
     // the renderer. Android needs no handle table — the closures sit in these maps and the
@@ -941,7 +1021,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
     val _ = alertDismiss.remove(handle)
   }
 
-  def measure(handle: Handle, constraints: Constraints): Measurement = {
+  def measure(
+    handle:      Handle,
+    constraints: Constraints
+  ): Measurement = {
     def spec(v: Float): Int =
       if v.isNaN then View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
       else View.MeasureSpec.makeMeasureSpec(v.toInt, View.MeasureSpec.AT_MOST)
@@ -955,20 +1038,22 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   /** No-op while every container is toolkit-managed. */
-  def setFrame(handle: Handle, frame: Frame): Unit = ()
+  def setFrame(
+    handle: Handle,
+    frame:  Frame
+  ): Unit = ()
 
-  /** `ListView` materialises only the rows on screen and recycles the rest, which is the
-    * whole point of `LazyColumn`. It is the platform's own widget — no AndroidX dependency.
+  /** `ListView` materialises only the rows on screen and recycles the rest, which is the whole point of `LazyColumn`.
+    * It is the platform's own widget — no AndroidX dependency.
     */
   override def supportsVirtualRows: Boolean = true
 
   /** Uses the platform `android.app.AlertDialog`, not AndroidX's.
     *
-    * The class carries a deprecation flag in android-36's bytecode, though scalac does not
-    * warn on it. Taking the AndroidX dependency to get the undeprecated one would add a
-    * library this renderer otherwise does not need, for a dialog the platform still draws
-    * correctly — and the reason this APK is 165 KB is that it depends on nothing. Revisit
-    * if it is ever actually removed rather than merely discouraged.
+    * The class carries a deprecation flag in android-36's bytecode, though scalac does not warn on it. Taking the
+    * AndroidX dependency to get the undeprecated one would add a library this renderer otherwise does not need, for a
+    * dialog the platform still draws correctly — and the reason this APK is 165 KB is that it depends on nothing.
+    * Revisit if it is ever actually removed rather than merely discouraged.
     */
   override def present(handle: View): Unit =
     if kinds.get(handle).contains(WidgetKind.Sheet) then presentSheet(handle)
@@ -976,12 +1061,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   /** Built on `AlertDialog.Builder().setView(...)`, not a plain `Dialog`.
     *
-    * A plain `Dialog` reserves a title band under the current themes and then draws nothing
-    * in it — a blank strip above the content, whether or not `setTitle` is called, before
-    * or after `setContentView`. `AlertDialog` renders the title properly and handles the
-    * content's padding and insets, and taking a custom view is what its `setView` is for.
-    * It is the Android idiom for a modal with your own content; the plain `Dialog` is the
-    * lower-level thing underneath it.
+    * A plain `Dialog` reserves a title band under the current themes and then draws nothing in it — a blank strip above
+    * the content, whether or not `setTitle` is called, before or after `setContentView`. `AlertDialog` renders the
+    * title properly and handles the content's padding and insets, and taking a custom view is what its `setView` is
+    * for. It is the Android idiom for a modal with your own content; the plain `Dialog` is the lower-level thing
+    * underneath it.
     */
   private def presentSheet(handle: View): Unit = {
     val b = AlertDialog.Builder(context)
@@ -1005,11 +1089,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // goes to NEGATIVE, the first non-cancel to POSITIVE, and a third to NEUTRAL. An app
     // that assumed its own order would be wrong here and right everywhere else.
     val actions = alertActions.getOrElse(handle, Nil)
-    val cancel  = actions.find(_.cancel)
-    val rest    = actions.filterNot(_.cancel)
+    val cancel = actions.find(_.cancel)
+    val rest = actions.filterNot(_.cancel)
 
     def listener(a: AlertAction): DialogInterface.OnClickListener =
-      (_: DialogInterface, _: Int) => a.onSelect()
+      (
+        _: DialogInterface,
+        _: Int
+      ) => a.onSelect()
 
     rest.headOption.foreach(a => b.setPositiveButton(a.label, listener(a)))
     cancel.foreach(a => b.setNegativeButton(a.label, listener(a)))
@@ -1033,7 +1120,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // reconciler's destroy runs against a view the dialog still owns.
       handle.getParent match {
         case g: ViewGroup => g.removeView(handle)
-        case _            => ()
+        case _ => ()
       }
     }
   }
@@ -1042,11 +1129,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
     val list = ListView(context)
 
     val adapter = new BaseAdapter {
-      def getCount: Int            = source.count
-      def getItem(i: Int): Object  = Integer.valueOf(i)
-      def getItemId(i: Int): Long  = i.toLong
+      def getCount:          Int = source.count
+      def getItem(i:   Int): Object = Integer.valueOf(i)
+      def getItemId(i: Int): Long = i.toLong
 
-      override def getView(position: Int, convertView: View, parent: ViewGroup): View =
+      override def getView(
+        position:    Int,
+        convertView: View,
+        parent:      ViewGroup
+      ): View =
         // Handing `convertView` back to the framework is what turns a scroll into a few
         // property writes: it re-binds that row's signal rather than building widgets.
         source.bind(position, Option(convertView))
@@ -1063,13 +1154,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
     else {
       val _ = mainHandler.post(() => f())
     }
+
 }
 
 object AndroidRenderer {
 
   /** The date dialog on screen, if any. A dialog is not in any view tree, so this is the only way a self-test can find
-    * the one a field opened and choose a date in it — which is the user's own path, through the platform's buttons.
-    * Set when one is shown, cleared when it is dismissed; nothing else should touch it.
+    * the one a field opened and choose a date in it — which is the user's own path, through the platform's buttons. Set
+    * when one is shown, cleared when it is dismissed; nothing else should touch it.
     */
   @volatile var dateDialog: Option[_root_.android.app.DatePickerDialog] = None
 
@@ -1079,22 +1171,26 @@ object AndroidRenderer {
     * Replaceable for one reason: a self-test that clicks a link must not leave the app for a browser half-way through.
     * Nothing else should touch it.
     */
-  @volatile var urlOpener: (Context, String) => Unit = { (context, url) =>
-    val intent = _root_.android.content.Intent(
-      _root_.android.content.Intent.ACTION_VIEW,
-      _root_.android.net.Uri.parse(url)
-    )
-    // Started from a View's context, which need not be an Activity; without NEW_TASK that
-    // throws rather than opening anything.
-    if !context.isInstanceOf[_root_.android.app.Activity] then
-      intent.addFlags(_root_.android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-    try context.startActivity(intent)
-    catch {
-      // Nothing installed handles the scheme. There is nothing the app could do about it,
-      // so it is logged rather than thrown into a click handler.
-      case _: _root_.android.content.ActivityNotFoundException =>
-        val _ = _root_.android.util.Log.w("thicket", s"no app opens $url")
-    }
+  @volatile var urlOpener: (Context, String) => Unit = {
+    (
+      context,
+      url
+    ) =>
+      val intent = _root_.android.content.Intent(
+        _root_.android.content.Intent.ACTION_VIEW,
+        _root_.android.net.Uri.parse(url)
+      )
+      // Started from a View's context, which need not be an Activity; without NEW_TASK that
+      // throws rather than opening anything.
+      if !context.isInstanceOf[_root_.android.app.Activity] then
+        intent.addFlags(_root_.android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+      try context.startActivity(intent)
+      catch {
+        // Nothing installed handles the scheme. There is nothing the app could do about it,
+        // so it is logged rather than thrown into a click handler.
+        case _: _root_.android.content.ActivityNotFoundException =>
+          val _ = _root_.android.util.Log.w("thicket", s"no app opens $url")
+      }
   }
 
 }

@@ -76,7 +76,7 @@ final case class Theme(colors: Map[ColorRole, Rgb] = Map.empty) {
   def withColor(
     role: ColorRole,
     rgb:  Rgb
-  ): Theme = copy(colors = colors.updated(role, rgb))
+  ):                        Theme = copy(colors = colors.updated(role, rgb))
   def get(role: ColorRole): Option[Rgb] =
     role match {
       case ColorRole.OnAccent =>

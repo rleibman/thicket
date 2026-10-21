@@ -38,7 +38,7 @@ final class AppleRenderer extends Renderer {
   private val boolIds = mutable.Map.empty[Handle, Long]
   private val valueIds = mutable.Map.empty[Handle, Long]
   private val selectIds = mutable.Map.empty[Handle, Long]
-  private val dateIds   = mutable.Map.empty[Handle, Long]
+  private val dateIds = mutable.Map.empty[Handle, Long]
   private val actionIds = mutable.Map.empty[Handle, Seq[Long]]
   private val dismissIds = mutable.Map.empty[Handle, Long]
   private val menuIds = mutable.Map.empty[Handle, Seq[Long]]
@@ -208,8 +208,8 @@ final class AppleRenderer extends Renderer {
 
       case Prop.Picture(source) =>
         source match {
-          case None                             => Shim.sui_clear_image(handle)
-          case Some(ImageSource.FromFile(path)) => Zone(Shim.sui_set_image_file(handle, toCString(path)))
+          case None                              => Shim.sui_clear_image(handle)
+          case Some(ImageSource.FromFile(path))  => Zone(Shim.sui_set_image_file(handle, toCString(path)))
           case Some(ImageSource.FromBytes(data)) =>
             Zone {
               val buf = alloc[Byte](data.length)
@@ -237,7 +237,7 @@ final class AppleRenderer extends Renderer {
       case Prop.OnTap(f) =>
         tapIds.get(handle) match {
           case Some(id) => Handles.replace(id, f)
-          case None =>
+          case None     =>
             val id = Handles.register(f)
             tapIds(handle) = id
             Shim.sui_on_tap(handle, Handles.tapTrampoline, id)
@@ -246,7 +246,7 @@ final class AppleRenderer extends Renderer {
       case Prop.OnTextChange(f) =>
         editIds.get(handle) match {
           case Some(id) => Handles.replaceText(id, f)
-          case None =>
+          case None     =>
             val id = Handles.registerText(f)
             editIds(handle) = id
             Shim.sui_on_text_change(handle, Handles.textTrampoline, id)
@@ -255,7 +255,7 @@ final class AppleRenderer extends Renderer {
       case Prop.OnCheckedChange(f) =>
         boolIds.get(handle) match {
           case Some(id) => Handles.replaceBool(id, f)
-          case None =>
+          case None     =>
             val id = Handles.registerBool(f)
             boolIds(handle) = id
             Shim.sui_on_checked_change(handle, Handles.boolTrampoline, id)
@@ -322,7 +322,7 @@ final class AppleRenderer extends Renderer {
         val g: Int => Unit = day => f(CalendarDate.fromEpochDay(day))
         dateIds.get(handle) match {
           case Some(id) => Handles.replaceInt(id, g)
-          case None =>
+          case None     =>
             val id = Handles.registerInt(g)
             dateIds(handle) = id
             Shim.sui_on_date_change(handle, Handles.intTrampoline, id)
@@ -331,7 +331,7 @@ final class AppleRenderer extends Renderer {
       case Prop.OnSelect(f) =>
         selectIds.get(handle) match {
           case Some(id) => Handles.replaceInt(id, f)
-          case None =>
+          case None     =>
             val id = Handles.registerInt(f)
             selectIds(handle) = id
             Shim.sui_on_select(handle, Handles.intTrampoline, id)
@@ -340,7 +340,7 @@ final class AppleRenderer extends Renderer {
       case Prop.OnValueChange(f) =>
         valueIds.get(handle) match {
           case Some(id) => Handles.replaceValue(id, f)
-          case None =>
+          case None     =>
             val id = Handles.registerValue(f)
             valueIds(handle) = id
             Shim.sui_on_value_change(handle, Handles.valueTrampoline, id)
@@ -367,7 +367,7 @@ final class AppleRenderer extends Renderer {
       case Prop.OnDismiss(f) =>
         dismissIds.get(handle) match {
           case Some(id) => Handles.replace(id, f)
-          case None =>
+          case None     =>
             val id = Handles.register(f)
             dismissIds(handle) = id
             Shim.sui_on_dismiss(handle, Handles.tapTrampoline, id)

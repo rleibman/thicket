@@ -20,7 +20,7 @@ private[signals] object ThreadGuardPlatform {
 
   def owningThread: ThreadGuard =
     new ThreadGuard {
-      private var owner: Thread | Null = null
+      private var owner:     Thread | Null = null
       def check(op: String): Unit = {
         val current = Thread.currentThread()
         val o = owner
