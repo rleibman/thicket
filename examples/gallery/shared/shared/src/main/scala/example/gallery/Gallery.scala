@@ -65,6 +65,7 @@ object Gallery {
     val span:      Var[Int] = Var(1)
     val due:       Var[CalendarDate] = Var(Gallery.firstDue)
     val linkTaps:  Var[Int] = Var(0)
+    val labelTaps: Var[Int] = Var(0)
     val gridExtra: Var[Boolean] = Var(false)
     val lastIcon:  Var[String] = Var("")
     // Not 0: the platform shows the first tab by default, so starting anywhere else is what
@@ -236,7 +237,11 @@ object Gallery {
             // A link that also does something in the app. Both must run: a renderer that wires
             // one click handler per widget would let whichever came last win.
             Link("Apache License 2.0", Gallery.licenceUrl).onTap(model.linkTaps.set(model.linkTaps.now + 1)),
-            Label(model.linkTaps.map(n => s"The licence link was tapped $n times"), style = TextRole.Caption)
+            Label(model.linkTaps.map(n => s"The licence link was tapped $n times"), style = TextRole.Caption),
+            // A leaf with no action of its own, made tappable: OnTap must fire on any element, not
+            // only on a Button or a container (review 2026-10-20 M6, #75).
+            Label("Tap this label").onTap(model.labelTaps.set(model.labelTaps.now + 1)),
+            Label(model.labelTaps.map(n => s"The label was tapped $n times"), style = TextRole.Caption)
           ),
           section("Slider, ProgressBar, ActivityIndicator")(
             Slider(model.volume, min = 0, max = 11)(model.volume.set),

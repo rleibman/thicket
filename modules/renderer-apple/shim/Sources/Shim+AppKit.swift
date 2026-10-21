@@ -86,6 +86,12 @@ private final class Proxy: NSObject, NSTextFieldDelegate {
     fireTap(ObjectIdentifier(sender))
   }
 
+  /// A click recogniser on a view with no action of its own recognises on mouse-up inside it.
+  @objc func clicked(_ gesture: NSGestureRecognizer) {
+    guard let v = gesture.view else { return }
+    fireTap(ObjectIdentifier(v))
+  }
+
   /// A checkbox is an `NSButton` and a `Toggle` is an `NSSwitch`, which is not one; both
   /// carry `state`, so this reads it from whichever it is.
   @objc func toggled(_ sender: NSControl) {
@@ -146,6 +152,48 @@ private final class TapView: NSStackView {
   override func mouseDown(with event: NSEvent) {
     let id = ObjectIdentifier(self)
     if taps[id] != nil || links[id] != nil { fireTap(id) } else { super.mouseDown(with: event) }
+  }
+}
+
+/// The recogniser `OnTap` and `OpenUrl` put on a view with no action of its own. Its own class,
+/// so the shim can tell it from any other.
+private final class ClickRecognizer: NSClickGestureRecognizer {}
+
+/// Makes any view report clicks (#75): a Label, an Image, a ZStack — not only a Button, whose
+/// target/action already goes through `fireTap`, and a Column or Row, whose `TapView` takes
+/// its own mouse-down. GTK puts a click gesture on any widget and Android a click listener on
+/// any view; before this, `Image(...).onTap` did nothing on macOS. `NSClickGestureRecognizer`
+/// recognises on mouse-up inside the view, so a press dragged off it does not fire.
+private func makeTappable(_ v: NSView) {
+  if v is NSButton || v is TapView { return }
+  if v.gestureRecognizers.contains(where: { $0 is ClickRecognizer }) { return }
+  let g = ClickRecognizer(target: proxy, action: #selector(Proxy.clicked(_:)))
+  // A control other than a label keeps its own mouse-down: a tappable slider still slides.
+  let isLabel = (v as? NSTextField).map { !$0.isEditable } ?? false
+  if v is NSControl && !isLabel { g.delaysPrimaryMouseButtonEvents = false }
+  v.addGestureRecognizer(g)
+}
+
+/// `Alignment` against a layout direction. AppKit's `.natural` follows the *text's* script, not
+/// the view's direction (measured: "Start" in a right-to-left NSTextField still draws at the
+/// left with `.natural`), so Start and End are resolved here, and a `LabelField` resolves them
+/// again when its direction changes. `.left`/`.right`, as before #75, ignored the direction.
+private func resolvedAlignment(_ align: Int32, _ direction: NSUserInterfaceLayoutDirection) -> NSTextAlignment {
+  let rtl = direction == .rightToLeft
+  switch align {
+  case 1: return .center
+  case 2: return rtl ? .left : .right
+  default: return rtl ? .right : .left
+  }
+}
+
+/// A Label: a non-editable `NSTextField` that remembers its `Alignment`, so a change of layout
+/// direction moves its text. A view's direction starts as the app's, which a right-to-left
+/// locale makes `.rightToLeft`.
+private final class LabelField: NSTextField {
+  var logicalAlign: Int32 = 0
+  override var userInterfaceLayoutDirection: NSUserInterfaceLayoutDirection {
+    didSet { alignment = resolvedAlignment(logicalAlign, userInterfaceLayoutDirection) }
   }
 }
 
@@ -491,7 +539,7 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
 
   case 2:
     // AppKit has no NSLabel; a non-editable, non-bordered NSTextField is the label.
-    let l = NSTextField(labelWithString: "")
+    let l = LabelField(labelWithString: "")
     l.lineBreakMode = .byWordWrapping
     l.maximumNumberOfLines = 0
     return retained(l)
@@ -881,11 +929,8 @@ public func sui_set_grow(_ h: UnsafeMutableRawPointer, _ on: Int32) {
 @_cdecl("sui_set_align")
 public func sui_set_align(_ h: UnsafeMutableRawPointer, _ align: Int32) {
   guard let f = view(h) as? NSTextField else { return }
-  switch align {
-  case 1: f.alignment = .center
-  case 2: f.alignment = .right
-  default: f.alignment = .left
-  }
+  (f as? LabelField)?.logicalAlign = align
+  f.alignment = resolvedAlignment(align, f.userInterfaceLayoutDirection)
 }
 
 @_cdecl("sui_set_progress")
@@ -922,7 +967,9 @@ public func sui_set_value(_ h: UnsafeMutableRawPointer, _ value: Double) {
 
 @_cdecl("sui_on_tap")
 public func sui_on_tap(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_void_cb, _ ctx: Int64) {
-  taps[ObjectIdentifier(view(h))] = Tap(cb: cb, ctx: ctx)
+  let v = view(h)
+  taps[ObjectIdentifier(v)] = Tap(cb: cb, ctx: ctx)
+  makeTappable(v)
 }
 
 @_cdecl("sui_set_open_url")
@@ -930,6 +977,7 @@ public func sui_set_open_url(_ h: UnsafeMutableRawPointer, _ url: UnsafePointer<
   let v = view(h)
   // A string the platform cannot parse as a URL opens nothing, rather than crashing a tap.
   links[ObjectIdentifier(v)] = URL(string: str(url))
+  makeTappable(v)
   // AppKit has no link button. A borderless button titled in the system link colour is
   // what Finder and System Settings use for one; the accent fill a Link never sends is
   // what would otherwise make it look like a command.
@@ -1559,6 +1607,40 @@ public func sui_perform_click(_ h: UnsafeMutableRawPointer) -> Int32 {
   return 1
 }
 
+/// A real click: the view is scrolled into sight, a point at its centre must hit-test to it,
+/// and a left mouse-down and mouse-up there are sent through the window's `sendEvent`, the path
+/// the window server's events take — so gesture recognisers, `mouseDown` overrides and
+/// controls all see what a user's click gives them. 0 when the view is not in a window or
+/// something else would take the click.
+@_cdecl("sui_perform_tap")
+public func sui_perform_tap(_ h: UnsafeMutableRawPointer) -> Int32 {
+  let v = view(h)
+  guard let w = v.window, let content = w.contentView else { return 0 }
+  v.scrollToVisible(v.bounds)
+  w.layoutIfNeeded()
+  let centre = v.convert(NSPoint(x: v.bounds.midX, y: v.bounds.midY), to: nil)
+  let probe = content.superview.map { $0.convert(centre, from: nil) } ?? centre
+  guard let hit = (content.superview ?? content).hitTest(probe), hit === v || hit.isDescendant(of: v)
+  else { return 0 }
+  for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+    guard let e = NSEvent.mouseEvent(
+      with: type, location: centre, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+    ) else { return 0 }
+    w.sendEvent(e)
+  }
+  return 1
+}
+
+/// Forces a view's layout direction, as a right-to-left locale sets it for the whole app, so
+/// a test can measure what the view does under it. 1 right-to-left, 0 back to the app's.
+@_cdecl("sui_set_layout_direction")
+public func sui_set_layout_direction(_ h: UnsafeMutableRawPointer, _ rtl: Int32) {
+  let v = view(h)
+  v.userInterfaceLayoutDirection = rtl != 0 ? .rightToLeft : NSApp.userInterfaceLayoutDirection
+  v.needsDisplay = true
+}
+
 @_cdecl("sui_alert_choose")
 public func sui_alert_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
   guard let buttons = (view(h) as? AlertView)?.alert?.buttons, index >= 0, Int(index) < buttons.count
@@ -1969,13 +2051,17 @@ public func sui_get_tooltip(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar
 /// button whose symbol resolved but drew nothing reads 0. -1 when the view has no size.
 @_cdecl("sui_painted_fraction")
 public func sui_painted_fraction(_ h: UnsafeMutableRawPointer) -> Double {
-  let v = view(h)
+  guard let image = drawnImage(view(h)) else { return -1 }
+  return paintedFraction(image)
+}
+
+/// The view drawn by AppKit into a bitmap; nil when it has no size.
+private func drawnImage(_ v: NSView) -> CGImage? {
   v.window?.layoutIfNeeded()
   guard v.bounds.width >= 1, v.bounds.height >= 1, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds)
-  else { return -1 }
+  else { return nil }
   v.cacheDisplay(in: v.bounds, to: rep)
-  guard let image = rep.cgImage else { return -1 }
-  return paintedFraction(image)
+  return rep.cgImage
 }
 
 /// Drawn into an RGBA buffer of our own, so the pixel format is known whatever the source's.
@@ -1995,4 +2081,61 @@ private func paintedFraction(_ image: CGImage) -> Double {
   var painted = 0
   for i in stride(from: 3, to: pixels.count, by: 4) where pixels[i] > 25 { painted += 1 }
   return Double(painted) / Double(w * h)
+}
+
+/// Where the painted pixels of a drawn view sit across it: the first and last column holding
+/// any, as fractions of its width (0 = the left edge, 1 = the right). Measures where text
+/// actually lands, which `textAlignment` alone cannot say for `.natural`.
+private func inkSpan(_ image: CGImage) -> (Double, Double)? {
+  let w = image.width, h = image.height
+  guard w > 0, h > 0 else { return nil }
+  var pixels = [UInt8](repeating: 0, count: w * h * 4)
+  let drawn: Bool = pixels.withUnsafeMutableBytes { buf in
+    guard let ctx = CGContext(
+      data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return false }
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    return true
+  }
+  guard drawn else { return nil }
+  var lo = Int.max, hi = -1
+  for y in 0..<h {
+    for x in 0..<w where pixels[(y * w + x) * 4 + 3] > 25 {
+      lo = min(lo, x)
+      hi = max(hi, x)
+    }
+  }
+  guard hi >= 0 else { return nil }
+  return (Double(lo) / Double(w), Double(hi + 1) / Double(w))
+}
+
+@_cdecl("sui_ink_span")
+public func sui_ink_span(
+  _ h: UnsafeMutableRawPointer, _ outLeft: UnsafeMutablePointer<Double>, _ outRight: UnsafeMutablePointer<Double>
+) -> Int32 {
+  guard let image = drawnImage(view(h)), let (l, r) = inkSpan(image) else { return 0 }
+  outLeft.pointee = l
+  outRight.pointee = r
+  return 1
+}
+
+/// Width pins a test has put on views, so they can be taken off again.
+private var widthPins: [ObjectIdentifier: NSLayoutConstraint] = [:]
+
+/// Pins a view's width for a measurement, or takes the pin off when `width` is negative. An
+/// AppKit Column hugs its children, so a one-word label is exactly as wide as its text and has
+/// no room in which to show its alignment; this gives it the room a wider column would.
+@_cdecl("sui_pin_width")
+public func sui_pin_width(_ h: UnsafeMutableRawPointer, _ width: Double) {
+  let v = view(h)
+  let id = ObjectIdentifier(v)
+  widthPins.removeValue(forKey: id)?.isActive = false
+  if width >= 0 {
+    let c = v.widthAnchor.constraint(equalToConstant: CGFloat(width))
+    c.priority = .required
+    c.isActive = true
+    widthPins[id] = c
+  }
+  v.window?.layoutIfNeeded()
 }

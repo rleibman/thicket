@@ -91,6 +91,33 @@ object AppleInspect {
   /** Clicks a button through its own action, as a user would. False if `h` is not a button. */
   def click(h: Shim.Handle): Boolean = Shim.sui_perform_click(h) != 0
 
+  /** Taps any view at its centre through the platform's event path (see `sui_perform_tap`). False when it could not be
+    * tapped: off screen, covered, or — on UIKit — carrying no tap recogniser.
+    */
+  def tap(h: Shim.Handle): Boolean = Shim.sui_perform_tap(h) != 0
+
+  /** A Checkbox's or Toggle's state, read from the platform's control. */
+  def checked(h: Shim.Handle): Boolean = Shim.sui_get_checked(h) != 0
+
+  /** Forces `h` right-to-left, as an Arabic or Hebrew locale would, or returns it to the inherited direction. */
+  def setRightToLeft(
+    h:   Shim.Handle,
+    rtl: Boolean
+  ): Unit = Shim.sui_set_layout_direction(h, if rtl then 1 else 0)
+
+  /** Pins `h`'s width for a measurement; `None` takes the pin off. */
+  def pinWidth(
+    h:     Shim.Handle,
+    width: Option[Double]
+  ): Unit = Shim.sui_pin_width(h, width.getOrElse(-1.0))
+
+  /** Where the platform paints `h`'s pixels across its width, as (first, last) fractions; `None` if it paints none. */
+  def inkSpan(h: Shim.Handle): Option[(Double, Double)] =
+    Zone {
+      val out = alloc[Double](2)
+      if Shim.sui_ink_span(h, out, out + 1) != 0 then Some((out(0), out(1))) else None
+    }
+
   /** Chooses an alert action through the platform's response path. False where the platform offers no way to. */
   def chooseAlert(
     h:     Shim.Handle,

@@ -32,8 +32,8 @@ renderer" above was true of *construction*, and the review found places where a 
 handled but not honoured. Fixed on Linux in the same PR: `Grow` along a Column on GTK and
 Android, Android's Spinner selection and its `-1`, Android tab reordering, `SafeArea` padding
 on Android, GTK's `Scroll(padding)` and indeterminate `ProgressBar`, and the GTK `LazyColumn`
-showing stale rows after an edit. Open, on Apple: taps on leaf views, the UIKit Checkbox's
-label and right-to-left alignment (#75), `SafeArea` and `Scroll` padding (#76), selection
+showing stale rows after an edit. Fixed on Apple since: taps on leaf views, the UIKit
+Checkbox's label and right-to-left alignment (#75). Open, on Apple: `SafeArea` and `Scroll` padding (#76), selection
 when options change and `-1` (#77), unbuilt kinds (#74). The Android gallery, which this
 document and its README said was built, had no Gradle project until then; it now builds and
 self-tests (24/24 on the `s2test` emulator).
@@ -54,7 +54,7 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Label` | `WidgetKind.Label` | done | done | done | done | `Text` in §7.10's naming |
 | `Button` | `WidgetKind.Button` | done | done | done | done | |
 | `TextField` | `WidgetKind.TextField` | done | done | done | done | Two-way bound; renderers must not disturb a widget showing the value already written |
-| `Checkbox` | `WidgetKind.Checkbox` | done | done | done | done | |
+| `Checkbox` | `WidgetKind.Checkbox` | done | done | done | done | UIKit has no checkbox: a `UILabel` caption beside a `UISwitch`, which a tap on the caption flips (#75) |
 | `Scroll` | `WidgetKind.Scroll` | done | done | done | done | Vertical and horizontal (`Prop.Axis`) on all four. The axis is read at `create`; Apple folds it into the kind code |
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
@@ -249,8 +249,7 @@ the point of doing this in Scala. (This section said 22, and then thirty, after 
 been added; the enum is the count.)
 
 **"Handled" is not "honoured."** As of 2026-10-20, honoured everywhere except: `Glyph` and
-`AccessibleLabel` on Apple (#66); `OnTap` on Apple leaf views and `Text` on the UIKit
-Checkbox (#75); `SafeArea` and `Padding` on a `Scroll` on Apple (#76). `Message`, `Actions`
+`AccessibleLabel` on Apple (#66); `SafeArea` and `Padding` on a `Scroll` on Apple (#76). `Message`, `Actions`
 and `OnDismiss` were unreachable on Apple until `Alert` could be presented (#18), and
 `ContextMenu` until #19.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
