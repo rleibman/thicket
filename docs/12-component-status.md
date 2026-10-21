@@ -18,7 +18,7 @@ Android gallery built, Apple gaps the review found filed as #73–#79).
 | Props in the contract | **37** |
 | Props implemented on every renderer | **37** |
 
-**Twenty-two of thirty-two, every one on every renderer, and measured on every one.** `Grid` reached AppKit and UIKit in #62: gallery **58/58** on macOS and **57/57** on the iOS simulator. `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
+**Twenty-three of thirty-two, every one on every renderer, and measured on every one.** `Grid` reached AppKit and UIKit in #62: gallery **58/58** on macOS and **57/57** on the iOS simulator. `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
 menus followed in #19, and the Apple hosts render `AppRoot.pages` since #25. The Apple
 self-test is **87/87** on macOS and **82/82** on the iOS simulator; the five iOS does not
