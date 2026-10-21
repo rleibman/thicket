@@ -26,8 +26,8 @@ import thicket.renderer.apple.AppleApp
 object TodoMac {
 
   def main(args: Array[String]): Unit =
-    // `LazyProbe` is a 10 000-row screen and nothing else: the shared TodoApp cannot start
-    // on Apple until Forgejo #9, and #5's measurement should not be hostage to that.
+    // `LazyProbe` is a 10 000-row screen and nothing else, so #5's virtualisation measurement
+    // has nothing else on screen; `PostProbe` measures postToUi on its own the same way.
     if sys.env.contains("THICKET_POSTTEST") then
       AppleApp.run("postToUi", 320, 120)(PostProbe.build(sys.env("THICKET_POSTTEST")))
     else if sys.env.contains("THICKET_LAZYTEST") then AppleApp.run("10 000 rows", 480, 640)(LazyProbe.build())

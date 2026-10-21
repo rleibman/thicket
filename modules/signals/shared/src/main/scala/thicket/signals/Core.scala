@@ -271,7 +271,4 @@ private[signals] object Runtime {
       }
     }
 
-  /** Test/benchmark hook: number of effects waiting to run. */
-  def pendingCount: Int = pending.size
-
 }

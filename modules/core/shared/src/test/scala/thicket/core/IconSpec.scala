@@ -109,6 +109,36 @@ object IconSpec extends ZIOSpecDefault {
         chk.eq(SvgPath.parse("M.5.5l-1-1Z"), Vector(Cmd.MoveTo(0.5f, 0.5f), Cmd.LineTo(-0.5f, -0.5f), Cmd.Close))
         chk.result
       },
+      test("accessibleLabel reaches the renderer as the widget's screen-reader name") {
+        val chk = Checks()
+        val o = Owner(); given Owner = o
+        val r = TestRenderer()
+        val _ = Reconciler.mount(r, Label("42").accessibleLabel("Unread messages"))
+        chk.yes(
+          r.appliedProps.contains(thicket.renderer.Prop.AccessibleLabel("Unread messages")),
+          r.appliedProps.toString
+        )
+        o.dispose()
+        chk.result
+      },
+      test("an exponent is part of its number") {
+        val chk = Checks()
+        chk.eq(SvgPath.parse("M1e1 2E-1"), Vector(SvgPath.Cmd.MoveTo(10f, 0.2f)))
+        chk.result
+      },
+      test("malformed path data is an IllegalArgumentException that says what is wrong") {
+        val chk = Checks()
+        def refused(d: String) =
+          try { val _ = SvgPath.parse(d); "parsed" }
+          catch {
+            case _: IllegalArgumentException => "refused"
+            case e: Throwable                => e.getClass.getSimpleName
+          }
+        chk.eq(refused("M 1"), "refused", "ends mid-command (was IndexOutOfBounds)")
+        chk.eq(refused("M - 1"), "refused", "a lone sign (was NumberFormatException)")
+        chk.eq(refused("1 2"), "refused", "no command at all")
+        chk.result
+      },
       test("a command the bundled set does not use is refused, not guessed at") {
         val chk = Checks()
         chk.yes(scala.util.Try(SvgPath.parse("M0 0C1 1 2 2 3 3")).isFailure)

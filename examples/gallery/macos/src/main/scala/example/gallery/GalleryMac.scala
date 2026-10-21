@@ -23,8 +23,8 @@ import thicket.renderer.apple.AppleApp
   * AppKit apps own their own process: `main` starts, `AppleApp.run` hands the thread to `NSApp.run()` and never
   * returns. Compare [[GalleryIos]], where the process is already running by the time Scala is reached.
   *
-  * Not verified on Linux — see the gallery issue on the tracker. The point of the file existing now is that
-  * `galleryMacos/nativeLink` is a real target on a Mac rather than something still to be written.
+  * Built and self-tested on the Mac by `bin/verify-apple.sh`, which `.github/workflows/apple.yml` runs on every push.
+  * Its Scala type-checks on Linux too (`sbt platforms/Test/compile`); only linking needs Xcode.
   */
 object GalleryMac {
 

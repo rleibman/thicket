@@ -26,12 +26,6 @@ trait Disposable {
 
 }
 
-object Disposable {
-
-  val noop: Disposable = () => ()
-
-}
-
 /** A value that changes over time. Reads are synchronous and always up to date.
   *
   *   - [[now]] reads without subscribing (safe anywhere).

@@ -24,8 +24,12 @@ package thicket.renderer
   * device.
   *
   * Supported: `M L H V Q T Z`, absolute and relative, with implicit repeats and SVG's compact number syntax (`57-57`,
-  * `.5.5`). That is every command in the bundled set; `C`, `S` and `A` are refused rather than guessed at, so an icon
-  * added later that needs them fails loudly in a test.
+  * `.5.5`, `1e-3`). That is every command in the bundled set; `C`, `S` and `A` are refused rather than guessed at, so
+  * an icon added later that needs them fails loudly in a test.
+  *
+  * Anything malformed is an `IllegalArgumentException` saying what was wrong. It used to escape as whatever the parser
+  * tripped on — an `IndexOutOfBoundsException` for data that ended mid-command, a `NumberFormatException` for a lone
+  * sign — and an exponent was read as two numbers (review 2026-10-20, P2-29).
   */
 object SvgPath {
 
@@ -60,12 +64,12 @@ object SvgPath {
     var qx, qy = 0f
     var lastWasQuad = false
 
-    def num(): Float = {
-      tokens(i) match {
-        case Right(v) => i += 1; v
-        case Left(c)  => throw IllegalArgumentException(s"expected a number in path data, found '$c'")
+    def num(): Float =
+      tokens.lift(i) match {
+        case Some(Right(v)) => i += 1; v
+        case Some(Left(c))  => throw IllegalArgumentException(s"expected a number in path data, found '$c'")
+        case None           => throw IllegalArgumentException(s"path data ends in the middle of '$cmd': $d")
       }
-    }
 
     while i < tokens.length do {
       tokens(i) match {
@@ -73,6 +77,7 @@ object SvgPath {
           cmd = c
           i += 1
         case Right(_) =>
+          if cmd == ' ' then throw IllegalArgumentException(s"path data must start with a command: $d")
           // A number where a command letter would be: the previous command repeats, except
           // that a repeated moveto is a lineto.
           if cmd == 'M' then cmd = 'L' else if cmd == 'm' then cmd = 'l'
@@ -142,7 +147,19 @@ object SvgPath {
           if d.charAt(i) == '.' then seenDot = true
           i += 1
         }
-        out += Right(d.substring(start, i).toFloat)
+        // An exponent belongs to the number: `1e-3` is one number, not `1` and `-3`.
+        if i < d.length && (d.charAt(i) == 'e' || d.charAt(i) == 'E') then {
+          var j = i + 1
+          if j < d.length && (d.charAt(j) == '-' || d.charAt(j) == '+') then j += 1
+          if j < d.length && d.charAt(j).isDigit then {
+            while j < d.length && d.charAt(j).isDigit do j += 1
+            i = j
+          }
+        }
+        val text = d.substring(start, i)
+        out += Right(
+          text.toFloatOption.getOrElse(throw IllegalArgumentException(s"'$text' is not a number, in path data: $d"))
+        )
       } else i += 1 // separators: spaces and commas
     }
     out.result()

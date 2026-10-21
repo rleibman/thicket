@@ -609,10 +609,7 @@ lazy val sbtThicket = project
     // `project/plugins.sbt` no longer adds sbt-scala-native itself, and `enablePlugins(ThicketGtkPlugin)` enables
     // `ScalaNativePlugin` too.
     addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12"),
-    libraryDependencies ++= Seq(
-      "dev.zio" %% "zio-test"     % zioV % Test,
-      "dev.zio" %% "zio-test-sbt" % zioV % Test
-    )
+    libraryDependencies ++= zioTestJvm
   )
 
 /** Everything that is not in `root`: the renderers and every example.
