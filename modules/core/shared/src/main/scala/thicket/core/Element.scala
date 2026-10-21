@@ -118,7 +118,9 @@ object Element {
   final case class LazyColumn[A, K](
     items: Signal[Seq[A]],
     key:   A => K,
-    body:  Signal[A] => Element
+    body:  Signal[A] => Element,
+    // The list's own props — `.grow`, `.padding` — applied to the container the renderer makes.
+    attrs: Seq[Attr] = Nil
   ) extends Element
 
 }
@@ -757,12 +759,23 @@ object dsl {
     def safeArea(edges: Edge*): Element =
       withAttr(Static(Prop.SafeArea(if edges.isEmpty then Edge.all else edges.toSet)))
 
+    /** A modifier lands on the element's own widget. `Provide` passes it to its child, and a `LazyColumn` to its
+      * container. `Show`, `ForEach` and `Fragment` have no widget to carry one — they used to swallow it, so
+      * `Show(..).padding(8)` compiled and did nothing (review 2026-10-20, P1-4) — and now say so where it is written.
+      */
     private def withAttr(attr: Attr): Element =
       element match {
-        case w: Widget => w.copy(attrs = w.attrs :+ attr)
-        case other =>
-          // Regions and fragments have no widget of their own to carry a property.
-          other
+        case w: Widget           => w.copy(attrs = w.attrs :+ attr)
+        case l: LazyColumn[?, ?] => l.copy(attrs = l.attrs :+ attr)
+        case p: Provide          => p.copy(child = p.child.withAttr(attr))
+        case other @ (_: Show | _: ForEach[?, ?] | _: Fragment) =>
+          throw new IllegalArgumentException(
+            s"${other.getClass.getSimpleName} has no widget of its own to carry ${attr match {
+                case Attr.Static(p)      => p.productPrefix
+                case Attr.Reactive(_, _) => "a reactive property"
+              }}; " +
+              "apply it to a widget inside, or wrap it in a Column or Row"
+          )
       }
 
   }
