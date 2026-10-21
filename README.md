@@ -320,7 +320,7 @@ examples/
 tools/               shim-gen (the Apple ABI), sbt-thicket (the published plugin)
 bin/                 checks: GTK self-tests, getting-started, coverage, the Mac's verify-apple
 docs/                the plan, the findings, the living status, phase reviews
-spikes/              phase 0's briefs and reports (the code is at commit 01ffc3d)
+spikes/              phase 0's briefs and reports (the code is at commit 8eccd90)
 ```
 
 Writing a renderer means implementing one trait, `Renderer`: creating, updating, inserting,

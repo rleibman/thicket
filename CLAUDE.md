@@ -94,5 +94,5 @@ device is a bonus measurement.
 
 ## History
 
-`spikes/` holds phase 0's briefs and reports; the spike code is at commit `01ffc3d`.
+`spikes/` holds phase 0's briefs and reports; the spike code is at commit `8eccd90`.
 `docs/phase-reviews/` holds whole-repository reviews, dated.

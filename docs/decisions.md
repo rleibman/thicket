@@ -87,8 +87,8 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 - 2026-10-20 — **Spikes archived** (review 2026-10-20 D6). `spikes/` keeps each spike's
   `BRIEF.md` and `REPORT.md`, which the docs and code comments cite, and loses the code: no
   build used it, nothing depended on it, ~160 files still carried the `dev.scalaui`
-  organisation, and one carried a jar. It is recoverable from commit `01ffc3d`
-  (`git checkout 01ffc3d -- spikes/<id>`). The "spike independence" and "repo layout" rows
+  organisation, and one carried a jar. It is recoverable from commit `8eccd90`
+  (`git checkout 8eccd90 -- spikes/<id>`). The "spike independence" and "repo layout" rows
   above describe phase 0 and are superseded by this. No tag was made: tags are the owner's.
 - 2026-10-20 — **The ZIO bridge is `thicket.effect.zio`; `thicket-effect-api` is deferred; every
   host installs a UI-thread poster** (review 2026-10-20 D8, P0-5). The package moves from

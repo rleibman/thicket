@@ -220,4 +220,4 @@ user should choose between in the covering discussion, not repeated here.
 
 *Added 2026-10-20.* "All eight" was true when this was written; **S9** (the ZIO bridge on iOS,
 #2) ran later and passed — `spikes/s9-zio-bridge-ios/REPORT.md`. The spike code is archived
-at commit `01ffc3d`; every brief and report is still in `spikes/`.
+at commit `8eccd90`; every brief and report is still in `spikes/`.

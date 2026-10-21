@@ -6,11 +6,11 @@ comments cite — and nothing else. The code was removed: it was not built by th
 nothing depended on it, ~160 files of it still used the old `dev.scalaui` organisation, and one
 directory carried a committed jar.
 
-**The code is in git.** Every spike as it was is at commit `01ffc3d` (and earlier):
+**The code is in git.** Every spike as it was is at commit `8eccd90` (and earlier):
 
 ```bash
-git checkout 01ffc3d -- spikes/s9-zio-bridge-ios   # one spike, back in the working tree
-git archive 01ffc3d spikes | tar -x -C /tmp         # all of them, somewhere else
+git checkout 8eccd90 -- spikes/s9-zio-bridge-ios   # one spike, back in the working tree
+git archive 8eccd90 spikes | tar -x -C /tmp         # all of them, somewhere else
 ```
 
 | Dir | Question | Machine | Status |
