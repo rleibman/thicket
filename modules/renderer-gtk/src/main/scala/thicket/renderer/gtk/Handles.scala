@@ -69,7 +69,10 @@ private[gtk] object Handles {
     * notice. Found the hard way: `valueIds` had been leaking on GTK since `Slider` landed, and a review caught the same
     * omission for `Picker` on Apple.
     */
-  def liveCount: Int = callbacks.size + valued.size + readers.size + muted.size + listBinders.size
+  def liveCount: Int = callbacks.size + valued.size + readers.size + muted.size + listBinders.size + chosen.size
+
+  /** List-view bind/unbind/teardown callbacks alone: three per mounted LazyColumn. */
+  def listBinderCount: Int = listBinders.size
 
   def release(id: Long): Unit = {
     val _ = callbacks.remove(id)
@@ -306,6 +309,22 @@ private[gtk] object Handles {
     }
 
   def cssParsingErrorPtr: CVoidPtr = CFuncPtr.toPtr(cssParsingError)
+
+  /** `GWeakNotify`: (data, where_the_object_was). One-shot: an object is finalised once. */
+  private val weakNotify: CFuncPtr2[gpointer, Ptr[Byte], Unit] =
+    CFuncPtr2.fromScalaFunction {
+      (
+        data: gpointer,
+        _:    Ptr[Byte]
+      ) =>
+        val id = pointerToId(data)
+        GcState.guarded {
+          invoke(id)
+          release(id)
+        }
+    }
+
+  def weakNotifyPtr: CVoidPtr = CFuncPtr.toPtr(weakNotify)
 
   /** GSourceFunc: returning 0 (G_SOURCE_REMOVE) makes it one-shot. A table that does not shed entries at UI rates is a
     * leak with a clock on it (S8).

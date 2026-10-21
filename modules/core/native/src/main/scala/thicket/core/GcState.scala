@@ -51,21 +51,35 @@ object GcState {
   inline private val Managed = 0
   inline private val Unmanaged = 1
 
-  private val depth: ThreadLocal[Array[Int]] = ThreadLocal.withInitial(() => Array(1))
+  // Per thread: (0) how deep in Scala, (1) the state last handed to the GC.
+  private val depth: ThreadLocal[Array[Int]] = ThreadLocal.withInitial(() => Array(1, Managed))
 
   /** How deep the current thread is in Scala: 0 while the host's loop holds it. For the self-tests. */
   def scalaDepth: Int = depth.get()(0)
 
+  /** Whether the GC was last told this thread is Managed. Scala is running whenever this is asked, so it must be true;
+    * a self-test asks it after a nested signal, which is the case that used to leave it false.
+    */
+  def managed: Boolean = depth.get()(1) == Managed
+
+  private def set(
+    d:     Array[Int],
+    state: Int
+  ): Unit = {
+    GcExtern.scalanative_GC_set_mutator_thread_state(state)
+    d(1) = state
+  }
+
   private def enter(): Array[Int] = {
     val d = depth.get()
-    if d(0) == 0 then GcExtern.scalanative_GC_set_mutator_thread_state(Managed)
+    if d(0) == 0 then set(d, Managed)
     d(0) += 1
     d
   }
 
   private def leave(d: Array[Int]): Unit = {
     d(0) -= 1
-    if d(0) == 0 then GcExtern.scalanative_GC_set_mutator_thread_state(Unmanaged)
+    if d(0) == 0 then set(d, Unmanaged)
   }
 
   /** Wrap a host → Scala entry point that returns nothing. */
@@ -82,16 +96,18 @@ object GcState {
     * to the GC while the thread is parked there.
     */
   def releaseMainThread(): Unit = {
-    depth.get()(0) = 0
-    GcExtern.scalanative_GC_set_mutator_thread_state(Unmanaged)
+    val d = depth.get()
+    d(0) = 0
+    set(d, Unmanaged)
   }
 
   /** The reverse, for a host whose loop returns control (GTK's `g_application_run` does, at quit): Scala is running on
     * the thread again.
     */
   def reacquireMainThread(): Unit = {
-    GcExtern.scalanative_GC_set_mutator_thread_state(Managed)
-    depth.get()(0) = 1
+    val d = depth.get()
+    set(d, Managed)
+    d(0) = 1
   }
 
 }

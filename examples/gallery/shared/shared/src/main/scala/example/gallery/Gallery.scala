@@ -72,6 +72,11 @@ object Gallery {
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
 
+    /** The big list's data. A `Var`, not a constant: a list whose data never changes cannot show that a renderer
+      * re-binds the rows it is showing when it does (review 2026-10-20, P1-3).
+      */
+    val bigRows: Var[Vector[Row_]] = Var(Vector.tabulate(10000)(i => Row_(i, s"Row $i")))
+
     /** Rows for `ForEach`, so keyed reconciliation is exercised rather than described. */
     val rows: Var[Seq[Row_]] = Var(Seq(Row_(1, "First"), Row_(2, "Second"), Row_(3, "Third")))
 
@@ -378,12 +383,24 @@ object Gallery {
     )
 
   /** A second screen, so navigation is exercised: a push, a title and a way back. */
-  private def listScreen(): Screen =
+  private def listScreen(model: Model): Screen =
     Screen(
       title = "10 000 rows",
       content = Column(spacing = 8, padding = 16)(
         Label("LazyColumn — virtualised where the platform has a recycling container.", style = TextRole.Caption),
-        LazyColumn(Signal.const(Seq.tabulate(10000)(i => Row_(i, s"Row $i"))), key = (r: Row_) => r.id) { row =>
+        // Changes the rows on screen without changing what scrolls, so a renderer that only
+        // tracks the count shows stale rows.
+        Row(spacing = 8)(
+          Button("Delete the first row")(model.bigRows.set(model.bigRows.now.drop(1))),
+          Button("Rename the first row")(
+            model.bigRows.set(
+              model.bigRows.now.headOption.fold(Vector.empty[Row_])(r =>
+                r.copy(title = s"Renamed ${r.id}") +: model.bigRows.now.tail
+              )
+            )
+          )
+        ),
+        LazyColumn(model.bigRows, key = (r: Row_) => r.id) { row =>
           Row(spacing = 8)(Label(row.map(_.title)).grow)
         }.grow
       )
@@ -409,7 +426,7 @@ object Gallery {
       case Route.Catalogue =>
         val s = screen(model, loaded)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
-      case Route.Big => listScreen()
+      case Route.Big => listScreen(model)
     }
   }
 

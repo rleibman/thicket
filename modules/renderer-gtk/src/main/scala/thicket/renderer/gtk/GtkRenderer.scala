@@ -1146,6 +1146,8 @@ final class GtkRenderer extends Renderer {
     val _ = alertDismiss.remove(handle)
     alertCancel.remove(handle).foreach(g_cancellable_cancel)
     sheetCloseId.remove(handle).foreach(Handles.release)
+    virtualBinders.remove(handle).foreach(_.foreach(Handles.release))
+    val _ = virtualModels.remove(handle)
     tapIds.remove(handle).foreach(Handles.release)
     val _ = appTaps.remove(handle)
     val _ = links.remove(handle)
@@ -1214,6 +1216,7 @@ final class GtkRenderer extends Renderer {
     // The reference `ownedPlaceholder` sank. For a sheet the window's own reference went
     // with `gtk_window_set_child(win, null)` above, so this is the last one.
     if presented then g_object_unref(handle.asInstanceOf[gpointer])
+    if rowRefs.remove(handle) then g_object_unref(handle.asInstanceOf[gpointer])
   }
 
   override def present(handle: Handle): Unit =
@@ -1354,25 +1357,57 @@ final class GtkRenderer extends Renderer {
     val model = gtk_string_list_new(null)
 
     val factory = gtk_signal_list_item_factory_new()
-    val binderId = Handles.registerListBinder { item =>
-      val listItem = item.asInstanceOf[Ptr[GtkListItem]]
+
+    // The list items currently bound to a row: what is on screen, plus GTK's small buffer.
+    // GtkListView re-binds a position only when the model hands it a different item object,
+    // and the placeholders never change — so when the data does, these are re-bound here.
+    val bound = mutable.Set.empty[Ptr[GtkListItem]]
+    def bindItem(listItem: Ptr[GtkListItem]): Unit = {
       val position = toInt(gtk_list_item_get_position(listItem))
       if position >= 0 && position < source.count then {
         // Whatever this list item last held is the recycled handle.
         val recycled = Option(gtk_list_item_get_child(listItem)).filter(_ != null)
         val child = source.bind(position, recycled)
-        gtk_list_item_set_child(listItem, child)
+        if !recycled.contains(child) then {
+          // A reference of the renderer's own: GTK frees a list item's child with the item,
+          // whenever it decides to, and the source keeps the row until it is discarded — so
+          // the widget must outlive the item. `destroy` lets go.
+          if rowRefs.add(child) then {
+            val _ = g_object_ref(child.asInstanceOf[gpointer])
+          }
+          gtk_list_item_set_child(listItem, child)
+        }
+        bound += listItem
+      }
+    }
+    val binderId = Handles.registerListBinder(item => bindItem(item.asInstanceOf[Ptr[GtkListItem]]))
+    val unbinderId = Handles.registerListBinder(item => bound -= item.asInstanceOf[Ptr[GtkListItem]])
+    // GtkListView destroys list items it no longer needs, and their child with them. The row
+    // has to be handed back first: `RowSource.discard` disposes its slot and owner, and without
+    // it the source kept every row it ever bound — the effects running, and the widgets as
+    // pointers to memory GTK had freed, which the list's own dispose then walked (review
+    // 2026-10-20, P2-8). The child is detached here with a reference held, so `destroy` sees it
+    // unparented and GTK's teardown finds no child to free.
+    val teardownId = Handles.registerListBinder { item =>
+      val listItem = item.asInstanceOf[Ptr[GtkListItem]]
+      bound -= listItem
+      val child = gtk_list_item_get_child(listItem)
+      if child != null then {
+        gtk_list_item_set_child(listItem, null)
+        source.discard(child)
       }
     }
     Zone {
-      val _ = g_signal_connect_data(
-        factory.asInstanceOf[gpointer],
-        toCString("bind").asInstanceOf[Ptr[gchar]],
-        GCallback.fromPtr(Handles.listBindPtr),
-        Handles.idToPointer(binderId),
-        null.asInstanceOf[GClosureNotify],
-        GConnectFlags.define(0)
-      )
+      for (signal, id) <- Seq("bind" -> binderId, "unbind" -> unbinderId, "teardown" -> teardownId) do {
+        val _ = g_signal_connect_data(
+          factory.asInstanceOf[gpointer],
+          toCString(signal).asInstanceOf[Ptr[gchar]],
+          GCallback.fromPtr(Handles.listBindPtr),
+          Handles.idToPointer(id),
+          null.asInstanceOf[GClosureNotify],
+          GConnectFlags.define(0)
+        )
+      }
     }
 
     val selection = gtk_no_selection_new(model.asInstanceOf[Ptr[sn.gnome.gio.internal.GListModel]])
@@ -1392,12 +1427,28 @@ final class GtkRenderer extends Renderer {
     setterParent(view) = scroller
 
     virtualModels(scroller) = model
+    virtualBinders(scroller) = Seq(binderId, unbinderId, teardownId)
     syncModel(model, source.count)
-    source.onInvalidate(() => syncModel(model, source.count))
+    // The count first — GTK unbinds whatever fell off the end — then every row still bound is
+    // re-bound to whatever its position now holds. It used to do only the first, so an edit
+    // that kept the count, or a delete above the rows on screen, left them showing old data
+    // (review 2026-10-20, P1-3). O(rows bound), not O(rows).
+    source.onInvalidate { () =>
+      syncModel(model, source.count)
+      bound.toList.foreach(bindItem)
+    }
     scroller
   }
 
   private val virtualModels = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkStringList]]
+
+  /** Rows the renderer holds a reference on, so they survive GTK freeing the list item that showed them. */
+  private val rowRefs = mutable.Set.empty[Ptr[GtkWidget]]
+
+  /** The bind callback behind each list. It holds the `RowSource`, and through it every item, so a list that is not
+    * released here keeps its whole data set alive after unmounting (review 2026-10-20, P2-2).
+    */
+  private val virtualBinders = mutable.Map.empty[Ptr[GtkWidget], Seq[Long]]
 
   /** Make the model's length match the data. The strings are placeholders; only the count matters, because the factory
     * supplies every widget.

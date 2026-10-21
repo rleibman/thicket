@@ -419,9 +419,64 @@ object GalleryGtk {
     )
 
     presentedAndNav(root)
+  }
 
+  private def finish(): Unit =
     if failures == 0 then println(s"[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
+
+  /** Runs `next` once `cond` holds, letting the main loop run — layout, GtkListView binding the rows it shows, a page's
+    * transition ending — for 20 ms between tries. A list materialises its rows when it is laid out, not when it is told
+    * the data changed, and a popped page is freed when its animation finishes.
+    */
+  private def when(tries: Int)(cond: => Boolean)(next: => Unit): Unit =
+    if tries <= 0 || cond then next
+    else GtkApp.postToUiAfter(20)(() => when(tries - 1)(cond)(next))
+
+  private def listTexts: List[String] =
+    GtkInspect.allTexts(GtkApp.rootHandle).filter(t => t.startsWith("Row ") || t.startsWith("Renamed "))
+
+  /** The 10 000-row LazyColumn after its data changes under it (review 2026-10-20, P1-3, P2-2). */
+  private def lazyList(baseline: Int): Unit = {
+    def click(label: String) =
+      GtkInspect
+        .findAll(GtkApp.rootHandle)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List(label))
+        .headOption.foreach(GtkInspect.click)
+    check("the list shows its first rows", listTexts.headOption.contains("Row 0"), listTexts.take(3).toString)
+    check("and only a bounded set of them", listTexts.nonEmpty && listTexts.size < 1000, listTexts.size.toString)
+    click("Delete the first row")
+    when(50)(listTexts.headOption.contains("Row 1")) {
+      check(
+        "deleting row 0 re-binds the rows on screen: the first is now Row 1",
+        listTexts.take(2) == List("Row 1", "Row 2"),
+        listTexts.take(3).toString
+      )
+      click("Rename the first row")
+      when(50)(listTexts.headOption.contains("Renamed 1")) {
+        check(
+          "an edit that keeps the count reaches the row on screen",
+          listTexts.take(2) == List("Renamed 1", "Row 2"),
+          listTexts.take(3).toString
+        )
+        Gallery.currentNav.foreach(_.pop())
+        // The page is freed when its transition ends, and its content released after that.
+        when(200)(GtkApp.containerDepth == 1 && GtkInspect.liveListBinders == 0) {
+          check(
+            "leaving the list releases its list-view callbacks",
+            GtkInspect.liveListBinders == 0,
+            s"${GtkInspect.liveListBinders} still held"
+          )
+          // Not equal: the root page the reset replaced is released in the meantime too,
+          // which is the same fix seen from the other side.
+          check(
+            "and the page's other callbacks with it: no more are held than before it was pushed",
+            GtkInspect.liveCallbacks <= baseline,
+            s"$baseline before, ${GtkInspect.liveCallbacks} after"
+          )
+          finish()
+        }
+      }
+    }
   }
 
   /** Runs `then` once the Effects section's ZIO result has reached the screen, re-posting itself so the main loop keeps
@@ -469,6 +524,10 @@ object GalleryGtk {
       )
     check("a sheet reopens and closes from inside", GtkInspect.windowsTitled("A sheet").isEmpty)
 
+    // The page releases below wait for pages to be freed, which happens when their transition
+    // ends; without transitions that is at once, whatever the compositor is doing.
+    GtkApp.animateTransitions(false)
+
     // Reset from one page deep. AdwNavigationView will not pop its root, so the old root
     // used to stay underneath the new one.
     check("the stack starts one page deep", GtkApp.containerDepth == 1, GtkApp.containerDepth.toString)
@@ -483,12 +542,17 @@ object GalleryGtk {
       GtkApp.visiblePageTitle == "Thicket gallery",
       GtkApp.visiblePageTitle
     )
+    val beforeList = GtkInspect.liveCallbacks
     Gallery.currentNav.foreach(_.push(Gallery.Route.Big))
     check(
       "a push after the reset goes on top of it",
       GtkApp.containerDepth == 2,
       GtkApp.containerDepth.toString
     )
+    when(50)(listTexts.nonEmpty) {
+      check("the mounted list holds bind, unbind and teardown callbacks", GtkInspect.liveListBinders == 3)
+      lazyList(beforeList)
+    }
   }
 
   /** Host → Scala entry points under stress (review 2026-10-20, P0-2 and P0-3). */
@@ -512,27 +576,44 @@ object GalleryGtk {
         }
       )
       collector.start()
+      // Time-bound rather than a fixed count: how long one collection takes depends on the
+      // heap, and a fixed count that once took a few seconds took a minute after the gallery
+      // gained a 10 000-row model. Three seconds is long enough to catch the old behaviour
+      // every time (signal 11 in each falsification run) and short enough to keep the step cheap.
+      val deadline = System.nanoTime() + 3_000_000_000L
       val kept = mutable.ArrayBuffer.empty[String]
       var deepest = 0
-      for i <- 0 until 3000 do {
+      var unmanaged = 0
+      var i = 0
+      while System.nanoTime() < deadline do {
         GtkInspect.setEntryText(e, s"gc $i")
         deepest = deepest max GcState.scalaDepth
+        if !GcState.managed then unmanaged += 1
         kept += ("kept " * 8) + i
+        i += 1
       }
       stop.set(true)
       collector.join()
+      println(s"[gallery] info the stress step made $i nested calls in 3 s")
       check("a nested signal leaves the thread in Scala", GcState.scalaDepth == 1, GcState.scalaDepth.toString)
       check("and never drops it out", deepest == 1, deepest.toString)
+      // The deterministic half: what the GC was told. The stress around it is a smoke test —
+      // whether a wrong state corrupts anything within three seconds is a matter of timing.
+      check(
+        "the GC was never told the thread left Scala while Scala was still running on it",
+        unmanaged == 0,
+        s"$unmanaged of $i nested calls left it Unmanaged"
+      )
       val corrupt = kept.zipWithIndex.count(
         (
           s,
           i
         ) => s != ("kept " * 8) + i
       )
-      check("3000 strings kept across collections on another thread survive", corrupt == 0, s"$corrupt corrupt")
+      check(s"$i strings kept across collections on another thread survive", corrupt == 0, s"$corrupt corrupt")
       check(
         "and the last write reached the app",
-        GtkInspect.allTexts(root).contains("You typed: gc 2999"),
+        GtkInspect.allTexts(root).contains(s"You typed: gc ${i - 1}"),
         GtkInspect.allTexts(root).filter(_.startsWith("You typed")).toString
       )
       GtkInspect.setEntryText(e, "")

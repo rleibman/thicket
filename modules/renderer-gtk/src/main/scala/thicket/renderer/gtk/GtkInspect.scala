@@ -59,6 +59,9 @@ object GtkInspect {
     */
   def liveCallbacks: Int = Handles.liveCount
 
+  /** Bind, unbind and teardown callbacks held for mounted LazyColumns — three each. */
+  def liveListBinders: Int = Handles.listBinderCount
+
   /** Whether the pointer still refers to a live `GtkWidget`.
     *
     * On a toolkit where a container owns its children, freeing a container frees its descendants, so a renderer can be

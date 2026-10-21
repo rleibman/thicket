@@ -17,6 +17,7 @@
 package thicket.renderer.gtk
 
 import scala.scalanative.unsafe.*
+import scala.scalanative.unsigned.*
 import thicket.core.{AppRoot, GcState, Host, Reconciler}
 import thicket.signals.{Owner, Signal, Tracking}
 import sn.gnome.gtk4.internal.*
@@ -134,6 +135,15 @@ object GtkApp {
     */
   def pageHandles: Seq[Ptr[GtkWidget]] = livePages.valuesIterator.map(_._2.handle).toSeq
 
+  /** Turns the navigation container's push and pop animations on or off.
+    *
+    * For tests. A popped page is freed when its animation ends, and the animation advances on the compositor's frame
+    * clock — which can stall when the window is not being drawn, so a test waiting for a page to be released can wait
+    * forever. Without the animation the pop, and the release, are immediate.
+    */
+  def animateTransitions(on: Boolean): Unit =
+    if navView != null then adw_navigation_view_set_animate_transitions(navView, gboolTrue(on))
+
   /** How many pages `AdwNavigationView` itself holds — asked of the container, not of `livePages`, so a test can see
     * the two disagree.
     */
@@ -157,6 +167,16 @@ object GtkApp {
   def postToUi(f: () => Unit): Unit = {
     val id = Handles.register(f)
     val _ = sn.gnome.glib.internal.g_idle_add(
+      sn.gnome.glib.internal.GSourceFunc(Handles.idle),
+      Handles.idToPointer(id)
+    )
+  }
+
+  /** [[postToUi]], after at least `delayMs`. */
+  def postToUiAfter(delayMs: Int)(f: () => Unit): Unit = {
+    val id = Handles.register(f)
+    val _ = sn.gnome.glib.internal.g_timeout_add(
+      delayMs.toUInt.asInstanceOf[sn.gnome.glib.internal.guint],
       sn.gnome.glib.internal.GSourceFunc(Handles.idle),
       Handles.idToPointer(id)
     )
@@ -316,7 +336,8 @@ object GtkApp {
               // `Sheet` taught, where detaching a window's child *was* releasing it.
               //
               // Disposing the owner is still ours: it stops the effects that were driving the
-              // widgets the pop just took away.
+              // widgets the pop just took away. The widgets' renderer state is released when
+              // GTK finalises the page — see `releaseWhenFinalized`.
               if !rootLeaves then adw_navigation_view_pop(navView)
               owner.dispose()
           }
@@ -331,6 +352,7 @@ object GtkApp {
             Reconciler.mount(renderer, p.content)
           }
           val page = Zone(adw_navigation_page_new(mounted.handle, toCString(p.screen.title)))
+          releaseWhenFinalized(page, mounted)
           livePages(p.id) = (page, mounted, pageOwner)
           if !rootLeaves then adw_navigation_view_push(navView, page)
         }
@@ -353,6 +375,37 @@ object GtkApp {
 
     // What "on screen" means, for tests and demos.
     rootHandle = livePages.lastOption.map(_._2._2.handle).getOrElse(null)
+  }
+
+  /** Lets the renderer release a page's widgets once GTK has finished with the page.
+    *
+    * A popped page is freed by GTK — the page holds the only reference to its content — and not at the pop but when its
+    * transition ends. So the reconciler cannot destroy the content at the pop (that is the double destroy described in
+    * `syncPages`), and nothing destroyed it later either: every callback, list binder and per-widget entry the renderer
+    * held for that page stayed in its tables for the life of the process (review 2026-10-20, found by the LazyColumn
+    * self-test's callback count).
+    *
+    * So the content gets a reference of its own, the page a weak reference whose notification arrives when the page is
+    * finalised — by which time it has let go of the content — and then the content is disposed through the reconciler,
+    * which releases the renderer's state and detaches the subtree, and the reference is dropped.
+    */
+  private def releaseWhenFinalized(
+    page:    Ptr[AdwNavigationPage],
+    mounted: thicket.core.Mounted[Ptr[GtkWidget]]
+  ): Unit = {
+    val content = mounted.handle.asInstanceOf[gpointer]
+    val _ = g_object_ref(content)
+    val id = Handles.register { () =>
+      postToUi { () =>
+        mounted.dispose()
+        g_object_unref(content)
+      }
+    }
+    g_object_weak_ref(
+      page.asInstanceOf[Ptr[GObject]],
+      GWeakNotify.fromPtr(Handles.weakNotifyPtr),
+      Handles.idToPointer(id)
+    )
   }
 
   /** The title of the page the **container** is actually showing.

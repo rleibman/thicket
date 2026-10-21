@@ -221,8 +221,7 @@ private[core] object Slot {
     // One effect for the whole list: the renderer is told the data changed and re-pulls
     // whatever it is showing. Individual rows still update through their own signals.
     val _ = Signal.effect {
-      val n = spec.items().length
-      source.setCount(n)
+      source.setItems(spec.items())
       source.invalidate()
     }
     VirtualListSlot(renderer, handle, source)
@@ -309,24 +308,26 @@ final private class VirtualRows[H, A, K](
 
   private val rows = scala.collection.mutable.Map.empty[H, Row]
   private var listeners = () => ()
-  private var total = 0
+  // The items as of the last change, indexed: `bind` runs once per row the toolkit shows, and
+  // re-reading the signal there — then indexing a `List` — made each bind O(n) (review
+  // 2026-10-20, P2-9).
+  private var items: IndexedSeq[A] = IndexedSeq.empty
   private var disposed = false
 
   // After the container is gone the source reports an empty list and stops notifying, so a
   // late data change cannot mount rows into a destroyed container. The list's *effect* is
   // owned by the enclosing `Owner`, which may outlive the slot — disposing the widgets and
   // disposing the effects are separate acts.
-  def count:                                 Int = if disposed then 0 else total
-  private[core] def setCount(n: Int):        Unit = total = n
-  def onInvalidate(callback:    () => Unit): Unit = listeners = callback
-  private[core] def invalidate():            Unit = if !disposed then listeners()
+  def count:                                  Int = if disposed then 0 else items.length
+  private[core] def setItems(xs: Seq[A]):     Unit = items = xs.toIndexedSeq
+  def onInvalidate(callback:     () => Unit): Unit = listeners = callback
+  private[core] def invalidate():             Unit = if !disposed then listeners()
 
   def bind(
     index:    Int,
     recycled: Option[H]
   ): H = {
     if disposed then throw new IllegalStateException("bind on a disposed LazyColumn")
-    val items = Signal.untracked(spec.items())
     if index < 0 || index >= items.length then throw new IndexOutOfBoundsException(s"row $index of ${items.length}")
     val item = items(index)
 
