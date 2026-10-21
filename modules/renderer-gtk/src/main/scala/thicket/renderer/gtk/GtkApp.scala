@@ -142,7 +142,7 @@ object GtkApp {
     * forever. Without the animation the pop, and the release, are immediate.
     */
   def animateTransitions(on: Boolean): Unit =
-    if navView != null then adw_navigation_view_set_animate_transitions(navView, gboolTrue(on))
+    if navView != null then adw_navigation_view_set_animate_transitions(navView, Handles.gbool(on))
 
   /** How many pages `AdwNavigationView` itself holds — asked of the container, not of `livePages`, so a test can see
     * the two disagree.
@@ -198,6 +198,7 @@ object GtkApp {
           gtk_window_set_titlebar(w, header)
 
           val renderer = GtkRenderer()
+          liveRenderer = renderer
           given Owner = rootOwner
           val root = build
           backHandler = () => root.back()
@@ -205,17 +206,8 @@ object GtkApp {
           // Native chrome, applied from AppRoot rather than drawn into the element tree.
           val back = gtk_button_new_from_icon_name(Zone(toCString("go-previous-symbolic")))
           gtk_header_bar_pack_start(header.asInstanceOf[Ptr[GtkHeaderBar]], back)
-          Zone {
-            val _ = g_signal_connect_data(
-              back.asInstanceOf[gpointer],
-              toCString("clicked").asInstanceOf[Ptr[gchar]],
-              GCallback.fromPtr(CFuncPtr.toPtr(onBack)),
-              Handles.idToPointer(0L),
-              null.asInstanceOf[GClosureNotify],
-              GConnectFlags.define(0)
-            )
-          }
-          Signal.effect(gtk_widget_set_visible(back, gboolTrue(root.canGoBack())))
+          Handles.connect(back, "clicked", CFuncPtr.toPtr(onBack), 0L)
+          Signal.effect(gtk_widget_set_visible(back, Handles.gbool(root.canGoBack())))
           Signal.effect(Zone(gtk_window_set_title(w, toCString(root.title()))))
 
           // Toolbar actions, packed at the trailing edge of the header bar. `AppRoot.actions`
@@ -239,19 +231,10 @@ object GtkApp {
             // packing in order would show them right-to-left.
             root.actions().reverse.foreach { a =>
               val button = Zone(gtk_button_new_with_label(toCString(a.label)))
-              gtk_widget_set_sensitive(button, gboolTrue(a.enabled))
+              gtk_widget_set_sensitive(button, Handles.gbool(a.enabled))
               val id = Handles.register(() => a.onTap())
               actionIds(button) = id
-              Zone {
-                val _ = g_signal_connect_data(
-                  button.asInstanceOf[gpointer],
-                  toCString("clicked").asInstanceOf[Ptr[gchar]],
-                  GCallback.fromPtr(Handles.clickedPtr),
-                  Handles.idToPointer(id),
-                  null.asInstanceOf[GClosureNotify],
-                  GConnectFlags.define(0)
-                )
-              }
+              Handles.connect(button, "clicked", Handles.clickedPtr, id)
               gtk_header_bar_pack_end(hb, button)
               actionButtons += button
             }
@@ -263,16 +246,7 @@ object GtkApp {
 
           val nav = adw_navigation_view_new()
           navView = nav.asInstanceOf[Ptr[AdwNavigationView]]
-          Zone {
-            val _ = g_signal_connect_data(
-              navView.asInstanceOf[gpointer],
-              toCString("popped").asInstanceOf[Ptr[gchar]],
-              GCallback.fromPtr(CFuncPtr.toPtr(onPopped)),
-              Handles.idToPointer(0L),
-              null.asInstanceOf[GClosureNotify],
-              GConnectFlags.define(0)
-            )
-          }
+          Handles.connect(navView, "popped", CFuncPtr.toPtr(onPopped), 0L)
           gtk_window_set_child(w, nav)
 
           // `pages` rather than `element`: one AdwNavigationPage per entry, mounted once and
@@ -475,9 +449,6 @@ object GtkApp {
         GcState.guarded { val _ = backHandler() }
     }
 
-  private def gboolTrue(b: Boolean): sn.gnome.glib.internal.gboolean =
-    (if b then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean]
-
   /** The window title comes from `AppRoot.title`, so it follows the top screen. */
   def run(
     id:     String,
@@ -498,16 +469,7 @@ object GtkApp {
       gtk_application_new(toCString(appId), GApplicationFlags.G_APPLICATION_DEFAULT_FLAGS)
     )
     application = app
-    Zone {
-      val _ = g_signal_connect_data(
-        app.asInstanceOf[gpointer],
-        toCString("activate").asInstanceOf[Ptr[gchar]],
-        GCallback.fromPtr(CFuncPtr.toPtr(onActivate)),
-        Handles.idToPointer(0L),
-        null.asInstanceOf[GClosureNotify],
-        GConnectFlags.define(0)
-      )
-    }
+    Handles.connect(app, "activate", CFuncPtr.toPtr(onActivate), 0L)
 
     // From here the GTK main loop owns this thread, so Scala must not look Managed to the
     // GC while it is parked in poll() (S3).
@@ -518,7 +480,10 @@ object GtkApp {
   }
 
   private var application: Ptr[GtkApplication] = null
-  private var exitStatus:  Option[Int] = None
+
+  /** The app's renderer, once the window exists. For [[GtkInspect]]. */
+  private[gtk] var liveRenderer: GtkRenderer = scala.compiletime.uninitialized
+  private var exitStatus:        Option[Int] = None
 
   /** Ends the main loop; [[run]] then returns `status`. A self-test calls this with its failure count, so its verdict
     * is the process's exit status — it used to stay up after "ALL CHECKS PASSED", so a run under `timeout` always

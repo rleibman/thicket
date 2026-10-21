@@ -31,42 +31,65 @@ final class GtkRenderer extends Renderer {
 
   type Handle = Ptr[GtkWidget]
 
-  private val kinds = mutable.Map.empty[Ptr[GtkWidget], WidgetKind]
-  private val tapIds = mutable.Map.empty[Ptr[GtkWidget], Long]
-  private val editIds = mutable.Map.empty[Ptr[GtkWidget], Long]
-  private val toggleIds = mutable.Map.empty[Ptr[GtkWidget], Long]
-  private val selectIds = mutable.Map.empty[Ptr[GtkWidget], Long]
-  private val valueIds = mutable.Map.empty[Ptr[GtkWidget], Long]
+  // Every per-handle table is made through these, which register it; `destroy` then sweeps
+  // all of them. They used to be thirty separate maps each released by hand in `destroy`,
+  // and four reviewers found five leaks of that one shape — a table someone forgot (review
+  // 2026-10-20, P3-1). Entries that hold a native resource or a callback id are still
+  // released explicitly in `destroy`, before the sweep; plain data needs nothing.
+  private val perHandleMaps = mutable.ArrayBuffer.empty[mutable.Map[Ptr[GtkWidget], ?]]
+  private val perHandleSets = mutable.ArrayBuffer.empty[mutable.Set[Ptr[GtkWidget]]]
+
+  private def perHandle[V]: mutable.Map[Ptr[GtkWidget], V] = {
+    val m = mutable.Map.empty[Ptr[GtkWidget], V]
+    perHandleMaps += m
+    m
+  }
+
+  private def perHandleSet: mutable.Set[Ptr[GtkWidget]] = {
+    val s = mutable.Set.empty[Ptr[GtkWidget]]
+    perHandleSets += s
+    s
+  }
+
+  /** Entries across every per-handle table. For the self-tests: it must come back down when widgets go. */
+  def tableEntries: Int = perHandleMaps.map(_.size).sum + perHandleSets.map(_.size).sum
+
+  private val kinds = perHandle[WidgetKind]
+  private val tapIds = perHandle[Long]
+  private val editIds = perHandle[Long]
+  private val toggleIds = perHandle[Long]
+  private val selectIds = perHandle[Long]
+  private val valueIds = perHandle[Long]
 
   // An Alert's state, keyed by its placeholder handle. The GtkAlertDialog itself does not
   // exist until `present`, because GtkAlertDialog is a GObject and cannot be a Handle.
-  private val alertTitle = mutable.Map.empty[Ptr[GtkWidget], String]
-  private val alertDetail = mutable.Map.empty[Ptr[GtkWidget], String]
-  private val alertActions = mutable.Map.empty[Ptr[GtkWidget], Seq[AlertAction]]
-  private val alertDismiss = mutable.Map.empty[Ptr[GtkWidget], () => Unit]
+  private val alertTitle = perHandle[String]
+  private val alertDetail = perHandle[String]
+  private val alertActions = perHandle[Seq[AlertAction]]
+  private val alertDismiss = perHandle[() => Unit]
 
   /** The cancellable behind a showing alert. Cancelling it is the only way GTK offers to take one down without the user
     * choosing, so `dismiss` needs it — and it also tells the response callback apart from a user dismissal, since both
     * arrive as index -1.
     */
-  private val alertCancel = mutable.Map.empty[Ptr[GtkWidget], Ptr[GCancellable]]
+  private val alertCancel = perHandle[Ptr[GCancellable]]
 
   /** The modal window carrying a showing sheet, and the close-request callback id. */
-  private val sheetWindow = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWindow]]
-  private val sheetCloseId = mutable.Map.empty[Ptr[GtkWidget], Long]
+  private val sheetWindow = perHandle[Ptr[GtkWindow]]
+  private val sheetCloseId = perHandle[Long]
 
   /** A widget's context-menu popover and the callback ids behind its items, so `destroy` can unparent the popover and
     * release them rather than leaking one per menu.
     */
-  private val menuPopover = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
-  private val menuIds = mutable.Map.empty[Ptr[GtkWidget], mutable.ArrayBuffer[Long]]
-  private val menuGesture = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkEventController]]
+  private val menuPopover = perHandle[Ptr[GtkWidget]]
+  private val menuIds = perHandle[mutable.ArrayBuffer[Long]]
+  private val menuGesture = perHandle[Ptr[GtkEventController]]
 
   /** True while the renderer is writing a value into a widget, so the widget's own change signal can tell an app-driven
     * update from a user edit and stay silent for the former. Without this, binding a signal to a text field is an
     * infinite loop.
     */
-  private val suppress = mutable.Set.empty[Ptr[GtkWidget]]
+  private val suppress = perHandleSet
 
   /** Children attached through a *setter* rather than through a container's child list.
     *
@@ -77,7 +100,7 @@ final class GtkRenderer extends Renderer {
     *
     * The rule this encodes: **a widget attached through a setter must be detached through that setter.**
     */
-  private val setterParent = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
+  private val setterParent = perHandle[Ptr[GtkWidget]]
 
   /** One CSS provider per themed widget.
     *
@@ -85,7 +108,7 @@ final class GtkRenderer extends Renderer {
     * class. Widgets the app did not override get no provider at all — which is the point: they keep following the
     * user's GTK theme.
     */
-  private val cssProviders = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkCssProvider]]
+  private val cssProviders = perHandle[Ptr[GtkCssProvider]]
   private var nextCssClass = 0
 
   /** Attach a stylesheet to one widget, and optionally to its direct children.
@@ -129,16 +152,7 @@ final class GtkRenderer extends Renderer {
         // Tell us when GTK rejects what we wrote. Connected once per provider, at creation,
         // because a stylesheet this renderer generates is always a bug if it does not parse
         // — and GTK's own response is a stderr warning nobody reads.
-        Zone {
-          val _ = g_signal_connect_data(
-            fresh.asInstanceOf[gpointer],
-            toCString("parsing-error").asInstanceOf[Ptr[gchar]],
-            GCallback.fromPtr(Handles.cssParsingErrorPtr),
-            Handles.idToPointer(0L),
-            null.asInstanceOf[GClosureNotify],
-            GConnectFlags.define(0)
-          )
-        }
+        Handles.connect(fresh, "parsing-error", Handles.cssParsingErrorPtr, 0L)
         fresh
       }
     )
@@ -148,16 +162,16 @@ final class GtkRenderer extends Renderer {
     Zone(gtk_css_provider_load_from_string(provider, toCString(sheet)))
   }
 
-  private val cssClasses = mutable.Map.empty[Ptr[GtkWidget], String]
+  private val cssClasses = perHandle[String]
 
   /** Widgets with `Grow(true)`, and the padding each asked for. */
   // Only widgets that set Grow, either way: one that never mentioned it keeps whatever expand
   // flags it was created with (a LazyColumn's scroller fills its column by default).
-  private val grows = mutable.Map.empty[Ptr[GtkWidget], Boolean]
-  private val ownPadding = mutable.Map.empty[Ptr[GtkWidget], Int]
+  private val grows = perHandle[Boolean]
+  private val ownPadding = perHandle[Int]
 
   /** Indeterminate progress bars whose pulse timer is running. Leaving the set stops the timer. */
-  private val pulsing = mutable.Set.empty[Ptr[GtkWidget]]
+  private val pulsing = perHandleSet
 
   /** Grow is "along the parent's main axis", so it can only be applied once the widget has a parent. It used to be
     * `hexpand` and nothing else, so a `Spacer()` in a Column — or a grown list — did not grow at all (review
@@ -169,11 +183,11 @@ final class GtkRenderer extends Renderer {
       if parent != null && kinds.get(parent).exists(isLinear) then {
         val vertical = gtk_orientable_get_orientation(parent.asInstanceOf[Ptr[GtkOrientable]]) ==
           GtkOrientation.GTK_ORIENTATION_VERTICAL
-        gtk_widget_set_vexpand(handle, gbool(on && vertical))
-        gtk_widget_set_hexpand(handle, gbool(on && !vertical))
+        gtk_widget_set_vexpand(handle, Handles.gbool(on && vertical))
+        gtk_widget_set_hexpand(handle, Handles.gbool(on && !vertical))
       } else if !on then {
-        gtk_widget_set_vexpand(handle, gbool(false))
-        gtk_widget_set_hexpand(handle, gbool(false))
+        gtk_widget_set_vexpand(handle, Handles.gbool(false))
+        gtk_widget_set_hexpand(handle, Handles.gbool(false))
       }
     }
 
@@ -222,7 +236,7 @@ final class GtkRenderer extends Renderer {
         // — AppKit does, which is why SecureField is a widget kind rather than a prop.
         case WidgetKind.SecureField =>
           val e = gtk_entry_new()
-          gtk_entry_set_visibility(e.asInstanceOf[Ptr[GtkEntry]], gbool(false))
+          gtk_entry_set_visibility(e.asInstanceOf[Ptr[GtkEntry]], Handles.gbool(false))
           e
 
         // Range is sent as a prop immediately afterwards; these are placeholder bounds so
@@ -372,16 +386,7 @@ final class GtkRenderer extends Renderer {
             val id = Handles.registerValued(s => f(s))
             editIds(handle) = id
             Handles.bindTextSource(id, () => readText(handle), () => suppress.contains(handle))
-            Zone {
-              val _ = g_signal_connect_data(
-                handle.asInstanceOf[gpointer],
-                toCString("changed").asInstanceOf[Ptr[gchar]],
-                GCallback.fromPtr(Handles.changedPtr),
-                Handles.idToPointer(id),
-                null.asInstanceOf[GClosureNotify],
-                GConnectFlags.define(0)
-              )
-            }
+            Handles.connect(handle, "changed", Handles.changedPtr, id)
         }
 
       case Prop.Checked(v) =>
@@ -390,7 +395,7 @@ final class GtkRenderer extends Renderer {
           val active = gtk_switch_get_active(sw).asInstanceOf[CInt] != 0
           if active != v then {
             suppress += handle
-            gtk_switch_set_active(sw, gbool(v))
+            gtk_switch_set_active(sw, Handles.gbool(v))
             suppress -= handle
           }
         } else if kinds.get(handle).contains(WidgetKind.Checkbox) then {
@@ -398,7 +403,7 @@ final class GtkRenderer extends Renderer {
           val active = gtk_check_button_get_active(button).asInstanceOf[CInt] != 0
           if active != v then {
             suppress += handle
-            gtk_check_button_set_active(button, gbool(v))
+            gtk_check_button_set_active(button, Handles.gbool(v))
             suppress -= handle
           }
         }
@@ -420,19 +425,11 @@ final class GtkRenderer extends Renderer {
               ,
               () => suppress.contains(handle)
             )
-            Zone {
-              // A check button emits "toggled"; a switch has no such signal and reports
-              // through GObject's property notification instead, which carries an extra
-              // GParamSpec argument and so needs the 3-argument trampoline.
-              val _ = g_signal_connect_data(
-                handle.asInstanceOf[gpointer],
-                toCString(if sw then "notify::active" else "toggled").asInstanceOf[Ptr[gchar]],
-                GCallback.fromPtr(if sw then Handles.notifiedPtr else Handles.changedPtr),
-                Handles.idToPointer(id),
-                null.asInstanceOf[GClosureNotify],
-                GConnectFlags.define(0)
-              )
-            }
+            // A check button emits "toggled"; a switch has no such signal and reports
+            // through GObject's property notification instead, which carries an extra
+            // GParamSpec argument and so needs the 3-argument trampoline.
+            if sw then Handles.connect(handle, "notify::active", Handles.notifiedPtr, id)
+            else Handles.connect(handle, "toggled", Handles.changedPtr, id)
         }
 
       case Prop.SafeArea(_) =>
@@ -453,14 +450,7 @@ final class GtkRenderer extends Renderer {
             dateIds(handle) = id
             Zone {
               // (GtkCalendar*, gpointer), the same shape as "clicked".
-              val _ = g_signal_connect_data(
-                calendar.asInstanceOf[gpointer],
-                toCString("day-selected").asInstanceOf[Ptr[gchar]],
-                GCallback.fromPtr(Handles.clickedPtr),
-                Handles.idToPointer(id),
-                null.asInstanceOf[GClosureNotify],
-                GConnectFlags.define(0)
-              )
+              Handles.connect(calendar, "day-selected", Handles.clickedPtr, id)
             }
           }
 
@@ -531,14 +521,7 @@ final class GtkRenderer extends Renderer {
             Zone {
               // Like GtkSwitch, a drop-down reports through GObject property notification
               // rather than a signal of its own, so this needs the 3-argument trampoline.
-              val _ = g_signal_connect_data(
-                handle.asInstanceOf[gpointer],
-                toCString("notify::selected").asInstanceOf[Ptr[gchar]],
-                GCallback.fromPtr(Handles.notifiedPtr),
-                Handles.idToPointer(id),
-                null.asInstanceOf[GClosureNotify],
-                GConnectFlags.define(0)
-              )
+              Handles.connect(handle, "notify::selected", Handles.notifiedPtr, id)
             }
         }
 
@@ -567,16 +550,7 @@ final class GtkRenderer extends Renderer {
               () => gtk_range_get_value(handle.asInstanceOf[Ptr[GtkRange]]),
               () => suppress.contains(handle)
             )
-            Zone {
-              val _ = g_signal_connect_data(
-                handle.asInstanceOf[gpointer],
-                toCString("value-changed").asInstanceOf[Ptr[gchar]],
-                GCallback.fromPtr(Handles.changedPtr),
-                Handles.idToPointer(id),
-                null.asInstanceOf[GClosureNotify],
-                GConnectFlags.define(0)
-              )
-            }
+            Handles.connect(handle, "value-changed", Handles.changedPtr, id)
         }
 
       case Prop.Progress(value) =>
@@ -631,28 +605,19 @@ final class GtkRenderer extends Renderer {
         val box = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
         Zone {
           gtk_widget_add_css_class(popover, toCString("menu"))
-          gtk_popover_set_has_arrow(popover.asInstanceOf[Ptr[GtkPopover]], gbool(false))
+          gtk_popover_set_has_arrow(popover.asInstanceOf[Ptr[GtkPopover]], Handles.gbool(false))
         }
 
         items.foreach { item =>
           val button = Zone(gtk_button_new_with_label(toCString(item.label)))
           Zone(gtk_widget_add_css_class(button, toCString("flat")))
-          gtk_widget_set_sensitive(button, gbool(item.enabled))
+          gtk_widget_set_sensitive(button, Handles.gbool(item.enabled))
           val itemId = Handles.register { () =>
             gtk_popover_popdown(popover.asInstanceOf[Ptr[GtkPopover]])
             item.onSelect()
           }
           menuIds.getOrElseUpdate(handle, mutable.ArrayBuffer.empty) += itemId
-          Zone {
-            val _ = g_signal_connect_data(
-              button.asInstanceOf[gpointer],
-              toCString("clicked").asInstanceOf[Ptr[gchar]],
-              GCallback.fromPtr(Handles.clickedPtr),
-              Handles.idToPointer(itemId),
-              null.asInstanceOf[GClosureNotify],
-              GConnectFlags.define(0)
-            )
-          }
+          Handles.connect(button, "clicked", Handles.clickedPtr, itemId)
           gtk_box_append(box.asInstanceOf[Ptr[GtkBox]], button)
         }
 
@@ -666,16 +631,7 @@ final class GtkRenderer extends Renderer {
         gtk_gesture_single_set_button(gesture.asInstanceOf[Ptr[GtkGestureSingle]], toGuint(3))
         val openId = Handles.register(() => gtk_popover_popup(popover.asInstanceOf[Ptr[GtkPopover]]))
         menuIds.getOrElseUpdate(handle, mutable.ArrayBuffer.empty) += openId
-        Zone {
-          val _ = g_signal_connect_data(
-            gesture.asInstanceOf[gpointer],
-            toCString("pressed").asInstanceOf[Ptr[gchar]],
-            GCallback.fromPtr(Handles.releasedPtr),
-            Handles.idToPointer(openId),
-            null.asInstanceOf[GClosureNotify],
-            GConnectFlags.define(0)
-          )
-        }
+        Handles.connect(gesture, "pressed", Handles.releasedPtr, openId)
         gtk_widget_add_controller(handle, gesture.asInstanceOf[Ptr[GtkEventController]])
         menuGesture(handle) = gesture.asInstanceOf[Ptr[GtkEventController]]
 
@@ -819,7 +775,7 @@ final class GtkRenderer extends Renderer {
     }
 
   /** Each ZStack's alignment, so a child inserted later is placed like the ones already there. */
-  private val stackAlignment = mutable.Map.empty[Ptr[GtkWidget], (GtkAlign, GtkAlign)]
+  private val stackAlignment = perHandle[(GtkAlign, GtkAlign)]
 
   private def gtkAlign(a: Alignment): GtkAlign =
     a match {
@@ -848,9 +804,9 @@ final class GtkRenderer extends Renderer {
 
   // -- DatePicker ------------------------------------------------------------
 
-  private val calendars = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
-  private val dateIds = mutable.Map.empty[Ptr[GtkWidget], Long]
-  private val dateChanged = mutable.Map.empty[Ptr[GtkWidget], CalendarDate => Unit]
+  private val calendars = perHandle[Ptr[GtkWidget]]
+  private val dateIds = perHandle[Long]
+  private val dateChanged = perHandle[CalendarDate => Unit]
 
   private def showDate(
     button: Handle,
@@ -908,9 +864,9 @@ final class GtkRenderer extends Renderer {
   // options change, and the index has to survive that. Each button's "toggled" handler is
   // its own Handles id, released when the buttons are replaced and when the control goes.
 
-  private val segments = mutable.Map.empty[Ptr[GtkWidget], Vector[(Ptr[GtkWidget], Long)]]
-  private val segmentIndex = mutable.Map.empty[Ptr[GtkWidget], Int]
-  private val segmentChosen = mutable.Map.empty[Ptr[GtkWidget], Int => Unit]
+  private val segments = perHandle[Vector[(Ptr[GtkWidget], Long)]]
+  private val segmentIndex = perHandle[Int]
+  private val segmentChosen = perHandle[Int => Unit]
 
   private def isSegmented(handle: Handle): Boolean = kinds.get(handle).contains(WidgetKind.SegmentedControl)
 
@@ -936,16 +892,7 @@ final class GtkRenderer extends Renderer {
             segmentChosen.get(control).foreach(_(i))
           }
         }
-        Zone {
-          val _ = g_signal_connect_data(
-            b.asInstanceOf[gpointer],
-            toCString("toggled").asInstanceOf[Ptr[gchar]],
-            GCallback.fromPtr(Handles.clickedPtr),
-            Handles.idToPointer(id),
-            null.asInstanceOf[GClosureNotify],
-            GConnectFlags.define(0)
-          )
-        }
+        Handles.connect(b, "toggled", Handles.clickedPtr, id)
         (b, id)
     }.toVector
     built.headOption.foreach {
@@ -983,14 +930,14 @@ final class GtkRenderer extends Renderer {
     // as a user choice — and with a Var behind it, loop. Guarded as the switch is.
     suppress += control
     if index >= 0 && index < buttons.length then
-      gtk_toggle_button_set_active(buttons(index)._1.asInstanceOf[Ptr[GtkToggleButton]], gbool(true))
+      gtk_toggle_button_set_active(buttons(index)._1.asInstanceOf[Ptr[GtkToggleButton]], Handles.gbool(true))
     else
       // -1, or past the end: nothing chosen. A GTK toggle group allows none active.
       buttons.foreach(
         (
           b,
           _
-        ) => gtk_toggle_button_set_active(b.asInstanceOf[Ptr[GtkToggleButton]], gbool(false))
+        ) => gtk_toggle_button_set_active(b.asInstanceOf[Ptr[GtkToggleButton]], Handles.gbool(false))
       )
     suppress -= control
   }
@@ -1013,8 +960,8 @@ final class GtkRenderer extends Renderer {
     * from one connection, so `.link(url)` on a row that is also tappable runs both instead of whichever was applied
     * last.
     */
-  private val appTaps = mutable.Map.empty[Ptr[GtkWidget], () => Unit]
-  private val links = mutable.Map.empty[Ptr[GtkWidget], String]
+  private val appTaps = perHandle[() => Unit]
+  private val links = perHandle[String]
 
   private def fireTap(handle: Handle): Unit = {
     appTaps.get(handle).foreach(_())
@@ -1029,16 +976,7 @@ final class GtkRenderer extends Renderer {
       val id = Handles.register(() => fireTap(handle))
       tapIds(handle) = id
       if kinds.get(handle).exists(k => k == WidgetKind.Button || k == WidgetKind.IconButton) then
-        Zone {
-          val _ = g_signal_connect_data(
-            handle.asInstanceOf[gpointer],
-            toCString("clicked").asInstanceOf[Ptr[gchar]],
-            GCallback.fromPtr(Handles.clickedPtr),
-            Handles.idToPointer(id),
-            null.asInstanceOf[GClosureNotify],
-            GConnectFlags.define(0)
-          )
-        }
+        Handles.connect(handle, "clicked", Handles.clickedPtr, id)
       else {
         // Something tappable should look tappable, so the row picks up the platform's
         // own activatable styling and pointer cursor rather than us drawing anything.
@@ -1049,23 +987,14 @@ final class GtkRenderer extends Renderer {
         // A GtkBox emits no "clicked": taps on plain containers come from an event
         // controller, which is how GTK4 does input on arbitrary widgets.
         val gesture = gtk_gesture_click_new()
-        Zone {
-          val _ = g_signal_connect_data(
-            gesture.asInstanceOf[gpointer],
-            toCString("released").asInstanceOf[Ptr[gchar]],
-            GCallback.fromPtr(Handles.releasedPtr),
-            Handles.idToPointer(id),
-            null.asInstanceOf[GClosureNotify],
-            GConnectFlags.define(0)
-          )
-        }
+        Handles.connect(gesture, "released", Handles.releasedPtr, id)
         gtk_widget_add_controller(handle, gesture.asInstanceOf[Ptr[GtkEventController]])
       }
     }
 
   // -- Grid ------------------------------------------------------------------
 
-  private val gridColumns = mutable.Map.empty[Ptr[GtkWidget], Int]
+  private val gridColumns = perHandle[Int]
 
   private def isGrid(handle: Handle): Boolean = kinds.get(handle).contains(WidgetKind.Grid)
 
@@ -1116,7 +1045,7 @@ final class GtkRenderer extends Renderer {
     if kinds.get(parent).contains(WidgetKind.ZStack) then {
       val overlay = parent.asInstanceOf[Ptr[GtkOverlay]]
       gtk_overlay_add_overlay(overlay, child)
-      gtk_overlay_set_measure_overlay(overlay, child, gbool(true))
+      gtk_overlay_set_measure_overlay(overlay, child, Handles.gbool(true))
       // add_overlay always appends, i.e. on top. Paint order is child order, so a child that
       // belongs underneath — an underlay shown after the content — is moved to its place.
       gtk_widget_insert_after(child, parent, after.orNull)
@@ -1196,9 +1125,6 @@ final class GtkRenderer extends Renderer {
 
   private def hex(c: thicket.renderer.Rgb): String = f"#${c.r}%02x${c.g}%02x${c.b}%02x"
 
-  private def gbool(b: Boolean): sn.gnome.glib.internal.gboolean =
-    (if b then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean]
-
   /** A presented widget's handle: an Alert's placeholder, a Sheet's content box. Neither is ever inserted into a
     * parent, so nothing would sink the floating reference GTK hands out — or release it. Sinking it here makes the
     * renderer the owner, and `destroy` lets go (review 2026-10-20, P2-3).
@@ -1214,30 +1140,14 @@ final class GtkRenderer extends Renderer {
     // method first, or a Wayland race leaves it pointing at freed memory (#56).
     WaylandFocus.releaseBeforeDestroy(handle)
     val presented = kinds.get(handle).exists(k => k == WidgetKind.Alert || k == WidgetKind.Sheet)
-    // An Alert's (and a Sheet's title's) state is keyed by the raw pointer, so leaving it
-    // here would hand a widget GTK later allocates at the same address the old alert's
-    // text and closures.
-    val _ = alertTitle.remove(handle)
-    val _ = alertDetail.remove(handle)
-    val _ = alertActions.remove(handle)
-    val _ = alertDismiss.remove(handle)
-    alertCancel.remove(handle).foreach(g_cancellable_cancel)
-    sheetCloseId.remove(handle).foreach(Handles.release)
-    virtualBinders.remove(handle).foreach(_.foreach(Handles.release))
-    val _ = virtualModels.remove(handle)
-    tapIds.remove(handle).foreach(Handles.release)
-    val _ = appTaps.remove(handle)
-    val _ = links.remove(handle)
-    editIds.remove(handle).foreach(Handles.release)
-    toggleIds.remove(handle).foreach(Handles.release)
-    // `valueIds` was missing here from the day `Slider` landed, so every destroyed slider
-    // left its handler and its two source closures in the table. A review caught the same
-    // omission for `selectIds`; both are the same mistake, and `Handles.liveCount` plus a
-    // self-test check is what stops a third.
-    valueIds.remove(handle).foreach(Handles.release)
-    selectIds.remove(handle).foreach(Handles.release)
+
+    // What holds a callback id or a native resource is released here; plain data goes in the
+    // sweep at the end. `Handles.liveCount` and the self-tests' callback counts are what
+    // catch a release missing from this list.
+    for table <- Seq(tapIds, editIds, toggleIds, valueIds, selectIds, dateIds, sheetCloseId) do
+      table.get(handle).foreach(Handles.release)
     segments
-      .remove(handle).foreach(
+      .get(handle).foreach(
         _.foreach(
           (
             _,
@@ -1245,21 +1155,12 @@ final class GtkRenderer extends Renderer {
           ) => Handles.release(id)
         )
       )
-    dateIds.remove(handle).foreach(Handles.release)
-    val _ = calendars.remove(handle)
-    val _ = dateChanged.remove(handle)
-    val _ = segmentIndex.remove(handle)
-    val _ = segmentChosen.remove(handle)
-    suppress -= handle
-    kinds.remove(handle)
-    val _ = stackAlignment.remove(handle)
-    val _ = gridColumns.remove(handle)
-    // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
-    // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox
-    // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
+    virtualBinders.get(handle).foreach(_.foreach(Handles.release))
+    menuIds.get(handle).foreach(_.foreach(Handles.release))
+    alertCancel.get(handle).foreach(g_cancellable_cancel)
     // A provider is added to the whole display, so leaving it there kept every themed widget's
     // stylesheet in GTK's cascade for the life of the process, re-matched on every restyle.
-    cssProviders.remove(handle).foreach { p =>
+    cssProviders.get(handle).foreach { p =>
       gtk_style_context_remove_provider_for_display(
         gtk_widget_get_display(handle),
         p.asInstanceOf[Ptr[GtkStyleProvider]]
@@ -1267,18 +1168,15 @@ final class GtkRenderer extends Renderer {
       g_object_unref(p.asInstanceOf[gpointer])
       Handles.cssProvidersLive.decrementAndGet()
     }
-    val _ = cssClasses.remove(handle)
-    val _ = grows.remove(handle)
-    pulsing -= handle
-    val _ = ownPadding.remove(handle)
     // A popover is parented to its widget, so it must be unparented before the widget
     // goes — GTK4 frees a widget's children with it, and the popover is not in the child
     // list the box knows about.
-    menuPopover.remove(handle).foreach(gtk_widget_unparent)
-    menuIds.remove(handle).foreach(_.foreach(Handles.release))
-    val _ = menuGesture.remove(handle)
+    menuPopover.get(handle).foreach(gtk_widget_unparent)
 
-    sheetWindow.remove(handle) match {
+    // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
+    // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox
+    // during dispose... Did you call g_object_unref() instead of gtk_widget_unparent()?".
+    sheetWindow.get(handle) match {
       // A sheet's content is attached through `gtk_window_set_child`, so it is detached
       // the same way — the rule the Scroll case already encodes. That call also drops the
       // window's reference, which is the only one, so it *is* the release: doing it in
@@ -1290,7 +1188,7 @@ final class GtkRenderer extends Renderer {
         gtk_window_destroy(win)
       case None if tabs.destroy(handle) => ()
       case None                         =>
-        setterParent.remove(handle) match {
+        setterParent.get(handle) match {
           case Some(scroll) =>
             gtk_scrolled_window_set_child(scroll.asInstanceOf[Ptr[GtkScrolledWindow]], null)
           case None =>
@@ -1306,7 +1204,12 @@ final class GtkRenderer extends Renderer {
     // The reference `ownedPlaceholder` sank. For a sheet the window's own reference went
     // with `gtk_window_set_child(win, null)` above, so this is the last one.
     if presented then g_object_unref(handle.asInstanceOf[gpointer])
-    if rowRefs.remove(handle) then g_object_unref(handle.asInstanceOf[gpointer])
+    if rowRefs.contains(handle) then g_object_unref(handle.asInstanceOf[gpointer])
+
+    // Everything keyed by this handle, in every table. The handle is a raw pointer, so an
+    // entry left behind would be found again by whatever GTK allocates at that address next.
+    perHandleMaps.foreach(_.remove(handle))
+    perHandleSets.foreach(_ -= handle)
   }
 
   override def present(handle: Handle): Unit =
@@ -1316,7 +1219,7 @@ final class GtkRenderer extends Renderer {
   private def presentSheet(handle: Handle): Unit =
     Zone {
       val win = gtk_window_new().asInstanceOf[Ptr[GtkWindow]]
-      gtk_window_set_modal(win, gbool(true))
+      gtk_window_set_modal(win, Handles.gbool(true))
       gtk_window_set_transient_for(win, GtkApp.window)
       alertTitle.get(handle).filter(_.nonEmpty).foreach(t => gtk_window_set_title(win, toCString(t)))
       gtk_window_set_child(win, handle)
@@ -1331,14 +1234,7 @@ final class GtkRenderer extends Renderer {
       // by its own close button (review 2026-10-20, P0-4, D10).
       val id = Handles.register(() => alertDismiss.get(handle).foreach(_()))
       sheetCloseId(handle) = id
-      val _ = g_signal_connect_data(
-        win.asInstanceOf[gpointer],
-        toCString("close-request").asInstanceOf[Ptr[gchar]],
-        GCallback.fromPtr(Handles.closeRequestPtr),
-        Handles.idToPointer(id),
-        null.asInstanceOf[GClosureNotify],
-        GConnectFlags.define(0)
-      )
+      Handles.connect(win, "close-request", Handles.closeRequestPtr, id)
 
       sheetWindow(handle) = win
       gtk_window_present(win)
@@ -1409,7 +1305,8 @@ final class GtkRenderer extends Renderer {
 
     // Only hide it. Tearing the window down here would free the content with it, and the
     // reconciler destroys the content immediately afterwards — `destroy` owns that, above.
-    sheetWindow.get(handle).foreach(win => gtk_widget_set_visible(win.asInstanceOf[Ptr[GtkWidget]], gbool(false)))
+    sheetWindow
+      .get(handle).foreach(win => gtk_widget_set_visible(win.asInstanceOf[Ptr[GtkWidget]], Handles.gbool(false)))
     sheetCloseId.remove(handle).foreach(Handles.release)
   }
 
@@ -1488,21 +1385,13 @@ final class GtkRenderer extends Renderer {
       }
     }
     Zone {
-      for (signal, id) <- Seq("bind" -> binderId, "unbind" -> unbinderId, "teardown" -> teardownId) do {
-        val _ = g_signal_connect_data(
-          factory.asInstanceOf[gpointer],
-          toCString(signal).asInstanceOf[Ptr[gchar]],
-          GCallback.fromPtr(Handles.listBindPtr),
-          Handles.idToPointer(id),
-          null.asInstanceOf[GClosureNotify],
-          GConnectFlags.define(0)
-        )
-      }
+      for (signal, id) <- Seq("bind" -> binderId, "unbind" -> unbinderId, "teardown" -> teardownId) do
+        Handles.connect(factory, signal, Handles.listBindPtr, id)
     }
 
     val selection = gtk_no_selection_new(model.asInstanceOf[Ptr[sn.gnome.gio.internal.GListModel]])
     val view = gtk_list_view_new(selection.asInstanceOf[Ptr[GtkSelectionModel]], factory)
-    gtk_list_view_set_show_separators(view.asInstanceOf[Ptr[GtkListView]], gbool(true))
+    gtk_list_view_set_show_separators(view.asInstanceOf[Ptr[GtkListView]], Handles.gbool(true))
 
     // A list only virtualises inside something that scrolls.
     val scroller = gtk_scrolled_window_new()
@@ -1512,7 +1401,7 @@ final class GtkRenderer extends Renderer {
       GtkPolicyType.GTK_POLICY_AUTOMATIC
     )
     gtk_scrolled_window_set_child(scroller.asInstanceOf[Ptr[GtkScrolledWindow]], view)
-    gtk_widget_set_vexpand(scroller, gbool(true))
+    gtk_widget_set_vexpand(scroller, Handles.gbool(true))
     kinds(scroller) = WidgetKind.Scroll
     setterParent(view) = scroller
 
@@ -1530,15 +1419,15 @@ final class GtkRenderer extends Renderer {
     scroller
   }
 
-  private val virtualModels = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkStringList]]
+  private val virtualModels = perHandle[Ptr[GtkStringList]]
 
   /** Rows the renderer holds a reference on, so they survive GTK freeing the list item that showed them. */
-  private val rowRefs = mutable.Set.empty[Ptr[GtkWidget]]
+  private val rowRefs = perHandleSet
 
   /** The bind callback behind each list. It holds the `RowSource`, and through it every item, so a list that is not
     * released here keeps its whole data set alive after unmounting (review 2026-10-20, P2-2).
     */
-  private val virtualBinders = mutable.Map.empty[Ptr[GtkWidget], Seq[Long]]
+  private val virtualBinders = perHandle[Seq[Long]]
 
   /** Make the model's length match the data. The strings are placeholders; only the count matters, because the factory
     * supplies every widget.

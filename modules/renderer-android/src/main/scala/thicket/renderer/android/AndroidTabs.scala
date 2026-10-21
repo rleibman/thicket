@@ -21,7 +21,7 @@ import _root_.android.graphics.drawable.Drawable
 import _root_.android.view.{Gravity, View, ViewGroup}
 import _root_.android.widget.{FrameLayout, ImageView, LinearLayout, TextView}
 import scala.collection.mutable
-import thicket.renderer.Icon
+import thicket.renderer.{Icon, TabSelection}
 import thicket.signals.ErrorSink
 
 /** `TabView` on Android (#61): a content area and a bottom bar, built from framework views.
@@ -199,17 +199,12 @@ final private[android] class AndroidTabs(
     p:       Parts,
     visible: Option[View]
   ): Unit =
-    visible.map(v => p.tabs.indexOf(v)).filter(_ >= 0) match {
-      case Some(i) =>
-        val moved = i != p.selected
+    // The rule is TabSelection's; this applies it to the views.
+    TabSelection.afterChange(p.tabs, visible, p.selected) match {
+      case (-1, _)     => p.selected = -1
+      case (i, report) =>
         show(p, i)
-        if moved then p.onSelect.foreach(_(i))
-      case None if p.tabs.nonEmpty =>
-        // The visible tab was removed: the platform's answer is the nearest one, which is reported.
-        val i = math.min(math.max(p.selected, 0), p.tabs.length - 1)
-        show(p, i)
-        p.onSelect.foreach(_(i))
-      case None => p.selected = -1
+        if report then p.onSelect.foreach(_(i))
     }
 
   def insertAfter(
@@ -234,11 +229,14 @@ final private[android] class AndroidTabs(
     owner(tab) = view
     p.tabs = current.take(at) ++ (tab +: current.drop(at))
     if p.selected >= 0 then keepSelection(p, visible)
-    else if p.wanted >= 0 && p.wanted < p.tabs.length then show(p, p.wanted)
-    // Nothing chosen: show the first, as GTK's stack does. A blank content area is not a state
-    // any tab bar has, and it is what -1 used to leave on screen (review 2026-10-20, R-L6).
-    else if p.wanted < 0 then show(p, 0)
-    else tab.setVisibility(View.GONE) // a tab further on is wanted, and not here yet
+    else
+      // Nothing shown yet: the app's choice once its tab exists, the first for -1 (a blank
+      // content area is not a state any tab bar has, and -1 used to leave one, R-L6), and
+      // otherwise wait for the wanted tab to arrive.
+      TabSelection.initial(p.wanted, p.tabs.length) match {
+        case Some(i) => show(p, i)
+        case None    => tab.setVisibility(View.GONE)
+      }
   }
 
   def remove(

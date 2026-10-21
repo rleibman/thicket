@@ -59,6 +59,9 @@ object GtkInspect {
     */
   def liveCallbacks: Int = Handles.liveCount
 
+  /** Entries across the renderer's per-handle tables; must come back down when widgets are destroyed. */
+  def rendererEntries: Int = GtkApp.liveRenderer.tableEntries
+
   /** CSS providers on the display, one per live themed widget; it must fall when themed widgets go. */
   def liveCssProviders: Int = Handles.cssProvidersLive.get()
 

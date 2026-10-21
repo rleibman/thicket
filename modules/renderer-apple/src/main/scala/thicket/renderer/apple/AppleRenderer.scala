@@ -32,28 +32,48 @@ final class AppleRenderer extends Renderer {
 
   type Handle = Shim.Handle
 
-  private val kinds = mutable.Map.empty[Handle, WidgetKind]
-  private val tapIds = mutable.Map.empty[Handle, Long]
-  private val editIds = mutable.Map.empty[Handle, Long]
-  private val boolIds = mutable.Map.empty[Handle, Long]
-  private val valueIds = mutable.Map.empty[Handle, Long]
-  private val selectIds = mutable.Map.empty[Handle, Long]
-  private val dateIds = mutable.Map.empty[Handle, Long]
-  private val actionIds = mutable.Map.empty[Handle, Seq[Long]]
-  private val dismissIds = mutable.Map.empty[Handle, Long]
-  private val menuIds = mutable.Map.empty[Handle, Seq[Long]]
+  // Every per-handle table is made through these, which register it; `destroy` sweeps them all
+  // (review 2026-10-20, P3-1). Callback ids are still released explicitly in `destroy` first.
+  private val perHandleMaps = mutable.ArrayBuffer.empty[mutable.Map[Handle, ?]]
+  private val perHandleSets = mutable.ArrayBuffer.empty[mutable.Set[Handle]]
+
+  private def perHandle[V]: mutable.Map[Handle, V] = {
+    val m = mutable.Map.empty[Handle, V]
+    perHandleMaps += m
+    m
+  }
+
+  private def perHandleSet: mutable.Set[Handle] = {
+    val s = mutable.Set.empty[Handle]
+    perHandleSets += s
+    s
+  }
+
+  /** Entries across every per-handle table. For the self-tests: it must come back down when widgets go. */
+  def tableEntries: Int = perHandleMaps.map(_.size).sum + perHandleSets.map(_.size).sum
+
+  private val kinds = perHandle[WidgetKind]
+  private val tapIds = perHandle[Long]
+  private val editIds = perHandle[Long]
+  private val boolIds = perHandle[Long]
+  private val valueIds = perHandle[Long]
+  private val selectIds = perHandle[Long]
+  private val dateIds = perHandle[Long]
+  private val actionIds = perHandle[Seq[Long]]
+  private val dismissIds = perHandle[Long]
+  private val menuIds = perHandle[Seq[Long]]
 
   /** What is on screen *over* the app, in the order it was presented. A presented widget is by definition not in the
     * root's tree, so this is how a test finds one without walking a tree that cannot contain it.
     */
   private val presentedNow = mutable.LinkedHashMap.empty[Handle, WidgetKind]
-  private val rowIds = mutable.Map.empty[Handle, Long]
+  private val rowIds = perHandle[Long]
 
   /** The scrollers created horizontally. The renderer is the only thing that knows: the axis is folded into the kind
     * code at `create` and nothing on the Swift side is asked about it afterwards. Exposed for [[isHorizontalScroll]] so
     * a test can tell the two scrollers in a screen apart without a tree-order guess.
     */
-  private val horizontalScrolls = mutable.Set.empty[Handle]
+  private val horizontalScrolls = perHandleSet
 
   def platform: String = "appkit"
 
@@ -424,8 +444,9 @@ final class AppleRenderer extends Renderer {
     // unmounted list alive. A table asking for a row after this gets null, which it treats as
     // no view.
     rowIds.remove(handle).foreach(Handles.release)
-    kinds.remove(handle)
-    horizontalScrolls.remove(handle)
+    // Everything else keyed by this handle, in every table.
+    perHandleMaps.foreach(_.remove(handle))
+    perHandleSets.foreach(_ -= handle)
     // Detaching is part of destroying; the shim removes from the superview before
     // releasing, and the reconciler destroys depth-first.
     Shim.sui_destroy(handle)

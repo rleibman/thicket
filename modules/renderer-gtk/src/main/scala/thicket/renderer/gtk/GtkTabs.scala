@@ -20,9 +20,9 @@ import scala.collection.mutable
 import scala.scalanative.unsafe.*
 import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.*
-import sn.gnome.glib.internal.{gchar, gpointer}
+import sn.gnome.glib.internal.gpointer
 import sn.gnome.adwaita.internal.*
-import thicket.renderer.Icon
+import thicket.renderer.{Icon, TabSelection}
 
 /** `TabView` on GTK (#61): an `AdwViewStack` with an `AdwViewSwitcherBar`, libadwaita's own bottom switcher.
   *
@@ -58,10 +58,8 @@ final private[gtk] class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     * true. Removing the visible tab is the same case: GTK shows another, and that is reported.
     */
   private def reportIfMoved(view: Ptr[GtkWidget]): Unit = {
-    val now = selectedIndex(view)
-    // Nothing to report while the app's own selection has not been shown yet: the tabs are
-    // still arriving, and a 0 reported now would overwrite what the app asked for.
-    if known.contains(view) && now >= 0 && !known.get(view).contains(now) then {
+    // The rule is TabSelection's; this applies it to the stack.
+    TabSelection.moved(known.get(view), selectedIndex(view)).foreach { now =>
       known(view) = now
       chosen.get(view).foreach(_(now))
     }
@@ -70,12 +68,12 @@ final private[gtk] class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
   def createTabView(): Ptr[GtkWidget] = {
     val box = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
     val stack = adw_view_stack_new()
-    gtk_widget_set_vexpand(stack, gbool(true))
+    gtk_widget_set_vexpand(stack, Handles.gbool(true))
     val bar = adw_view_switcher_bar_new()
     adw_view_switcher_bar_set_stack(bar.asInstanceOf[Ptr[AdwViewSwitcherBar]], stack.asInstanceOf[Ptr[AdwViewStack]])
     // Always shown: the bar is the TabView's switcher here, not only the narrow-window
     // fallback for a header-bar switcher.
-    adw_view_switcher_bar_set_reveal(bar.asInstanceOf[Ptr[AdwViewSwitcherBar]], gbool(true))
+    adw_view_switcher_bar_set_reveal(bar.asInstanceOf[Ptr[AdwViewSwitcherBar]], Handles.gbool(true))
     gtk_box_append(box.asInstanceOf[Ptr[GtkBox]], stack)
     gtk_box_append(box.asInstanceOf[Ptr[GtkBox]], bar)
     stacks(box) = stack
@@ -119,7 +117,7 @@ final private[gtk] class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
       gtk_box_remove(tab.asInstanceOf[Ptr[GtkBox]], c)
       c = next
     }
-    gtk_widget_set_vexpand(child, gbool(true))
+    gtk_widget_set_vexpand(child, Handles.gbool(true))
     gtk_box_append(tab.asInstanceOf[Ptr[GtkBox]], child)
   }
 
@@ -135,7 +133,7 @@ final private[gtk] class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     view: Ptr[GtkWidget],
     tab:  Ptr[GtkWidget]
   ): Unit = {
-    gtk_widget_set_visible(tab, gbool(false))
+    gtk_widget_set_visible(tab, Handles.gbool(false))
     adw_view_stack_remove(stackOf(view), tab)
   }
 
@@ -144,7 +142,7 @@ final private[gtk] class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
     tab:  Ptr[GtkWidget]
   ): Unit =
     Zone {
-      gtk_widget_set_visible(tab, gbool(true))
+      gtk_widget_set_visible(tab, Handles.gbool(true))
       val _ = adw_view_stack_add_titled_with_icon(
         stackOf(view),
         tab,
@@ -239,16 +237,7 @@ final private[gtk] class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
         val id = Handles.registerValued(report)
         selectIds(view) = id
         Handles.bindTextSource(id, () => selectedIndex(view), () => suppress.contains(view))
-        Zone {
-          val _ = g_signal_connect_data(
-            stacks(view).asInstanceOf[gpointer],
-            toCString("notify::visible-child").asInstanceOf[Ptr[gchar]],
-            GCallback.fromPtr(Handles.notifiedPtr),
-            Handles.idToPointer(id),
-            null.asInstanceOf[GClosureNotify],
-            GConnectFlags.define(0)
-          )
-        }
+        Handles.connect(stacks(view), "notify::visible-child", Handles.notifiedPtr, id)
     }
   }
 
@@ -271,8 +260,5 @@ final private[gtk] class GtkTabs(suppress: mutable.Set[Ptr[GtkWidget]]) {
         false
     }
   }
-
-  private def gbool(b: Boolean): sn.gnome.glib.internal.gboolean =
-    (if b then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean]
 
 }

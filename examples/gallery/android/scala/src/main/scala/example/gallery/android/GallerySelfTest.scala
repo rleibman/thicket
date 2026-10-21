@@ -94,6 +94,7 @@ object GallerySelfTest {
     def label(t:     String) = findAll(screen) { case tv: TextView => tv.getText.toString == t; case _ => false }
     def spinner = findAll(screen) { case _: Spinner => true; case _ => false }.headOption.map(_.asInstanceOf[Spinner])
     var reportsBefore = ""
+    var entriesBefore = 0
 
     Log.i(Tag, "[gallery] reading the catalogue back out of Android")
     sequence(
@@ -204,6 +205,7 @@ object GallerySelfTest {
             large < small * 3,
             f"$small%.1f -> $large%.1f ms"
           )
+          entriesBefore = activity.renderer0.tableEntries
           Gallery.currentNav.foreach(_.push(Gallery.Route.Big))
         },
         () => {
@@ -235,6 +237,11 @@ object GallerySelfTest {
         },
         () => {
           check("back pops to the catalogue", activity.pageCount == 1, activity.pageCount.toString)
+          check(
+            "and the popped page's widgets leave nothing in the renderer's tables",
+            activity.renderer0.tableEntries == entriesBefore,
+            s"$entriesBefore before the push, ${activity.renderer0.tableEntries} after the pop"
+          )
           Log.i(Tag, if failures == 0 then "[gallery] ALL CHECKS PASSED" else s"[gallery] $failures CHECK(S) FAILED")
         }
       )

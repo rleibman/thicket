@@ -87,6 +87,31 @@ private[gtk] object Handles {
     if f != null then f()
   }
 
+  /** Connects `callback` — one of the trampolines here — to `signal` on `instance`, with `id` as its user data.
+    *
+    * The one place a signal is connected, where there were eighteen copies of the same six arguments to
+    * `g_signal_connect_data` (review 2026-10-20, P3-2).
+    */
+  def connect(
+    instance: Ptr[?],
+    signal:   String,
+    callback: CVoidPtr,
+    id:       Long
+  ): Unit =
+    Zone {
+      val _ = sn.gnome.gobject.internal.g_signal_connect_data(
+        instance.asInstanceOf[gpointer],
+        toCString(signal).asInstanceOf[Ptr[sn.gnome.glib.internal.gchar]],
+        sn.gnome.gobject.internal.GCallback.fromPtr(callback),
+        idToPointer(id),
+        null.asInstanceOf[sn.gnome.gobject.internal.GClosureNotify],
+        sn.gnome.gobject.internal.GConnectFlags.define(0)
+      )
+    }
+
+  /** A Scala Boolean as glib's `gboolean`. One copy; there were three. */
+  def gbool(b: Boolean): gboolean = (if b then 1 else 0).asInstanceOf[gboolean]
+
   def idToPointer(id: Long): gpointer =
     fromRawPtr[Byte](Intrinsics.castLongToRawPtr(id)).asInstanceOf[gpointer]
 

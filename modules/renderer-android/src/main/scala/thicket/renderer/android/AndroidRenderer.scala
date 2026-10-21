@@ -67,27 +67,49 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
   private val SliderSteps = 1000
 
-  private val kinds = mutable.Map.empty[View, WidgetKind]
+  // Every per-view table is made through these, which register it; `destroy` sweeps them all.
+  // Keyed by View, an entry left behind keeps the View — and through it the Activity — alive
+  // for the renderer's lifetime, and one was left behind in four tables before this (review
+  // 2026-10-20, P3-1, P2-4). A dialog that is showing is dismissed explicitly first.
+  private val perViewMaps = mutable.ArrayBuffer.empty[mutable.Map[? <: View, ?]]
+  private val perViewSets = mutable.ArrayBuffer.empty[mutable.Set[View]]
+
+  private def perView[K <: View, V]: mutable.Map[K, V] = {
+    val m = mutable.Map.empty[K, V]
+    perViewMaps += m
+    m
+  }
+
+  private def perViewSet: mutable.Set[View] = {
+    val s = mutable.Set.empty[View]
+    perViewSets += s
+    s
+  }
+
+  /** Entries across every per-view table. For the self-tests: it must come back down when widgets go. */
+  def tableEntries: Int = perViewMaps.map(_.size).sum + perViewSets.map(_.size).sum
+
+  private val kinds = perView[View, WidgetKind]
 
   /** True while the renderer writes a value in, so the widget's own change listener can tell an app-driven update from
     * a user edit. Without it, a signal bound to a text field loops: write -> listener -> signal -> write.
     */
-  private val suppress = mutable.Set.empty[View]
+  private val suppress = perViewSet
 
   /** A slider's app-facing bounds, kept per widget because `SeekBar` has none: it counts integer steps, and the
     * renderer converts.
     */
-  private val ranges = mutable.Map.empty[View, (Double, Double)]
+  private val ranges = perView[View, (Double, Double)]
 
   // An Alert's state, keyed by its placeholder handle. Held here rather than on the View
   // because the View is a stand-in: the real object is the Dialog, and it does not exist
   // until `present`.
-  private val alertTitle = mutable.Map.empty[View, String]
-  private val alertMessage = mutable.Map.empty[View, String]
-  private val alertActions = mutable.Map.empty[View, Seq[AlertAction]]
-  private val alertDismiss = mutable.Map.empty[View, () => Unit]
-  private val alertShowing = mutable.Map.empty[View, AlertDialog]
-  private val sheetShowing = mutable.Map.empty[View, AlertDialog]
+  private val alertTitle = perView[View, String]
+  private val alertMessage = perView[View, String]
+  private val alertActions = perView[View, Seq[AlertAction]]
+  private val alertDismiss = perView[View, () => Unit]
+  private val alertShowing = perView[View, AlertDialog]
+  private val sheetShowing = perView[View, AlertDialog]
   private val mainHandler = Handler(Looper.getMainLooper)
 
   /** Resolve a theme attribute, so colours and backgrounds come from the user's theme rather than from values we
@@ -739,9 +761,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
         }
     }
 
-  private val spacing = mutable.Map.empty[LinearLayout, Int]
+  private val spacing = perView[LinearLayout, Int]
 
-  private val gridSpacing = mutable.Map.empty[GridLayout, Int]
+  private val gridSpacing = perView[GridLayout, Int]
 
   /** GridLayout has no spacing either, so the gap is a margin on each cell that is not first in its row or column.
     * Which cells those are depends on every index, so it is recomputed whenever the children change, as for
@@ -809,8 +831,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
   }
 
-  private val dates = mutable.Map.empty[View, CalendarDate]
-  private val dateChanged = mutable.Map.empty[View, CalendarDate => Unit]
+  private val dates = perView[View, CalendarDate]
+  private val dateChanged = perView[View, CalendarDate => Unit]
 
   /** The user's medium date format, at UTC: a [[CalendarDate]] is a day, and formatting midnight UTC in any other zone
     * would show the day before for everyone west of Greenwich.
@@ -876,7 +898,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
 
   /** Each segmented control's chosen index, kept here because its RadioButtons are rebuilt when the options change. */
-  private val segmentIndex = mutable.Map.empty[RadioGroup, Int]
+  private val segmentIndex = perView[RadioGroup, Int]
 
   private def selectSegment(
     g:     RadioGroup,
@@ -893,8 +915,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * listener, so keeping them apart and dispatching both is what stops `.link(url)` on a tappable row from replacing
     * the tap, or the tap the link.
     */
-  private val appTaps = mutable.Map.empty[View, () => Unit]
-  private val links = mutable.Map.empty[View, String]
+  private val appTaps = perView[View, () => Unit]
+  private val links = perView[View, String]
 
   /** Setting a listener replaces the previous one, so repeated updates cannot stack handlers — the same property the
     * GTK renderer gets from one connected signal.
@@ -908,9 +930,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
 
   /** Widgets that set Grow, either way; their own padding; which of them carry a safe area. */
-  private val grows = mutable.Map.empty[View, Boolean]
-  private val basePadding = mutable.Map.empty[View, Int]
-  private val safeAreas = mutable.Set.empty[View]
+  private val grows = perView[View, Boolean]
+  private val basePadding = perView[View, Int]
+  private val safeAreas = perViewSet
 
   /** Grow is "along the parent's main axis", so it waits for a parent. It used to be applied at create time, always as
     * `width = 0`: a grown child of a *vertical* Column was zero pixels wide, and the ZStack and Grid guards tested a
@@ -941,10 +963,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
     * selection is -1 a blank entry leads the list and is the one shown, as GTK's drop-down shows an empty button and
     * Apple's a blank title (D13). It goes as soon as the user, or the app, picks a real one.
     */
-  private val watchers = mutable.Map.empty[EditText, TextWatcher]
+  private val watchers = perView[EditText, TextWatcher]
 
-  private val spinnerOptions = mutable.Map.empty[Spinner, Seq[String]]
-  private val spinnerWanted = mutable.Map.empty[Spinner, Int]
+  private val spinnerOptions = perView[Spinner, Seq[String]]
+  private val spinnerWanted = perView[Spinner, Int]
   private def spinnerOffset(s: Spinner):      Int = if spinnerPlaceholder(s) then 1 else 0
   private def spinnerPlaceholder(s: Spinner): Boolean = {
     val i = spinnerWanted.getOrElse(s, -1)
@@ -965,7 +987,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
   }
 
   /** Each ZStack's gravity, so a child inserted later is placed like the ones already there. */
-  private val stackGravity = mutable.Map.empty[FrameLayout, Int]
+  private val stackGravity = perView[FrameLayout, Int]
 
   /** Asked of `kinds`, not of the class: a ScrollView is a FrameLayout too, and so is the navigation container. */
   private def isZStack(v: View): Boolean = kinds.get(v).contains(WidgetKind.ZStack)
@@ -1109,45 +1131,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case _: _root_.android.widget.AdapterView[?] => ()
       case v => v.setOnClickListener(null)
     }
-    suppress -= handle
-    val _ = kinds.remove(handle)
+    alertShowing.get(handle).foreach(_.dismiss())
+    sheetShowing.get(handle).foreach(_.dismiss())
     handle match {
-      // Before LinearLayout, which a RadioGroup is — and it has spacing too.
-      case g: RadioGroup =>
-        val _ = segmentIndex.remove(g)
-        val _ = spacing.remove(g)
-      case l: LinearLayout => val _ = spacing.remove(l)
-      case f: FrameLayout  => val _ = stackGravity.remove(f)
-      case g: GridLayout   => val _ = gridSpacing.remove(g)
+      case e: EditText => watchers.get(e).foreach(e.removeTextChangedListener)
       case _ => ()
     }
-    // Keyed by View, so an entry left behind keeps the View itself alive for the life of
-    // the renderer. Android needs no handle table — the closures sit in these maps and the
-    // GC collects them once nothing references the View — which is exactly why the removal
-    // was easy to forget here and nowhere else.
-    val _ = ranges.remove(handle)
-    val _ = dates.remove(handle)
-    val _ = dateChanged.remove(handle)
-    val _ = appTaps.remove(handle)
-    val _ = links.remove(handle)
-    val _ = alertActions.remove(handle)
-    val _ = alertDismiss.remove(handle)
-    // These were missing: a closed Sheet's dialog — its subtree and the Activity context —
-    // stayed reachable from the renderer (review 2026-10-20, P2-4).
-    val _ = alertTitle.remove(handle)
-    val _ = alertMessage.remove(handle)
-    val _ = grows.remove(handle)
-    handle match {
-      case s: Spinner =>
-        val _ = spinnerOptions.remove(s)
-        val _ = spinnerWanted.remove(s)
-      case e: EditText => val _ = watchers.remove(e)
-      case _ => ()
-    }
-    val _ = basePadding.remove(handle)
-    safeAreas -= handle
-    alertShowing.remove(handle).foreach(_.dismiss())
-    sheetShowing.remove(handle).foreach(_.dismiss())
+    // Everything else keyed by this view, in every table.
+    perViewMaps.foreach(_.asInstanceOf[mutable.Map[View, ?]].remove(handle))
+    perViewSets.foreach(_ -= handle)
   }
 
   def measure(

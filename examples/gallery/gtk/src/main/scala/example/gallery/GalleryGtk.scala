@@ -596,6 +596,7 @@ object GalleryGtk {
     def button(label: String) =
       GtkInspect.findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List(label)).headOption
     val baseline = GtkInspect.liveCallbacks
+    val entriesBefore = GtkInspect.rendererEntries
     button("Open sheet").foreach(GtkInspect.click)
     val sheets = GtkInspect.windowsTitled("A sheet")
     check("opening the sheet shows a window titled after it", sheets.length == 1, sheets.length.toString)
@@ -613,6 +614,11 @@ object GalleryGtk {
         "and every callback the sheet registered is released",
         GtkInspect.liveCallbacks == baseline,
         s"$baseline before, ${GtkInspect.liveCallbacks} after"
+      )
+      check(
+        "and every renderer table entry its widgets had",
+        GtkInspect.rendererEntries == entriesBefore,
+        s"$entriesBefore before, ${GtkInspect.rendererEntries} after"
       )
     }
     // Open and close it again, through the app this time, so the same window path runs twice.
