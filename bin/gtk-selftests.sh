@@ -10,7 +10,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-sbt --error "galleryGtk/nativeLink" "counterGtk/nativeLink"
+# One argument, `;`-separated: the sbt launcher CI installs joins separate arguments with a
+# space, which sbt then cannot parse as two commands.
+sbt --error "galleryGtk/nativeLink; counterGtk/nativeLink"
 sv=$(sbt --error "print galleryGtk/scalaVersion" 2>/dev/null | tr -d '\r' | tail -1)
 out="target/out/native0.5/scala-$sv"
 logs=target/gtk-selftests
