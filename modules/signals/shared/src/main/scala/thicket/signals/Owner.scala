@@ -17,6 +17,7 @@
 package thicket.signals
 
 import scala.collection.mutable
+import scala.util.control.NonFatal
 
 /** A lifetime. Computeds and effects created under an owner are disposed with it, which is how a UI component
   * unsubscribes everything it created when it unmounts (docs/07 §7.2). Disposal is explicit: no weak references, no GC
@@ -25,9 +26,13 @@ import scala.collection.mutable
 final class Owner private[signals] (parent: Owner | Null) extends Disposable {
 
   private val children: mutable.ArrayBuffer[Disposable] = mutable.ArrayBuffer.empty
-  private var isDisposed = false
 
-  if parent != null then parent.nn.children += this
+  /** Born disposed under a disposed parent. Otherwise nothing would ever dispose it, and the effects created under it
+    * would keep writing to native handles that were already destroyed (review 2026-10-20, P1-6b).
+    */
+  private var isDisposed = parent != null && parent.nn.disposed
+
+  if parent != null && !isDisposed then parent.nn.children += this
 
   private def forget(child: Disposable): Unit =
     if !isDisposed then {
@@ -45,13 +50,17 @@ final class Owner private[signals] (parent: Owner | Null) extends Disposable {
     *
     * The unlink matters: a dynamic region (`Show`, `ForEach`) creates and disposes a child owner on every update, and
     * without this the parent's buffer would grow forever.
+    *
+    * A child that throws while disposing is reported to [[ErrorSink]] and the rest are still disposed: stopping
+    * half-way would leave live effects bound to a screen that is gone (review 2026-10-20, P2-18).
     */
   def dispose(): Unit =
     if !isDisposed then {
       isDisposed = true
       var i = children.length - 1
       while i >= 0 do {
-        children(i).dispose()
+        try children(i).dispose()
+        catch { case NonFatal(e) => ErrorSink.report(e) }
         i -= 1
       }
       children.clear()

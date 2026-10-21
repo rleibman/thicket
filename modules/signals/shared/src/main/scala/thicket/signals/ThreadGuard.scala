@@ -38,7 +38,8 @@ object ThreadGuard {
     */
   def owningThread: ThreadGuard = ThreadGuardPlatform.owningThread
 
-  private var current: ThreadGuard = off
+  // Read by every Var.set on whatever thread it happens on, so the install must be visible there.
+  @volatile private var current: ThreadGuard = off
 
   def install(g: ThreadGuard): Unit = current = g
   def installed:               ThreadGuard = current

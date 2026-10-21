@@ -17,6 +17,7 @@
 package thicket.signals
 
 import scala.collection.mutable
+import scala.util.control.NonFatal
 
 /** Evidence that the surrounding code runs inside a reactive computation, and that reads performed here are therefore
   * *tracked*. Only the library can create it, so `signal()` is impossible outside `computed`/`effect`/`untracked`-free
@@ -107,8 +108,12 @@ private[signals] trait Computation extends Disposable {
         var i = 0
         var dirty = false
         while i < deps.length && !dirty do {
-          deps(i).validate()
-          if deps(i).version != depVersions(i) then dirty = true
+          // A dependency that fails to recompute has changed as far as this node is concerned:
+          // recomputing reads it again, which rethrows inside this node's own run, where the
+          // failure is recorded against it rather than leaving it stuck in Check.
+          try deps(i).validate()
+          catch { case NonFatal(_) => dirty = true }
+          if !dirty && deps(i).version != depVersions(i) then dirty = true
           i += 1
         }
         state = if dirty then State.Dirty else State.Clean
@@ -230,31 +235,26 @@ private[signals] object Runtime {
   def maybeFlush(): Unit = if batchDepth == 0 then flush()
 
   /** Runs every scheduled effect. Errors are collected so that one failing effect cannot leave the rest of the graph
-    * stale; the first is rethrown afterwards.
+    * stale; the first is rethrown afterwards, to the write that caused them.
+    *
+    * A failed effect is **not** re-queued. It is left Clean, linked to whatever it read before it threw, so the next
+    * change to one of those reruns it — and nothing else does. It used to be re-queued, which made every later write
+    * anywhere in the app re-run it and throw the same error at a writer that had nothing to do with it (review
+    * 2026-10-20, P0-3b).
     */
   def flush(): Unit =
     if !flushing then {
       flushing = true
       var errors: List[Throwable] = Nil
-      var failed: List[Computation] = Nil
       try
         while pending.nonEmpty do {
           val c = pending.removeHead()
           try c.updateIfNecessary()
           catch {
-            case e: Throwable =>
-              errors = e :: errors
-              // Invariant: an effect in a non-Clean state must be scheduled, or a
-              // later write to an already-Dirty dependency will short-circuit and
-              // never reach it. A failed effect is still stale, so re-queue it for
-              // the next flush (outside this loop, to avoid spinning).
-              failed = c :: failed
+            case NonFatal(e) => errors = e :: errors
           }
         }
-      finally {
-        flushing = false
-        failed.reverse.foreach(pending += _)
-      }
+      finally flushing = false
       errors.reverse match {
         case Nil       => ()
         case e :: Nil  => throw e

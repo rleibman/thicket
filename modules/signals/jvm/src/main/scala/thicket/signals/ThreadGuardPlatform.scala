@@ -20,8 +20,8 @@ private[signals] object ThreadGuardPlatform {
 
   def owningThread: ThreadGuard =
     new ThreadGuard {
-      private var owner:     Thread | Null = null
-      def check(op: String): Unit = {
+      @volatile private var owner: Thread | Null = null
+      def check(op: String):       Unit = {
         val current = Thread.currentThread()
         val o = owner
         if o == null then owner = current
