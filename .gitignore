@@ -22,4 +22,16 @@ spikes/**/*.xcuserdata/
 spikes/**/DerivedData/
 # measurements are committed; raw traces are not
 spikes/**/traces/
+# Secrets and signing material: never committed.
 /.env
+.env.*
+*.gpg
+*.asc
+*.p12
+*.keystore
+*.jks
+secring.*
+pubring.*
+# Claude Code: per-user settings and per-agent scratch memory stay local.
+.claude/settings.local.json
+.claude/agent-memory/
