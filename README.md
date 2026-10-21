@@ -35,7 +35,7 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | Widgets | **24 of 32** as widgets — 22 measured on every renderer, and `IconButton` and `TabView` on GTK and Android with their Apple halves in [#66](https://github.com/rleibman/thicket/issues/66) and [#69](https://github.com/rleibman/thicket/issues/69). **30 of 32** covered, counting the six the framework provides another way (SafeArea and Link as props, List as `LazyColumn`, NavigationStack as `Nav`, Menu as a context-menu prop, Toolbar as screen actions); the last two, Radio and Stepper, are reclassified under §12.2a → [docs/12](docs/12-component-status.md) |
 | Navigation | Native container on all four: `AdwNavigationView`, a `FrameLayout` + `Slide`, `UINavigationController`, a macOS sidebar. Back gesture and title bar are the platform's own |
 | Theming | By role, scoped to a subtree with `Provide` |
-| Published artefacts | `dev.thicket`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |
+| Published artefacts | `net.leibman`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |
 | API stability | **None.** Expect breaking changes without notice |
 | Windows | Not started, and out of the 0.1 scope |
 
@@ -174,7 +174,7 @@ The whole of the build configuration is one plugin:
 
 ```scala
 // project/plugins.sbt
-addSbtPlugin("dev.thicket" % "sbt-thicket" % thicketVersion)
+addSbtPlugin("net.leibman" % "sbt-thicket" % thicketVersion)
 
 // build.sbt
 lazy val app = project.in(file(".")).enablePlugins(ThicketGtkPlugin)
@@ -193,8 +193,8 @@ has no `%%%`**:
 
 ```scala
 libraryDependencies ++= Seq(
-  "dev.thicket" % "thicket-core_native0.5_3"         % thicketVersion,
-  "dev.thicket" % "thicket-renderer-gtk_native0.5_3" % thicketVersion
+  "net.leibman" % "thicket-core_native0.5_3"         % thicketVersion,
+  "net.leibman" % "thicket-renderer-gtk_native0.5_3" % thicketVersion
 )
 ```
 

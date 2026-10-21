@@ -62,8 +62,8 @@ object ThicketAppleShim {
 
   def dependencies(version: String): Seq[ModuleID] =
     Seq(
-      "dev.thicket" % "thicket-core_native0.5_3"           % version,
-      "dev.thicket" % "thicket-renderer-apple_native0.5_3" % version
+      BuildInfo.organization % "thicket-core_native0.5_3"           % version,
+      BuildInfo.organization % "thicket-renderer-apple_native0.5_3" % version
     )
 
 }

@@ -11,34 +11,44 @@ lazy val isMac = sys.props.getOrElse("os.name", "").toLowerCase.contains("mac")
 
 scalaVersion := SCALA
 organization := "net.leibman"
-// Target the new Sonatype Central Portal repositories
+
+/** Central Portal: `-SNAPSHOT` to the snapshot repository, a release version to `localStaging` for `sonaUpload`, and
+  * nothing else anywhere.
+  *
+  * The "anything else" is the point. Between tags, `git describe` makes versions like `0.1.0-3-gdeadbee`: neither a
+  * snapshot nor a release. Treating every non-snapshot as a release staged those for Central, where a release is
+  * permanent. `None` makes `publish` fail with "Repository for publishing is not specified" instead; `publishLocal`
+  * is unaffected. docs/14 has the procedure.
+  */
+lazy val releaseVersion = """\d+\.\d+\.\d+(-(M|RC)\d+)?""".r
 publishTo := {
-  val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
-  if (version.value.endsWith("-SNAPSHOT"))
-    Some("central-snapshots" at centralSnapshots)
-  else
-    localStaging.value // Stages regular releases for Central Portal upload
+  val v = version.value
+  if v.endsWith("-SNAPSHOT") then Some("central-snapshots" at "https://central.sonatype.com/repository/maven-snapshots/")
+  else if releaseVersion.matches(v) then localStaging.value
+  else None
 }
 
 pomIncludeRepository := { _ => false }
-publishMavenStyle := true
 
 scmInfo := Some(
   ScmInfo(
-    uri("https://github.com"),
-    "scm:git@github.com:rleibman/thicket.git"
+    uri("https://github.com/rleibman/thicket"),
+    "scm:git:git@github.com:rleibman/thicket.git"
   )
 )
 
-
 // NOTE: `version` is NOT set here. `GitVersioning` owns it, and an explicit
-// `ThisBuild / version := ...` is silently overridden — the hard-coded "0.1.0-SNAPSHOT"
-// that used to be on this line never reached a single artefact.
+// `version := ...` is silently overridden — the hard-coded "0.1.0-SNAPSHOT" that used to be
+// on this line never reached a single artefact.
 //
-
+// What comes out instead:
+//   - on a tag `v0.2.0`              -> 0.2.0
+//   - some commits after that tag    -> 0.2.0-3-gdeadbee   (not publishable: see publishTo)
+//   - no tag reachable at all        -> 0.1.0-<sha>        (baseVersion + sha; a shallow clone)
+GitKeys.baseVersion := "0.1.0"
 // `useGitDescribe` is ALSO set per project, in `commonSettings`, and it has to be.
 // GitVersioning sets `useGitDescribe := false` in its own *projectSettings*, which shadows
-// a ThisBuild setting entirely: `ThisBuild / useGitDescribe` read `true` while
+// a build-level setting entirely: `ThisBuild / useGitDescribe` once read `true` while
 // `coreJVM / useGitDescribe` read `false`, so every project ignored the tag and fell back to
 // baseVersion + sha. `v0.1.0` was tagged and the artefacts still came out as
 // `0.1.0-<sha>` — the tag was inert, which is the sort of thing a release notices far too
@@ -60,8 +70,7 @@ organizationName := "Roberto Leibman"
 startYear        := Some(2026)
 headerLicense    := Some(HeaderLicense.ALv2("2026", "Roberto Leibman"))
 
-// POM metadata. `scm` comes from sbt-git via the remote, and `licences`/`organizationName`
-// above fill the rest, so only these three were missing from a publishable POM.
+// POM metadata, with `scmInfo` above and `licences`/`organizationName`.
 homepage := Some(uri("https://github.com/rleibman/thicket"))
 developers := List(
   Developer(
@@ -162,6 +171,9 @@ lazy val zioTestNative =
 def thicketBuildInfo(pkg: String): Seq[Setting[?]] = Seq(
   buildInfoPackage := pkg,
   buildInfoKeys := Seq[BuildInfoKey](
+    // sbt-thicket's dependencies are built from this, so the plugin cannot name a group the framework was not published
+    // under — which is how #70's move to `net.leibman` left it asking for `dev.thicket`.
+    organization,
     name,
     version,
     scalaVersion,
@@ -580,6 +592,8 @@ lazy val sbtThicket = project
     sbtPlugin := true,
     // org.scala-sbt:main_3:2.0.9 depends on scala3-library_3 3.8.4. Raise this only together with sbt.
     scalaVersion := "3.8.4",
+    // ...and 3.8.4 has no 3.9 source level to ask for.
+    scalacOptions -= "-source:3.9",
     // One copy of the flags, compiled twice. See `project/build.sbt`.
     Compile / unmanagedSourceDirectories += baseDirectory.value / "shared" / "src" / "main" / "scala",
     // The plugin needs `nativeConfig`, so it depends on the plugin that defines it — which also means a consumer's

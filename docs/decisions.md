@@ -69,6 +69,16 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-20 — **Group id is `net.leibman`** (review 2026-10-20 D1; supersedes the
+  `dev.thicket` in the 2026-09-29 naming entry below and the "Group id decided at M0" row
+  above). #70 moved `build.sbt` to it for the Central Portal namespace but left the plugin,
+  templates and docs on `dev.thicket`, so a published plugin would have asked for artefacts
+  that were never released. `sbt-thicket` now reads the group from `BuildInfo.organization`,
+  as it already read the version. App and bundle ids (`dev.thicket.hello`, …) are not Maven
+  coordinates and are unchanged. Release config tightened at the same time: only `X.Y.Z`
+  (`-M<n>`/`-RC<n>`) is staged for Central, describe versions are not publishable,
+  `baseVersion` is back, `scmInfo` names the repository; procedure in docs/14 §14.5.
+  Measured: `bin/verify-getting-started.sh` PASS against `0.1.0-23-gcb885fc-SNAPSHOT`.
 - 2026-10-20 — **Build surface: a `platforms` aggregate, a committed heap, scalafmt 3.11.5**
   (review 2026-10-20 D3, D5, D12). The renderers and examples stay out of `root`, so a fresh
   clone's `testFull` needs no `android.jar`, and are aggregated by `platforms` instead; root
