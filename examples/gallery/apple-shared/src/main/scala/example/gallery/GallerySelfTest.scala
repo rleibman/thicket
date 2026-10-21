@@ -16,8 +16,13 @@
 
 package example.gallery
 
-import thicket.renderer.{CalendarDate, Icon, WidgetKind}
-import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect}
+import java.util.concurrent.atomic.AtomicBoolean
+import scala.collection.mutable
+import scala.scalanative.unsafe.{Zone, toCString}
+import thicket.core.GcState
+import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, WidgetKind}
+import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim}
+import thicket.signals.ErrorSink
 
 /** The gallery's conformance check on AppKit and UIKit — the same questions the GTK host asks, through `AppleInspect`
   * instead of `GtkInspect`.
@@ -44,7 +49,28 @@ object GallerySelfTest {
       if detail.nonEmpty then println(s"             $detail")
     }
 
-  def run(): Unit = {
+  /** Re-checks `cond` about once a frame until it holds or `timeoutMs` passes, then continues — the todo self-test's
+    * helper. UIKit presents, dismisses and lays out a reloaded table on a later turn of the run loop, and the Effects
+    * section's result arrives through `UiThread` as a post of its own; on AppKit most waits resolve at once.
+    */
+  private def eventually(timeoutMs: Long)(cond: => Boolean)(k: Boolean => Unit): Unit = {
+    val deadline = System.nanoTime() + timeoutMs * 1000000L
+    def loop(): Unit =
+      if cond then k(true)
+      else if System.nanoTime() > deadline then k(false)
+      else AppleApp.postToUiAfter(16)(() => loop())
+    loop()
+  }
+
+  /** Waits for the Effects section's ZIO result first, as the GTK host does, so the synchronous checks see it. */
+  def run(): Unit =
+    eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
+
+  private def finish(): Unit =
+    if failures == 0 then println("[gallery] ALL CHECKS PASSED")
+    else println(s"[gallery] $failures CHECK(S) FAILED")
+
+  private def catalogue(): Unit = {
     val root = AppleApp.rootHandle
     val all = AppleInspect.all(root)
     val texts = AppleInspect.allTexts(root)
@@ -54,6 +80,7 @@ object GallerySelfTest {
       "Button — roles, and one disabled",
       "TextField and SecureField",
       "Checkbox and Toggle",
+      "Picker — a choice from a fixed list",
       "DatePicker — a day, in the platform's own chooser",
       "SegmentedControl — one of a few, all on screen",
       "Link — opens a URL, drawn as each platform draws a link",
@@ -67,6 +94,10 @@ object GallerySelfTest {
       "Scroll — horizontal, inside a vertical one",
       "ForEach — keyed, with a context menu on each row",
       "Provide — a theme scoped to one subtree",
+      "SafeArea — a prop, because no toolkit models it as a widget",
+      "BuildInfo — this module's own, from git",
+      "Errors — a handler that throws is reported, and the app carries on",
+      "Effects — a ZIO effect, its result posted back to the UI thread",
       "Presented — Sheet and Alert are shown over the app, never inserted"
     ).foreach(h => check(s"section is on screen: $h", texts.contains(h)))
 
@@ -76,6 +107,13 @@ object GallerySelfTest {
         texts.contains("Caption") && texts.contains("Secondary")
     )
     check("a disabled button is on screen, not just a reachable state", texts.contains("Disabled"))
+
+    // Generated per module, so this proves the gallery's own object was wired in.
+    check(
+      "the gallery shows its own BuildInfo, not another module's",
+      texts.exists(_.startsWith("thicket-gallery-shared ")),
+      texts.filter(_.contains("thicket-")).toString
+    )
 
     // Two text fields, exactly one of which hides its characters. `isSecure` is the only
     // observable difference between a TextField and a SecureField.
@@ -90,6 +128,9 @@ object GallerySelfTest {
       progressed.nonEmpty,
       s"progress values: $progressed"
     )
+    // `ProgressBar(None)`: the platform's bar reports itself indeterminate (-1), not empty.
+    val bars = all.filter(h => kind(h, WidgetKind.ProgressBar)).map(AppleInspect.progress)
+    check("an indeterminate ProgressBar is indeterminate on the platform", bars.contains(-1.0), bars.toString)
     val values = all.map(AppleInspect.value).filter(_ > 0.0)
     check("a Slider carries its value", values.contains(4.0), s"values: $values")
 
@@ -111,15 +152,31 @@ object GallerySelfTest {
     //
     // Only the framework's own Image widgets: a UIKit switch, slider or button contains
     // image views of its own, and an unfiltered walk counted ten where the screen has two.
-    val imageWidgets = all.filter(h => AppleApp.renderer.kindOf(h).contains(WidgetKind.Image))
+    val imageWidgets = all.filter(h => kind(h, WidgetKind.Image))
     val images = imageWidgets.flatMap(h => AppleInspect.hasImage(h))
+    val fits = imageWidgets.map(h => AppleInspect.contentFit(h) -> AppleInspect.hasImage(h).contains(true))
     check(
       "every Image shows its picture",
       images.nonEmpty && images.forall(identity),
-      s"${images.count(identity)} of ${images.size} Image widgets hold an image"
+      s"${images.count(identity)} of ${images.size} Image widgets hold an image: $fits"
+    )
+    // The three fits, read from the image views, each with a picture: the Fill one is the
+    // bytes-backed one, so a host that handed it no bytes shows here (#73).
+    check(
+      "the three content fits, each with a picture to paint",
+      List(ContentFit.Contain, ContentFit.Cover, ContentFit.Fill).forall(f => fits.contains(Some(f) -> true)),
+      fits.toString
+    )
+
+    check(
+      "a ZIO effect's result reached the screen through UiThread",
+      texts.contains(Gallery.effectResult),
+      texts.filter(t => t.startsWith("Load") || t == "Failed").toString
     )
 
     newControls(all)
+    layout(all)
+    robustness(all)
 
     // Presented widgets must not be in the tree until asked for.
     check(
@@ -128,8 +185,257 @@ object GallerySelfTest {
       s"${AppleInspect.presentedCount} presented"
     )
 
-    if failures == 0 then println("[gallery] ALL CHECKS PASSED")
-    else println(s"[gallery] $failures CHECK(S) FAILED")
+    sheet(all)(() => bigList(() => finish()))
+  }
+
+  private def kind(
+    h: Shim.Handle,
+    k: WidgetKind
+  ): Boolean = AppleApp.renderer.kindOf(h).contains(k)
+
+  private def buttonIn(
+    all:   List[Shim.Handle],
+    label: String
+  ): Option[Shim.Handle] = all.find(h => kind(h, WidgetKind.Button) && AppleInspect.text(h).contains(label))
+
+  /** The Layout section and the padded Scroll (review 2026-10-20, P1-4, P2-26), from the frames the platform laid out
+    * and the alignment its text views hold. Within a point, as the ZStack's checks are.
+    *
+    * Known failures, each with its issue: AppKit's Row takes its natural width and its aligned labels hug their text,
+    * and UIKit's Grow and Spacer-in-Column do nothing (#87); the Scroll's padding is dropped on both (#76).
+    */
+  private def layout(all: List[Shim.Handle]): Unit = {
+    def near(
+      a: Double,
+      b: Double
+    ) = math.abs(a - b) <= 1.0
+    def labels(t: String) = all.filter(h => kind(h, WidgetKind.Label) && AppleInspect.text(h).contains(t))
+    def f(t:      String) = labels(t).lastOption.map(AppleInspect.frame).getOrElse((0.0, 0.0, 0.0, 0.0))
+    def right(t:  String) = f(t)._1 + f(t)._3
+    def bottom(t: String) = f(t)._2 + f(t)._4
+    def show(ts: String*) =
+      ts.map(t => f"$t(${f(t)._1}%.0f,${f(t)._2}%.0f ${f(t)._3}%.0fx${f(t)._4}%.0f)").mkString(" ")
+
+    check(
+      "a Spacer in a Row pushes the next label to the far edge",
+      near(right("right"), right("fixed")) && f("right")._1 - right("left") > 100,
+      s"(#87) ${show("left", "right", "fixed")}"
+    )
+    check(
+      "a grown label in a Row takes the room its sibling does not",
+      near(right("grown") + 8, f("fixed")._1) && f("grown")._3 > f("fixed")._3,
+      s"(#87) ${show("grown", "fixed")}"
+    )
+    check(
+      "a Spacer in a Column pushes the next label down, level with the taller column beside it",
+      near(f("top")._2, f("one")._2) && near(bottom("bottom"), bottom("four")),
+      s"(#87) ${show("top", "bottom", "one", "four")}"
+    )
+    // Labels only: the Spinner section's button is labelled "Start" too. Each must hold its
+    // alignment and be as wide as the section, or the alignment has no room to show.
+    val aligned = List(Alignment.Start, Alignment.Center, Alignment.End)
+    val held = aligned.map(a => labels(a.toString).lastOption.flatMap(AppleInspect.textAlign))
+    val width = right("right") - f("left")._1
+    check(
+      "Start, Center and End labels sit where they say",
+      held == aligned.map(Some(_)) && aligned.forall(a => near(f(a.toString)._3, width)),
+      s"(#87) held $held; ${show(aligned.map(_.toString)*)}, section width $width"
+    )
+
+    // The scroller is where the section puts it; its padding insets the content inside it.
+    val hscroll = all.filter(AppleApp.renderer.isHorizontalScroll)
+    check("one horizontal Scroll", hscroll.length == 1, hscroll.length.toString)
+    hscroll.headOption.foreach { s =>
+      val (sx, sy, _, _) = AppleInspect.frame(s)
+      val (cx, cy, _, _) = f("col 0")
+      check(
+        "a padded Scroll insets its content by its padding, and not itself",
+        near(cx - sx, 8) && near(cy - sy, 8) && near(sx, f("left")._1),
+        f"(#76) scroller at ($sx%.0f,$sy%.0f), col 0 at ($cx%.0f,$cy%.0f), section at ${f("left")._1}%.0f"
+      )
+    }
+  }
+
+  /** Host → Scala entry points under stress (review 2026-10-20, P0-2 and P0-3), as the GTK gallery asks them. */
+  private def robustness(all: List[Shim.Handle]): Unit = {
+    // The self-test runs in a `postToUiAfter` callback, one level into Scala.
+    check("the self-test runs one level into Scala", GcState.scalaDepth == 1, GcState.scalaDepth.toString)
+
+    val field = all.find(h => kind(h, WidgetKind.TextField))
+    val thrower = buttonIn(all, "Throw from a handler")
+    check("there is a plain field and a throwing button to drive", field.nonEmpty && thrower.nonEmpty)
+
+    // Scala -> Swift -> Scala, the nested path: a programmatic `sui_set_text` on the field
+    // (which the shim writes with its change callback suppressed), and a click on the
+    // throwing button, whose handler runs in the tap trampoline *inside* this frame. Before
+    // `guarded` counted depth, the inner exit marked the thread Unmanaged with this frame
+    // still running, so a collection on another thread skipped its roots. A worker collects
+    // all the while.
+    for e <- field; b <- thrower do {
+      val stop = AtomicBoolean(false)
+      val collector = Thread(() =>
+        while !stop.get() do {
+          val _ = Array.fill(2048)(new Array[Byte](64))
+          System.gc()
+        }
+      )
+      val inner = mutable.Map.empty[(Int, Boolean), Int].withDefaultValue(0)
+      val previous = ErrorSink.installed
+      ErrorSink.install(_ => inner((GcState.scalaDepth, GcState.managed)) += 1)
+      collector.start()
+      val deadline = System.nanoTime() + 3_000_000_000L
+      val kept = mutable.ArrayBuffer.empty[String]
+      var deepest = 0
+      var unmanaged = 0
+      var i = 0
+      while System.nanoTime() < deadline do {
+        Zone(Shim.sui_set_text(e, toCString(s"gc $i")))
+        if !GcState.managed then unmanaged += 1
+        AppleInspect.click(b)
+        deepest = deepest max GcState.scalaDepth
+        if !GcState.managed then unmanaged += 1
+        kept += ("kept " * 8) + i
+        i += 1
+      }
+      stop.set(true)
+      collector.join()
+      ErrorSink.install(previous)
+      println(
+        s"[gallery]   the stress step made ${2 * i} nested calls in 3 s; inside, (depth, managed) -> count: $inner"
+      )
+      check(
+        "every click's handler ran nested, two deep and Managed",
+        inner.keySet == Set((2, true)) && inner((2, true)) == i,
+        s"$inner over $i clicks"
+      )
+      check("a nested call leaves the thread in Scala", GcState.scalaDepth == 1 && deepest == 1, s"$deepest")
+      check(
+        "the GC was never told the thread left Scala while Scala was still running on it",
+        unmanaged == 0,
+        s"$unmanaged of ${2 * i} nested calls left it Unmanaged"
+      )
+      val corrupt = kept.zipWithIndex.count(
+        (
+          s,
+          n
+        ) => s != ("kept " * 8) + n
+      )
+      check(s"$i strings kept across collections on another thread survive", corrupt == 0, s"$corrupt corrupt")
+      check(
+        "and the field holds the last write",
+        AppleInspect.text(e).contains(s"gc ${i - 1}"),
+        AppleInspect.text(e).toString
+      )
+      Zone(Shim.sui_set_text(e, toCString("")))
+    }
+
+    // A handler that throws: reported, not unwound through Swift, and the app carries on.
+    val reported = mutable.ArrayBuffer.empty[Throwable]
+    val previous = ErrorSink.installed
+    ErrorSink.install(e => reported += e)
+    thrower.foreach(AppleInspect.click)
+    ErrorSink.install(previous)
+    check(
+      "a handler's exception reaches ErrorSink",
+      reported.map(_.getMessage).toList == List(Gallery.deliberate),
+      reported.toString
+    )
+    check(
+      "and the thread is back in the loop's hands afterwards",
+      GcState.scalaDepth == 1,
+      GcState.scalaDepth.toString
+    )
+    // The segmented control was left on Month by `newControls`.
+    buttonIn(all, "Select first").foreach(AppleInspect.click)
+    check(
+      "and the next click still works",
+      AppleInspect.allTexts(AppleApp.rootHandle).contains("Showing a Day"),
+      AppleInspect.allTexts(AppleApp.rootHandle).filter(_.startsWith("Showing")).toString
+    )
+  }
+
+  /** A sheet opened and closed from inside: every per-handle table entry and every callback its widgets registered is
+    * let go (review 2026-10-20, P2-5, P3-1). Counted against a baseline taken just before, in the same state.
+    */
+  private def sheet(all: List[Shim.Handle])(done: () => Unit): Unit = {
+    val renderer = AppleApp.renderer
+    val entries = renderer.tableEntries
+    val callbacks = Handles.count
+    buttonIn(all, "Open sheet").foreach(AppleInspect.click)
+    val sheets = renderer.presented.collect { case (h, WidgetKind.Sheet) => h }
+    check("opening the sheet presents one", sheets.length == 1, sheets.length.toString)
+    check(
+      "and its widgets are in the renderer's tables while it is up",
+      renderer.tableEntries > entries && Handles.count > callbacks,
+      s"entries $entries -> ${renderer.tableEntries}, callbacks $callbacks -> ${Handles.count}"
+    )
+    eventually(3000)(AppleInspect.presentedCount == 1) { up =>
+      check("the platform shows it", up, s"${AppleInspect.presentedCount} presented")
+      val close = sheets.headOption.flatMap(s => buttonIn(AppleInspect.all(s), "Close"))
+      check("the sheet's own Close button is clicked", close.exists(AppleInspect.click))
+      check("closing unmounts the sheet", renderer.presented.isEmpty, renderer.presented.toString)
+      eventually(3000)(AppleInspect.presentedCount == 0) { gone =>
+        check("and the platform takes it down", gone, s"${AppleInspect.presentedCount} still presented")
+        check(
+          "every renderer table entry the sheet's widgets had is gone",
+          renderer.tableEntries == entries,
+          s"$entries before, ${renderer.tableEntries} after"
+        )
+        check(
+          "and every callback they registered",
+          Handles.count == callbacks,
+          s"$callbacks before, ${Handles.count} after"
+        )
+        done()
+      }
+    }
+  }
+
+  /** The 10 000-row LazyColumn after its data changes under it (review 2026-10-20, P1-3): the table must re-bind the
+    * rows it is showing. Read from the rows the platform's table holds, by position.
+    */
+  private def bigList(done: () => Unit): Unit = {
+    val rowsBefore = Handles.rowCount
+    val tablesBefore = Shim.sui_table_live()
+    Gallery.currentNav.foreach(_.push(Gallery.Route.Big))
+    def tableOf(h: Shim.Handle): Option[Shim.Handle] =
+      if AppleApp.renderer.materialisedRows(h) > 0 then Some(h)
+      else AppleInspect.children(h).flatMap(tableOf).headOption
+    def table = tableOf(AppleApp.rootHandle)
+    def row(i: Int) = table.flatMap(t => AppleInspect.rowView(t, i)).map(AppleInspect.allTexts).getOrElse(Nil)
+    def first2 = List(row(0), row(1))
+    def click(label: String) = buttonIn(AppleInspect.all(AppleApp.rootHandle), label).foreach(AppleInspect.click)
+
+    eventually(3000)(row(0).nonEmpty) { _ =>
+      check("the list shows its first rows", first2 == List(List("Row 0"), List("Row 1")), first2.toString)
+      val built = table.map(AppleApp.renderer.materialisedRows).getOrElse(0)
+      check("and only a bounded set of them", built > 0 && built < 1000, s"$built row views built")
+      click("Delete the first row")
+      eventually(3000)(row(0) == List("Row 1")) { _ =>
+        check(
+          "deleting row 0 re-binds the rows on screen: the first is now Row 1",
+          first2 == List(List("Row 1"), List("Row 2")),
+          first2.toString
+        )
+        click("Rename the first row")
+        eventually(3000)(row(0) == List("Renamed 1")) { _ =>
+          check(
+            "an edit that keeps the count reaches the row on screen",
+            first2 == List(List("Renamed 1"), List("Row 2")),
+            first2.toString
+          )
+          Gallery.currentNav.foreach(_.pop())
+          eventually(3000)(AppleInspect.pagesDepth == 1 && Handles.rowCount == rowsBefore) { _ =>
+            check(
+              "leaving the list releases its row callback and its table",
+              Handles.rowCount == rowsBefore && Shim.sui_table_live() == tablesBefore,
+              s"row callbacks $rowsBefore -> ${Handles.rowCount}, tables $tablesBefore -> ${Shim.sui_table_live()}"
+            )
+            done()
+          }
+        }
+      }
+    }
   }
 
   /** The questions the GTK gallery asks of the controls #45 and #46 added, asked of AppKit and UIKit.
@@ -167,6 +473,37 @@ object GallerySelfTest {
           texts.filter(_.startsWith("Chose")).toString
         )
       else println("[gallery]   (this platform offers no way to choose a Picker option from code; not exercised)")
+
+      // New options, same length: the selection is an index and stays where it is, and no
+      // swap reports a choice the user did not make (review 2026-10-20, P1-10). Asked of
+      // the control, and of the app's label. AppKit fails both: its pop-up shows index 0
+      // after the swap while the app says otherwise (#77).
+      def reports = texts.find(_.startsWith("The picker reported")).getOrElse("")
+      def button(t: String) = ofKind(WidgetKind.Button).find(h => AppleInspect.text(h).contains(t))
+      val reportsBefore = reports
+      button("Clear").foreach(AppleInspect.click)
+      button("Swap the options").foreach(AppleInspect.click)
+      check(
+        "swapping the options with nothing selected selects nothing",
+        AppleInspect.options(p) == Gallery.vegetables && AppleInspect.selected(p) == -1 &&
+          texts.contains("(nothing selected)"),
+        s"(#77) ${AppleInspect.options(p)} selected ${AppleInspect.selected(p)}; " +
+          texts.filter(t => t.startsWith("Chose") || t.contains("nothing")).toString
+      )
+      button("Select last").foreach(AppleInspect.click)
+      button("Swap the options").foreach(AppleInspect.click)
+      check(
+        "swapping them with a selection keeps it",
+        AppleInspect.options(p) == Gallery.fruit && AppleInspect.selected(p) == 2 &&
+          texts.contains("Chose Cherry (index 2)"),
+        s"(#77) ${AppleInspect.options(p)} selected ${AppleInspect.selected(p)}; " +
+          texts.filter(_.startsWith("Chose")).toString
+      )
+      check(
+        "and no swap reported a choice the user did not make",
+        reports == reportsBefore,
+        s"$reportsBefore -> $reports"
+      )
     }
 
     // --- DatePicker ---

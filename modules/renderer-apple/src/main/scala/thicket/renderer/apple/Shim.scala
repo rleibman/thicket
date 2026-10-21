@@ -33,6 +33,7 @@ object Shim {
   def sui_app_start(width: CInt, height: CInt, title: CString, ready: VoidCb, ctx: Long): Unit = extern
   def sui_root_view(): Handle = extern
   def sui_window_set_title(title: CString): Unit = extern
+  def sui_resource_path(path: CString): CString = extern
   def sui_create(kind: CInt): Handle = extern
   def sui_destroy(h: Handle): Unit = extern
   def sui_set_text(h: Handle, text: CString): Unit = extern
@@ -73,6 +74,7 @@ object Shim {
   def sui_table_reload(h: Handle, count: CInt): Unit = extern
   def sui_table_materialised(h: Handle): CInt = extern
   def sui_table_live(): CInt = extern
+  def sui_table_row_view(h: Handle, row: CInt): Handle = extern
   def sui_present(h: Handle): Unit = extern
   def sui_dismiss(h: Handle): Unit = extern
   def sui_set_message(h: Handle, text: CString): Unit = extern
@@ -104,6 +106,8 @@ object Shim {
   def sui_get_value(h: Handle): CDouble = extern
   def sui_is_secure(h: Handle): CInt = extern
   def sui_has_image(h: Handle): CInt = extern
+  def sui_get_content_fit(h: Handle): CInt = extern
+  def sui_get_align(h: Handle): CInt = extern
   def sui_scroll_offset(h: Handle): CDouble = extern
   def sui_is_presented(h: Handle): CInt = extern
   def sui_presented_title(h: Handle): CString = extern

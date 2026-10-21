@@ -475,6 +475,12 @@ public func sui_window_set_title(_ title: UnsafePointer<CChar>) {
   window?.title = String(cString: title)
 }
 
+/// The lookup `sui_set_image_file` makes, for an app that wants the bytes of its own file.
+@_cdecl("sui_resource_path")
+public func sui_resource_path(_ path: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+  scratch(resolveImagePath(String(cString: path)))
+}
+
 // MARK: - construction
 
 @_cdecl("sui_create")
@@ -1257,6 +1263,18 @@ public func sui_table_live() -> Int32 {
   Int32(tableSources.count)
 }
 
+/// The row view NSTableView holds for `row`, only while that row is on screen: `makeIfNecessary`
+/// false, so asking never makes the table bind a row it would not otherwise show.
+@_cdecl("sui_table_row_view")
+public func sui_table_row_view(_ h: UnsafeMutableRawPointer, _ row: Int32) -> UnsafeMutableRawPointer? {
+  guard let (t, _) = table(of: h), row >= 0, Int(row) < t.numberOfRows else { return nil }
+  t.layoutSubtreeIfNeeded()
+  guard NSLocationInRange(Int(row), t.rows(in: t.visibleRect)),
+        let v = t.view(atColumn: 0, row: Int(row), makeIfNecessary: false)
+  else { return nil }
+  return Unmanaged.passUnretained(v).toOpaque()
+}
+
 @_cdecl("sui_remove_child")
 public func sui_remove_child(_ parent: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer) {
   let p = view(parent)
@@ -1827,6 +1845,24 @@ public func sui_pages_back() -> Int32 {
 public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let iv = view(h) as? NSImageView else { return -1 }
   return iv.image != nil ? 1 : 0
+}
+
+/// Read from what draws: ImageView's own cover flag, else NSImageView's scaling.
+@_cdecl("sui_get_content_fit")
+public func sui_get_content_fit(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let iv = view(h) as? NSImageView else { return -1 }
+  if (iv as? ImageView)?.cover == true { return 1 }
+  return iv.imageScaling == .scaleAxesIndependently ? 2 : 0
+}
+
+@_cdecl("sui_get_align")
+public func sui_get_align(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let f = view(h) as? NSTextField else { return -1 }
+  switch f.alignment {
+  case .center: return 1
+  case .right: return 2
+  default: return 0
+  }
 }
 
 /// Measured from the *top* of the content whatever the document view's coordinate system: in

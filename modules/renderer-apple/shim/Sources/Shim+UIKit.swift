@@ -461,6 +461,13 @@ public func sui_window_set_title(_ title: UnsafePointer<CChar>) {
   applyTitle()
 }
 
+/// The lookup `sui_set_image_file` makes, for an app that wants the bytes of its own file: an
+/// iOS app's working directory is `/`, so a repo-relative path reads nothing there (#73).
+@_cdecl("sui_resource_path")
+public func sui_resource_path(_ path: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+  scratch(resolveImagePath(String(cString: path)))
+}
+
 // MARK: - construction
 
 @_cdecl("sui_create")
@@ -1228,6 +1235,17 @@ public func sui_table_live() -> Int32 {
   Int32(tableSources.count)
 }
 
+/// The view the cell for `row` hosts, only while that row is on screen: `cellForRow(at:)` is
+/// nil for a row UITableView is not showing, and asking never makes it bind one.
+@_cdecl("sui_table_row_view")
+public func sui_table_row_view(_ h: UnsafeMutableRawPointer, _ row: Int32) -> UnsafeMutableRawPointer? {
+  guard let (t, _) = table(of: h), row >= 0, Int(row) < t.numberOfRows(inSection: 0) else { return nil }
+  t.layoutIfNeeded()
+  guard let v = t.cellForRow(at: IndexPath(row: Int(row), section: 0))?.contentView.subviews.first
+  else { return nil }
+  return Unmanaged.passUnretained(v).toOpaque()
+}
+
 @_cdecl("sui_remove_child")
 public func sui_remove_child(_ parent: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer) {
   let c = view(child)
@@ -1838,6 +1856,31 @@ public func sui_pages_back() -> Int32 {
 public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let iv = view(h) as? UIImageView else { return -1 }
   return iv.image != nil ? 1 : 0
+}
+
+@_cdecl("sui_get_content_fit")
+public func sui_get_content_fit(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let iv = view(h) as? UIImageView else { return -1 }
+  switch iv.contentMode {
+  case .scaleAspectFill: return 1
+  case .scaleToFill: return 2
+  default: return 0
+  }
+}
+
+@_cdecl("sui_get_align")
+public func sui_get_align(_ h: UnsafeMutableRawPointer) -> Int32 {
+  let a: NSTextAlignment
+  switch view(h) {
+  case let l as UILabel: a = l.textAlignment
+  case let f as UITextField: a = f.textAlignment
+  default: return -1
+  }
+  switch a {
+  case .center: return 1
+  case .right: return 2
+  default: return 0
+  }
 }
 
 /// UIKit scroll views are top-origin; the adjusted inset is where "the top" rests.

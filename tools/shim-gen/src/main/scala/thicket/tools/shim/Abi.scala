@@ -158,7 +158,15 @@ object Abi {
       List(p("width", I32), p("height", I32), p("title", Str), p("ready", VoidCb), p("ctx", I64))
     ),
     Fn("sui_root_view", Handle, Nil),
-    Fn("sui_window_set_title", Void, List(p("title", Str)))
+    Fn("sui_window_set_title", Void, List(p("title", Str))),
+    Fn(
+      "sui_resource_path",
+      Str,
+      List(p("path", Str)),
+      doc = "Where a relative path of the app's own is: as given when it exists from the working\n" +
+        "   directory, otherwise inside the app bundle's resources — the lookup ImageSource.FromFile\n" +
+        "   makes. An iOS app's working directory is `/`, so its files are only in the bundle (#73)."
+    )
   )
 
   /** One `sui_create` kind code, and the view each toolkit builds for it.
@@ -403,6 +411,13 @@ object Abi {
       Nil,
       doc = "How many table sources the shim still owns. Falls back to zero once every" + "\n" +
         "   virtual list is destroyed; the measurement that says destroying one frees it."
+    ),
+    Fn(
+      "sui_table_row_view",
+      Handle,
+      List(p("h", Handle), p("row", I32)),
+      doc = "The view the table is showing for `row` now, or NULL when that row is not on screen." + "\n" +
+        "   The platform's answer, so a table that kept a stale row after its data changed shows it."
     )
   )
 
@@ -544,6 +559,20 @@ object Abi {
       List(p("h", Handle)),
       doc = "1 when an image view holds a decoded image, 0 when it shows nothing, -1 when `h` is not\n" +
         "   an image view. The difference between a picture and an empty frame of the right size."
+    ),
+    Fn(
+      "sui_get_content_fit",
+      I32,
+      List(p("h", Handle)),
+      doc = "The fit an image view draws with, as sui_set_content_fit takes it: 0 contain, 1 cover,\n" +
+        "   2 fill. -1 when `h` is not an image view."
+    ),
+    Fn(
+      "sui_get_align",
+      I32,
+      List(p("h", Handle)),
+      doc = "A text view's horizontal text alignment, as sui_set_align takes it: 0 leading, 1 centre,\n" +
+        "   2 trailing. -1 when `h` carries no text alignment."
     ),
     Fn(
       "sui_scroll_offset",

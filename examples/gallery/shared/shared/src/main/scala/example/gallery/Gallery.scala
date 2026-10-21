@@ -122,9 +122,13 @@ object Gallery {
   /** The logo, as a file and as the bytes of that file. A host with no filesystem path to it — an APK — passes the
     * bytes to [[app]] itself; `FromFile` then finds it in the APK's assets at the same relative path.
     */
-  val logo:      String = "docs/assets/thicket-logo.png"
-  def logoBytes: Array[Byte] =
-    scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(logo))).getOrElse(Array.emptyByteArray)
+  val logo: String = "docs/assets/thicket-logo.png"
+
+  /** The bytes at `path`, relative to the working directory — empty when there is nothing there. A host whose working
+    * directory is not the repository (an iOS app's is `/`) passes its own path to the file.
+    */
+  def logoBytes(path: String = logo): Array[Byte] =
+    scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path))).getOrElse(Array.emptyByteArray)
 
   /** The picker's options. On the object so the self-test can name them. */
   val fruit:      Seq[String] = Seq("Apple", "Banana", "Cherry")
@@ -461,7 +465,7 @@ object Gallery {
   var currentNav: Option[Nav[Route]] = None
 
   /** The whole app, for a host to mount. Hosts differ only in how they start. */
-  def app(logo: Array[Byte] = logoBytes)(using Owner): AppRoot = {
+  def app(logo: Array[Byte] = logoBytes())(using Owner): AppRoot = {
     val model = Model()
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal

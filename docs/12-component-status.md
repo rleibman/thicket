@@ -34,7 +34,9 @@ Android, Android's Spinner selection and its `-1`, Android tab reordering, `Safe
 on Android, GTK's `Scroll(padding)` and indeterminate `ProgressBar`, and the GTK `LazyColumn`
 showing stale rows after an edit. Open, on Apple: taps on leaf views, the UIKit Checkbox's
 label and right-to-left alignment (#75), `SafeArea` and `Scroll` padding (#76), selection
-when options change and `-1` (#77), unbuilt kinds (#74). The Android gallery, which this
+when options change and `-1` (#77), unbuilt kinds (#74), and the cross axis of a Row or
+Column — a Row that does not span its Column on AppKit, `Grow` and a Spacer in a Column that
+do nothing on UIKit (#87, found by the gallery checks #73 added). The Android gallery, which this
 document and its README said was built, had no Gradle project until then; it now builds and
 self-tests (24/24 on the `s2test` emulator).
 
@@ -239,7 +241,7 @@ every remaining entry before it is built, not after.
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, **per-subtree `Provide`**; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
-| Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (99 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
+| Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
 
 ## 12.4 Props
 
@@ -279,8 +281,7 @@ dormant, until a frame-based renderer needs it (decision log 2026-10-20, D11).
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
-are done. Open for the Mac: #69 (TabView), and the review's #73 and
-#75–#79. An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74). Everything else is built and measured on the
+are done. Open for the Mac: #69 (TabView), the review's #75–#79, and #87. An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74). Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:
