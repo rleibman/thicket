@@ -64,7 +64,7 @@ repo against published artefacts and running it.
 ### Linux
 
 ```bash
-sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev
+sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev librsvg2-common
 ```
 
 | Package | Needed for | Verified against |
@@ -74,12 +74,14 @@ sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev
 | `pkg-config` | the build runs `pkg-config --cflags gtk4 libadwaita-1` and the matching `--libs` to get the compile and link flags, so a missing `pkg-config` fails the *build*, not just the link — and says which packages to install | 2.5.1 |
 | `libgtk-4-dev` | the GTK4 renderer | 4.22.4 |
 | `libadwaita-1-dev` | `AdwNavigationView`, for native navigation containers. GTK core has no equivalent — `GtkStack` gives transitions but no back-gesture semantics | 1.9.1 |
+| `librsvg2-common` | gdk-pixbuf's SVG loader: GTK draws an `Image` from an SVG file or SVG bytes through it, as the gallery and todo apps do with the logo. Usually already present with a desktop | 2.61.3 |
 | `python3` | `bin/coverage.sh` reads the scoverage report with it | any 3.x |
 
 The `-dev` packages are the point: the runtime libraries alone are not enough, because
 Scala Native compiles against the C headers.
 
-Everything else is fetched by coursier and needs nothing installed.
+Everything else is fetched by coursier and needs nothing installed. `bin/logo-assets.sh`,
+which regenerates the logo's PNGs and app SVG from `thicket-logo.svg`, also needs Inkscape 1.x.
 
 ### Run the demo in one command
 
