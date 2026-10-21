@@ -369,23 +369,26 @@ backends.** Phase 2 shipped a test that only ever passed on the JVM.
 ./bin/coverage.sh
 ```
 
-**91.10% statement, 87.64% branch**, 1596 of 1752 statements, measured 2026-09-29.
+**94.04% statement, 88.22% branch**, 2507 of 2666 statements, measured 2026-10-21.
 
 | Package | Statement |
 |---|---|
-| `thicket.tools.shim` | 94.31% |
-| `thicket.signals` | 91.71% |
-| `thicket.core` | 89.94% |
-| `thicket.zio` (now `thicket.effect.zio`) | 69.44% |
+| `thicket.tools.shim` | 96.71% |
+| `thicket.signals` | 91.97% |
+| `thicket.core` | 91.96% |
+| `thicket.effect.zio` | 91.11% |
 
-**Not measuring, as of 2026-10-20 (#80).** `bin/coverage.sh` reports `thicket.signals`
-0.00% and `thicket.core` 0.35% on `9c98d28` — the tests run, their measurements are lost —
-so the 91.10% above is the last real reading, not the current one, and the ratchet below has
-not been checking anything since. effect-zio's own figure, which is measured, is 90.37%.
+`effect.zio` moves by a statement or two between runs (90.37% and 91.11% on the same tree);
+why has not been investigated.
 
-`build.sbt` sets a ratchet just under the measured figure — 87% statement, 83% branch,
-`coverageFailOnMinimum := true`. It exists to stop coverage sliding, not to be hit exactly.
-Raise it when the real number moves up.
+From 2026-09-29 until #80 the script was not measuring `signals` or `core` (0.00% and 0.35%
+on `9c98d28`), and the ratchet could not have failed anyway; both are explained under the
+traps below. 91.10% / 87.64% on 2026-09-29 was the last reading before that.
+
+The ratchet is in `build.sbt` (`coverageGate`, on the root project): **93% statement and
+87% branch in total, and 85% statement for every package**. It exists to stop coverage
+sliding, not to be hit exactly; raise it when the real number moves up. `bin/coverage.sh`
+exits non-zero when any of it fails.
 
 ### What the number does *not* cover
 
@@ -401,19 +404,31 @@ measurements into its *own* module's data directory, which only exists once that
 tests run, and `renderer-api` is pure types with no tests. Its default methods are reached
 through `core`'s tests either way.
 
-### Two traps, both of which hand you a wrong answer silently
+### Four traps, each of which hands you a wrong answer silently
 
 1. **sbt 2's disk cache restores compiled classes without running the compiler.**
-   `scoverage.coverage` — the metadata mapping a measurement back to a statement — is a
-   compile *side-effect*, not a tracked output, so a cache hit gives you instrumented
-   classes with no metadata, and that module **disappears from the aggregate with no
-   error**. This is how `signals` vanished while still producing measurement files.
-   `bin/coverage.sh` clears `~/.cache/sbt/v2` for this reason; a coverage run that skips
-   that step is not measuring what you think.
-2. **A report with no metadata at all reads `100% of 0 statements`** — and passes
-   `coverageFailOnMinimum` at any threshold. The script checks the statement count is
-   non-zero before printing the percentage, because a coverage gate that cannot fail is
-   worse than no gate.
+   `scoverage.coverage`, the metadata that maps a measurement back to a statement, is a
+   compile *side effect*, not a tracked output. A cache hit gives you instrumented classes
+   with no metadata, and that module **disappears from the aggregate with no error**.
+   `bin/coverage.sh` passes a fresh `-Dthicket.coverageRun`, which `coverageSettings` adds to
+   the compile's options, so no cache entry can match and every run compiles; it still works
+   after `target/out` is deleted. Without the marker, the same run, after deleting `target/out`,
+   produced no report at all. Until #80 the script cleared the machine-wide `~/.cache/sbt/v2` instead.
+2. **A coverage compile erases the module's measurements, and they are not written again.**
+   The Scala 3 compiler deletes `scoverage.measurements.*` in the module's data directory
+   every time it compiles with coverage on, and the runtime (`scala.runtime.coverage.Invoker`)
+   records each statement once per JVM, through a file it keeps open. So anything that
+   recompiles a module after its tests have run, in the same sbt invocation, leaves it near
+   0%. `BuildInfoOption.BuildTime` did exactly that, regenerating `BuildInfo.scala` on every
+   task: it is why `signals` read 0.00% and `core` 0.35% from 2026-09-29 until #81 made the
+   timestamp opt-in. Turning it back on reproduces 0.49% / 0.54%. The per-package minimum is
+   what catches this — the total alone still looked plausible at 47.90%.
+3. **The minimums have to be on the project that aggregates.** `coverageAggregate` checks the
+   root project's own settings. Until #80 they were set on the modules and the root kept the
+   plugin's `coverageFailOnMinimum := false`, so a 47.90% report exited 0.
+4. **A report with no metadata at all reads `100% of 0 statements`** and passes
+   `coverageFailOnMinimum` at any threshold. The script fails on a zero statement count and
+   on any of the four expected packages being absent from the report.
 
 Related: the same disk cache does not notice a *deleted* source file (`decisions.md`,
 2026-09-29). It is worth suspecting early.

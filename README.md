@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/thicket-logo.png" width="230" alt="Thicket">
+  <img src="thicket-logo.svg" width="230" alt="Thicket">
 </p>
 
 # Thicket
@@ -347,12 +347,13 @@ self-test checks, Android 24 + 84.
 Coverage over the JVM-tested modules:
 
 ```bash
-./bin/coverage.sh          # 91.10% statement, 87.64% branch on 2026-09-29 — not measuring now, #80
+./bin/coverage.sh          # 94.04% statement, 88.22% branch on 2026-10-21; exits non-zero below the ratchet
 ```
 
-It clears the sbt disk cache first, and that is not optional — see `docs/12` §12.9. The
-figure covers the effect-free core; the three renderers are exercised by self-tests that
-drive the real toolkit, which no coverage tool instruments.
+It forces a real compile on every run, without touching the machine-wide sbt cache, and it
+fails if any module's measurements went missing — see `docs/12` §12.9. The figure covers the
+effect-free core; the three renderers are exercised by self-tests that drive the real
+toolkit, which no coverage tool instruments.
 
 Three things that will bite you:
 
