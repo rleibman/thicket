@@ -25,7 +25,10 @@ import scala.util.control.NonFatal
   */
 final class Owner private[signals] (parent: Owner | Null) extends Disposable {
 
-  private val children: mutable.ArrayBuffer[Disposable] = mutable.ArrayBuffer.empty
+  // Insertion-ordered, so disposal can still run in reverse creation order, and a set, so a
+  // child that leaves early is removed in O(1): a scan per removal made unmounting a list's
+  // rows O(rows²) (review 2026-10-20, P2-11).
+  private val children: mutable.LinkedHashSet[Disposable] = mutable.LinkedHashSet.empty
 
   /** Born disposed under a disposed parent. Otherwise nothing would ever dispose it, and the effects created under it
     * would keep writing to native handles that were already destroyed (review 2026-10-20, P1-6b).
@@ -34,17 +37,24 @@ final class Owner private[signals] (parent: Owner | Null) extends Disposable {
 
   if parent != null && !isDisposed then parent.nn.children += this
 
-  private def forget(child: Disposable): Unit =
-    if !isDisposed then {
-      val i = children.indexOf(child)
-      if i >= 0 then children.remove(i)
-    }
+  private[signals] def forget(child: Disposable): Unit =
+    if !isDisposed then children -= child
 
   def own(d: Disposable): Unit =
     if isDisposed then d.dispose()
     else children += d
 
   def disposed: Boolean = isDisposed
+
+  /** Stops owning `d` without disposing it — for something that ended by itself, such as a finished fibre, which would
+    * otherwise be held until this owner is disposed.
+    */
+  def release(d: Disposable): Unit = forget(d)
+
+  /** How many things this owner currently holds. For leak checks: it should fall when they end, not only when the owner
+    * does.
+    */
+  def childCount: Int = children.size
 
   /** Disposes children in reverse creation order, then itself, and unlinks from its parent. Idempotent.
     *
@@ -57,9 +67,10 @@ final class Owner private[signals] (parent: Owner | Null) extends Disposable {
   def dispose(): Unit =
     if !isDisposed then {
       isDisposed = true
-      var i = children.length - 1
+      val all = children.toArray
+      var i = all.length - 1
       while i >= 0 do {
-        try children(i).dispose()
+        try all(i).dispose()
         catch { case NonFatal(e) => ErrorSink.report(e) }
         i -= 1
       }

@@ -113,6 +113,31 @@ object FailureSpec extends ZIOSpecDefault {
         chk.eq(c.now, 8, "not () cast to Int")
         chk.result
       },
+      test("an effect disposed on its own is no longer held by its owner") {
+        val chk = Checks()
+        val o = Owner()
+        given Owner = o
+        val effects = (1 to 100).map(_ => Signal.effect(()))
+        chk.eq(o.childCount, 100)
+        effects.foreach(_.dispose())
+        chk.eq(o.childCount, 0, "each left its owner when it was disposed")
+        o.dispose()
+        chk.result
+      },
+      test("an effect marked Check and then Dirty in one write runs once") {
+        val chk = Checks()
+        val o = Owner()
+        given Owner = o
+        val a = Var(1)
+        val c = Signal.computed(a() * 2)
+        var runs = 0
+        // Reads `c` (marked Check when `a` changes) and `a` (marked Dirty): one write, one run.
+        Signal.effect { val _ = c() + a(); runs += 1 }
+        a.set(2)
+        chk.eq(runs, 2)
+        o.dispose()
+        chk.result
+      },
       test("disposal carries on past a child that throws, and reports it") {
         val chk = Checks()
         val reported = mutable.ArrayBuffer.empty[Throwable]

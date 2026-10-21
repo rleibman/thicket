@@ -59,14 +59,29 @@ private def reportDefect(
 ): Unit =
   if !cause.isInterruptedOnly then deliver(owner)(ErrorSink.report(FiberFailure(cause)))
 
-private def ownFiber[R, E, A](
+/** Forks `effect`, owned by `owner`: disposing the owner interrupts it, and when it ends by itself the owner lets go of
+  * it. It used to be held until the owner was disposed, so a screen that launched an effect per click kept one entry
+  * per click for its whole life (review 2026-10-20, P2-11).
+  *
+  * The fibre can finish before its disposable exists; whichever side comes second releases it, exactly once.
+  */
+private def forkOwned[R, E, A](
   rt:          UiRuntime[R],
-  fiber:       Fiber.Runtime[E, A]
+  effect:      ZIO[R, E, A]
 )(using owner: Owner
-): Unit =
-  owner.own(new Disposable {
-    def dispose(): Unit = rt.interruptLater(fiber)
-  })
+): Unit = {
+  val handle = AtomicReference[Disposable | Null](null)
+  val done = AtomicBoolean(false)
+  def releaseOnUi(): Unit = {
+    val d = handle.getAndSet(null)
+    if d != null then onUi(() => owner.release(d))
+  }
+  val fiber = rt.fork(effect.ensuring(ZIO.succeed { done.set(true); releaseOnUi() }))
+  val d: Disposable = () => rt.interruptLater(fiber)
+  owner.own(d)
+  handle.set(d)
+  if done.get() then releaseOnUi()
+}
 
 extension [R, E, A](effect: ZIO[R, E, A]) {
 
@@ -81,7 +96,8 @@ extension [R, E, A](effect: ZIO[R, E, A]) {
     owner: Owner
   ): Signal[RemoteData[E, A]] = {
     val state = Var[RemoteData[E, A]](RemoteData.Loading)
-    val fiber = rt.fork(
+    forkOwned(
+      rt,
       effect.foldCause(
         cause =>
           cause.failureOption match {
@@ -91,7 +107,6 @@ extension [R, E, A](effect: ZIO[R, E, A]) {
         a => deliver(owner)(state.set(RemoteData.Done(a)))
       )
     )
-    ownFiber(rt, fiber)
     state
   }
 
@@ -105,7 +120,8 @@ extension [R, E, A](effect: ZIO[R, E, A]) {
     owner:   Owner,
     present: ErrorPresenter[E]
   ): Unit = {
-    val fiber = rt.fork(
+    forkOwned(
+      rt,
       effect.foldCause(
         cause =>
           cause.failureOption match {
@@ -115,7 +131,6 @@ extension [R, E, A](effect: ZIO[R, E, A]) {
         _ => ()
       )
     )
-    ownFiber(rt, fiber)
   }
 
 }
@@ -163,10 +178,10 @@ extension [R, E, A](stream: ZStream[R, E, A]) {
   ): Signal[A] = {
     val state = Var(initial)
     val sink = Conflated[A](owner, state.set)
-    val fiber = rt.fork(
+    forkOwned(
+      rt,
       stream.runForeach(a => ZIO.succeed(sink.offer(a))).foldCause(cause => reportDefect(owner, cause), _ => ())
     )
-    ownFiber(rt, fiber)
     state
   }
 
@@ -177,7 +192,8 @@ extension [R, E, A](stream: ZStream[R, E, A]) {
   ): Signal[RemoteData[E, A]] = {
     val state = Var[RemoteData[E, A]](RemoteData.Loading)
     val sink = Conflated[RemoteData[E, A]](owner, state.set)
-    val fiber = rt.fork(
+    forkOwned(
+      rt,
       stream
         .runForeach(a => ZIO.succeed(sink.offer(RemoteData.Done(a))))
         .foldCause(
@@ -189,7 +205,6 @@ extension [R, E, A](stream: ZStream[R, E, A]) {
           _ => ()
         )
     )
-    ownFiber(rt, fiber)
     state
   }
 

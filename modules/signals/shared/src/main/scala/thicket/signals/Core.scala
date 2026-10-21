@@ -42,23 +42,18 @@ private[signals] trait Source {
   /** Bring this node up to date, recomputing if necessary. */
   private[signals] def validate(): Unit
 
-  private[signals] def observers: mutable.ArrayBuffer[Computation]
+  /** Insertion-ordered, so propagation order is still creation order, and a set, so adding and removing one observer is
+    * O(1). It was a buffer scanned on every add and remove, which made N rows reading one shared signal O(N²) to mount
+    * and to unmount (review 2026-10-20, P2-10).
+    */
+  private[signals] def observers: mutable.LinkedHashSet[Computation]
 
-  final private[signals] def addObserver(c: Computation): Unit = if !observers.contains(c) then observers += c
+  final private[signals] def addObserver(c: Computation): Unit = observers += c
 
-  final private[signals] def removeObserver(c: Computation): Unit = {
-    val i = observers.indexOf(c)
-    if i >= 0 then observers.remove(i)
-  }
+  final private[signals] def removeObserver(c: Computation): Unit = observers -= c
 
   /** Push phase: mark direct observers Dirty, transitive observers Check. */
-  final private[signals] def markObserversDirty(): Unit = {
-    var i = 0
-    while i < observers.length do {
-      observers(i).markDirty()
-      i += 1
-    }
-  }
+  final private[signals] def markObserversDirty(): Unit = observers.foreach(_.markDirty())
 
 }
 
@@ -70,12 +65,18 @@ private[signals] trait Computation extends Disposable {
   private[signals] var depVersions: Array[Long] = Array.empty
   private[signals] var disposed:    Boolean = false
 
+  /** Waiting in the runtime's queue. An effect marked Check and then Dirty in one propagation was queued twice. */
+  private[signals] var queued: Boolean = false
+
+  /** The owner that will dispose this, told when it is disposed first so it stops holding it. */
+  private[signals] var ownedBy: Owner | Null = null
+
   /** Effects are scheduled when marked; computeds are pulled lazily. */
   private[signals] def isEffect: Boolean
 
   private[signals] def recompute(): Unit
 
-  private[signals] def observersOfSelf: mutable.ArrayBuffer[Computation]
+  private[signals] def observersOfSelf: mutable.LinkedHashSet[Computation]
 
   final private[signals] def markDirty(): Unit =
     if !disposed && state != State.Dirty then {
@@ -92,14 +93,7 @@ private[signals] trait Computation extends Disposable {
       markDownstreamCheck()
     }
 
-  final private[signals] def markDownstreamCheck(): Unit = {
-    val obs = observersOfSelf
-    var i = 0
-    while i < obs.length do {
-      obs(i).markCheck()
-      i += 1
-    }
-  }
+  final private[signals] def markDownstreamCheck(): Unit = observersOfSelf.foreach(_.markCheck())
 
   /** Pull phase: validate dependencies depth-first, then recompute if needed. */
   final private[signals] def updateIfNecessary(): Unit =
@@ -192,11 +186,19 @@ private[signals] trait Computation extends Disposable {
     depVersions = Array.empty
   }
 
+  /** Also lets go of its owner's reference: a computation disposed on its own — an effect a component tore down early —
+    * used to stay in its owner's child list for the owner's whole life (review 2026-10-20, P2-11).
+    */
   def dispose(): Unit =
     if !disposed then {
       disposed = true
       unlinkAll()
       state = State.Clean
+      val o = ownedBy
+      if o != null then {
+        ownedBy = null
+        o.forget(this)
+      }
     }
 
 }
@@ -221,7 +223,11 @@ private[signals] object Runtime {
     if c != null then c += s
   }
 
-  def schedule(c: Computation): Unit = pending += c
+  def schedule(c: Computation): Unit =
+    if !c.queued then {
+      c.queued = true
+      pending += c
+    }
 
   def batched[A](body: => A): A = {
     batchDepth += 1
@@ -249,6 +255,7 @@ private[signals] object Runtime {
       try
         while pending.nonEmpty do {
           val c = pending.removeHead()
+          c.queued = false
           try c.updateIfNecessary()
           catch {
             case NonFatal(e) => errors = e :: errors

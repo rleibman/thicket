@@ -276,6 +276,17 @@ object EffectZioSpec extends ZIOSpecDefault {
       chk.yes(thrown.exists(_.toString.contains("no database")), thrown.toString)
       chk.result
     },
+    test("a fibre that finishes lets go of its owner") {
+      val chk = Checks()
+      val o = Owner(); given Owner = o
+      given ErrorPresenter[Nothing] = summon[ErrorPresenter[Nothing]]
+      val done = AtomicInteger(0)
+      (1 to 50).foreach(_ => ZIO.succeed(done.incrementAndGet()).unit.launch)
+      eventually("all ran and were released")(done.get() == 50 && o.childCount == 0)
+      chk.eq(o.childCount, 0, "a screen that launches one effect per click does not keep one per click")
+      o.dispose()
+      chk.result
+    },
     test("ErrorPresenter.into and printing") {
       val chk = Checks()
       val target = Var(Option.empty[String])

@@ -91,6 +91,7 @@ object Signal {
   def computed[A](f: Tracking ?=> A)(using owner: Owner): Signal[A] = {
     val c = new Computed[A](() => f)
     owner.own(c)
+    if !c.disposed then c.ownedBy = owner
     c
   }
 
@@ -98,7 +99,10 @@ object Signal {
   def effect(body: Tracking ?=> Unit)(using owner: Owner): Disposable = {
     val e = new Effect(() => body)
     owner.own(e) // disposes `e` immediately if the owner is already dead
-    if !e.disposed then e.runInitial()
+    if !e.disposed then {
+      e.ownedBy = owner
+      e.runInitial()
+    }
     e
   }
 
@@ -120,7 +124,7 @@ final class Var[A] private (initial: A) extends Signal[A] with Source {
 
   private var value:              A = initial
   private var ver:                Long = 0
-  private[signals] val observers: mutable.ArrayBuffer[Computation] = mutable.ArrayBuffer.empty
+  private[signals] val observers: mutable.LinkedHashSet[Computation] = mutable.LinkedHashSet.empty
 
   private[signals] def version:    Long = ver
   private[signals] def validate(): Unit = () // roots are always current
@@ -164,10 +168,10 @@ final private class Computed[A](fn: () => Tracking ?=> A) extends Signal[A] with
   // of a stale value.
   private var failure:            Throwable | Null = null
   private var ver:                Long = 0
-  private[signals] val observers: mutable.ArrayBuffer[Computation] = mutable.ArrayBuffer.empty
+  private[signals] val observers: mutable.LinkedHashSet[Computation] = mutable.LinkedHashSet.empty
 
   private[signals] def version:         Long = ver
-  private[signals] def observersOfSelf: mutable.ArrayBuffer[Computation] = observers
+  private[signals] def observersOfSelf: mutable.LinkedHashSet[Computation] = observers
   private[signals] def isEffect:        Boolean = false
   private[signals] def validate():      Unit = updateIfNecessary()
 
@@ -226,9 +230,9 @@ final private class Computed[A](fn: () => Tracking ?=> A) extends Signal[A] with
 /** A leaf computation run for its side effects. */
 final private class Effect(body: () => Tracking ?=> Unit) extends Computation {
 
-  private val noObservers: mutable.ArrayBuffer[Computation] = mutable.ArrayBuffer.empty
+  private val noObservers: mutable.LinkedHashSet[Computation] = mutable.LinkedHashSet.empty
 
-  private[signals] def observersOfSelf: mutable.ArrayBuffer[Computation] = noObservers
+  private[signals] def observersOfSelf: mutable.LinkedHashSet[Computation] = noObservers
   private[signals] def isEffect:        Boolean = true
 
   /** Clean before running, for the same reason as `Computed.recompute`: an effect that throws — on its first run or any

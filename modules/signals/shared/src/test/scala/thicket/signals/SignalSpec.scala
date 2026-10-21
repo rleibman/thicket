@@ -160,12 +160,12 @@ object SignalSpec extends ZIOSpecDefault {
         Signal.effect { c(); runs += 1 }
         a.set(1)
         chk.eq(runs, 2)
-        chk.eq(a.observers.length, 1, "computed is the only observer of the var")
+        chk.eq(a.observers.size, 1, "computed is the only observer of the var")
 
         o.dispose()
         a.set(2)
         chk.eq(runs, 2, "disposed effect must not run")
-        chk.eq(a.observers.length, 0, "var must hold no observers after disposal")
+        chk.eq(a.observers.size, 0, "var must hold no observers after disposal")
         chk.eq(c.asInstanceOf[Computation].deps.length, 0)
         chk.result
       },
@@ -193,7 +193,7 @@ object SignalSpec extends ZIOSpecDefault {
         parent.dispose()
         a.set(3)
         chk.eq((outer, inner), (3, 2))
-        chk.eq(a.observers.length, 0)
+        chk.eq(a.observers.size, 0)
         chk.result
       },
       test("owning after disposal disposes immediately") {
@@ -207,7 +207,7 @@ object SignalSpec extends ZIOSpecDefault {
         chk.eq(runs, 0, "an effect created under a dead owner never runs")
         a.set(1)
         chk.eq(runs, 0)
-        chk.eq(a.observers.length, 0)
+        chk.eq(a.observers.size, 0)
         chk.result
       },
       test("exception in computed propagates to the writer and the graph recovers") {
