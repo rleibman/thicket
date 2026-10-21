@@ -168,6 +168,9 @@ final class GtkRenderer extends Renderer {
   // Only widgets that set Grow, either way: one that never mentioned it keeps whatever expand
   // flags it was created with (a LazyColumn's scroller fills its column by default).
   private val grows = perHandle[Boolean]
+
+  /** The selection the app last asked a drop-down for, put back when its options are replaced. */
+  private val pickerWanted = perHandle[Int]
   private val ownPadding = perHandle[Int]
 
   /** Indeterminate progress bars whose pulse timer is running. Leaving the set stops the timer. */
@@ -469,9 +472,12 @@ final class GtkRenderer extends Renderer {
         val list = model.asInstanceOf[Ptr[GtkStringList]]
         val existing = toInt(sn.gnome.gio.internal.g_list_model_get_n_items(model))
         //
-        // Replacing the items does not make the drop-down select or report anything by
-        // itself: the 2026-10-20 review suspected it would (P1-10), and the gallery's swap
-        // check — with nothing selected and with a selection — measured that it does not.
+        // Suppressed, and the app's selection put back afterwards. On GTK 4.14 (Ubuntu 24.04,
+        // CI) replacing the items with nothing selected makes the drop-down select item 0 by
+        // itself and report it through notify::selected as if the user had chosen it (review
+        // 2026-10-20, P1-10). GTK 4.22 on the Linux box does not — which is why this was first measured
+        // as unnecessary; the gallery's swap check caught it on CI's GTK (4.14.5).
+        suppress += handle
         Zone {
           // NULL-terminated, which is what splice wants for "the strings to insert".
           val arr = alloc[CString]((values.length + 1).toUInt)
@@ -484,12 +490,19 @@ final class GtkRenderer extends Renderer {
           arr(values.length) = null
           gtk_string_list_splice(list, toGuint(0), toGuint(existing), arr)
         }
+        val wanted = pickerWanted.getOrElse(handle, -1)
+        gtk_drop_down_set_selected(
+          handle.asInstanceOf[Ptr[GtkDropDown]],
+          if wanted < 0 || wanted >= values.length then toGuint(-1) else toGuint(wanted)
+        )
+        suppress -= handle
 
       case Prop.Selected(index) =>
         // GTK_INVALID_LIST_POSITION for "nothing selected", which is unsigned -1 rather than
         // a negative index: handing it a raw -1 would select item 4294967295 and crash.
         val pos = if index < 0 then toGuint(-1) else toGuint(index)
         val dd = handle.asInstanceOf[Ptr[GtkDropDown]]
+        pickerWanted(handle) = index
         // Guarded like the switch and the check button: writing the selection fires
         // notify::selected, which would report the app's own write back to it as a user
         // choice and, with a Var behind it, loop.
