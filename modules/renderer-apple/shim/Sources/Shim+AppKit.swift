@@ -985,8 +985,11 @@ public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
     if index >= 0 && Int(index) < seg.segmentCount {
       seg.selectedSegment = Int(index)
     } else {
-      // -1: nothing chosen, which .selectOne allows when no segment is selected.
-      for i in 0..<seg.segmentCount { seg.setSelected(false, forSegment: i) }
+      // -1: nothing chosen, which .selectOne allows when no segment is selected. Deselecting
+      // segment by segment did not do it: under .selectOne the chosen segment stayed chosen
+      // (measured, #77) — which nothing saw while a change of options cleared it anyway.
+      seg.selectedSegment = -1
+      for i in 0..<seg.segmentCount where seg.isSelected(forSegment: i) { seg.setSelected(false, forSegment: i) }
     }
     suppressed.remove(id)
     return
@@ -994,7 +997,9 @@ public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
   guard let b = view(h) as? NSPopUpButton, b.indexOfSelectedItem != Int(index) else { return }
   let id = ObjectIdentifier(b)
   suppressed.insert(id)
-  if index < 0 { b.select(nil) } else { b.selectItem(at: Int(index)) }
+  // -1, or an index past the end after the options shrank: nothing chosen, which a pop-up
+  // draws as a blank title (D13).
+  if index < 0 || Int(index) >= b.numberOfItems { b.select(nil) } else { b.selectItem(at: Int(index)) }
   suppressed.remove(id)
 }
 
@@ -1856,6 +1861,22 @@ public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Un
   case let p as NSPopUpButton where i >= 0 && i < p.numberOfItems: return scratch(p.itemTitle(at: i))
   case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount: return scratch(s.label(forSegment: i) ?? "")
   default: return nil
+  }
+}
+
+/// What the control draws as the choice (#77, D13). For the pop-up that is the item its cell
+/// draws — `NSPopUpButtonCell.menuItem` — rather than `indexOfSelectedItem`, which is the
+/// state the renderer just wrote and so cannot disagree with it.
+@_cdecl("sui_shown_option")
+public func sui_shown_option(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  switch view(h) {
+  case let p as NSPopUpButton:
+    return scratch((p.cell as? NSPopUpButtonCell)?.menuItem?.title ?? "")
+  case let s as NSSegmentedControl:
+    let i = s.selectedSegment
+    return scratch(i >= 0 && i < s.segmentCount ? (s.label(forSegment: i) ?? "") : "")
+  default:
+    return nil
   }
 }
 

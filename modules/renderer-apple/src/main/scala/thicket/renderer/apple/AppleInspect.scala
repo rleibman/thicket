@@ -144,6 +144,9 @@ object AppleInspect {
   /** The selected index, read from the control; -1 for none. */
   def selected(h: Shim.Handle): Int = Shim.sui_get_selected(h)
 
+  /** The option the control draws as chosen; `""` when it shows none (D13). */
+  def shownOption(h: Shim.Handle): String = str(Shim.sui_shown_option(h)).getOrElse("")
+
   /** Chooses an option through the control's own action. False where the platform offers no way to. */
   def choose(
     h:     Shim.Handle,
