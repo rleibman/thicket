@@ -54,7 +54,7 @@ void sui_window_set_title(const char *title);
      20 SegmentedControl   NSSegmentedControl()           UISegmentedControl()  the picker's options/selection functions drive it; native on both Apple platforms
      21 DatePicker         NSDatePicker()                 UIDatePicker()    compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC
      22 Grid               GridView()                     GridView()        an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row
-     23 IconButton         -                              -                 reserved for the Mac (#66): NSButton / UIButton with an SF Symbol
+     23 IconButton         NSButton()                     UIButton()        image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit
      24 TabView            -                              -                 reserved for the Mac (#69): UITabBarController / NSTabViewController
      25 Tab                -                              -                 reserved for the Mac (#69): one tab of a TabView */
 sui_handle sui_create(int32_t kind);
@@ -70,6 +70,10 @@ void sui_set_spacing(sui_handle h, int32_t dp);
 void sui_set_padding(sui_handle h, int32_t dp);
 /* How many columns a Grid's cells flow into: cell i at row i / count, column i % count. */
 void sui_set_grid_columns(sui_handle h, int32_t count);
+/* An SF Symbol by name. One the SDK lacks leaves no image, which sui_get_symbol reports. */
+void sui_set_symbol(sui_handle h, const char *name);
+/* What VoiceOver announces, and the tooltip: toolTip on AppKit, a UIToolTipInteraction on UIKit. */
+void sui_set_accessible_label(sui_handle h, const char *text);
 /* role: 0 Title, 1 Body, 2 Caption */
 void sui_set_text_role(sui_handle h, int32_t role);
 /* emphasis: 0 Normal, 1 Secondary */
@@ -236,6 +240,17 @@ int32_t sui_choose(sui_handle h, int32_t index);
 int32_t sui_choose_date(sui_handle h, int32_t epochDay);
 /* A view's alignment rect — what Auto Layout positions — in its window, top-left origin. */
 void sui_get_frame(sui_handle h, double *outX, double *outY, double *outW, double *outH);
+/* 1 when the SDK has an SF Symbol of this name. */
+int32_t sui_symbol_exists(const char *name);
+/* The SF Symbol a view shows, or NULL when its name did not resolve or it holds no image. */
+const char *sui_get_symbol(sui_handle h);
+/* The label VoiceOver reads, from the view. */
+const char *sui_get_accessible_label(sui_handle h);
+/* The tooltip the platform shows, from the view. */
+const char *sui_get_tooltip(sui_handle h);
+/* The share of a view's pixels that are painted when the platform draws it into a bitmap;
+   -1 when it has no size. An icon button whose symbol drew nothing reads 0. */
+double sui_painted_fraction(sui_handle h);
 /* Where a Grid has placed a child: the NSGridView's own row and column on AppKit, the
    construction's on UIKit. 0 when the child is not one of its cells. */
 int32_t sui_grid_cell(sui_handle h, sui_handle child, double *outRow, double *outColumn);

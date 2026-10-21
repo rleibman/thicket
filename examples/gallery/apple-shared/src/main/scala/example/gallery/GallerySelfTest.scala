@@ -16,8 +16,8 @@
 
 package example.gallery
 
-import thicket.renderer.{CalendarDate, WidgetKind}
-import thicket.renderer.apple.{AppleApp, AppleInspect}
+import thicket.renderer.{CalendarDate, Icon, WidgetKind}
+import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect}
 
 /** The gallery's conformance check on AppKit and UIKit — the same questions the GTK host asks, through `AppleInspect`
   * instead of `GtkInspect`.
@@ -279,8 +279,9 @@ object GallerySelfTest {
     // --- Grid: the questions GtkGrid answers, asked of NSGridView's rows and columns on AppKit
     // and of the construction on UIKit — and, on both, of the frames, which are the
     // platform's own layout whichever builds it.
-    val grids = ofKind(WidgetKind.Grid)
-    check("one Grid", grids.length == 1, grids.length.toString)
+    // The form grid, by its first cell: the IconButton section is a Grid too.
+    val grids = ofKind(WidgetKind.Grid).filter(g => AppleInspect.allTexts(g).contains("Typed above"))
+    check("one form Grid", grids.length == 1, grids.length.toString)
     grids.headOption.foreach { grid =>
       def cells = AppleInspect.children(grid).map(c => (AppleInspect.allTexts(c).mkString, c))
       def at(text: String) =
@@ -372,6 +373,76 @@ object GallerySelfTest {
       val (ok3, how3) = laidOut
       check("and so does the layout", ok3, how3)
     }
+
+    // --- IconButton: the questions GTK asks of its theme icons, asked of the real buttons.
+    // Every mapped name is first asked of the SDK, because a symbol it lacks draws nothing
+    // and would otherwise pass as a blank button. Then each button: its symbol, its label as
+    // VoiceOver's and as the tooltip, and the pixels the platform actually paints for it.
+    val missing = Icon.curated.filterNot(i => AppleInspect.symbolExists(AppleIcons.name(i)))
+    check(
+      "the SDK has an SF Symbol for every curated icon",
+      missing.isEmpty,
+      missing.map(i => s"$i -> ${AppleIcons.name(i)}").toString
+    )
+    val ourLabels = Icon.curated.map(_.toString).toSet + "Delete (disabled)"
+    val iconButtons = ofKind(WidgetKind.IconButton).filter(b => AppleInspect.accessibleLabel(b).exists(ourLabels))
+    val byLabel = iconButtons.flatMap(b => AppleInspect.accessibleLabel(b).map(_ -> b)).toMap
+    check(
+      "an icon button per curated icon, plus the disabled one",
+      iconButtons.length == Icon.curated.size + 1,
+      iconButtons.map(b => s"${AppleInspect.symbol(b)}[${AppleInspect.accessibleLabel(b)}]").toString
+    )
+    val wrongSymbol = Icon.curated.filterNot(i =>
+      byLabel.get(i.toString).exists(b => AppleInspect.symbol(b).contains(AppleIcons.name(i)))
+    )
+    check(
+      "each shows its mapped symbol",
+      wrongSymbol.isEmpty,
+      wrongSymbol.map(i => s"$i -> ${byLabel.get(i.toString).flatMap(AppleInspect.symbol)}").toString
+    )
+    val painted =
+      iconButtons.map(b => AppleInspect.accessibleLabel(b).getOrElse("?") -> AppleInspect.paintedFraction(b))
+    // A glyph covers part of its button, never none of it and never all of it.
+    check(
+      "and the platform paints each one",
+      painted.forall(
+        (
+          _,
+          f
+        ) => f > 0.02 && f < 0.9
+      ),
+      painted
+        .map(
+          (
+            l,
+            f
+          ) => f"$l ${f * 100}%.0f%%"
+        ).mkString(", ")
+    )
+    println(
+      painted
+        .map(
+          (
+            _,
+            f
+          ) => f * 100
+        ).sorted match {
+        case fs if fs.nonEmpty => f"[gallery]   icon pixels painted: ${fs.head}%.1f%%–${fs.last}%.1f%% of each button"
+        case _                 => "[gallery]   icon pixels painted: none measured"
+      }
+    )
+    val tipless = iconButtons.filterNot(b => AppleInspect.tooltip(b) == AppleInspect.accessibleLabel(b))
+    check(
+      "the label is also the tooltip",
+      tipless.isEmpty,
+      tipless.map(b => s"${AppleInspect.accessibleLabel(b)} / ${AppleInspect.tooltip(b)}").toString
+    )
+    byLabel.get("Share").foreach(AppleInspect.click)
+    check(
+      "a tap reaches the app",
+      texts.contains("Tapped Share"),
+      texts.filter(_.startsWith("Tapped")).toString
+    )
   }
 
 }

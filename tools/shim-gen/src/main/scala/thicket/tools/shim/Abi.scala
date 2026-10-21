@@ -245,7 +245,13 @@ object Abi {
       "GridView(",
       "an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row"
     ),
-    Kind(23, "IconButton", None, None, "reserved for the Mac (#66): NSButton / UIButton with an SF Symbol"),
+    built(
+      23,
+      "IconButton",
+      "NSButton(",
+      "UIButton(",
+      "image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit"
+    ),
     Kind(24, "TabView", None, None, "reserved for the Mac (#69): UITabBarController / NSTabViewController"),
     Kind(25, "Tab", None, None, "reserved for the Mac (#69): one tab of a TabView")
   )
@@ -281,6 +287,12 @@ object Abi {
     setter("sui_set_padding", "dp" -> I32),
     setter("sui_set_grid_columns", "count" -> I32).copy(
       doc = "How many columns a Grid's cells flow into: cell i at row i / count, column i % count."
+    ),
+    setter("sui_set_symbol", "name" -> Str).copy(
+      doc = "An SF Symbol by name. One the SDK lacks leaves no image, which sui_get_symbol reports."
+    ),
+    setter("sui_set_accessible_label", "text" -> Str).copy(
+      doc = "What VoiceOver announces, and the tooltip: toolTip on AppKit, a UIToolTipInteraction on UIKit."
     ),
     setter("sui_set_text_role", "role" -> I32).copy(doc = "role: 0 Title, 1 Body, 2 Caption"),
     setter("sui_set_text_emphasis", "emphasis" -> I32)
@@ -585,6 +597,27 @@ object Abi {
       Void,
       List(p("h", Handle), p("outX", OutF64), p("outY", OutF64), p("outW", OutF64), p("outH", OutF64)),
       doc = "A view's alignment rect — what Auto Layout positions — in its window, top-left origin."
+    ),
+    Fn("sui_symbol_exists", I32, List(p("name", Str)), doc = "1 when the SDK has an SF Symbol of this name."),
+    Fn(
+      "sui_get_symbol",
+      Str,
+      List(p("h", Handle)),
+      doc = "The SF Symbol a view shows, or NULL when its name did not resolve or it holds no image."
+    ),
+    Fn(
+      "sui_get_accessible_label",
+      Str,
+      List(p("h", Handle)),
+      doc = "The label VoiceOver reads, from the view."
+    ),
+    Fn("sui_get_tooltip", Str, List(p("h", Handle)), doc = "The tooltip the platform shows, from the view."),
+    Fn(
+      "sui_painted_fraction",
+      F64,
+      List(p("h", Handle)),
+      doc = "The share of a view's pixels that are painted when the platform draws it into a bitmap;\n" +
+        "   -1 when it has no size. An icon button whose symbol drew nothing reads 0."
     ),
     Fn(
       "sui_grid_cell",
