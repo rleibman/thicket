@@ -35,3 +35,6 @@ pubring.*
 # Claude Code: per-user settings and per-agent scratch memory stay local.
 .claude/settings.local.json
 .claude/agent-memory/
+# Local leftovers of the archived spikes (a clone and a build link), never tracked.
+spikes/s4-yoga/third-party/yoga/
+spikes/s2-android/scala-lib/
