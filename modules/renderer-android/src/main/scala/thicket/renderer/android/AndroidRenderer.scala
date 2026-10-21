@@ -360,7 +360,17 @@ final class AndroidRenderer(context: Context) extends Renderer {
             source match {
               case None                             => iv.setImageDrawable(null)
               case Some(ImageSource.FromFile(path)) =>
-                iv.setImageBitmap(BitmapFactory.decodeFile(path))
+                // A file first, then the APK's assets at the same relative path: an APK has no
+                // filesystem path, so a relative one could only ever load nothing (review
+                // 2026-10-20, R-M10). Assets are where an app ships its images.
+                val bitmap = Option(BitmapFactory.decodeFile(path)).orElse {
+                  try {
+                    val in = context.getAssets.open(path.stripPrefix("/"))
+                    try Option(BitmapFactory.decodeStream(in))
+                    finally in.close()
+                  } catch { case _: java.io.IOException => None }
+                }
+                iv.setImageBitmap(bitmap.orNull)
               case Some(ImageSource.FromBytes(data)) =>
                 iv.setImageBitmap(BitmapFactory.decodeByteArray(data, 0, data.length))
             }
@@ -1079,7 +1089,11 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // A Tab is in its TabView's content area and has an item in its bar; both go.
     tabs.destroy(handle)
     handle.getParent match {
-      case vg: ViewGroup =>
+      // A LazyColumn's row: the ListView owns its children and recycles them, and refuses
+      // removeView outright — so disposing a list page used to throw from here (found by the
+      // gallery's Android self-test, popping its big list). The row is released, not detached.
+      case _:  _root_.android.widget.AdapterView[?] => ()
+      case vg: ViewGroup                            =>
         val index = vg.indexOfChild(handle)
         vg.removeView(handle)
         vg match {
@@ -1089,7 +1103,12 @@ final class AndroidRenderer(context: Context) extends Renderer {
         }
       case _ => ()
     }
-    handle.setOnClickListener(null)
+    // AdapterView (the LazyColumn's ListView) refuses setOnClickListener even to clear it, and
+    // never had one set.
+    handle match {
+      case _: _root_.android.widget.AdapterView[?] => ()
+      case v => v.setOnClickListener(null)
+    }
     suppress -= handle
     val _ = kinds.remove(handle)
     handle match {

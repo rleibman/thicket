@@ -23,15 +23,18 @@ echo "== sbt: building the Scala JARs =="
 # they accumulate: the old `*[0-9T].jar` glob matched one jar per commit built, `readlink`
 # returned the lot newline-separated, and `cp` failed with a path containing a newline. An
 # mtime heuristic would work until two builds landed in the same second; this is exact.
-ver=$(cd "$root" && sbt --error "print signalsJVM/version" 2>/dev/null | tr -d '\r' | tail -1)
-[ -n "$ver" ] || { echo "could not read the project version from sbt" >&2; exit 1; }
-echo "   version $ver"
+# The Scala version too: it is in the jar path, and hard-coding it broke on every Scala bump.
+vers=$(cd "$root" && sbt --error "print signalsJVM/version" "print signalsJVM/scalaVersion" 2>/dev/null | tr -d '\r' | tail -2)
+ver=$(sed -n 1p <<<"$vers")
+sv=$(sed -n 2p <<<"$vers")
+[ -n "$ver" ] && [ -n "$sv" ] || { echo "could not read the project version from sbt" >&2; exit 1; }
+echo "   version $ver, Scala $sv"
 
 rm -f "$here"/app/libs/*.jar
 for module in thicket-signals thicket-renderer-api thicket-core \
               thicket-renderer-android thicket-examples-shared todo-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
-  src=$(readlink -f "$root/target/out/jvm/scala-3.9.0/$module/${module}_3-$ver.jar")
+  src=$(readlink -f "$root/target/out/jvm/scala-$sv/$module/${module}_3-$ver.jar")
   cp "$src" "$here/app/libs/$module.jar"
   printf "   %-34s %8d bytes\n" "$module.jar" "$(stat -c%s "$here/app/libs/$module.jar")"
 done

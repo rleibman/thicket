@@ -119,9 +119,11 @@ object Gallery {
   /** The message of the exception the "Throw from a handler" button raises, so a self-test can tell it apart. */
   val deliberate: String = "deliberate, from the gallery's Errors section"
 
-  /** The logo, as a file and as the bytes of that file. */
-  val logo:           String = "docs/assets/thicket-logo.png"
-  lazy val logoBytes: Array[Byte] =
+  /** The logo, as a file and as the bytes of that file. A host with no filesystem path to it — an APK — passes the
+    * bytes to [[app]] itself; `FromFile` then finds it in the APK's assets at the same relative path.
+    */
+  val logo:      String = "docs/assets/thicket-logo.png"
+  def logoBytes: Array[Byte] =
     scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(logo))).getOrElse(Array.emptyByteArray)
 
   /** The picker's options. On the object so the self-test can name them. */
@@ -150,7 +152,8 @@ object Gallery {
 
   def screen(
     model:  Model,
-    loaded: Signal[RemoteData[Nothing, String]]
+    loaded: Signal[RemoteData[Nothing, String]],
+    logo:   Array[Byte]
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -265,7 +268,7 @@ object Gallery {
               // The badge case: trailing and top, so the two axes are told apart. The count is
               // the ForEach section's row count, so "Add" in the toolbar proves it is bound.
               ZStack(Alignment.End, Alignment.Start)(
-                Image(ImageSource.FromFile("docs/assets/thicket-logo.png"), fit = ContentFit.Contain),
+                Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Contain),
                 Label(model.rows.map(rs => s"${rs.size} rows"), style = TextRole.Caption)
               ),
               // Centred, the default: a spinner over the content it is waiting on. Always
@@ -326,7 +329,7 @@ object Gallery {
               Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Cover),
               // The third fit, and the other source: bytes the app already holds, decoded by the
               // platform (review 2026-10-20, P2-23).
-              Image(ImageSource.FromBytes(Gallery.logoBytes), fit = ContentFit.Fill)
+              Image(ImageSource.FromBytes(logo), fit = ContentFit.Fill)
             )
           ),
           section("Scroll — horizontal, inside a vertical one")(
@@ -458,7 +461,7 @@ object Gallery {
   var currentNav: Option[Nav[Route]] = None
 
   /** The whole app, for a host to mount. Hosts differ only in how they start. */
-  def app()(using Owner): AppRoot = {
+  def app(logo: Array[Byte] = logoBytes)(using Owner): AppRoot = {
     val model = Model()
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
@@ -466,7 +469,7 @@ object Gallery {
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded)
+        val s = screen(model, loaded, logo)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }
