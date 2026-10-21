@@ -52,9 +52,15 @@ jobs:
         with:
           # The version comes from `git describe`, which needs the tags.
           fetch-depth: 0
+          # Nothing here pushes, so the token is not left in .git/config for the steps below.
+          persist-credentials: false
 
       - name: Build the shims and run the Apple self-tests
-        run: bin/verify-apple.sh "${{ inputs.device || 'iPhone 17' }}"
+        # Through the environment, not interpolated into the script: a dispatch input is
+        # text someone typed, and `${{ }}` would paste it into the shell as code.
+        env:
+          DEVICE: ${{ inputs.device || 'iPhone 17' }}
+        run: bin/verify-apple.sh "$DEVICE"
 
       - name: Keep the logs, screenshots and summary
         if: always()

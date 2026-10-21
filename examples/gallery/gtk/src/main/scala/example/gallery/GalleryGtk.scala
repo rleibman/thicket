@@ -509,9 +509,13 @@ object GalleryGtk {
     presentedAndNav(root)
   }
 
-  private def finish(): Unit =
+  /** The verdict, and the exit status: 0, or the failure count (capped below 124, which `timeout` uses). */
+  private def finish(): Unit = {
     if failures == 0 then println(s"[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
+    Console.out.flush()
+    GtkApp.quit(failures min 120)
+  }
 
   /** Runs `next` once `cond` holds, letting the main loop run — layout, GtkListView binding the rows it shows, a page's
     * transition ending — for 20 ms between tries. A list materialises its rows when it is laid out, not when it is told
@@ -747,10 +751,11 @@ object GalleryGtk {
   }
 
   def main(args: Array[String]): Unit = {
-    val _ = GtkApp.run("dev.thicket.gallery", width = 520, height = 760) {
+    val status = GtkApp.run("dev.thicket.gallery", width = 520, height = 760) {
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => afterEffect(200)(selfTest()))
       Gallery.app()
     }
+    sys.exit(status)
   }
 
 }

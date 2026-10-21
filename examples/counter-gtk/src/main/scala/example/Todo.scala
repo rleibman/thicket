@@ -39,13 +39,14 @@ object Todo {
   def main(args: Array[String]): Unit = {
     // Same single-role branding as the Android host; everything else stays GTK's.
     Theme.install(Theme.platform.withColor(ColorRole.Accent, Rgb(0x2e, 0x6f, 0x40)))
-    val _ = GtkApp.run("dev.thicket.todo", 460, 440) {
+    val status = GtkApp.run("dev.thicket.todo", 460, 440) {
       if sys.env.contains("THICKET_SELFTEST") then GtkApp.postToUi(() => selfTest())
       // A plain file path: the GTK binary runs from the repo, so this resolves. A packaged
       // app would ship it alongside the executable and resolve relative to that.
       app = TodoApp(model, logo = logoSource)
       app
     }
+    sys.exit(status)
   }
 
   /** Every piece of text in the mounted screen, in tree order. */
@@ -516,6 +517,9 @@ object Todo {
       if failures == 0 then "[selftest] ALL CHECKS PASSED"
       else s"[selftest] $failures CHECK(S) FAILED"
     )
+    Console.out.flush()
+    // The verdict is the exit status: 0, or the failure count (capped below timeout's 124).
+    GtkApp.quit(failures min 120)
   }
 
 }

@@ -18,8 +18,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 MODULES=(signalsJVM coreJVM effectZioJVM shimGen)
-REPORT=target/out/jvm/scala-3.9.0/thicket/scoverage-report/scoverage.xml
+SV=$(sbt --error "print signalsJVM/scalaVersion" 2>/dev/null | tr -d '\r' | tail -1)
+REPORT=target/out/jvm/scala-$SV/thicket/scoverage-report/scoverage.xml
 
+# This clears the machine-wide sbt 2 cache, which every other sbt 2 build on the machine
+# shares (review 2026-10-20, P2-30). A private cache (`set Global / localCacheDirectory`), a
+# fresh `-Dsbt.cacheversion`, and clearing target/streams and project/target were each tried
+# instead and each still failed in compileIncremental ("inc_compile_3.zip is missing"): some
+# record of the previous compile survives them all. Until that is found, the wipe stays.
 echo "== clearing the sbt disk cache (see the comment above; this is required) =="
 rm -rf ~/.cache/sbt/v2 target/out
 

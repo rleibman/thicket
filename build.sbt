@@ -168,11 +168,15 @@ lazy val zioTestNative =
   * with hand-written code. For a `crossProject` the package is deliberately the *same* on
   * every platform: shared source has to be able to name it.
   *
-  * `BuildInfoOption.BuildTime` rather than a `buildTime` setting key — a setting is
-  * evaluated once per sbt session, so it would record when the shell was started, not when
-  * the artefact was built.
+  * `buildTime` adds `BuildInfoOption.BuildTime` rather than a `buildTime` setting key — a setting is evaluated once per
+  * sbt session, so it would record when the shell was started, not when the artefact was built. **Off by default**:
+  * a timestamp makes every build of a published jar differ from the last, so the same commit never produces the same
+  * artefact (review 2026-10-20, P2-31). The gallery, which shows it, opts in.
   */
-def thicketBuildInfo(pkg: String): Seq[Setting[?]] = Seq(
+def thicketBuildInfo(
+  pkg:       String,
+  buildTime: Boolean = false
+): Seq[Setting[?]] = Seq(
   buildInfoPackage := pkg,
   buildInfoKeys := Seq[BuildInfoKey](
     // sbt-thicket's dependencies are built from this, so the plugin cannot name a group the framework was not published
@@ -189,7 +193,7 @@ def thicketBuildInfo(pkg: String): Seq[Setting[?]] = Seq(
     GitKeys.gitHeadCommit,
     GitKeys.gitUncommittedChanges
   ),
-  buildInfoOptions += BuildInfoOption.BuildTime
+  buildInfoOptions ++= (if buildTime then Seq(BuildInfoOption.BuildTime) else Nil)
 )
 
 /** Fine-grained reactive core. No dependencies beyond the Scala library (S5). */
@@ -484,7 +488,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   .dependsOn(core, effectZio)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
-  .settings(thicketBuildInfo("example.gallery.buildinfo"))
+  .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
   .jvmSettings(scalacOptions ++= Seq("-release", "17"))
 

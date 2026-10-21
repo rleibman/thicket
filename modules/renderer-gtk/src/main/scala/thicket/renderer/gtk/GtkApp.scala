@@ -497,6 +497,7 @@ object GtkApp {
     val app = Zone(
       gtk_application_new(toCString(appId), GApplicationFlags.G_APPLICATION_DEFAULT_FLAGS)
     )
+    application = app
     Zone {
       val _ = g_signal_connect_data(
         app.asInstanceOf[gpointer],
@@ -513,7 +514,19 @@ object GtkApp {
     GcState.releaseMainThread()
     val status = g_application_run(app.asInstanceOf[Ptr[GApplication]], 0, null)
     GcState.reacquireMainThread()
-    status
+    exitStatus.getOrElse(status)
+  }
+
+  private var application: Ptr[GtkApplication] = null
+  private var exitStatus:  Option[Int] = None
+
+  /** Ends the main loop; [[run]] then returns `status`. A self-test calls this with its failure count, so its verdict
+    * is the process's exit status — it used to stay up after "ALL CHECKS PASSED", so a run under `timeout` always
+    * exited 124 and nothing could gate on it (review 2026-10-20, P2-20).
+    */
+  def quit(status: Int): Unit = {
+    exitStatus = Some(status)
+    if application != null then g_application_quit(application.asInstanceOf[Ptr[GApplication]])
   }
 
 }
