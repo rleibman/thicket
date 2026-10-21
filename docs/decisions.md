@@ -72,6 +72,17 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **Coverage measures again, and its ratchet can fail** (#80). Two faults, both
+  silent. A per-task `BuildInfo` timestamp recompiled `signals` and `core` between their tests
+  and the report, and a Scala 3 coverage compile deletes the module's measurements, so both read
+  ~0% from 2026-09-29; #81 made the timestamp opt-in, which ended it. And the minimums sat on the
+  modules, where `coverageAggregate` never reads them, so the gate could not fail. The ratchet
+  is now on the root: 93% statement and 87% branch in total, 85% statement per package
+  (measured 94.04% / 88.22%). `bin/coverage.sh` no longer clears `~/.cache/sbt/v2`. A per-run
+  marker in the coverage compile's options means no cache entry ever matches.
+  Supersedes the 2026-09-29 entry's account of how the cache trap is handled. See
+  `docs/12` §12.9.
+
 - 2026-10-20 — **Docs policy, unbuilt kinds, the layout contract, Picker `-1`** (review
   2026-10-20 D2, D9, D11, D13).
   **D2:** docs 01–08 are frozen (the plan as written); `decisions.md`, 09 and 10 are
