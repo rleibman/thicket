@@ -265,9 +265,9 @@ final class GtkRenderer extends Renderer {
         // handle. The dialog itself is built in `present`.
         // The sheet's *content* container. The modal window that carries it does not
         // exist until `present`, the same split Alert uses.
-        case WidgetKind.Sheet => gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+        case WidgetKind.Sheet => ownedPlaceholder()
 
-        case WidgetKind.Alert => gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+        case WidgetKind.Alert => ownedPlaceholder()
 
         case WidgetKind.ProgressBar => gtk_progress_bar_new()
 
@@ -1122,10 +1122,30 @@ final class GtkRenderer extends Renderer {
   private def gbool(b: Boolean): sn.gnome.glib.internal.gboolean =
     (if b then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean]
 
+  /** A presented widget's handle: an Alert's placeholder, a Sheet's content box. Neither is ever inserted into a
+    * parent, so nothing would sink the floating reference GTK hands out — or release it. Sinking it here makes the
+    * renderer the owner, and `destroy` lets go (review 2026-10-20, P2-3).
+    */
+  private def ownedPlaceholder(): Ptr[GtkWidget] = {
+    val box = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
+    val _ = g_object_ref_sink(box.asInstanceOf[gpointer])
+    box
+  }
+
   def destroy(handle: Handle): Unit = {
     // Before anything is freed: a focused text widget must be released by GTK's input
     // method first, or a Wayland race leaves it pointing at freed memory (#56).
     WaylandFocus.releaseBeforeDestroy(handle)
+    val presented = kinds.get(handle).exists(k => k == WidgetKind.Alert || k == WidgetKind.Sheet)
+    // An Alert's (and a Sheet's title's) state is keyed by the raw pointer, so leaving it
+    // here would hand a widget GTK later allocates at the same address the old alert's
+    // text and closures.
+    val _ = alertTitle.remove(handle)
+    val _ = alertDetail.remove(handle)
+    val _ = alertActions.remove(handle)
+    val _ = alertDismiss.remove(handle)
+    alertCancel.remove(handle).foreach(g_cancellable_cancel)
+    sheetCloseId.remove(handle).foreach(Handles.release)
     tapIds.remove(handle).foreach(Handles.release)
     val _ = appTaps.remove(handle)
     val _ = links.remove(handle)
@@ -1191,6 +1211,9 @@ final class GtkRenderer extends Renderer {
             }
         }
     }
+    // The reference `ownedPlaceholder` sank. For a sheet the window's own reference went
+    // with `gtk_window_set_child(win, null)` above, so this is the last one.
+    if presented then g_object_unref(handle.asInstanceOf[gpointer])
   }
 
   override def present(handle: Handle): Unit =
@@ -1205,24 +1228,24 @@ final class GtkRenderer extends Renderer {
       alertTitle.get(handle).filter(_.nonEmpty).foreach(t => gtk_window_set_title(win, toCString(t)))
       gtk_window_set_child(win, handle)
 
-      // The window manager's close button and Escape both arrive as close-request. Let the
-      // close proceed and report it: the app owns the signal that mounted this, so it is the
-      // app that has to take it down — exactly as with Alert.
-      alertDismiss.get(handle).foreach { f =>
-        val id = Handles.register { () =>
-          val _ = sheetWindow.remove(handle)
-          f()
-        }
-        sheetCloseId(handle) = id
-        val _ = g_signal_connect_data(
-          win.asInstanceOf[gpointer],
-          toCString("close-request").asInstanceOf[Ptr[gchar]],
-          GCallback.fromPtr(Handles.closeRequestPtr),
-          Handles.idToPointer(id),
-          null.asInstanceOf[GClosureNotify],
-          GConnectFlags.define(0)
-        )
-      }
+      // The window manager's close button and Escape both arrive as close-request. The close
+      // is **vetoed** and reported: the app owns the signal that mounted this, so it is the
+      // app that takes it down, and the unmount then destroys the window through `destroy`.
+      //
+      // It used to let GTK close the window and forget it, so the unmount that `OnDismiss`
+      // starts took the plain-widget path in `destroy` and unparented the content from a
+      // window GTK was about to finalise with a pointer to it — the gallery's sheet, closed
+      // by its own close button (review 2026-10-20, P0-4, D10).
+      val id = Handles.register(() => alertDismiss.get(handle).foreach(_()))
+      sheetCloseId(handle) = id
+      val _ = g_signal_connect_data(
+        win.asInstanceOf[gpointer],
+        toCString("close-request").asInstanceOf[Ptr[gchar]],
+        GCallback.fromPtr(Handles.closeRequestPtr),
+        Handles.idToPointer(id),
+        null.asInstanceOf[GClosureNotify],
+        GConnectFlags.define(0)
+      )
 
       sheetWindow(handle) = win
       gtk_window_present(win)

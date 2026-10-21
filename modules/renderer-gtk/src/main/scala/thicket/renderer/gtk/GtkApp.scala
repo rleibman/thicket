@@ -134,6 +134,18 @@ object GtkApp {
     */
   def pageHandles: Seq[Ptr[GtkWidget]] = livePages.valuesIterator.map(_._2.handle).toSeq
 
+  /** How many pages `AdwNavigationView` itself holds — asked of the container, not of `livePages`, so a test can see
+    * the two disagree.
+    */
+  def containerDepth: Int =
+    if navView == null then 0
+    else {
+      val stack = adw_navigation_view_get_navigation_stack(navView)
+      val n = sn.gnome.gio.internal.g_list_model_get_n_items(stack.asInstanceOf[Ptr[sn.gnome.gio.internal.GListModel]])
+      sn.gnome.gobject.internal.g_object_unref(stack.asInstanceOf[gpointer])
+      n.asInstanceOf[scala.scalanative.unsigned.UInt].toInt
+    }
+
   /** True while we are pushing or popping to match `Nav`.
     *
     * `adw_navigation_view_pop` emits `popped` just as a user's back gesture does, so without this the handler would
@@ -276,37 +288,65 @@ object GtkApp {
     syncingFromNav = true
     try
       Signal.untracked {
+        val departing = livePages.keys.toSeq.reverse.filterNot(live)
+        // AdwNavigationView will not pop its root page. So when the root is among the pages
+        // leaving — `Nav.reset`, `Nav.restore` — popping would leave the old root, frozen,
+        // under the new stack, reachable with Back, and `onPopped` would then dispose the
+        // wrong owner (review 2026-10-20, P1-9). The whole stack is replaced instead.
+        val rootLeaves = livePages.headOption.exists(
+          (
+            id,
+            _
+          ) => !live(id)
+        )
+
         // Drop what left the stack, from the top down.
-        livePages.keys.toSeq.reverse.filterNot(live).foreach { id =>
+        departing.foreach { id =>
           livePages.remove(id).foreach {
             (
               _,
               _,
               owner
             ) =>
-              // The pop owns the teardown. An AdwNavigationPage holds the only reference to its
-              // child, so popping it releases the page and destroys the subtree underneath —
-              // calling `mounted.dispose()` here as well is a double destroy. GTK does not
-              // complain at the time; it corrupts quietly and kills an unrelated widget several
-              // operations later. Exactly the lesson `Sheet` taught, where detaching a window's
-              // child *was* releasing it.
+              // The pop (or the replace below) owns the teardown. An AdwNavigationPage holds
+              // the only reference to its child, so removing the page releases it and
+              // destroys the subtree underneath — calling `mounted.dispose()` here as well is
+              // a double destroy. GTK does not complain at the time; it corrupts quietly and
+              // kills an unrelated widget several operations later. Exactly the lesson
+              // `Sheet` taught, where detaching a window's child *was* releasing it.
               //
               // Disposing the owner is still ours: it stops the effects that were driving the
               // widgets the pop just took away.
-              adw_navigation_view_pop(navView)
+              if !rootLeaves then adw_navigation_view_pop(navView)
               owner.dispose()
           }
         }
 
         pages.filterNot(p => livePages.contains(p.id)).foreach { p =>
-          val pageOwner = Owner()
+          // A child of the app's root owner, not a detached root: whatever disposes the app
+          // disposes its pages too (review 2026-10-20, P2-19).
+          val pageOwner = Owner.child(using rootOwner)
           val mounted = {
             given Owner = pageOwner
             Reconciler.mount(renderer, p.content)
           }
           val page = Zone(adw_navigation_page_new(mounted.handle, toCString(p.screen.title)))
           livePages(p.id) = (page, mounted, pageOwner)
-          adw_navigation_view_push(navView, page)
+          if !rootLeaves then adw_navigation_view_push(navView, page)
+        }
+
+        if rootLeaves then {
+          val stack = pages.flatMap(p => livePages.get(p.id).map(_._1))
+          Zone {
+            val arr = alloc[Ptr[AdwNavigationPage]](stack.length max 1)
+            stack.zipWithIndex.foreach(
+              (
+                pg,
+                i
+              ) => arr(i) = pg
+            )
+            adw_navigation_view_replace(navView, arr, stack.length)
+          }
         }
       }
     finally syncingFromNav = false

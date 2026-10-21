@@ -395,12 +395,16 @@ object Gallery {
 
   }
 
+  /** The running app's navigation, for a host's self-test to drive. Set by [[app]]. */
+  var currentNav: Option[Nav[Route]] = None
+
   /** The whole app, for a host to mount. Hosts differ only in how they start. */
   def app()(using Owner): AppRoot = {
     val model = Model()
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
+    currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
         val s = screen(model, loaded)

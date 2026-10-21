@@ -418,6 +418,8 @@ object GalleryGtk {
       s"${GtkInspect.cssParseErrors} CSS parse errors"
     )
 
+    presentedAndNav(root)
+
     if failures == 0 then println(s"[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
   }
@@ -429,6 +431,65 @@ object GalleryGtk {
   private def afterEffect(tries: Int)(next: => Unit): Unit =
     if tries <= 0 || GtkInspect.allTexts(GtkApp.rootHandle).contains(Gallery.effectResult) then next
     else GtkApp.postToUi(() => afterEffect(tries - 1)(next))
+
+  /** A sheet closed by its own window's close button, then the navigation stack reset from one page deep (review
+    * 2026-10-20, P0-4 and P1-9). Last, because the reset remounts the catalogue: `root` is gone afterwards.
+    */
+  private def presentedAndNav(root: Ptr[GtkWidget]): Unit = {
+    def button(label: String) =
+      GtkInspect.findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List(label)).headOption
+    val baseline = GtkInspect.liveCallbacks
+    button("Open sheet").foreach(GtkInspect.click)
+    val sheets = GtkInspect.windowsTitled("A sheet")
+    check("opening the sheet shows a window titled after it", sheets.length == 1, sheets.length.toString)
+    sheets.headOption.foreach { win =>
+      // The window manager's close button: GTK emits close-request on the window. The
+      // renderer vetoes it and reports it; the gallery's OnDismiss unmounts the sheet, and
+      // the unmount destroys the window.
+      GtkInspect.requestClose(win)
+      check("the close button takes the sheet down", GtkInspect.windowsTitled("A sheet").isEmpty)
+      check(
+        "and the app was told: the sheet's own state is closed",
+        button("Open sheet").nonEmpty && !GtkInspect.allTexts(root).contains("Still bound")
+      )
+      check(
+        "and every callback the sheet registered is released",
+        GtkInspect.liveCallbacks == baseline,
+        s"$baseline before, ${GtkInspect.liveCallbacks} after"
+      )
+    }
+    // Open and close it again, through the app this time, so the same window path runs twice.
+    button("Open sheet").foreach(GtkInspect.click)
+    GtkInspect
+      .windowsTitled("A sheet").headOption
+      .foreach(w =>
+        GtkInspect
+          .findAll(w)(c => GtkInspect.isButton(c) && GtkInspect.allTexts(c) == List("Close"))
+          .headOption.foreach(GtkInspect.click)
+      )
+    check("a sheet reopens and closes from inside", GtkInspect.windowsTitled("A sheet").isEmpty)
+
+    // Reset from one page deep. AdwNavigationView will not pop its root, so the old root
+    // used to stay underneath the new one.
+    check("the stack starts one page deep", GtkApp.containerDepth == 1, GtkApp.containerDepth.toString)
+    Gallery.currentNav.foreach(_.reset(Gallery.Route.Catalogue))
+    check(
+      "resetting replaces the root rather than stacking a second one on it",
+      GtkApp.containerDepth == 1 && GtkApp.pageHandles.length == 1,
+      s"container ${GtkApp.containerDepth}, live ${GtkApp.pageHandles.length}"
+    )
+    check(
+      "and the new root is the one on screen",
+      GtkApp.visiblePageTitle == "Thicket gallery",
+      GtkApp.visiblePageTitle
+    )
+    Gallery.currentNav.foreach(_.push(Gallery.Route.Big))
+    check(
+      "a push after the reset goes on top of it",
+      GtkApp.containerDepth == 2,
+      GtkApp.containerDepth.toString
+    )
+  }
 
   /** Host → Scala entry points under stress (review 2026-10-20, P0-2 and P0-3). */
   private def robustness(root: Ptr[GtkWidget]): Unit = {

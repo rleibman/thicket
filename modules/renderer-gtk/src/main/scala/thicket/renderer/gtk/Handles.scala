@@ -260,9 +260,10 @@ private[gtk] object Handles {
 
   /** `GtkWindow::close-request`: (window, user_data) -> gboolean.
     *
-    * Returns FALSE, meaning "go ahead and close". Its own arity is needed because a handler declared as returning Unit
-    * would leave whatever happened to be in the return register for GTK to read as the answer — and TRUE there would
-    * veto the close, silently and intermittently.
+    * Returns TRUE, meaning "do not close": the handler reports the request and the app decides, by unmounting the
+    * sheet, which destroys the window properly (see `GtkRenderer.presentSheet`). Its own arity is needed because a
+    * handler declared as returning Unit would leave whatever happened to be in the return register for GTK to read as
+    * the answer — silently and intermittently.
     */
   private val closeRequest: CFuncPtr2[Ptr[Byte], gpointer, gboolean] =
     CFuncPtr2.fromScalaFunction {
@@ -271,7 +272,7 @@ private[gtk] object Handles {
         data: gpointer
       ) =>
         GcState.guarded(invoke(pointerToId(data)))
-        0.asInstanceOf[gboolean]
+        1.asInstanceOf[gboolean]
     }
 
   def closeRequestPtr: CVoidPtr = CFuncPtr.toPtr(closeRequest)

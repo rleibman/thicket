@@ -17,6 +17,7 @@
 package thicket.renderer.gtk
 
 import scala.scalanative.unsafe.*
+import scala.scalanative.unsigned.*
 import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.{GType, GTypeInstance, g_type_check_instance_is_a}
 
@@ -167,6 +168,26 @@ object GtkInspect {
         toCString("clicked").asInstanceOf[Ptr[sn.gnome.glib.internal.gchar]]
       )
     )
+
+  /** Every top-level window titled `title`: a presented sheet is one, outside the main window's tree. */
+  def windowsTitled(title: String): List[Ptr[GtkWidget]] = {
+    val model = gtk_window_get_toplevels().asInstanceOf[Ptr[sn.gnome.gio.internal.GListModel]]
+    val n = sn.gnome.gio.internal.g_list_model_get_n_items(model).asInstanceOf[scala.scalanative.unsigned.UInt].toInt
+    (0 until n).toList.flatMap { i =>
+      val w = sn.gnome.gio.internal
+        .g_list_model_get_item(model, i.toUInt.asInstanceOf[sn.gnome.glib.internal.guint])
+        .asInstanceOf[Ptr[GtkWidget]]
+      // get_item returns a new reference; the toplevels list keeps its own.
+      sn.gnome.gobject.internal.g_object_unref(w.asInstanceOf[sn.gnome.glib.internal.gpointer])
+      val t = gtk_window_get_title(w.asInstanceOf[Ptr[GtkWindow]])
+      if t != null && fromCString(t.asInstanceOf[CString]) == title && gtk_widget_get_visible(w).asInstanceOf[CInt] != 0
+      then List(w)
+      else Nil
+    }
+  }
+
+  /** Asks a window to close the way its close button does: GTK emits close-request, and whatever handles it decides. */
+  def requestClose(window: Ptr[GtkWidget]): Unit = gtk_window_close(window.asInstanceOf[Ptr[GtkWindow]])
 
   /** Sets an entry's text the way the renderer does, with `gtk_editable_set_text`. GTK emits "changed" before this
     * returns, so the renderer's handler runs *inside* the caller's Scala frame — the nested host → Scala entry that
