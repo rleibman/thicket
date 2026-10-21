@@ -390,6 +390,7 @@ the framework's source.*
 | 13 | [docs/13-phases.md](docs/13-phases.md) | Phases, branches, PRs, exit criteria |
 | 14 | [docs/14-releasing.md](docs/14-releasing.md) | Versions from tags, `early-semver`, what a consumer needs, how to cut a release |
 | 15 | [docs/15-icon-system.md](docs/15-icon-system.md) | The icon system: the design, and where what was built differs |
+| 16 | [docs/16-device-services.md](docs/16-device-services.md) | Device services — location, motion, camera, files, storage, HTTP: what Thicket provides, what libraries cover, the plan |
 | 11 | [docs/11-what-it-looks-like.md](docs/11-what-it-looks-like.md) | The design ideas, and the gap each one exposed |
 | 10 | [docs/10-phase-0-findings.md](docs/10-phase-0-findings.md) | Every phase-0 measurement and the GO decision |
 | — | [docs/decisions.md](docs/decisions.md) | Versions, tooling, the dated decision log |

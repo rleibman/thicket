@@ -72,6 +72,24 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **Device services: what Thicket provides, and how it is packaged**
+  (`docs/16-device-services.md`). Thicket provides only what needs the host: app directories,
+  permissions, hardware streams, system UI, lifecycle. Everything else uses existing
+  libraries: `java.nio.file` for files, sttp and caliban-client for HTTP, zio-streams. Owner's
+  decisions:
+  - **One module per service and per platform**, so an app takes, and on Android declares
+    permissions for, only what it uses.
+  - **The iOS HTTP transport first.** An sttp backend over URLSession if iOS has no libcurl
+    (#90, Mac).
+  - **Android location is the framework's `LocationManager`.** No Play Services (S-05).
+  - **SQLite through plain JDBC.** No framework query DSL. On Native, the community
+    `scala-native-jdbc-sqlite` 0.0.6, which works in a spike but swallows errors from plain
+    `Statement`s. On Android, a JDBC driver that Thicket writes over
+    `android.database.sqlite`, since none is maintained. Quill was considered and does not
+    fit: no Scala Native artefact, and a heavy JVM runtime (`docs/16` §16.5).
+  - **Secrets on GTK use libsecret.**
+  - **Location, motion and camera are `Unavailable` on the desktops** to begin with.
+
 - 2026-10-21 — **Coverage measures again, and its ratchet can fail** (#80). Two faults, both
   silent. A per-task `BuildInfo` timestamp recompiled `signals` and `core` between their tests
   and the report, and a Scala 3 coverage compile deletes the module's measurements, so both read
