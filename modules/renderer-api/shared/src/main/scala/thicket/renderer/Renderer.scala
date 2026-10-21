@@ -746,6 +746,11 @@ trait Renderer {
     * reconciler's side that is a genuine change it has never applied. Only the renderer can compare against what the
     * widget actually holds. Skipping the write is what stops the caret jumping to the end on every keystroke, and — for
     * renderers whose widgets emit a change event when set programmatically — what stops a bound field looping.
+    *
+    * **Order.** Props arrive in the order the element declares them, at `create` and here. Two pairs depend on it, and
+    * the DSL always emits them in this order: a slider's [[Prop.Range]] before its [[Prop.Value]] (a value outside the
+    * bounds is clamped silently by every toolkit), and a choice's [[Prop.Options]] before its [[Prop.Selected]]. A
+    * renderer may rely on both; a hand-built `Seq[Prop]` must respect them.
     */
   def update(
     handle: Handle,

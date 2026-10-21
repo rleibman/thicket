@@ -332,26 +332,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case _ => ()
         }
 
-      // Grow means "along the parent's main axis", and a ZStack has none. Ignoring it there
-      // is also what keeps the child's FrameLayout.LayoutParams: replacing them with a
-      // LinearLayout's would make the FrameLayout throw on its next measure.
-      case Prop.Grow(_) if handle.getParent.isInstanceOf[View] && isZStack(handle.getParent.asInstanceOf[View]) => ()
-      // The same for a Grid: it has two axes and no main one, and its children must keep
-      // GridLayout's own params.
-      case Prop.Grow(_) if handle.getParent.isInstanceOf[GridLayout] => ()
-
       case Prop.Grow(v) =>
-        val lp = handle.getLayoutParams match {
-          case p: LinearLayout.LayoutParams => p
-          case _ =>
-            LinearLayout.LayoutParams(
-              ViewGroup.LayoutParams.WRAP_CONTENT,
-              ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-        lp.weight = if v then 1f else 0f
-        if v then lp.width = 0
-        handle.setLayoutParams(lp)
+        grows(handle) = v
+        applyGrow(handle)
 
       case Prop.Tint(color) =>
         // `None` means "leave it to the platform", so the emphasis handling below keeps
@@ -501,6 +484,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
         // The framework's version of what the demo's Activity used to do by hand (docs/05
         // F-02). targetSdk 35+ forces edge-to-edge, so without this a screen draws behind
         // the status bar and its first row is simply invisible.
+        safeAreas += handle
         if Build.VERSION.SDK_INT >= Build.VERSION_CODES.R then {
           handle.setOnApplyWindowInsetsListener {
             (
@@ -513,11 +497,14 @@ final class AndroidRenderer(context: Context) extends Renderer {
               val rtl = v.getLayoutDirection == View.LAYOUT_DIRECTION_RTL
               val leading = if rtl then Edge.Trailing else Edge.Leading
               val trailing = if rtl then Edge.Leading else Edge.Trailing
+              // On top of the app's own padding, which it used to replace (review 2026-10-20,
+              // P1-18): `Column(padding = 16).safeArea()` lost its 16 on every edge.
+              val base = basePadding.getOrElse(v, 0)
               v.setPadding(
-                if edges.contains(leading) then bars.left else 0,
-                if edges.contains(Edge.Top) then bars.top else 0,
-                if edges.contains(trailing) then bars.right else 0,
-                if edges.contains(Edge.Bottom) then bars.bottom else 0
+                base + (if edges.contains(leading) then bars.left else 0),
+                base + (if edges.contains(Edge.Top) then bars.top else 0),
+                base + (if edges.contains(trailing) then bars.right else 0),
+                base + (if edges.contains(Edge.Bottom) then bars.bottom else 0)
               )
               insets
           }
@@ -714,7 +701,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.Padding(v) =>
         val p = dp(v)
-        handle.setPadding(p, p, p, p)
+        basePadding(handle) = p
+        // With a safe area, the insets listener owns the padding: it adds the insets to this.
+        if safeAreas.contains(handle) then handle.requestApplyInsets()
+        else handle.setPadding(p, p, p, p)
 
       case Prop.Spacing(v) =>
         handle match {
@@ -904,6 +894,34 @@ final class AndroidRenderer(context: Context) extends Renderer {
       }
     }
 
+  /** Widgets that set Grow, either way; their own padding; which of them carry a safe area. */
+  private val grows = mutable.Map.empty[View, Boolean]
+  private val basePadding = mutable.Map.empty[View, Int]
+  private val safeAreas = mutable.Set.empty[View]
+
+  /** Grow is "along the parent's main axis", so it waits for a parent. It used to be applied at create time, always as
+    * `width = 0`: a grown child of a *vertical* Column was zero pixels wide, and the ZStack and Grid guards tested a
+    * parent that did not exist yet (review 2026-10-20, P1-4). A ZStack has no main axis and a Grid two, and both keep
+    * their own params, so there it is ignored.
+    */
+  private def applyGrow(child: View): Unit =
+    grows.get(child).foreach { on =>
+      child.getParent match {
+        case l: LinearLayout if !isZStack(l) =>
+          val horizontal = l.getOrientation == LinearLayout.HORIZONTAL
+          val lp = child.getLayoutParams match {
+            case p: LinearLayout.LayoutParams => p
+            case _ =>
+              LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+          }
+          lp.weight = if on then 1f else 0f
+          val main = if on then 0 else ViewGroup.LayoutParams.WRAP_CONTENT
+          if horizontal then lp.width = main else lp.height = main
+          child.setLayoutParams(lp)
+        case _ => ()
+      }
+    }
+
   /** Each ZStack's gravity, so a child inserted later is placed like the ones already there. */
   private val stackGravity = mutable.Map.empty[FrameLayout, Int]
 
@@ -983,6 +1001,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // Index order is drawing order in a FrameLayout, so placing the child by its preceding
     // sibling is also what puts it at the right depth.
     vg.addView(child, index)
+    applyGrow(child)
     vg match {
       case g: GridLayout                 => applyGridSpacing(g, from = index)
       case l: LinearLayout               => applySpacing(l, from = index, until = index + 2)
@@ -1051,6 +1070,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // stayed reachable from the renderer (review 2026-10-20, P2-4).
     val _ = alertTitle.remove(handle)
     val _ = alertMessage.remove(handle)
+    val _ = grows.remove(handle)
+    val _ = basePadding.remove(handle)
+    safeAreas -= handle
     alertShowing.remove(handle).foreach(_.dismiss())
     sheetShowing.remove(handle).foreach(_.dismiss())
   }

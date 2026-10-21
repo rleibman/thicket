@@ -352,6 +352,43 @@ object GalleryGtk {
 
     check("a GtkProgressBar", GtkInspect.findAll(root)(GtkInspect.isProgressBar).nonEmpty)
 
+    // Layout (review 2026-10-20, P1-4, P2-26): Grow along the parent's main axis.
+    def labelled(t: String) = GtkInspect.findAll(root)(w => GtkInspect.isLabel(w) && GtkInspect.allTexts(w) == List(t))
+    val spacers = GtkInspect.findAll(root)(w =>
+      GtkInspect.children(w).isEmpty && !GtkInspect.isLabel(w) && GtkInspect.expands(w) != (false, false) &&
+        GtkInspect.allTexts(w).isEmpty && GtkInspect.naturalWidth(w) == 0 && GtkInspect.naturalHeight(w) == 0
+    )
+    check(
+      "a Spacer in a Row expands across, one in a Column expands down",
+      spacers.map(GtkInspect.expands).toSet == Set((true, false), (false, true)),
+      spacers.map(GtkInspect.expands).toString
+    )
+    check(
+      "a grown label in a Row expands across only",
+      labelled("grown").map(GtkInspect.expands) == List((true, false)),
+      labelled("grown").map(GtkInspect.expands).toString
+    )
+    check(
+      "Start, Center and End labels sit where they say",
+      // The last of each: the Spinner section's button is labelled "Start" too.
+      List("Start", "Center", "End").flatMap(t => labelled(t).lastOption.map(GtkInspect.labelXAlign)) ==
+        List(0.0f, 0.5f, 1.0f),
+      List("Start", "Center", "End").map(t => t -> labelled(t).map(GtkInspect.labelXAlign)).toString
+    )
+    // A scroller's padding insets its content: it is on the child, not the scrolled window.
+    val hscroll =
+      GtkInspect.findAll(root)(w => GtkInspect.findScroller(w).contains(w) && GtkInspect.allTexts(w).contains("col 0"))
+    // The innermost: the whole screen is inside a vertical Scroll too.
+    hscroll.lastOption.foreach { s =>
+      val content = GtkInspect.findAll(s)(w => GtkInspect.marginStart(w) == 8)
+      check(
+        "a padded Scroll insets its content, and not itself",
+        GtkInspect.marginStart(s) == 0 && content.nonEmpty,
+        s"scroller ${GtkInspect.marginStart(s)}, content margins ${content.size}"
+      )
+    }
+    check("an indeterminate ProgressBar keeps a pulse timer running", GtkInspect.liveTimers >= 1)
+
     // Image: one GtkPicture per fit, each with something to paint — the bytes-backed one
     // included, so a decode that produced nothing would show.
     val pictures = GtkInspect.findAll(root)(GtkInspect.isPicture).map(GtkInspect.pictureState)

@@ -218,6 +218,8 @@ object Gallery {
             Slider(model.volume, min = 0, max = 11)(model.volume.set),
             // Determinate, driven by the slider above, so the binding is visible.
             ProgressBar(model.progress),
+            // Indeterminate: animates on every platform, which is what tells it apart from 0.
+            ProgressBar(None),
             Row(spacing = 8)(
               Button(model.busy.map(b => if b then "Stop" else "Start"))(model.busy.set(!model.busy.now)),
               Show(model.busy)(Spinner())
@@ -225,7 +227,17 @@ object Gallery {
           ),
           section("Layout — Spacer, Grow, Divider, nested Row and Column")(
             Row(spacing = 8)(Label("left"), Spacer(), Label("right")),
-            Row(spacing = 8)(Label("grown").grow, Label("fixed"))
+            Row(spacing = 8)(Label("grown").grow, Label("fixed")),
+            // A Spacer in a *Column*: Grow is along the parent's main axis, so here it pushes
+            // "bottom" down to line up with the taller column beside it (review 2026-10-20, P1-4).
+            Row(spacing = 8)(
+              Column(spacing = 4)(Label("top"), Spacer(), Label("bottom")),
+              Column(spacing = 4)(Label("one"), Label("two"), Label("three"), Label("four"))
+            ),
+            // Start, Center and End, so a renderer that maps them wrongly — or not RTL-aware — shows it.
+            Label("Start", align = Alignment.Start),
+            Label("Center", align = Alignment.Center),
+            Label("End", align = Alignment.End)
           ),
           section("ZStack — children drawn over one another, last on top")(
             Row(spacing = 16)(
@@ -297,7 +309,8 @@ object Gallery {
             )
           ),
           section("Scroll — horizontal, inside a vertical one")(
-            Scroll(axis = Orientation.Horizontal)(
+            // Padded: on every platform the padding insets the content and scrolls with it.
+            Scroll(padding = 8, axis = Orientation.Horizontal)(
               Row(spacing = 8)(Seq.tabulate(12)(i => Label(s"col $i"))*)
             )
           ),

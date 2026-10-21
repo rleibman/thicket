@@ -148,6 +148,47 @@ final class GtkRenderer extends Renderer {
   }
 
   private val cssClasses = mutable.Map.empty[Ptr[GtkWidget], String]
+
+  /** Widgets with `Grow(true)`, and the padding each asked for. */
+  // Only widgets that set Grow, either way: one that never mentioned it keeps whatever expand
+  // flags it was created with (a LazyColumn's scroller fills its column by default).
+  private val grows = mutable.Map.empty[Ptr[GtkWidget], Boolean]
+  private val ownPadding = mutable.Map.empty[Ptr[GtkWidget], Int]
+
+  /** Indeterminate progress bars whose pulse timer is running. Leaving the set stops the timer. */
+  private val pulsing = mutable.Set.empty[Ptr[GtkWidget]]
+
+  /** Grow is "along the parent's main axis", so it can only be applied once the widget has a parent. It used to be
+    * `hexpand` and nothing else, so a `Spacer()` in a Column — or a grown list — did not grow at all (review
+    * 2026-10-20, P1-4). Expanding on the cross axis instead would propagate up and stretch the parent the wrong way.
+    */
+  private def applyGrow(handle: Ptr[GtkWidget]): Unit =
+    grows.get(handle).foreach { on =>
+      val parent = gtk_widget_get_parent(handle)
+      if parent != null && kinds.get(parent).exists(isLinear) then {
+        val vertical = gtk_orientable_get_orientation(parent.asInstanceOf[Ptr[GtkOrientable]]) ==
+          GtkOrientation.GTK_ORIENTATION_VERTICAL
+        gtk_widget_set_vexpand(handle, gbool(on && vertical))
+        gtk_widget_set_hexpand(handle, gbool(on && !vertical))
+      } else if !on then {
+        gtk_widget_set_vexpand(handle, gbool(false))
+        gtk_widget_set_hexpand(handle, gbool(false))
+      }
+    }
+
+  private def isLinear(k: WidgetKind): Boolean = k == WidgetKind.Column || k == WidgetKind.Row
+
+  private def scrollChildOf(scroll: Ptr[GtkWidget]): Option[Ptr[GtkWidget]] =
+    setterParent.collectFirst { case (child, p) if p == scroll => child }
+
+  /** A widget's margins: its own padding, plus its scroller's when it is a scroller's content. */
+  private def applyMargins(handle: Ptr[GtkWidget]): Unit = {
+    val dp = ownPadding.getOrElse(handle, 0) + setterParent.get(handle).flatMap(ownPadding.get).getOrElse(0)
+    gtk_widget_set_margin_top(handle, dp)
+    gtk_widget_set_margin_bottom(handle, dp)
+    gtk_widget_set_margin_start(handle, dp)
+    gtk_widget_set_margin_end(handle, dp)
+  }
   private def cssClassOf(h: Ptr[GtkWidget]): String = cssClasses(h)
 
   def platform: String = "gtk4"
@@ -537,12 +578,22 @@ final class GtkRenderer extends Renderer {
         val bar = handle.asInstanceOf[Ptr[GtkProgressBar]]
         value match {
           case Some(f) =>
+            pulsing -= handle
             gtk_progress_bar_set_fraction(bar, math.max(0.0, math.min(1.0, f)))
           case None =>
-            // GTK has no "indeterminate" flag: an indeterminate bar is one that is pulsed.
-            // Pulsing once at creation shows the block; the app is expected to be doing
-            // something, and a self-animating bar would need a timer per widget.
+            // GTK has no "indeterminate" flag: an indeterminate bar is one that is pulsed, and
+            // the contract says it animates — which is what tells it apart from 0. It used to
+            // pulse once (review 2026-10-20, P2-26). A timer per indeterminate bar, which stops
+            // itself once the bar is determinate again or destroyed.
             gtk_progress_bar_pulse(bar)
+            if !pulsing.contains(handle) then {
+              pulsing += handle
+              Handles.every(100) { () =>
+                val alive = pulsing.contains(handle)
+                if alive then gtk_progress_bar_pulse(bar)
+                alive
+              }
+            }
         }
 
       case Prop.OnTap(f) =>
@@ -689,7 +740,8 @@ final class GtkRenderer extends Renderer {
         }
 
       case Prop.Grow(v) =>
-        gtk_widget_set_hexpand(handle, gbool(v))
+        grows(handle) = v
+        applyGrow(handle)
 
       case Prop.Align(a) =>
         if kinds.get(handle).contains(WidgetKind.Label) then {
@@ -733,10 +785,13 @@ final class GtkRenderer extends Renderer {
         placeGridCells(handle)
 
       case Prop.Padding(dp) =>
-        gtk_widget_set_margin_top(handle, dp)
-        gtk_widget_set_margin_bottom(handle, dp)
-        gtk_widget_set_margin_start(handle, dp)
-        gtk_widget_set_margin_end(handle, dp)
+        ownPadding(handle) = dp
+        if kinds.get(handle).contains(WidgetKind.Scroll) then
+          // A scroller's padding insets its *content*, as on Android and Apple: it goes on the
+          // child, and scrolls with it. It used to be a margin on the scrolled window itself,
+          // outside the scrolling area (review 2026-10-20, P2-26).
+          scrollChildOf(handle).foreach(applyMargins)
+        else applyMargins(handle)
 
       case Prop.Enabled(v) =>
         gtk_widget_set_sensitive(handle, (if v then 1 else 0).asInstanceOf[sn.gnome.glib.internal.gboolean])
@@ -1059,6 +1114,7 @@ final class GtkRenderer extends Renderer {
       // A scrolled window holds one child, so "insert" is "set".
       gtk_scrolled_window_set_child(parent.asInstanceOf[Ptr[GtkScrolledWindow]], child)
       setterParent(child) = parent
+      applyMargins(child)
       return
     }
     val box = parent.asInstanceOf[Ptr[GtkBox]]
@@ -1066,6 +1122,7 @@ final class GtkRenderer extends Renderer {
       case None    => gtk_box_prepend(box, child)
       case Some(a) => gtk_box_insert_child_after(box, child, a)
     }
+    applyGrow(child)
   }
 
   def removeChild(
@@ -1198,6 +1255,9 @@ final class GtkRenderer extends Renderer {
       Handles.cssProvidersLive.decrementAndGet()
     }
     val _ = cssClasses.remove(handle)
+    val _ = grows.remove(handle)
+    pulsing -= handle
+    val _ = ownPadding.remove(handle)
     // A popover is parented to its widget, so it must be unparented before the widget
     // goes — GTK4 frees a widget's children with it, and the popover is not in the child
     // list the box knows about.

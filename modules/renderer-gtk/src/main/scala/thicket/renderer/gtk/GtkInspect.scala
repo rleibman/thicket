@@ -89,6 +89,19 @@ object GtkInspect {
 
   def isPicture(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_picture_get_type())
 
+  /** (hexpand, vexpand) as GTK has them. */
+  def expands(widget: Ptr[GtkWidget]): (Boolean, Boolean) =
+    (gtk_widget_get_hexpand(widget).asInstanceOf[CInt] != 0, gtk_widget_get_vexpand(widget).asInstanceOf[CInt] != 0)
+
+  /** The widget's start margin, which is where padding lands on GTK. */
+  def marginStart(widget: Ptr[GtkWidget]): Int = gtk_widget_get_margin_start(widget)
+
+  /** A label's horizontal alignment, 0.0 to 1.0. */
+  def labelXAlign(widget: Ptr[GtkWidget]): Float = gtk_label_get_xalign(widget.asInstanceOf[Ptr[GtkLabel]])
+
+  /** Repeating timers the renderer is running — an indeterminate progress bar holds one. */
+  def liveTimers: Int = Handles.repeatingCount
+
   /** The picture's content fit, by name, and whether it has something to paint. */
   def pictureState(widget: Ptr[GtkWidget]): (String, Boolean) = {
     val p = widget.asInstanceOf[Ptr[GtkPicture]]

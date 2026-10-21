@@ -313,6 +313,33 @@ private[gtk] object Handles {
 
   def cssParsingErrorPtr: CVoidPtr = CFuncPtr.toPtr(cssParsingError)
 
+  private val repeating = new ConcurrentHashMap[java.lang.Long, () => Boolean]()
+
+  def repeatingCount: Int = repeating.size
+
+  /** Runs `f` every `ms` on the main loop until it returns false; then its entry is released. */
+  def every(ms: Int)(f: () => Boolean): Unit = {
+    val id = nextId.getAndIncrement()
+    repeating.put(id, f)
+    val _ = sn.gnome.glib.internal.g_timeout_add(
+      scala.scalanative.unsigned.UnsignedRichInt(ms).toUInt.asInstanceOf[sn.gnome.glib.internal.guint],
+      sn.gnome.glib.internal.GSourceFunc(repeat),
+      idToPointer(id)
+    )
+  }
+
+  /** GSourceFunc: 1 keeps the source, 0 removes it. */
+  private val repeat: CFuncPtr1[gpointer, gboolean] =
+    CFuncPtr1.fromScalaFunction { (data: gpointer) =>
+      val id = pointerToId(data)
+      val keep = GcState.guardedOr(false) {
+        val f = repeating.get(id)
+        f != null && f()
+      }
+      if !keep then { val _ = repeating.remove(id) }
+      (if keep then 1 else 0).asInstanceOf[gint]
+    }
+
   /** `GWeakNotify`: (data, where_the_object_was). One-shot: an object is finalised once. */
   private val weakNotify: CFuncPtr2[gpointer, Ptr[Byte], Unit] =
     CFuncPtr2.fromScalaFunction {
