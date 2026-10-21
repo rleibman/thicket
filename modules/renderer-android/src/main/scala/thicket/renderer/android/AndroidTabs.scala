@@ -22,6 +22,7 @@ import _root_.android.view.{Gravity, View, ViewGroup}
 import _root_.android.widget.{FrameLayout, ImageView, LinearLayout, TextView}
 import scala.collection.mutable
 import thicket.renderer.Icon
+import thicket.signals.ErrorSink
 
 /** `TabView` on Android (#61): a content area and a bottom bar, built from framework views.
   *
@@ -143,7 +144,7 @@ final private[android] class AndroidTabs(
       val i = p.tabs.indexOf(tab)
       if i >= 0 && i != p.selected then {
         show(p, i)
-        p.onSelect.foreach(_(i))
+        p.onSelect.foreach(f => ErrorSink.catching(())(f(i)))
       }
     }
     item

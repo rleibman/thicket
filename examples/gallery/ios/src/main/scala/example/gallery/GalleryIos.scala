@@ -17,7 +17,8 @@
 package example.gallery
 
 import scala.scalanative.unsafe.exported
-import thicket.renderer.apple.{AppleApp, GcState}
+import thicket.core.GcState
+import thicket.renderer.apple.AppleApp
 
 /** The gallery on iOS (UIKit) — the same tree, the same renderer, a different entry shape.
   *

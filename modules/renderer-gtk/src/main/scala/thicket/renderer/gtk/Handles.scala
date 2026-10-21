@@ -19,6 +19,7 @@ package thicket.renderer.gtk
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import scala.scalanative.unsafe.*
+import thicket.core.GcState
 import scala.scalanative.runtime.{Intrinsics, fromRawPtr, toRawPtr}
 import sn.gnome.glib.internal.{gboolean, gint, gpointer}
 import sn.gnome.gtk4.internal.{GtkAlertDialog, gtk_alert_dialog_choose_finish}

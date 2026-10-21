@@ -16,8 +16,14 @@
 
 package example.gallery
 
+import java.util.concurrent.atomic.AtomicBoolean
+import scala.collection.mutable
+import scala.scalanative.unsafe.Ptr
+import sn.gnome.gtk4.internal.GtkWidget
+import thicket.core.GcState
 import thicket.renderer.Icon
 import thicket.renderer.gtk.{GtkApp, GtkIcons, GtkInspect}
+import thicket.signals.ErrorSink
 
 /** The gallery on GTK4.
   *
@@ -77,6 +83,7 @@ object GalleryGtk {
       "Provide — a theme scoped to one subtree",
       "SafeArea — a prop, because no toolkit models it as a widget",
       "BuildInfo — this module's own, from git",
+      "Errors — a handler that throws is reported, and the app carries on",
       "Presented — Sheet and Alert are shown over the app, never inserted"
     ).foreach(h => check(s"section is on screen: $h", texts.contains(h)))
 
@@ -394,6 +401,8 @@ object GalleryGtk {
       !texts.contains("A presented container with a live subtree inside it.")
     )
 
+    robustness(root)
+
     // The gallery styles more widgets than any other screen, so it is the best place to
     // notice a stylesheet GTK cannot parse (#30).
     check(
@@ -404,6 +413,81 @@ object GalleryGtk {
 
     if failures == 0 then println(s"[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
+  }
+
+  /** Host → Scala entry points under stress (review 2026-10-20, P0-2 and P0-3). */
+  private def robustness(root: Ptr[GtkWidget]): Unit = {
+    // The self-test itself runs in a `postToUi` callback, one level into Scala.
+    check("the self-test runs one level into Scala", GcState.scalaDepth == 1, GcState.scalaDepth.toString)
+
+    // A setter that emits its signal synchronously runs the renderer's trampoline inside
+    // this frame. Before `guarded` counted depth, the inner exit marked the thread Unmanaged
+    // with this frame still running, so a collection on another thread skipped its roots.
+    // Here a worker collects continuously while the main thread drives that nested path and
+    // allocates; every string it keeps must come back intact.
+    val entry = GtkInspect.findAll(root)(GtkInspect.isEntry).find(e => GtkInspect.entryVisible(e))
+    check("there is a plain entry to drive", entry.nonEmpty)
+    entry.foreach { e =>
+      val stop = AtomicBoolean(false)
+      val collector = Thread(() =>
+        while !stop.get() do {
+          val _ = Array.fill(2048)(new Array[Byte](64))
+          System.gc()
+        }
+      )
+      collector.start()
+      val kept = mutable.ArrayBuffer.empty[String]
+      var deepest = 0
+      for i <- 0 until 3000 do {
+        GtkInspect.setEntryText(e, s"gc $i")
+        deepest = deepest max GcState.scalaDepth
+        kept += ("kept " * 8) + i
+      }
+      stop.set(true)
+      collector.join()
+      check("a nested signal leaves the thread in Scala", GcState.scalaDepth == 1, GcState.scalaDepth.toString)
+      check("and never drops it out", deepest == 1, deepest.toString)
+      val corrupt = kept.zipWithIndex.count(
+        (
+          s,
+          i
+        ) => s != ("kept " * 8) + i
+      )
+      check("3000 strings kept across collections on another thread survive", corrupt == 0, s"$corrupt corrupt")
+      check(
+        "and the last write reached the app",
+        GtkInspect.allTexts(root).contains("You typed: gc 2999"),
+        GtkInspect.allTexts(root).filter(_.startsWith("You typed")).toString
+      )
+      GtkInspect.setEntryText(e, "")
+    }
+
+    // A handler that throws: reported, not unwound through GTK, and the app carries on.
+    val reported = mutable.ArrayBuffer.empty[Throwable]
+    val previous = ErrorSink.installed
+    ErrorSink.install(e => reported += e)
+    GtkInspect
+      .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Throw from a handler"))
+      .headOption.foreach(GtkInspect.click)
+    ErrorSink.install(previous)
+    check(
+      "a handler's exception reaches ErrorSink",
+      reported.map(_.getMessage).toList == List(Gallery.deliberate),
+      reported.toString
+    )
+    check(
+      "and the thread is back in the loop's hands afterwards",
+      GcState.scalaDepth == 1,
+      GcState.scalaDepth.toString
+    )
+    GtkInspect
+      .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Select first"))
+      .headOption.foreach(GtkInspect.click)
+    check(
+      "and the next click still works",
+      GtkInspect.allTexts(root).contains("Showing a Day"),
+      GtkInspect.allTexts(root).filter(_.startsWith("Showing")).toString
+    )
   }
 
   def main(args: Array[String]): Unit = {

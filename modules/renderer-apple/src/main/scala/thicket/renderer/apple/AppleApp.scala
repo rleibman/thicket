@@ -17,7 +17,7 @@
 package thicket.renderer.apple
 
 import scala.scalanative.unsafe.*
-import thicket.core.{AppRoot, Mounted, NavPage, Reconciler}
+import thicket.core.{AppRoot, GcState, Mounted, NavPage, Reconciler}
 import thicket.signals.{Owner, Signal, ThreadGuard}
 
 /** Hosts an element tree in an AppKit window.

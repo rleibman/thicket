@@ -17,7 +17,7 @@
 package thicket.renderer.gtk
 
 import scala.scalanative.unsafe.*
-import thicket.core.{AppRoot, Reconciler}
+import thicket.core.{AppRoot, GcState, Reconciler}
 import thicket.signals.{Owner, Signal, ThreadGuard, Tracking}
 import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.*
@@ -419,7 +419,9 @@ object GtkApp {
     // From here the GTK main loop owns this thread, so Scala must not look Managed to the
     // GC while it is parked in poll() (S3).
     GcState.releaseMainThread()
-    g_application_run(app.asInstanceOf[Ptr[GApplication]], 0, null)
+    val status = g_application_run(app.asInstanceOf[Ptr[GApplication]], 0, null)
+    GcState.reacquireMainThread()
+    status
   }
 
 }

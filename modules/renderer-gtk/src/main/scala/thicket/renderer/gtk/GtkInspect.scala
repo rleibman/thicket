@@ -168,6 +168,16 @@ object GtkInspect {
       )
     )
 
+  /** Sets an entry's text the way the renderer does, with `gtk_editable_set_text`. GTK emits "changed" before this
+    * returns, so the renderer's handler runs *inside* the caller's Scala frame — the nested host → Scala entry that
+    * `GcState.guarded` must survive.
+    */
+  def setEntryText(
+    widget: Ptr[GtkWidget],
+    text:   String
+  ): Unit =
+    Zone(gtk_editable_set_text(widget.asInstanceOf[Ptr[GtkEditable]], toCString(text)))
+
   def hasCssClass(
     widget: Ptr[GtkWidget],
     name:   String

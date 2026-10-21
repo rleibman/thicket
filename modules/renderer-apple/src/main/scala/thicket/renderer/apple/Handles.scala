@@ -19,6 +19,7 @@ package thicket.renderer.apple
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import scala.scalanative.unsafe.*
+import thicket.core.GcState
 
 /** `Long` id -> closure, because a C function pointer cannot carry one (S4), and an `int64_t` context avoids the `Long`
   * <-> `Ptr` laundering a `void*` forces (S7).
@@ -164,7 +165,7 @@ object Handles {
         index:    CInt,
         recycled: Shim.Handle
       ) =>
-        GcState.guarded {
+        GcState.guardedOr(null.asInstanceOf[Shim.Handle]) {
           val f = rows.get(id)
           if f == null then null.asInstanceOf[Shim.Handle]
           else f(index, if recycled == null then None else Some(recycled))

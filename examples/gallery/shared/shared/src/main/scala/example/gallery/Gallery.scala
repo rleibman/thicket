@@ -106,6 +106,9 @@ object Gallery {
   val repoUrl:    String = "https://github.com/rleibman/thicket"
   val licenceUrl: String = "https://www.apache.org/licenses/LICENSE-2.0"
 
+  /** The message of the exception the "Throw from a handler" button raises, so a self-test can tell it apart. */
+  val deliberate: String = "deliberate, from the gallery's Errors section"
+
   /** The picker's options. On the object so the self-test can name them. */
   val fruit: Seq[String] = Seq("Apple", "Banana", "Cherry")
 
@@ -322,6 +325,11 @@ object Gallery {
               emphasis = Emphasis.Secondary
             ),
             Label(s"built ${BuildInfo.builtAtString}", style = TextRole.Caption, emphasis = Emphasis.Secondary)
+          ),
+          // A handler that throws must not take the app down: the renderer reports it to
+          // ErrorSink and returns to the toolkit normally (review 2026-10-20, P0-3).
+          section("Errors — a handler that throws is reported, and the app carries on")(
+            Button("Throw from a handler")(throw RuntimeException(Gallery.deliberate))
           ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(

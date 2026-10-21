@@ -51,6 +51,7 @@ import android.widget.{
 }
 import scala.collection.mutable
 import thicket.renderer.*
+import thicket.signals.ErrorSink
 
 /** Android implementation of [[Renderer]], over `android.view.*`.
   *
@@ -289,7 +290,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
                 c: Int
               ):                                 Unit = ()
               def afterTextChanged(s: Editable): Unit =
-                if !suppress.contains(handle) then f(s.toString)
+                if !suppress.contains(handle) then appCallback(f(s.toString))
             })
           case _ => ()
         }
@@ -313,7 +314,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
                 _:       CompoundButton,
                 checked: Boolean
               ) =>
-                if !suppress.contains(handle) then f(checked)
+                if !suppress.contains(handle) then appCallback(f(checked))
             }
           case _ => ()
         }
@@ -581,7 +582,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
             if checkedId != -1 && !suppress.contains(group) then {
               val i = group.indexOfChild(group.findViewById[View](checkedId))
               segmentIndex(group) = i
-              f(i)
+              appCallback(f(i))
             }
         }
 
@@ -636,7 +637,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
                 view:     View,
                 position: Int,
                 id:       Long
-              ): Unit = if !suppress.contains(s) then f(position)
+              ): Unit = if !suppress.contains(s) then appCallback(f(position))
 
               def onNothingSelected(parent: AdapterView[?]): Unit = ()
 
@@ -655,7 +656,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
               ): Unit = {
                 if !suppress.contains(bar) then {
                   val (min, max) = ranges.getOrElse(bar, (0.0, 1.0))
-                  f(min + (progress.toDouble / SliderSteps) * (max - min))
+                  appCallback(f(min + (progress.toDouble / SliderSteps) * (max - min)))
                 }
               }
               def onStartTrackingTouch(bar: SeekBar): Unit = ()
@@ -688,7 +689,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
           // `android.view` resolves to the wrong thing — the same trap as `_root_.android.R`.
           menu.setOnMenuItemClickListener { (mi: _root_.android.view.MenuItem) =>
             items.lift(mi.getItemId) match {
-              case Some(item) => item.onSelect(); true
+              case Some(item) => appCallback(item.onSelect()); true
               case None       => false
             }
           }
@@ -813,7 +814,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
           case b: Button => b.setText(formatDate(chosen))
           case _ => ()
         }
-        dateChanged.get(field).foreach(_(chosen))
+        appCallback(dateChanged.get(field).foreach(_(chosen)))
       },
       d.year,
       d.month - 1,
@@ -876,8 +877,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
     */
   private def connectTap(handle: View): Unit =
     handle.setOnClickListener { (_: View) =>
-      appTaps.get(handle).foreach(_())
-      links.get(handle).foreach(url => AndroidRenderer.urlOpener(context, url))
+      appCallback {
+        appTaps.get(handle).foreach(_())
+        links.get(handle).foreach(url => AndroidRenderer.urlOpener(context, url))
+      }
     }
 
   /** Each ZStack's gravity, so a child inserted later is placed like the ones already there. */
@@ -1073,7 +1076,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     b.setView(handle)
     // Back gesture and tapping outside, which is what OnDismiss means. Not fired by
     // `dismiss()`, so an app-initiated take-down stays distinguishable.
-    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => f()))
+    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => appCallback(f())))
     val d = b.create()
     sheetShowing(handle) = d
     d.show()
@@ -1096,7 +1099,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       (
         _: DialogInterface,
         _: Int
-      ) => a.onSelect()
+      ) => appCallback(a.onSelect())
 
     rest.headOption.foreach(a => b.setPositiveButton(a.label, listener(a)))
     cancel.foreach(a => b.setNegativeButton(a.label, listener(a)))
@@ -1105,7 +1108,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
     // Dismissal without a choice: back gesture or a tap outside. `setOnCancelListener`
     // fires for exactly those and not for a button, which is the distinction Prop.OnDismiss
     // exists to preserve.
-    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => f()))
+    alertDismiss.get(handle).foreach(f => b.setOnCancelListener((_: DialogInterface) => appCallback(f())))
 
     val d = b.create()
     alertShowing(handle) = d
@@ -1140,7 +1143,7 @@ final class AndroidRenderer(context: Context) extends Renderer {
       ): View =
         // Handing `convertView` back to the framework is what turns a scroll into a few
         // property writes: it re-binds that row's signal rather than building widgets.
-        source.bind(position, Option(convertView))
+        ErrorSink.catching(View(context))(source.bind(position, Option(convertView)))
     }
 
     list.setAdapter(adapter)
@@ -1149,10 +1152,15 @@ final class AndroidRenderer(context: Context) extends Renderer {
     list
   }
 
+  /** Every call into app code from a listener goes through here: an exception escaping an Android listener kills the
+    * process, so it is reported to `ErrorSink` instead (review 2026-10-20, P0-3).
+    */
+  inline private def appCallback(inline body: Unit): Unit = ErrorSink.catching(())(body)
+
   def runOnUiThread(f: () => Unit): Unit =
-    if Looper.myLooper eq Looper.getMainLooper then f()
+    if Looper.myLooper eq Looper.getMainLooper then appCallback(f())
     else {
-      val _ = mainHandler.post(() => f())
+      val _ = mainHandler.post(() => appCallback(f()))
     }
 
 }
