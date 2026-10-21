@@ -253,8 +253,20 @@ object Abi {
       "UIButton(",
       "image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit"
     ),
-    Kind(24, "TabView", None, None, "reserved for the Mac (#69): UITabBarController / NSTabViewController"),
-    Kind(25, "Tab", None, None, "reserved for the Mac (#69): one tab of a TabView")
+    built(
+      24,
+      "TabView",
+      "TabHostView(",
+      "TabHostView(",
+      "an NSTabViewController, segmented control on top / a UITabBarController, a child controller"
+    ),
+    built(
+      25,
+      "Tab",
+      "TabPage(",
+      "TabPage(",
+      "one tab: holds its one child; the title and symbol go on the item"
+    )
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of
@@ -437,10 +449,13 @@ object Abi {
   val picker: List[Fn] = List(
     setter("sui_picker_clear_options"),
     setter("sui_picker_add_option", "label" -> Str),
-    setter("sui_set_selected", "index" -> I32).copy(doc = "-1 for no selection."),
+    setter("sui_set_selected", "index" -> I32)
+      .copy(doc = "-1 for no selection. On a TabView, -1 or an index past the end leaves the tab shown."),
     Fn("sui_get_selected", I32, List(p("h", Handle))),
     setter("sui_on_select", "cb" -> IntCb, "ctx" -> I64)
-      .copy(doc = "The index the user chose.")
+      .copy(doc =
+        "The index the user chose. Never fired for the app's own selection, nor a TabView's insert or remove."
+      )
   )
 
   /** A `ZStack`'s placement of its children, on both axes. `0` start, `1` centre, `2` end — the order of the contract's
@@ -577,7 +592,8 @@ object Abi {
       "sui_option_count",
       I32,
       List(p("h", Handle)),
-      doc = "How many options a Picker or SegmentedControl holds, as the platform's control has them."
+      doc = "How many options a Picker or SegmentedControl holds, as the platform's control has them;\n" +
+        "   for a TabView, the items in its tab bar."
     ),
     Fn("sui_option_label", Str, List(p("h", Handle), p("index", I32))),
     Fn(
@@ -585,7 +601,22 @@ object Abi {
       I32,
       List(p("h", Handle), p("index", I32)),
       doc = "Chooses option `index` through the control's own action, as a user would. 0 where the\n" +
-        "   platform offers no way to do that from code (UIKit's menu-backed Picker)."
+        "   platform offers no way to do that from code (UIKit's menu-backed Picker). A TabView's\n" +
+        "   item is chosen through its tab bar."
+    ),
+    Fn(
+      "sui_option_symbol",
+      Str,
+      List(p("h", Handle), p("index", I32)),
+      doc = "The SF Symbol a TabView's bar shows for item `index`, or NULL when it shows none that\n" +
+        "   resolved."
+    ),
+    Fn(
+      "sui_tab_shown",
+      Handle,
+      List(p("h", Handle)),
+      doc = "The Tab a TabView's controller has on screen: its selected item's view, and only while\n" +
+        "   that view is in the window. NULL when none is."
     ),
     Fn(
       "sui_choose_date",
