@@ -72,6 +72,46 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **Apple: `SafeArea` is added to `Padding` once the view is in a window, a
+  `Scroll`'s padding is its content inset, a horizontal `Scroll` has one height constraint,
+  and an AppKit container taps on release** (#76; review 2026-10-20 P1-18, P2-26, R-M8, L1,
+  L4, L10). Both shims keep, per container, the app's padding and the edges `SafeArea` chose,
+  and write their sum — `NSStackView.edgeInsets` / `UIStackView.layoutMargins`, a Grid's
+  insets, `NSScrollView.contentInsets` / `UIScrollView.contentInset` — when either prop is set,
+  when the view enters a window, and when the safe area changes (`safeAreaInsetsDidChange` on
+  UIKit; `layout()` on AppKit, which has no such callback). The old code read the insets at
+  mount, from a detached view, where they are zero. **UIKit roots are pinned to the view's
+  edges, not its safe area**, so an edge the app did not choose runs under the chrome as the
+  prop says; stacks set `insetsLayoutMarginsFromSafeArea = false` and scrollers
+  `contentInsetAdjustmentBehavior = .never`, which otherwise add the whole safe area
+  unasked. **A page's view controller does not extend under the navigation bar**
+  (`edgesForExtendedLayout = []`): the bar is the app's chrome, put there by `Screen.title`,
+  as an Android screen starts below its action bar; `SafeArea` is about the system's (status
+  bar without a bar, home indicator, notch). A horizontal `Scroll`'s height is one constraint
+  tied to its content, `scroll.height == content.height + top + bottom insets`, replaced with
+  the child — it was a constant added per child. AppKit's `TapView` claims the press on
+  mouse-down and fires on mouse-up only inside its bounds. The gallery's screen `Scroll` now
+  carries the padding (16) itself, so the one view with `.safeArea()` has both; its horizontal
+  `Scroll`'s child can be swapped for a taller one; and it has a tappable `Row`.
+  **Measured** (gallery self-test, new ABI read-backs `sui_get_insets`, `sui_get_safe_area`,
+  `sui_height_constraint_count`, `sui_send_mouse`, and the test-only `sui_set_extra_safe_area`
+  that adds `additionalSafeAreaInsets` at the root): macOS 27 — the screen's safe area is
+  **(0, 0, 0, 0)** in a titled window, insets 16 on every edge; with 40 top and 24 bottom added
+  the insets go to **56 / 40** and the content moves to y = 56, and back. iPhone 17e simulator
+  — safe area **(top 0, bottom 34)** below the navigation bar, insets **(16, 16, 50, 16)**;
+  with the extra, safe area (40, 58), insets (56, 74). Horizontal `Scroll(padding = 8)`:
+  content at (8, 8) on both; scroller **32 = 16 + 16** tall on macOS and **36.3 = 20.3 + 16**
+  on iOS, then **48 / 58.3** after its child is replaced by a two-line one, and back, with
+  **1** height constraint throughout. AppKit tap, through `NSWindow.sendEvent`: press alone 0
+  taps, release inside 1, press dragged 40 pt off and released outside still 1. UIKit has no
+  public way to synthesise a touch; its container tap is a `UITapGestureRecognizer`, already
+  on touch-up — not exercised. **Controls**, each reverted and the check seen to fail: the
+  safe area written over the padding (macOS 3 checks, iOS 4: insets 0/34 instead of 16/50);
+  the insets read only from a detached view (macOS 1, iOS 4: bottom 16 instead of 50); a
+  `Scroll`'s padding dropped (macOS 8); the old constant per child (macOS 4: 2 then 3 height
+  constraints, `NSGenericException: layout constraints are not satisfiable`, the scroller
+  still 16 tall over 32 of content); firing on mouse-down (2: 1 tap from a press, 2 after a drag-off).
+
 - 2026-10-21 — **D9 on Apple: an unbuilt kind is a labelled placeholder, a named failure
   under self-test, and Objective-C exceptions keep their reason** (#74, #72). shim-gen now
   generates `ShimKind.unbuilt` from the `None`s in `Abi.kinds` (today `{24, 25}`, TabView and

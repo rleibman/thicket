@@ -193,13 +193,13 @@ object Abi {
   ) = Kind(code, name, Some(appKit), Some(uiKit), comment)
 
   val kinds: List[Kind] = List(
-    built(0, "Column", "TapView(", "UIStackView("),
-    built(1, "Row", "TapView(", "UIStackView("),
+    built(0, "Column", "TapView(", "StackView("),
+    built(1, "Row", "TapView(", "StackView("),
     built(2, "Label", "NSTextField(labelWithString:", "UILabel(", "AppKit has no label class"),
     built(3, "Button", "NSButton(title:", "UIButton(type:"),
     built(4, "TextField", "NSTextField(string:", "UITextField("),
     built(5, "Checkbox", "NSButton(checkboxWithTitle:", "UISwitch(", "UIKit has no checkbox"),
-    built(6, "Scroll", "NSScrollView(", "UIScrollView(", "vertical"),
+    built(6, "Scroll", "ScrollView(", "ScrollView(", "vertical"),
     built(7, "Divider", "NSBox(", "UIView(", "the shims' default: branch"),
     built(8, "Image", "ImageView(", "UIImageView("),
     built(9, "Toggle", "NSSwitch(", "UISwitch(", "no label: the caption is a sibling"),
@@ -208,7 +208,7 @@ object Abi {
     built(12, "ActivityIndicator", "NSProgressIndicator(", "UIActivityIndicatorView(", "spins while mounted"),
     built(13, "Slider", "NSSlider(", "UISlider("),
     built(14, "SecureField", "NSSecureTextField(", "UITextField(", "isSecureTextEntry on UIKit"),
-    built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create"),
+    built(15, "ScrollHorizontal", "ScrollView(", "ScrollView(", "the axis is read at create"),
     built(16, "Alert", "AlertView(", "AlertView(", "a placeholder; NSAlert / UIAlertController at present"),
     built(17, "Sheet", "SheetView(", "SheetView(", "a container; a sheet window / a presented controller"),
     built(
@@ -626,6 +626,40 @@ object Abi {
       List(p("h", Handle), p("child", Handle), p("outRow", OutF64), p("outColumn", OutF64)),
       doc = "Where a Grid has placed a child: the NSGridView's own row and column on AppKit, the\n" +
         "   construction's on UIKit. 0 when the child is not one of its cells."
+    ),
+    Fn(
+      "sui_height_constraint_count",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many active constraints, the renderer's own, are on a view's height — held by the\n" +
+        "   view or any ancestor. A horizontal Scroll has exactly one (#76)."
+    ),
+    Fn(
+      "sui_get_insets",
+      Void,
+      List(p("h", Handle), p("outTop", OutF64), p("outLeft", OutF64), p("outBottom", OutF64), p("outRight", OutF64)),
+      doc = "The insets the platform holds for a container: a stack's edge insets or layout margins,\n" +
+        "   a Grid's, a Scroll's content insets. Padding plus any safe area. Zeros for anything else."
+    ),
+    Fn(
+      "sui_get_safe_area",
+      Void,
+      List(p("h", Handle), p("outTop", OutF64), p("outLeft", OutF64), p("outBottom", OutF64), p("outRight", OutF64)),
+      doc = "A view's `safeAreaInsets`, as the platform reports them now."
+    ),
+    Fn(
+      "sui_set_extra_safe_area",
+      Void,
+      List(p("top", F64), p("left", F64), p("bottom", F64), p("right", F64)),
+      doc = "Test only: adds safe area to the root — `additionalSafeAreaInsets` on the root view\n" +
+        "   (AppKit) or its view controller (UIKit) — so a self-test can watch the insets arrive."
+    ),
+    Fn(
+      "sui_send_mouse",
+      I32,
+      List(p("h", Handle), p("kind", I32), p("x", F64), p("y", F64)),
+      doc = "AppKit: sends a left-button event through the window at (x, y) in `h`, top-left origin:\n" +
+        "   kind 0 down, 1 dragged, 2 up. UIKit: 0, there is no public way to synthesise a touch."
     ),
     Fn(
       "sui_record_opened_urls",

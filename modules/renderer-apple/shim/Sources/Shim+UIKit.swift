@@ -139,6 +139,119 @@ private final class Proxy: NSObject {
 
 private let proxy = Proxy()
 
+/// Kinds 0 and 1, a `Column` or `Row`: a stack that hears about its safe area (#76).
+private final class StackView: UIStackView {
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    // Its margins are the padding plus the edges `SafeArea` chose, and nothing else: left on,
+    // UIKit would add the whole safe area to them as well, chosen or not.
+    insetsLayoutMarginsFromSafeArea = false
+  }
+
+  required init(coder: NSCoder) { fatalError("not used") }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    refreshInsets(self)
+  }
+
+  override func safeAreaInsetsDidChange() {
+    super.safeAreaInsetsDidChange()
+    refreshInsets(self)
+  }
+}
+
+/// Kinds 6 and 15, a `Scroll`. Its own class for the safe-area hooks and for the constraints
+/// that depend on its insets — the content's cross-axis tie, and a horizontal scroller's one
+/// height constraint (#76).
+private final class ScrollView: UIScrollView {
+  /// Vertical: the content's width, the frame's less the side insets. Horizontal: the
+  /// scroller's height, the content's plus the top and bottom insets. One per scroller,
+  /// replaced with the content and updated with the insets.
+  var tie: NSLayoutConstraint?
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    // The insets are the padding plus the edges `SafeArea` chose. `.automatic` would add the
+    // whole safe area to every scroller, chosen or not.
+    contentInsetAdjustmentBehavior = .never
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  func setInsets(_ e: UIEdgeInsets) {
+    let old = contentInset
+    // At the start before, at the start after: the padding is where the content begins.
+    let atStart = abs(contentOffset.x + old.left) < 0.5 && abs(contentOffset.y + old.top) < 0.5
+    contentInset = e
+    retie()
+    if atStart { contentOffset = CGPoint(x: -e.left, y: -e.top) }
+  }
+
+  func retie() {
+    let e = contentInset
+    tie?.constant = isHorizontalScroller(self) ? e.top + e.bottom : -(e.left + e.right)
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    refreshInsets(self)
+  }
+
+  override func safeAreaInsetsDidChange() {
+    super.safeAreaInsetsDidChange()
+    refreshInsets(self)
+  }
+}
+
+// MARK: - padding and the safe area (#76)
+
+/// What a container's insets are made of: the app's `Padding`, plus the safe-area insets on
+/// the edges `SafeArea` chose. Kept per view, so that each can change without losing the
+/// other — the safe area used to be written over the padding (review M8).
+private struct InsetState {
+  var padding: CGFloat = 0
+  var edges: Int32 = 0
+  var applied: UIEdgeInsets?
+}
+
+private var insetStates: [ObjectIdentifier: InsetState] = [:]
+
+/// The safe-area insets on the chosen edges; zero until the view is in a window. Leading and
+/// trailing are resolved against the view's layout direction.
+private func safeInsets(_ v: UIView, _ edges: Int32) -> UIEdgeInsets {
+  guard edges != 0, v.window != nil else { return .zero }
+  let i = v.safeAreaInsets
+  let rtl = v.effectiveUserInterfaceLayoutDirection == .rightToLeft
+  return UIEdgeInsets(
+    top: (edges & 1) != 0 ? i.top : 0,
+    left: (edges & (rtl ? 8 : 4)) != 0 ? i.left : 0,
+    bottom: (edges & 2) != 0 ? i.bottom : 0,
+    right: (edges & (rtl ? 4 : 8)) != 0 ? i.right : 0
+  )
+}
+
+/// Writes padding + safe area to the view, if it changed: when either prop is set, when the
+/// view enters a window, and when UIKit says its safe area changed.
+private func refreshInsets(_ v: UIView) {
+  let id = ObjectIdentifier(v)
+  guard var st = insetStates[id] else { return }
+  let s = safeInsets(v, st.edges)
+  let p = st.padding
+  let e = UIEdgeInsets(top: p + s.top, left: p + s.left, bottom: p + s.bottom, right: p + s.right)
+  if st.applied == e { return }
+  st.applied = e
+  insetStates[id] = st
+  switch v {
+  case let g as GridView: g.insets = e
+  case let s as ScrollView: s.setInsets(e)
+  case let s as UIStackView:
+    s.isLayoutMarginsRelativeArrangement = true
+    s.layoutMargins = e
+  default: break
+  }
+}
+
 /// An alert's handle. `UIAlertController` is a view *controller*, presented rather than
 /// attached, so the handle is a placeholder holding its configuration until `sui_present`.
 private final class AlertView: UIView {
@@ -262,7 +375,9 @@ private final class GridView: UIView {
   var spacing: CGFloat = 0 {
     didSet { relayout() }
   }
-  var padding: CGFloat = 0 {
+  /// Padding plus any safe area, per edge (#76); absolute, resolved to leading and trailing
+  /// against the layout direction when laid out.
+  var insets: UIEdgeInsets = .zero {
     didSet { relayout() }
   }
   private(set) var cells: [UIView] = []
@@ -298,13 +413,29 @@ private final class GridView: UIView {
     cells.firstIndex(of: c).map { ($0 / columns, $0 % columns) }
   }
 
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    refreshInsets(self)
+  }
+
+  override func safeAreaInsetsDidChange() {
+    super.safeAreaInsetsDidChange()
+    refreshInsets(self)
+  }
+
   private func relayout() {
+    let rtl = effectiveUserInterfaceLayoutDirection == .rightToLeft
+    let lead = rtl ? insets.right : insets.left
+    let trail = rtl ? insets.left : insets.right
     NSLayoutConstraint.deactivate(laid)
     guides.forEach(removeLayoutGuide)
     laid = []
     guides = []
     guard !cells.isEmpty else {
-      laid = [widthAnchor.constraint(equalToConstant: 2 * padding), heightAnchor.constraint(equalToConstant: 2 * padding)]
+      laid = [
+        widthAnchor.constraint(equalToConstant: lead + trail),
+        heightAnchor.constraint(equalToConstant: insets.top + insets.bottom)
+      ]
       NSLayoutConstraint.activate(laid)
       return
     }
@@ -329,7 +460,7 @@ private final class GridView: UIView {
     for (j, g) in cols.enumerated() {
       cs.append(
         j == 0
-          ? g.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding)
+          ? g.leadingAnchor.constraint(equalTo: leadingAnchor, constant: lead)
           : g.leadingAnchor.constraint(equalTo: cols[j - 1].trailingAnchor, constant: spacing)
       )
       cs.append(weakly(g.widthAnchor.constraint(equalToConstant: 0)))
@@ -337,7 +468,7 @@ private final class GridView: UIView {
     for (i, g) in rows.enumerated() {
       cs.append(
         i == 0
-          ? g.topAnchor.constraint(equalTo: topAnchor, constant: padding)
+          ? g.topAnchor.constraint(equalTo: topAnchor, constant: insets.top)
           : g.topAnchor.constraint(equalTo: rows[i - 1].bottomAnchor, constant: spacing)
       )
       cs.append(weakly(g.heightAnchor.constraint(equalToConstant: 0)))
@@ -349,12 +480,12 @@ private final class GridView: UIView {
       return [floor, edge]
     }
     cs += hug(
-      trailingAnchor.constraint(equalTo: cols[width - 1].trailingAnchor, constant: padding),
-      trailingAnchor.constraint(greaterThanOrEqualTo: cols[width - 1].trailingAnchor, constant: padding)
+      trailingAnchor.constraint(equalTo: cols[width - 1].trailingAnchor, constant: trail),
+      trailingAnchor.constraint(greaterThanOrEqualTo: cols[width - 1].trailingAnchor, constant: trail)
     )
     cs += hug(
-      bottomAnchor.constraint(equalTo: rows[height - 1].bottomAnchor, constant: padding),
-      bottomAnchor.constraint(greaterThanOrEqualTo: rows[height - 1].bottomAnchor, constant: padding)
+      bottomAnchor.constraint(equalTo: rows[height - 1].bottomAnchor, constant: insets.bottom),
+      bottomAnchor.constraint(greaterThanOrEqualTo: rows[height - 1].bottomAnchor, constant: insets.bottom)
     )
     // Leading and top, inside the guides: a guide is pushed out to its largest cell, and a
     // smaller cell keeps its own size rather than being stretched.
@@ -416,6 +547,18 @@ public func sui_set_root_view(_ h: UnsafeMutableRawPointer) {
   // The host calls this before any Scala runs, so every later exception is logged.
   logObjCExceptions()
   rootView = view(h)
+  hostController().map(noExtendedLayout)
+}
+
+/// A screen starts below its navigation bar, as an Android screen starts below its action bar:
+/// the bar is the app's own chrome, which `Screen.title` put there, not the system's. So a
+/// page's view controller does not extend under it, and what `SafeArea` keeps content clear
+/// of is the system's — the status bar when there is no bar, the home indicator, a notch (#76).
+private func noExtendedLayout(_ vc: UIViewController) {
+  vc.edgesForExtendedLayout = []
+  // Behind a bar the content no longer runs under is the navigation controller's own view,
+  // which has no colour: a transparent bar over it showed black, with a black title.
+  vc.navigationController?.view.backgroundColor = .systemBackground
 }
 
 @_cdecl("sui_app_start")
@@ -467,7 +610,7 @@ public func sui_window_set_title(_ title: UnsafePointer<CChar>) {
 public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   switch kind {
   case 0, 1:
-    let s = UIStackView()
+    let s = StackView()
     s.axis = (kind == 0) ? .vertical : .horizontal
     s.alignment = (kind == 0) ? .fill : .center
     s.distribution = .fill
@@ -503,13 +646,13 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     return retained(sw)
 
   case 6:
-    let s = UIScrollView()
+    let s = ScrollView()
     s.alwaysBounceVertical = true
     return retained(s)
 
   case 15:
     // The same class as 6, scrolling the other way.
-    let s = UIScrollView()
+    let s = ScrollView()
     s.alwaysBounceHorizontal = true
     s.showsHorizontalScrollIndicator = true
     s.showsVerticalScrollIndicator = false
@@ -630,6 +773,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   dateChanges.removeValue(forKey: id)
   links.removeValue(forKey: id)
   symbols.removeValue(forKey: id)
+  insetStates.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
   valueChanges.removeValue(forKey: id)
@@ -718,11 +862,12 @@ public func sui_set_spacing(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
 
 @_cdecl("sui_set_padding")
 public func sui_set_padding(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
-  if let g = view(h) as? GridView { g.padding = CGFloat(dp); return }
-  guard let s = view(h) as? UIStackView else { return }
-  let p = CGFloat(dp)
-  s.isLayoutMarginsRelativeArrangement = true
-  s.directionalLayoutMargins = NSDirectionalEdgeInsets(top: p, leading: p, bottom: p, trailing: p)
+  // A stack's and a grid's padding is around their children; a scroller's insets its content,
+  // which scrolls with it, as on GTK and Android (#76: it used to be dropped here).
+  let v = view(h)
+  guard v is UIStackView || v is GridView || v is ScrollView else { return }
+  insetStates[ObjectIdentifier(v), default: InsetState()].padding = CGFloat(dp)
+  refreshInsets(v)
 }
 
 @_cdecl("sui_set_grid_columns")
@@ -1041,22 +1186,23 @@ public func sui_on_date_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui
 
 @_cdecl("sui_set_safe_area")
 public func sui_set_safe_area(_ h: UnsafeMutableRawPointer, _ edges: Int32) {
-  let v = view(h)
-  // UIKit already lays out against the safe area when asked, so this is the one place the
-  // platform does most of the work: pin the content to safeAreaLayoutGuide on the chosen
-  // edges. Where an edge is not chosen, the content is free to run under the chrome, which
-  // is what an app wants for a scrolling list behind the home indicator.
-  v.insetsLayoutMarginsFromSafeArea = false
-  let i = v.safeAreaInsets
-  let rtl = v.effectiveUserInterfaceLayoutDirection == .rightToLeft
-  let leadingInset: CGFloat = (edges & 4) != 0 ? (rtl ? i.right : i.left) : 0
-  let trailingInset: CGFloat = (edges & 8) != 0 ? (rtl ? i.left : i.right) : 0
-  v.directionalLayoutMargins = NSDirectionalEdgeInsets(
-    top: (edges & 1) != 0 ? i.top : 0,
-    leading: leadingInset,
-    bottom: (edges & 2) != 0 ? i.bottom : 0,
-    trailing: trailingInset
+  // The insets on the chosen edges are *added* to the view's padding by `refreshInsets`, once
+  // the view is in a window and again whenever UIKit says they changed. They used to be read
+  // here, at mount, from a view in no window — always zero — and written over the padding
+  // into the same layout margins; and the root was pinned to the safe area whatever this
+  // said, so an edge not chosen could not run under the chrome (#76, review M8).
+  insetStates[ObjectIdentifier(view(h)), default: InsetState()].edges = edges
+  refreshInsets(view(h))
+}
+
+/// Test only: extra safe area on the host view controller, as a toolbar would add, so a
+/// self-test can watch the insets reach a view and change.
+@_cdecl("sui_set_extra_safe_area")
+public func sui_set_extra_safe_area(_ top: Double, _ left: Double, _ bottom: Double, _ right: Double) {
+  hostController()?.additionalSafeAreaInsets = UIEdgeInsets(
+    top: CGFloat(top), left: CGFloat(left), bottom: CGFloat(bottom), right: CGFloat(right)
   )
+  rootView?.window?.layoutIfNeeded()
 }
 
 // MARK: - tree
@@ -1085,25 +1231,30 @@ public func sui_insert_after(
     c.translatesAutoresizingMaskIntoConstraints = false
     scroll.addSubview(c)
     // All four edges go to the contentLayoutGuide, which is what gives the scroll view its
-    // contentSize. The one axis tied to frameLayoutGuide is the *cross* axis: that is the
-    // direction the content may not exceed, and so the direction it does not scroll.
+    // contentSize. The cross axis is tied to the scroller's frame: that is the direction the
+    // content may not exceed, and so the direction it does not scroll. The scroller's padding
+    // is its `contentInset` (#76), outside the content size, so the tie is short by the
+    // insets on that axis.
     NSLayoutConstraint.activate([
       c.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
       c.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
       c.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
-      c.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-      isHorizontalScroller(scroll)
-        ? c.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor)
-        : c.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
+      c.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor)
     ])
-    if isHorizontalScroller(scroll) {
-      // A UIScrollView has no intrinsic size, so in a vertical UIStackView it would stretch
-      // to whatever slack there is rather than hug the row. The height is the content's.
-      // (The width needs no such help: a vertical UIStackView is .fill-aligned here, unlike
-      // AppKit's .leading, so it stretches its children across on its own.)
-      let fit = c.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
-      scroll.heightAnchor.constraint(equalToConstant: fit.height).isActive = true
-    }
+    // Horizontal: a UIScrollView has no intrinsic size, so in a vertical UIStackView it would
+    // stretch to whatever slack there is rather than hug the row. Its height is the content's
+    // through one constraint tied to the content, so it follows the content when that changes;
+    // it used to be a constant read here and added afresh per child, which stacked when the
+    // child was replaced and never followed a taller label (#76, review L4). (The width needs
+    // no help: a vertical UIStackView is .fill-aligned here, so it stretches its children.)
+    let tie = isHorizontalScroller(scroll)
+      ? scroll.heightAnchor.constraint(equalTo: c.heightAnchor)
+      : c.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
+    let mine = scroll as? ScrollView
+    mine?.tie?.isActive = false
+    tie.isActive = true
+    mine?.tie = tie
+    mine?.retie()
     return
   }
 
@@ -1111,13 +1262,18 @@ public func sui_insert_after(
     // The root view controller's view: pin the child, or it keeps
     // translatesAutoresizingMaskIntoConstraints = true, Auto Layout never sizes it, and
     // the whole tree measures zero — the defect the macOS self-test caught.
+    //
+    // To the view's edges, not its safe area: keeping clear of the system's chrome is what
+    // `SafeArea` asks for, per edge, and pinning every root to the safe area made an edge the
+    // app did not choose impossible (#76, review M8). The navigation bar is not the system's:
+    // see `noExtendedLayout`.
     c.translatesAutoresizingMaskIntoConstraints = false
     p.addSubview(c)
     NSLayoutConstraint.activate([
-      c.leadingAnchor.constraint(equalTo: p.safeAreaLayoutGuide.leadingAnchor),
-      c.trailingAnchor.constraint(equalTo: p.safeAreaLayoutGuide.trailingAnchor),
-      c.topAnchor.constraint(equalTo: p.safeAreaLayoutGuide.topAnchor),
-      c.bottomAnchor.constraint(equalTo: p.safeAreaLayoutGuide.bottomAnchor)
+      c.leadingAnchor.constraint(equalTo: p.leadingAnchor),
+      c.trailingAnchor.constraint(equalTo: p.trailingAnchor),
+      c.topAnchor.constraint(equalTo: p.topAnchor),
+      c.bottomAnchor.constraint(equalTo: p.bottomAnchor)
     ])
     p.layoutIfNeeded()
     return
@@ -1745,6 +1901,7 @@ public func sui_pages_commit() {
       vc = existing
     } else {
       vc = UIViewController()
+      noExtendedLayout(vc)
       vc.view.backgroundColor = .systemBackground
       place(page.content, in: vc.view)
       pageControllers[page.id] = vc
@@ -1906,6 +2063,70 @@ public func sui_get_frame(
   outY.pointee = Double(r.minY)
   outW.pointee = Double(r.width)
   outH.pointee = Double(r.height)
+}
+
+private func write(
+  _ e: UIEdgeInsets, _ t: UnsafeMutablePointer<Double>, _ l: UnsafeMutablePointer<Double>,
+  _ b: UnsafeMutablePointer<Double>, _ r: UnsafeMutablePointer<Double>
+) {
+  t.pointee = Double(e.top)
+  l.pointee = Double(e.left)
+  b.pointee = Double(e.bottom)
+  r.pointee = Double(e.right)
+}
+
+@_cdecl("sui_get_insets")
+public func sui_get_insets(
+  _ h: UnsafeMutableRawPointer, _ outTop: UnsafeMutablePointer<Double>, _ outLeft: UnsafeMutablePointer<Double>,
+  _ outBottom: UnsafeMutablePointer<Double>, _ outRight: UnsafeMutablePointer<Double>
+) {
+  let v = view(h)
+  v.window?.layoutIfNeeded()
+  let e: UIEdgeInsets
+  switch v {
+  case let g as GridView: e = g.insets
+  case let s as UIScrollView: e = s.adjustedContentInset
+  case let s as UIStackView: e = s.isLayoutMarginsRelativeArrangement ? s.layoutMargins : .zero
+  default: e = .zero
+  }
+  write(e, outTop, outLeft, outBottom, outRight)
+}
+
+@_cdecl("sui_get_safe_area")
+public func sui_get_safe_area(
+  _ h: UnsafeMutableRawPointer, _ outTop: UnsafeMutablePointer<Double>, _ outLeft: UnsafeMutablePointer<Double>,
+  _ outBottom: UnsafeMutablePointer<Double>, _ outRight: UnsafeMutablePointer<Double>
+) {
+  let v = view(h)
+  v.window?.layoutIfNeeded()
+  write(v.safeAreaInsets, outTop, outLeft, outBottom, outRight)
+}
+
+/// Every active constraint on a view's height, wherever it is held: the view's own and its
+/// ancestors'. Constraints UIKit makes for itself (an autoresizing mask, an intrinsic size, a
+/// stack's arrangement) are left out — they are not the renderer's.
+@_cdecl("sui_height_constraint_count")
+public func sui_height_constraint_count(_ h: UnsafeMutableRawPointer) -> Int32 {
+  let v = view(h)
+  var n: Int32 = 0
+  var holder: UIView? = v
+  while let hv = holder {
+    for c in hv.constraints where c.isActive && type(of: c) == NSLayoutConstraint.self {
+      if (c.firstItem === v && c.firstAttribute == .height) || (c.secondItem === v && c.secondAttribute == .height) {
+        n += 1
+      }
+    }
+    holder = hv.superview
+  }
+  return n
+}
+
+/// UIKit has no public way to synthesise a touch, so this sends nothing and says so. UIKit's
+/// container tap is a `UITapGestureRecognizer`, which already fires on touch-up.
+@_cdecl("sui_send_mouse")
+public func sui_send_mouse(_ h: UnsafeMutableRawPointer, _ kind: Int32, _ x: Double, _ y: Double) -> Int32 {
+  _ = (h, kind, x, y)
+  return 0
 }
 
 @_cdecl("sui_record_opened_urls")
