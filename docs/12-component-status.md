@@ -279,8 +279,8 @@ dormant, until a frame-based renderer needs it (decision log 2026-10-20, D11).
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
-are done. Open for the Mac: #69 (TabView), #72 (an unbuilt kind crashes
-the macOS run), and the review's #73–#79. Everything else is built and measured on the
+are done. Open for the Mac: #69 (TabView), and the review's #73 and
+#75–#79. An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74). Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:

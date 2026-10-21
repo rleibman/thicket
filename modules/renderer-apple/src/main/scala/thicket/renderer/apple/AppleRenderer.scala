@@ -75,6 +75,24 @@ final class AppleRenderer extends Renderer {
     */
   private val horizontalScrolls = perHandleSet
 
+  /** D9 (#74): a kind the shims have not built yet (`ShimKind.unbuilt`, from `Abi.kinds`) is a Column holding a label
+    * that says so, with the kind's own children below the label. Before this, the shim's fallback built a plain view
+    * and a TabView's tabs piled up silently, and on AppKit the fallback could not hold children at all: the run died
+    * with "uncaught foreign exception" and no reason (#72). Keyed by the box; the value is the label, which the
+    * reconciler does not know about, so `destroy` frees it.
+    */
+  private val placeholders = perHandle[Handle]
+
+  /** Under a self-test an unbuilt kind throws instead, so CI cannot pass over it (D9). `THICKET_ALLOW_UNBUILT=1` lets a
+    * local run carry on with the placeholder, to measure everything else; CI never sets it.
+    */
+  lazy private val strictUnbuilt: Boolean =
+    Seq("THICKET_SELFTEST", "THICKET_GALLERY_SELFTEST", "THICKET_LAZYTEST").exists(sys.env.contains) &&
+      !sys.env.contains("THICKET_ALLOW_UNBUILT")
+
+  /** The handles standing in for unbuilt kinds, for a self-test to name them. */
+  def placeholderHandles: Set[Handle] = placeholders.keySet.toSet
+
   def platform: String = "appkit"
 
   /** Every container in the v0 vocabulary is an `NSStackView` or an `NSScrollView`, both of which lay out their own
@@ -148,11 +166,29 @@ final class AppleRenderer extends Renderer {
     kind:  WidgetKind,
     props: Seq[Prop]
   ): Handle = {
-    val h = Shim.sui_create(kindCode(kind, props))
+    val code = kindCode(kind, props)
+    if ShimKind.unbuilt(code) then return placeholder(kind)
+    val h = Shim.sui_create(code)
     kinds(h) = kind
     if kind == WidgetKind.Scroll && isHorizontal(props) then horizontalScrolls += h
     update(h, props)
     h
+  }
+
+  private def placeholder(kind: WidgetKind): Handle = {
+    val message = s"$kind is not built on Apple yet"
+    if strictUnbuilt then
+      throw IllegalStateException(
+        s"$message (D9, #74): a self-test does not pass over an unbuilt kind. " +
+          "THICKET_ALLOW_UNBUILT=1 shows the placeholder instead, for a local run."
+      )
+    val box = Shim.sui_create(ShimKind.Column)
+    val label = Shim.sui_create(ShimKind.Label)
+    Zone(Shim.sui_set_text(label, toCString(message)))
+    Shim.sui_insert_after(box, label, null.asInstanceOf[Handle])
+    kinds(box) = kind
+    placeholders(box) = label
+    box
   }
 
   def update(
@@ -419,7 +455,11 @@ final class AppleRenderer extends Renderer {
     parent: Handle,
     child:  Handle,
     after:  Option[Handle]
-  ): Unit = Shim.sui_insert_after(parent, child, after.getOrElse(null.asInstanceOf[Handle]))
+  ): Unit = {
+    // In a placeholder, "first" means after its label, which stays on top.
+    val anchor = after.orElse(placeholders.get(parent))
+    Shim.sui_insert_after(parent, child, anchor.getOrElse(null.asInstanceOf[Handle]))
+  }
 
   def removeChild(
     parent: Handle,
@@ -443,6 +483,7 @@ final class AppleRenderer extends Renderer {
     // unmounted list alive. A table asking for a row after this gets null, which it treats as
     // no view.
     rowIds.remove(handle).foreach(Handles.release)
+    placeholders.remove(handle).foreach(Shim.sui_destroy)
     // Everything else keyed by this handle, in every table.
     perHandleMaps.foreach(_.remove(handle))
     perHandleSets.foreach(_ -= handle)

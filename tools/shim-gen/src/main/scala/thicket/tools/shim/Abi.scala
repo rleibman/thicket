@@ -170,10 +170,11 @@ object Abi {
     * fails on any machine.
     *
     * `None` is a code that is reserved and not built by that shim (write it as `Kind(code, name, None, None, why)`).
-    * **What happens to one today:** nothing stops it — `AppleRenderer` hands it to the shim, whose `default:` branch
-    * builds a plain view, so a "TabView" stacks its tabs' children with no error (review 2026-10-20, P1-15). This
-    * comment used to say Scala refused it. The decided behaviour, a visible placeholder and a throw under self-test
-    * (D9), is #74; codes 23–25 are reserved for #66 and #69.
+    * **What happens to one (D9, #74):** the generated `ShimKind.unbuilt` lists it, and `AppleRenderer` never sends it
+    * to the shim. It builds a Column labelled "<Kind> is not built on Apple yet" instead, holding the kind's children,
+    * and under a self-test it throws, so CI fails by name. Before #74 the shim's `default:` branch built a plain view:
+    * a "TabView" stacked its tabs' children silently on UIKit, and on AppKit the run died with "uncaught foreign
+    * exception" and no reason (#72).
     */
   final case class Kind(
     code:    Int,

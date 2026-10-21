@@ -168,4 +168,9 @@ object ShimKind {
   inline val IconButton = 23
   inline val TabView = 24
   inline val Tab = 25
+
+  /** Codes reserved and not built on AppKit or on UIKit (D9). `AppleRenderer` shows a labelled placeholder for one, and
+    * throws under a self-test. One set for both toolkits: the renderer cannot yet tell which it runs on (#79).
+    */
+  val unbuilt: Set[Int] = Set(24, 25)
 }
