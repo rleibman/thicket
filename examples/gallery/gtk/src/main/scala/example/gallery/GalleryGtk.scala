@@ -124,6 +124,33 @@ object GalleryGtk {
       texts.exists(_.startsWith("Chose ")),
       texts.filter(_.startsWith("Chose")).toString
     )
+    // Swapping a Picker's options keeps its selection and reports nothing.
+    def clickButton(label: String) =
+      GtkInspect
+        .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List(label))
+        .headOption.foreach(GtkInspect.click)
+    def reports = GtkInspect.allTexts(root).find(_.startsWith("The picker reported")).getOrElse("")
+    val reportsBefore = reports
+    clickButton("Clear")
+    clickButton("Swap the options")
+    check(
+      "swapping the options with nothing selected selects nothing",
+      GtkInspect.allTexts(root).contains("(nothing selected)"),
+      GtkInspect.allTexts(root).filter(t => t.startsWith("Chose") || t.contains("nothing")).toString
+    )
+    clickButton("Select last")
+    clickButton("Swap the options")
+    check(
+      "swapping them with a selection keeps it",
+      GtkInspect.allTexts(root).contains("Chose Cherry (index 2)"),
+      GtkInspect.allTexts(root).filter(_.startsWith("Chose")).toString
+    )
+    check(
+      "and no swap reported a choice the user did not make",
+      reports == reportsBefore,
+      s"$reportsBefore -> $reports"
+    )
+
     // DatePicker: a GtkMenuButton whose popover holds a GtkCalendar. Read back out of the
     // calendar itself, then a day is chosen the way a click does — "day-selected" — so the
     // bound label proves the choice went through the renderer and back to the app.
@@ -149,6 +176,21 @@ object GalleryGtk {
           "and the button shows the new date",
           GtkInspect.menuButtonLabel(button) != before,
           s"$before -> ${GtkInspect.menuButtonLabel(button)}"
+        )
+        // The calendar's own next-month arrow, clicked as the user would. Browsing is not
+        // choosing: the app's date must not move (review 2026-10-20, P2-25).
+        val arrows = GtkInspect.findAll(cal)(w => GtkInspect.isButton(w) && GtkInspect.buttonIconName(w).nonEmpty)
+        val shownBefore = GtkInspect.calendarDate(cal)
+        arrows.find(a => GtkInspect.buttonIconName(a).contains("end")).foreach(GtkInspect.click)
+        check(
+          "the calendar's own arrow moves it to the next month",
+          GtkInspect.calendarDate(cal) != shownBefore,
+          s"$shownBefore -> ${GtkInspect.calendarDate(cal)}"
+        )
+        check(
+          "browsing to the next month does not choose a date",
+          GtkInspect.allTexts(root).contains("Due 2029-01-31"),
+          GtkInspect.allTexts(root).filter(_.startsWith("Due")).toString
         )
       }
     }

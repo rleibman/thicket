@@ -60,6 +60,7 @@ final class GtkRenderer extends Renderer {
     */
   private val menuPopover = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkWidget]]
   private val menuIds = mutable.Map.empty[Ptr[GtkWidget], mutable.ArrayBuffer[Long]]
+  private val menuGesture = mutable.Map.empty[Ptr[GtkWidget], Ptr[GtkEventController]]
 
   /** True while the renderer is writing a value into a widget, so the widget's own change signal can tell an app-driven
     * update from a user edit and stay silent for the former. Without this, binding a signal to a text field is an
@@ -477,6 +478,10 @@ final class GtkRenderer extends Renderer {
         val model = gtk_drop_down_get_model(handle.asInstanceOf[Ptr[GtkDropDown]])
         val list = model.asInstanceOf[Ptr[GtkStringList]]
         val existing = toInt(sn.gnome.gio.internal.g_list_model_get_n_items(model))
+        //
+        // Replacing the items does not make the drop-down select or report anything by
+        // itself: the 2026-10-20 review suspected it would (P1-10), and the gallery's swap
+        // check — with nothing selected and with a selection — measured that it does not.
         Zone {
           // NULL-terminated, which is what splice wants for "the strings to insert".
           val arr = alloc[CString]((values.length + 1).toUInt)
@@ -615,6 +620,13 @@ final class GtkRenderer extends Renderer {
         // carries its own closure. A popover with the `menu` style class gets Adwaita's
         // menu appearance without inventing an action-name namespace. Worth revisiting if
         // keyboard navigation or accessibility differs in practice.
+        //
+        // A new menu replaces the old one — popover, item handlers and gesture. Each apply used
+        // to add another popover and another right-click gesture, so a reactive menu opened
+        // every version of itself at once (review 2026-10-20, P2-24).
+        menuPopover.remove(handle).foreach(gtk_widget_unparent)
+        menuIds.remove(handle).foreach(_.foreach(Handles.release))
+        menuGesture.remove(handle).foreach(g => gtk_widget_remove_controller(handle, g))
         val popover = gtk_popover_new()
         val box = gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 0)
         Zone {
@@ -665,6 +677,7 @@ final class GtkRenderer extends Renderer {
           )
         }
         gtk_widget_add_controller(handle, gesture.asInstanceOf[Ptr[GtkEventController]])
+        menuGesture(handle) = gesture.asInstanceOf[Ptr[GtkEventController]]
 
       case Prop.Style(role) =>
         // GTK's own type scale, via the style classes Adwaita defines, rather than a pixel
@@ -1263,6 +1276,7 @@ final class GtkRenderer extends Renderer {
     // list the box knows about.
     menuPopover.remove(handle).foreach(gtk_widget_unparent)
     menuIds.remove(handle).foreach(_.foreach(Handles.release))
+    val _ = menuGesture.remove(handle)
 
     sheetWindow.remove(handle) match {
       // A sheet's content is attached through `gtk_window_set_child`, so it is detached

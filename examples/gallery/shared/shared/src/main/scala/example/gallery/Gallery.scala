@@ -53,12 +53,15 @@ object Gallery {
   /** Everything with state lives here, so the screen itself is a pure function of signals. */
   final class Model {
 
-    val text:      Var[String] = Var("")
-    val secret:    Var[String] = Var("")
-    val checked:   Var[Boolean] = Var(false)
-    val toggled:   Var[Boolean] = Var(true)
-    val volume:    Var[Double] = Var(4.0)
-    val picked:    Var[Int] = Var(1)
+    val text:    Var[String] = Var("")
+    val secret:  Var[String] = Var("")
+    val checked: Var[Boolean] = Var(false)
+    val toggled: Var[Boolean] = Var(true)
+    val volume:  Var[Double] = Var(4.0)
+    val picked:  Var[Int] = Var(1)
+    val produce: Var[Seq[String]] = Var(Gallery.fruit)
+    // How many choices the picker has reported: one the user did not make shows up here.
+    val reports:   Var[Int] = Var(0)
     val span:      Var[Int] = Var(1)
     val due:       Var[CalendarDate] = Var(Gallery.firstDue)
     val linkTaps:  Var[Int] = Var(0)
@@ -122,7 +125,8 @@ object Gallery {
     scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(logo))).getOrElse(Array.emptyByteArray)
 
   /** The picker's options. On the object so the self-test can name them. */
-  val fruit: Seq[String] = Seq("Apple", "Banana", "Cherry")
+  val fruit:      Seq[String] = Seq("Apple", "Banana", "Cherry")
+  val vegetables: Seq[String] = Seq("Leek", "Okra", "Pea")
 
   final case class Row_(
     id:    Int,
@@ -182,13 +186,30 @@ object Gallery {
             Label(model.toggled.map(b => if b then "on" else "off"))
           ),
           section("Picker — a choice from a fixed list")(
-            Picker(Gallery.fruit, model.picked)(model.picked.set),
+            Picker(model.produce, model.picked) { i =>
+              model.reports.set(model.reports.now + 1)
+              model.picked.set(i)
+            },
+            Label(model.reports.map(n => s"The picker reported $n choices"), style = TextRole.Caption),
             // Observably bound, per the gallery's own rule: the label proves the selection
             // round-tripped rather than the control merely being drawn.
-            Label(model.picked.map(i => Gallery.fruit.lift(i).fold("(nothing selected)")(f => s"Chose $f (index $i)"))),
+            Label(
+              model.produce
+                .zip(model.picked).map(
+                  (
+                    opts,
+                    i
+                  ) => opts.lift(i).fold("(nothing selected)")(f => s"Chose $f (index $i)")
+                )
+            ),
             Row(spacing = 8)(
               Button("Select last")(model.picked.set(Gallery.fruit.length - 1)),
-              Button("Clear")(model.picked.set(-1))
+              Button("Clear")(model.picked.set(-1)),
+              // New options, same length: the selection is an index and must stay where it is,
+              // with no choice reported that the user did not make (review 2026-10-20, P1-10).
+              Button("Swap the options")(
+                model.produce.set(if model.produce.now == Gallery.fruit then Gallery.vegetables else Gallery.fruit)
+              )
             )
           ),
           section("DatePicker — a day, in the platform's own chooser")(

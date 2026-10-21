@@ -235,7 +235,10 @@ final private[android] class AndroidTabs(
     p.tabs = current.take(at) ++ (tab +: current.drop(at))
     if p.selected >= 0 then keepSelection(p, visible)
     else if p.wanted >= 0 && p.wanted < p.tabs.length then show(p, p.wanted)
-    else tab.setVisibility(View.GONE) // nothing chosen yet; Selected will show one
+    // Nothing chosen: show the first, as GTK's stack does. A blank content area is not a state
+    // any tab bar has, and it is what -1 used to leave on screen (review 2026-10-20, R-L6).
+    else if p.wanted < 0 then show(p, 0)
+    else tab.setVisibility(View.GONE) // a tab further on is wanted, and not here yet
   }
 
   def remove(

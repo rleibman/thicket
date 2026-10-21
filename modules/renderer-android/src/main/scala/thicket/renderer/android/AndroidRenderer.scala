@@ -276,7 +276,10 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.OnTextChange(f) =>
         handle match {
           case e: EditText =>
-            e.addTextChangedListener(new TextWatcher {
+            // One watcher per field: a re-applied handler replaces the last, where it used to
+            // add a second and report every keystroke twice (review 2026-10-20, P2-24).
+            watchers.remove(e).foreach(e.removeTextChangedListener)
+            val watcher = new TextWatcher {
               def beforeTextChanged(
                 s: CharSequence,
                 a: Int,
@@ -291,7 +294,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
               ):                                 Unit = ()
               def afterTextChanged(s: Editable): Unit =
                 if !suppress.contains(handle) then appCallback(f(s.toString))
-            })
+            }
+            watchers(e) = watcher
+            e.addTextChangedListener(watcher)
           case _ => ()
         }
 
@@ -576,29 +581,16 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case Prop.Options(values) =>
         handle match {
           case s: Spinner =>
-            // Rebuild the adapter's contents rather than the adapter: a Spinner keeps its
-            // selection by index across a data change, so swapping the adapter would reset
-            // the selection to 0 every time the options were re-set with the same list.
-            val a = s.getAdapter.asInstanceOf[ArrayAdapter[String]]
-            suppress += handle
-            a.clear()
-            values.foreach(a.add)
-            a.notifyDataSetChanged()
-            suppress -= handle
+            spinnerOptions(s) = values
+            renderSpinner(s)
           case _ => ()
         }
 
       case Prop.Selected(index) =>
         handle match {
           case s: Spinner =>
-            // Android has no "nothing selected" for a Spinner - INVALID_POSITION is a read
-            // value, not something you can set - so a negative index leaves it alone rather
-            // than being coerced to 0, which would silently select the first option.
-            if index >= 0 && index < s.getCount && s.getSelectedItemPosition != index then {
-              suppress += handle
-              s.setSelection(index)
-              suppress -= handle
-            }
+            spinnerWanted(s) = index
+            renderSpinner(s)
           case _ => ()
         }
 
@@ -624,7 +616,18 @@ final class AndroidRenderer(context: Context) extends Renderer {
                 view:     View,
                 position: Int,
                 id:       Long
-              ): Unit = if !suppress.contains(s) then appCallback(f(position))
+              ): Unit = {
+                // Spinner reports selections *later*, from a layout pass, so a flag set around
+                // the app's own write is long cleared by then: every app write came back as a
+                // user choice, and Selected(-1) became 0 at the first layout (review
+                // 2026-10-20, P1-11). So what is reported is compared with what the app
+                // asked for instead, and only a difference is the user's.
+                val index = position - spinnerOffset(s)
+                if index >= 0 && index != spinnerWanted.getOrElse(s, -1) then {
+                  spinnerWanted(s) = index
+                  appCallback(f(index))
+                }
+              }
 
               def onNothingSelected(parent: AdapterView[?]): Unit = ()
 
@@ -922,6 +925,35 @@ final class AndroidRenderer(context: Context) extends Renderer {
       }
     }
 
+  /** A Spinner's options, the selection the app last asked for, and whether a blank placeholder leads the list.
+    *
+    * Android cannot show "nothing selected" — INVALID_POSITION is a read value, not something to set — so while the
+    * selection is -1 a blank entry leads the list and is the one shown, as GTK's drop-down shows an empty button and
+    * Apple's a blank title (D13). It goes as soon as the user, or the app, picks a real one.
+    */
+  private val watchers = mutable.Map.empty[EditText, TextWatcher]
+
+  private val spinnerOptions = mutable.Map.empty[Spinner, Seq[String]]
+  private val spinnerWanted = mutable.Map.empty[Spinner, Int]
+  private def spinnerOffset(s: Spinner):      Int = if spinnerPlaceholder(s) then 1 else 0
+  private def spinnerPlaceholder(s: Spinner): Boolean = {
+    val i = spinnerWanted.getOrElse(s, -1)
+    i < 0 || i >= spinnerOptions.getOrElse(s, Nil).length
+  }
+
+  private def renderSpinner(s: Spinner): Unit = {
+    val shown = (if spinnerPlaceholder(s) then Seq("") else Nil) ++ spinnerOptions.getOrElse(s, Nil)
+    val a = s.getAdapter.asInstanceOf[ArrayAdapter[String]]
+    if (0 until a.getCount).map(a.getItem) != shown then {
+      a.clear()
+      shown.foreach(a.add)
+      a.notifyDataSetChanged()
+    }
+    val position = spinnerWanted.getOrElse(s, -1) max -1
+    val target = if spinnerPlaceholder(s) then 0 else position
+    if s.getSelectedItemPosition != target then s.setSelection(target, false)
+  }
+
   /** Each ZStack's gravity, so a child inserted later is placed like the ones already there. */
   private val stackGravity = mutable.Map.empty[FrameLayout, Int]
 
@@ -1010,6 +1042,21 @@ final class AndroidRenderer(context: Context) extends Renderer {
     }
   }
 
+  /** A tab reorders in place. The contract's default — remove, then insert — took the tab away first, so the user was
+    * moved off it and the app told of a selection change that never happened (review 2026-10-20, P1-12).
+    * `AndroidTabs.insertAfter` already places a tab that is in the view, keeping the user on theirs.
+    */
+  override def moveAfter(
+    parent: Handle,
+    child:  Handle,
+    after:  Option[Handle]
+  ): Unit =
+    if tabs.isTabView(parent) then tabs.insertAfter(parent, child.asInstanceOf[FrameLayout], after)
+    else {
+      removeChild(parent, child)
+      insertAfter(parent, child, after)
+    }
+
   def removeChild(
     parent: Handle,
     child:  Handle
@@ -1071,6 +1118,13 @@ final class AndroidRenderer(context: Context) extends Renderer {
     val _ = alertTitle.remove(handle)
     val _ = alertMessage.remove(handle)
     val _ = grows.remove(handle)
+    handle match {
+      case s: Spinner =>
+        val _ = spinnerOptions.remove(s)
+        val _ = spinnerWanted.remove(s)
+      case e: EditText => val _ = watchers.remove(e)
+      case _ => ()
+    }
     val _ = basePadding.remove(handle)
     safeAreas -= handle
     alertShowing.remove(handle).foreach(_.dismiss())
