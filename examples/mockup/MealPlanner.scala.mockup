@@ -10,7 +10,7 @@
 package mealorama.client
 
 import thicket.*
-import thicket.zio.given
+import thicket.effect.zio.given
 import zio.*
 
 // The domain comes from the *same module the server uses*. No DTOs, no codegen,

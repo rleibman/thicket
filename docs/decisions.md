@@ -69,6 +69,19 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-20 — **The ZIO bridge is `thicket.effect.zio`; `thicket-effect-api` is deferred; every
+  host installs a UI-thread poster** (review 2026-10-20 D8, P0-5). The package moves from
+  `thicket.zio`, which shadowed the root `zio` package for any code under `thicket`. The
+  module table's `thicket-effect-api` (a library-neutral `EffectBridge`, docs/07 §7.13) is
+  not built: with one effect system there is nothing for it to abstract over yet, and the
+  artefact name stays reserved for when a second (cats-effect) arrives. `UiThread`'s default
+  now throws instead of running the post where it was made — no host had installed one, so
+  every effect's result was written from a worker thread and the guard swallowed it — and
+  hosts call `Host.install(post)`, which installs `ThreadGuard` and `UiThread` together.
+  Defects in effects go to `thicket.signals.ErrorSink`; results for a disposed owner are
+  dropped; stream elements are conflated; `UiRuntime.fromLayer` keeps its scope and has
+  `shutdown()`. Measured: effect-zio 24 tests on JVM and Native (Native ran 0 before); the
+  GTK gallery's effect reaches the screen, and does not without `Host.install`.
 - 2026-10-20 — **Group id is `net.leibman`** (review 2026-10-20 D1; supersedes the
   `dev.thicket` in the 2026-09-29 naming entry below and the "Group id decided at M0" row
   above). #70 moved `build.sbt` to it for the Central Portal namespace but left the plugin,

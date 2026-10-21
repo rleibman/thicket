@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package thicket.zio
+package thicket.effect.zio
 
 import zio.test.*
 import thicket.signals.Checks
@@ -22,8 +22,9 @@ import thicket.signals.Checks
 import _root_.zio.*
 import _root_.zio.stream.{SubscriptionRef, ZStream}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import scala.collection.mutable
 import thicket.core.{RemoteData, UiThread}
-import thicket.signals.{Owner, ThreadGuard, Var}
+import thicket.signals.{ErrorSink, Owner, ThreadGuard, Var}
 
 /** The bridge's contract, exercised without a device.
   *
@@ -155,6 +156,147 @@ object EffectZioSpec extends ZIOSpecDefault {
     }
   )
 
+  /** Collects what reaches `ErrorSink` during `body`, then restores the previous sink. */
+  private def reported(body: => Unit): List[Throwable] = {
+    val seen = mutable.ArrayBuffer.empty[Throwable]
+    val previous = ErrorSink.installed
+    ErrorSink.install(e => seen += e)
+    try body
+    finally ErrorSink.install(previous)
+    seen.toList
+  }
+
+  /** Review 2026-10-20: P1-5, P2-13, P2-15, P0-5 — each test failed, or could not be written, before the fix. */
+  private val failures = zio.test.suite("Failures and lifetimes")(
+    test("a defect is reported to ErrorSink, not swallowed") {
+      val chk = Checks()
+      val o = Owner(); given Owner = o
+      var signal: thicket.signals.Signal[RemoteData[Nothing, Int]] = null
+      val seen = reported {
+        signal = ZIO.die(RuntimeException("kaboom")).as(1).asSignal
+        Thread.sleep(50)
+        TestUiThread.drain()
+      }
+      chk.yes(seen.exists(_.getMessage.contains("kaboom")), seen.toString)
+      chk.eq(signal.now, RemoteData.Loading, "there is no typed error to show")
+      o.dispose()
+      chk.result
+    },
+    test("launch reports a defect too") {
+      val chk = Checks()
+      val o = Owner(); given Owner = o
+      given ErrorPresenter[Nothing] = summon[ErrorPresenter[Nothing]]
+      val seen = reported {
+        ZIO.succeed(throw RuntimeException("thrown inside")).unit.launch
+        Thread.sleep(50)
+        TestUiThread.drain()
+      }
+      chk.yes(seen.exists(_.getMessage.contains("thrown inside")), seen.toString)
+      o.dispose()
+      chk.result
+    },
+    test("the interruption disposal sends is not reported") {
+      val chk = Checks()
+      val o = Owner(); given Owner = o
+      val started = AtomicBoolean(false)
+      val seen = reported {
+        val _ = (ZIO.succeed(started.set(true)) *> ZIO.never).as(1).asSignal
+        eventually("started")(started.get())
+        o.dispose()
+        Thread.sleep(50)
+        TestUiThread.drain()
+      }
+      chk.eq(seen, Nil)
+      chk.result
+    },
+    test("a result that arrives after the owner is disposed is not delivered") {
+      val chk = Checks()
+      val o = Owner(); given Owner = o
+      val gate = AtomicBoolean(false)
+      // attemptBlocking is not interruptible, so the result is produced after disposal.
+      val signal = ZIO.attemptBlocking { while !gate.get() do Thread.sleep(1); 7 }.orDie.asSignal
+      o.dispose()
+      gate.set(true)
+      Thread.sleep(50)
+      TestUiThread.drain()
+      chk.eq(signal.now, RemoteData.Loading)
+      chk.result
+    },
+    test("a failing stream surfaces its typed error through asRemoteSignal") {
+      val chk = Checks()
+      val o = Owner(); given Owner = o
+      val signal = (ZStream(1, 2) ++ ZStream.fail("dropped")).asRemoteSignal
+      eventually("Failed")(signal.now == RemoteData.Failed("dropped"))
+      o.dispose()
+      chk.result
+    },
+    test("a stream that fails under asSignal is reported, keeping its last value") {
+      val chk = Checks()
+      val o = Owner(); given Owner = o
+      var signal: thicket.signals.Signal[Int] = null
+      val seen = reported {
+        signal = (ZStream(1, 2) ++ ZStream.fail("dropped")).asSignal(0)
+        Thread.sleep(50)
+        TestUiThread.drain()
+      }
+      chk.yes(seen.nonEmpty, "the failure is not silent")
+      chk.eq(signal.now, 2)
+      o.dispose()
+      chk.result
+    },
+    test("a fast stream is conflated: the newest value, not one post per element") {
+      val chk = Checks()
+      val o = Owner(); given Owner = o
+      val posts = AtomicInteger(0)
+      val previous = UiThread.installed
+      UiThread.install { f => posts.incrementAndGet(); previous(f) }
+      val signal = ZStream.range(1, 10001).asSignal(0)
+      eventually("last element")(signal.now == 10000)
+      UiThread.install(previous)
+      chk.yes(posts.get() < 10000, s"${posts.get()} posts for 10000 elements")
+      o.dispose()
+      chk.result
+    },
+    test("fromLayer keeps its scope open, and shutdown runs the layer's finalizers") {
+      val chk = Checks()
+      val released = AtomicBoolean(false)
+      val layer = ZLayer.scoped(ZIO.acquireRelease(ZIO.succeed("service"))(_ => ZIO.succeed(released.set(true))))
+      val rt = UiRuntime.fromLayer(layer)
+      chk.no(released.get(), "acquired, and still held")
+      rt.shutdown()
+      chk.yes(released.get(), "released on shutdown")
+      rt.shutdown()
+      chk.result
+    },
+    test("fromLayer throws when the layer cannot be built") {
+      val chk = Checks()
+      val thrown =
+        try { val _ = UiRuntime.fromLayer(ZLayer.fail(RuntimeException("no database"))); None }
+        catch { case e: Throwable => Some(e) }
+      chk.yes(thrown.exists(_.toString.contains("no database")), thrown.toString)
+      chk.result
+    },
+    test("ErrorPresenter.into and printing") {
+      val chk = Checks()
+      val target = Var(Option.empty[String])
+      ErrorPresenter.into(target).show("into")
+      chk.eq(target.now, Some("into"))
+      ErrorPresenter.printing[String].show("printed, on purpose, by a test")
+      chk.result
+    },
+    test("with no host, UiThread fails loudly instead of running the post where it was made") {
+      val chk = Checks()
+      val previous = UiThread.installed
+      UiThread.install(UiThread.notInstalled)
+      val thrown =
+        try { UiThread.run(() => ()); None }
+        catch { case e: IllegalStateException => Some(e) }
+      UiThread.install(previous)
+      chk.yes(thrown.exists(_.getMessage.contains("Host.install")))
+      chk.result
+    }
+  )
+
   /** **One spec, deliberately, holding both suites.**
     *
     * `UiThread` and `ThreadGuard` are process-global, and both suites install them. zio-test orders tests *within* a
@@ -169,6 +311,7 @@ object EffectZioSpec extends ZIOSpecDefault {
   def spec =
     zio.test.suite("effect-zio")(
       bridge,
+      failures,
       RemoteScreenTests.suite
     ) @@ TestAspect.sequential @@ TestAspect.before(ZIO.succeed {
       TestUiThread.install()

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package thicket.zio
+package thicket.effect.zio
 
 /** How a component reports a failure it did not handle.
   *

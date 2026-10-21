@@ -20,9 +20,9 @@ import _root_.android.app.Activity
 import _root_.android.os.Bundle
 import _root_.android.view.{Menu, MenuItem}
 import example.gallery.Gallery
-import thicket.core.{Action, AppRoot, Reconciler}
+import thicket.core.{Action, AppRoot, Host, Reconciler}
 import thicket.renderer.android.AndroidRenderer
-import thicket.signals.{Owner, Signal, ThreadGuard}
+import thicket.signals.{Owner, Signal}
 
 /** The gallery on Android — the same screen the GTK, macOS and iOS hosts mount.
   *
@@ -41,9 +41,9 @@ class GalleryActivity extends Activity {
   override def onCreate(saved: Bundle): Unit = {
     super.onCreate(saved)
 
-    // Android's main thread owns the signal graph; a stray write from elsewhere should fail
-    // loudly rather than corrupt it (docs/05 A-06).
-    ThreadGuard.install(ThreadGuard.owningThread)
+    // Android's main thread owns the signal graph, and anything posted through UiThread is
+    // delivered to it through the main Looper.
+    Host.install(f => { val _ = _root_.android.os.Handler(_root_.android.os.Looper.getMainLooper).post(() => f()) })
 
     val renderer = AndroidRenderer(this)
     given Owner = owner

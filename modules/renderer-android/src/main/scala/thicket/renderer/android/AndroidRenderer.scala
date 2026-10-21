@@ -56,7 +56,7 @@ import thicket.signals.ErrorSink
 /** Android implementation of [[Renderer]], over `android.view.*`.
   *
   * Note the `_root_.android.R` references: this package is `thicket.renderer.android`, which shadows the platform's own
-  * `android` package — the same trap `thicket.zio` has with `zio`.
+  * `android` package — the same trap `thicket.zio` had with `zio`, before it became `thicket.effect.zio`.
   *
   * Runs on the JVM: Scala compiles to bytecode, R8 dexes it, ART runs it (S2). Nothing here is Android-specific beyond
   * the widget calls — the reconciler above is the same code the GTK renderer drives.

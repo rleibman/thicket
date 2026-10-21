@@ -31,7 +31,9 @@ import thicket.renderer.{
   TextRole
 }
 import example.gallery.buildinfo.BuildInfo
-import thicket.signals.{Signal, Var}
+import thicket.effect.zio.{UiRuntime, asSignal}
+import thicket.signals.{Owner, Signal, Var}
+import _root_.zio.ZIO
 
 /** Every component the framework has, on one screen, on every platform.
   *
@@ -129,7 +131,13 @@ object Gallery {
       Divider()
     )
 
-  def screen(model: Model): Screen =
+  /** What the effect in the Effects section produces, so a self-test can wait for it. */
+  val effectResult: String = "Loaded 42, on the UI thread"
+
+  def screen(
+    model:  Model,
+    loaded: Signal[RemoteData[Nothing, String]]
+  ): Screen =
     Screen(
       title = "Thicket gallery",
       actions = Seq(Action("Add")(model.add()), Action("Rotate")(model.rotate())),
@@ -331,6 +339,16 @@ object Gallery {
           section("Errors — a handler that throws is reported, and the app carries on")(
             Button("Throw from a handler")(throw RuntimeException(Gallery.deliberate))
           ),
+          // A real ZIO effect, run on a worker and posted back through UiThread. It only ever
+          // leaves Loading if the host installed a poster (review 2026-10-20, P0-5): before
+          // that, no host did, and this would have sat at Loading on every platform.
+          section("Effects — a ZIO effect, its result posted back to the UI thread")(
+            RemoteData(loaded) {
+              case RemoteData.Loading      => Label("Loading…")
+              case RemoteData.Done(result) => Label(result)
+              case RemoteData.Failed(_)    => Label("Failed")
+            }
+          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -378,12 +396,14 @@ object Gallery {
   }
 
   /** The whole app, for a host to mount. Hosts differ only in how they start. */
-  def app(): AppRoot = {
+  def app()(using Owner): AppRoot = {
     val model = Model()
+    given UiRuntime[Any] = UiRuntime.default
+    val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model)
+        val s = screen(model, loaded)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen()
     }

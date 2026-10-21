@@ -84,6 +84,7 @@ object GalleryGtk {
       "SafeArea — a prop, because no toolkit models it as a widget",
       "BuildInfo — this module's own, from git",
       "Errors — a handler that throws is reported, and the app carries on",
+      "Effects — a ZIO effect, its result posted back to the UI thread",
       "Presented — Sheet and Alert are shown over the app, never inserted"
     ).foreach(h => check(s"section is on screen: $h", texts.contains(h)))
 
@@ -401,6 +402,12 @@ object GalleryGtk {
       !texts.contains("A presented container with a live subtree inside it.")
     )
 
+    check(
+      "a ZIO effect's result reached the screen through UiThread",
+      texts.contains(Gallery.effectResult),
+      texts.filter(t => t.startsWith("Load") || t == "Failed").toString
+    )
+
     robustness(root)
 
     // The gallery styles more widgets than any other screen, so it is the best place to
@@ -414,6 +421,14 @@ object GalleryGtk {
     if failures == 0 then println(s"[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
   }
+
+  /** Runs `then` once the Effects section's ZIO result has reached the screen, re-posting itself so the main loop keeps
+    * draining posts in between — the result arrives through `UiThread`, as a post of its own. After `tries` it runs
+    * anyway, and the check below reports what it saw.
+    */
+  private def afterEffect(tries: Int)(next: => Unit): Unit =
+    if tries <= 0 || GtkInspect.allTexts(GtkApp.rootHandle).contains(Gallery.effectResult) then next
+    else GtkApp.postToUi(() => afterEffect(tries - 1)(next))
 
   /** Host → Scala entry points under stress (review 2026-10-20, P0-2 and P0-3). */
   private def robustness(root: Ptr[GtkWidget]): Unit = {
@@ -492,7 +507,7 @@ object GalleryGtk {
 
   def main(args: Array[String]): Unit = {
     val _ = GtkApp.run("dev.thicket.gallery", width = 520, height = 760) {
-      if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => selfTest())
+      if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => afterEffect(200)(selfTest()))
       Gallery.app()
     }
   }

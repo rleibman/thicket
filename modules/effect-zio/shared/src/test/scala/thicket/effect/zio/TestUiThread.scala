@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package thicket.zio
+package thicket.effect.zio
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import thicket.core.UiThread

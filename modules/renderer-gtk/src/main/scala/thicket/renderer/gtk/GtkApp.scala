@@ -17,8 +17,8 @@
 package thicket.renderer.gtk
 
 import scala.scalanative.unsafe.*
-import thicket.core.{AppRoot, GcState, Reconciler}
-import thicket.signals.{Owner, Signal, ThreadGuard, Tracking}
+import thicket.core.{AppRoot, GcState, Host, Reconciler}
+import thicket.signals.{Owner, Signal, Tracking}
 import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.*
 import sn.gnome.gio.internal.*
@@ -393,10 +393,9 @@ object GtkApp {
   )(
     ui: Owner ?=> AppRoot
   ): Int = {
-    // The signal graph belongs to whichever thread reaches it first; on GTK that is the
-    // main loop's thread. Installing the guard makes a stray cross-thread write fail loudly
-    // instead of corrupting the graph (docs/05 A-06).
-    ThreadGuard.install(ThreadGuard.owningThread)
+    // The signal graph belongs to the main loop's thread, and anything posted through
+    // UiThread — an effect's result, a stream's element — is delivered there.
+    Host.install(postToUi)
 
     appId = id
     windowSize = (width, height)

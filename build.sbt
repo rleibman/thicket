@@ -45,7 +45,11 @@ scmInfo := Some(
 //   - on a tag `v0.2.0`              -> 0.2.0
 //   - some commits after that tag    -> 0.2.0-3-gdeadbee   (not publishable: see publishTo)
 //   - no tag reachable at all        -> 0.1.0-<sha>        (baseVersion + sha; a shallow clone)
-GitKeys.baseVersion := "0.1.0"
+// Build scope: sbt-git reads it there, and a bare (per-project) setting is silently unused.
+ThisBuild / GitKeys.baseVersion := "0.1.0"
+// GitVersioning also sets `ThisBuild / version`, which every project then overrides with its
+// own; sbt's lint reports the build-level one as unused on every load.
+Global / excludeLintKeys += version
 // `useGitDescribe` is ALSO set per project, in `commonSettings`, and it has to be.
 // GitVersioning sets `useGitDescribe := false` in its own *projectSettings*, which shadows
 // a build-level setting entirely: `ThisBuild / useGitDescribe` once read `true` while
@@ -355,7 +359,7 @@ lazy val effectZio = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/effect-zio"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
-  .settings(thicketBuildInfo("thicket.zio.buildinfo"))
+  .settings(thicketBuildInfo("thicket.effect.zio.buildinfo"))
   .dependsOn(core % "compile->compile;test->test")
   .settings(commonSettings, zioTestFramework, coverageSettings, name := "thicket-effect-zio")
   .jvmSettings(
@@ -477,7 +481,8 @@ lazy val todoAndroid = project
 lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("examples/gallery/shared"))
-  .dependsOn(core)
+  // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
+  .dependsOn(core, effectZio)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo"))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)

@@ -24,10 +24,10 @@ import android.transition.{Slide, TransitionManager}
 import android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
 import scala.annotation.nowarn
 import example.TodoApp
-import thicket.core.{Action, ColorRole, Mounted, NavHost, Reconciler, Rgb, Theme}
+import thicket.core.{Action, ColorRole, Host, Mounted, NavHost, Reconciler, Rgb, Theme}
 import thicket.renderer.ImageSource
 import thicket.renderer.android.AndroidRenderer
-import thicket.signals.{Owner, Signal, ThreadGuard}
+import thicket.signals.{Owner, Signal}
 
 /** The Android host for [[TodoApp]] — the same app the GTK host mounts.
   *
@@ -44,9 +44,9 @@ class MainActivity extends Activity {
   override def onCreate(saved: Bundle): Unit = {
     super.onCreate(saved)
 
-    // Android's main thread owns the signal graph; a stray write from elsewhere should
-    // fail loudly rather than corrupt it (docs/05 A-06).
-    ThreadGuard.install(ThreadGuard.owningThread)
+    // Android's main thread owns the signal graph, and anything posted through UiThread is
+    // delivered to it through the main Looper.
+    Host.install(f => { val _ = _root_.android.os.Handler(_root_.android.os.Looper.getMainLooper).post(() => f()) })
 
     // Brand exactly one role and leave the rest to the platform. Buttons pick up the
     // accent; text, dividers, the check box and the action bar keep following the user's

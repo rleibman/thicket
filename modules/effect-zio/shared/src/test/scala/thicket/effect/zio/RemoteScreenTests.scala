@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package thicket.zio
+package thicket.effect.zio
 
 import thicket.signals.Checks
 
