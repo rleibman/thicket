@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/thicket-logo.png" width="230" alt="Thicket">
+  <img src="thicket-logo.svg" width="230" alt="Thicket">
 </p>
 
 # Thicket
@@ -63,7 +63,7 @@ repo against published artefacts and running it.
 ### Linux
 
 ```bash
-sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev
+sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev librsvg2-common
 ```
 
 | Package | Needed for | Verified against |
@@ -73,12 +73,14 @@ sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev
 | `pkg-config` | the build runs `pkg-config --cflags gtk4 libadwaita-1` and the matching `--libs` to get the compile and link flags, so a missing `pkg-config` fails the *build*, not just the link — and says which packages to install | 2.5.1 |
 | `libgtk-4-dev` | the GTK4 renderer | 4.22.4 |
 | `libadwaita-1-dev` | `AdwNavigationView`, for native navigation containers. GTK core has no equivalent — `GtkStack` gives transitions but no back-gesture semantics | 1.9.1 |
+| `librsvg2-common` | gdk-pixbuf's SVG loader: GTK draws an `Image` from an SVG file or SVG bytes through it, as the gallery and todo apps do with the logo. Usually already present with a desktop | 2.61.3 |
 | `python3` | `bin/coverage.sh` reads the scoverage report with it | any 3.x |
 
 The `-dev` packages are the point: the runtime libraries alone are not enough, because
 Scala Native compiles against the C headers.
 
-Everything else is fetched by coursier and needs nothing installed.
+Everything else is fetched by coursier and needs nothing installed. `bin/logo-assets.sh`,
+which regenerates the logo's PNGs and app SVG from `thicket-logo.svg`, also needs Inkscape 1.x.
 
 ### Run the demo in one command
 
@@ -346,12 +348,13 @@ self-test checks, Android 24 + 84.
 Coverage over the JVM-tested modules:
 
 ```bash
-./bin/coverage.sh          # 91.10% statement, 87.64% branch on 2026-09-29 — not measuring now, #80
+./bin/coverage.sh          # 94.04% statement, 88.22% branch on 2026-10-21; exits non-zero below the ratchet
 ```
 
-It clears the sbt disk cache first, and that is not optional — see `docs/12` §12.9. The
-figure covers the effect-free core; the three renderers are exercised by self-tests that
-drive the real toolkit, which no coverage tool instruments.
+It forces a real compile on every run, without touching the machine-wide sbt cache, and it
+fails if any module's measurements went missing — see `docs/12` §12.9. The figure covers the
+effect-free core; the three renderers are exercised by self-tests that drive the real
+toolkit, which no coverage tool instruments.
 
 Three things that will bite you:
 
@@ -386,6 +389,7 @@ the framework's source.*
 | 13 | [docs/13-phases.md](docs/13-phases.md) | Phases, branches, PRs, exit criteria |
 | 14 | [docs/14-releasing.md](docs/14-releasing.md) | Versions from tags, `early-semver`, what a consumer needs, how to cut a release |
 | 15 | [docs/15-icon-system.md](docs/15-icon-system.md) | The icon system: the design, and where what was built differs |
+| 16 | [docs/16-device-services.md](docs/16-device-services.md) | Device services — location, motion, camera, files, storage, HTTP: what Thicket provides, what libraries cover, the plan |
 | 11 | [docs/11-what-it-looks-like.md](docs/11-what-it-looks-like.md) | The design ideas, and the gap each one exposed |
 | 10 | [docs/10-phase-0-findings.md](docs/10-phase-0-findings.md) | Every phase-0 measurement and the GO decision |
 | — | [docs/decisions.md](docs/decisions.md) | Versions, tooling, the dated decision log |

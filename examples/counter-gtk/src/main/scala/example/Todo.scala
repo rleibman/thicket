@@ -32,7 +32,7 @@ object Todo {
   private var app: thicket.core.NavHost[TodoApp.Route] = null
 
   private def logoSource: Option[thicket.renderer.ImageSource] = {
-    val f = new java.io.File("docs/assets/thicket-logo-app.png")
+    val f = new java.io.File("docs/assets/thicket-logo.svg")
     if f.exists() then Some(thicket.renderer.ImageSource.FromFile(f.getPath)) else None
   }
 
