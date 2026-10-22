@@ -16,7 +16,7 @@
 
 package example.gallery
 
-import thicket.sqlite.NativeSqlite
+import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
 import thicket.storage.gtk.GtkStorage
 import java.util.concurrent.atomic.AtomicBoolean
@@ -542,8 +542,14 @@ object GalleryGtk {
         val failed = results.filterNot(_.passed).map(_.name).toSet
         check(
           s"JDBC conformance on the Scala Native driver: ${results.size} checks, only the known upstream defects fail",
-          results.size >= 15 && failed == JdbcConformance.knownNativeFailures,
+          results.size >= 17 && failed == JdbcConformance.knownNativeFailures,
           results.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
+        )
+        val magnum = MagnumChecks.run(Sqlite.dataSource(dirs, "magnum-checks.db")(using NativeSqlite.driver))
+        check(
+          s"Magnum (Scala Native build) over the Native driver: ${magnum.size} checks, only the known driver gaps fail",
+          magnum.size == 7 && magnum.filterNot(_.passed).map(_.name).toSet == MagnumChecks.knownNativeFailures,
+          magnum.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
         )
         def count = demo.notes.now.toOption
         when(250)(count.isDefined) {

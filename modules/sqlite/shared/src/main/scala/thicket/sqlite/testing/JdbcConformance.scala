@@ -63,7 +63,10 @@ object JdbcConformance {
   val knownNativeFailures: Set[String] = Set(
     "invalid SQL in a plain executeUpdate throws",
     "a constraint violated by a plain executeUpdate throws",
-    "binding a parameter index that does not exist throws"
+    "binding a parameter index that does not exist throws",
+    // Not implemented (`???`) in 0.0.6; Magnum's insertAll, updateAll, deleteAll and iterator use them.
+    "a batch runs each set of parameters (addBatch, executeBatch)",
+    "setFetchSize is accepted as a hint"
   )
 
   /** A check gets a connection to a new database, and a way to open a second connection to the same file. */
@@ -234,6 +237,38 @@ object JdbcConformance {
         val n = p.executeUpdate()
         p.close()
         expect(n == 2, s"reported $n")
+    },
+    "a batch runs each set of parameters (addBatch, executeBatch)" -> {
+      (
+        c,
+        _
+      ) =>
+        meals(c)
+        val p = c.prepareStatement("insert into meal(name, kcal) values (?, ?)")
+        Seq("a" -> 1.0, "b" -> 2.0, "c" -> 3.0).foreach {
+          (
+            n,
+            k
+          ) =>
+            p.setString(1, n)
+            p.setDouble(2, k)
+            p.addBatch()
+        }
+        val counts = p.executeBatch().toList
+        p.close()
+        expect(counts == List(1, 1, 1) && count(c, "meal") == 3, s"counts $counts, rows ${count(c, "meal")}")
+    },
+    "setFetchSize is accepted as a hint" -> {
+      (
+        c,
+        _
+      ) =>
+        meals(c)
+        val p = c.prepareStatement("select * from meal")
+        p.setFetchSize(100)
+        val any = p.executeQuery().next()
+        p.close()
+        expect(!any, "a row in an empty table")
     },
     "an empty result has no rows" -> {
       (

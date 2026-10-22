@@ -30,7 +30,7 @@ object JvmConformanceSpec extends ZIOSpecDefault {
         val driver = SqliteDriver.fromJdbc(new org.sqlite.JDBC())
         val results = JdbcConformance.run(driver, Files.createTempDirectory("thicket-conformance"))
         val failed = results.filterNot(_.passed)
-        assertTrue(results.size >= 15, failed.isEmpty) ?? failed.map(r => s"${r.name}: ${r.detail}").mkString("\n")
+        assertTrue(results.size >= 17, failed.isEmpty) ?? failed.map(r => s"${r.name}: ${r.detail}").mkString("\n")
       },
       test("Sqlite.open puts the database in the app's data directory") {
         given SqliteDriver = SqliteDriver.fromJdbc(new org.sqlite.JDBC())

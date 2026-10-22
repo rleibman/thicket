@@ -25,6 +25,7 @@ import scala.collection.mutable
 import thicket.core.Reconciler
 import thicket.core.dsl.*
 import thicket.signals.{ErrorSink, Owner}
+import thicket.sqlite.Sqlite
 import thicket.sqlite.android.AndroidSqlite
 import thicket.sqlite.testing.JdbcConformance
 import thicket.storage.android.AndroidStorage
@@ -140,8 +141,35 @@ object GallerySelfTest {
               val results = JdbcConformance.run(AndroidSqlite.driver, storage.dirs.temp.resolve("conformance"))
               check(
                 s"JDBC conformance on Thicket's Android driver: all ${results.size} checks pass",
-                results.size >= 15 && results.forall(_.passed),
+                results.size >= 17 && results.forall(_.passed),
                 results.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
+              )
+              // getObject / setObject: what a library mapping `Any` uses. Android-only, because Scala Native's
+              // java.sql has neither, so they cannot be in the shared conformance checks.
+              val objects = {
+                val c = Sqlite.memory()(using AndroidSqlite.driver)
+                try {
+                  c.createStatement().executeUpdate("create table t(i integer, r real, s text, b blob, n text)")
+                  val p = c.prepareStatement("insert into t values (?, ?, ?, ?, ?)")
+                  p.setObject(1, java.lang.Integer.valueOf(7))
+                  p.setObject(2, java.lang.Double.valueOf(2.5))
+                  p.setObject(3, "text")
+                  p.setObject(4, Array[Byte](1, 2))
+                  p.setObject(5, null)
+                  p.executeUpdate()
+                  val rs = c.createStatement().executeQuery("select * from t")
+                  rs.next()
+                  (1 to 5)
+                    .map(rs.getObject(_)).map {
+                      case b: Array[Byte] => b.toList
+                      case other => other
+                    }.toList
+                } finally c.close()
+              }
+              check(
+                "getObject and setObject round-trip SQLite's types on Thicket's Android driver",
+                objects == List(7L, 2.5, "text", List[Byte](1, 2), null),
+                objects.toString
               )
               notesBefore = demo.notes.now.toOption.getOrElse(-1)
               click("Add a note")

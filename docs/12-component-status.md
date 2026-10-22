@@ -239,7 +239,7 @@ every remaining entry before it is built, not after.
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, **per-subtree `Provide`**; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | App directories and preferences | `modules/storage`, `storage-gtk`, `storage-android` | done on GTK (XDG directories, `FilePreferences`) and Android (internal storage, `SharedPreferences`); a value reads back as the type it was written as on both. Apple is #98. `docs/16` §16.6 |
-| SQLite, through plain JDBC | `modules/sqlite`, `sqlite-android` | done on GTK (`scala-native-jdbc-sqlite` 0.0.6) and Android (Thicket's driver over `android.database.sqlite`). Every driver runs the same 15 `JdbcConformance` checks: xerial on the JVM and the Android driver pass all of them; the Native driver fails exactly 3, all upstream defects (errors from a plain `executeUpdate` and from a bad bind are not thrown). Apple is #98. `docs/16` §16.5 |
+| SQLite, through plain JDBC | `modules/sqlite`, `sqlite-android` | done on GTK (`scala-native-jdbc-sqlite` 0.0.6) and Android (Thicket's driver over `android.database.sqlite`). Every driver runs the same 17 `JdbcConformance` checks: xerial on the JVM and the Android driver pass all of them. The Native driver fails exactly 5, all upstream: errors from a plain `executeUpdate` and from a bad bind are not thrown, and batches and `setFetchSize` are unimplemented. Magnum works on Native; on Android it needs a one-line upstream fix (`docs/16` §16.5). Apple is #98. `docs/16` §16.5 |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
 | Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (99 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
 
@@ -335,15 +335,15 @@ someone who did not write the framework, running on all three targets.
 | `effectZioJVM` / `effectZioNative` | 25 — Native ran none until 2026-10-20: the specs were JVM-only |
 | `storageJVM` / `storageNative` | 14 |
 | `storageGtk` | 3 |
-| `sqliteJVM` / `sqliteNative` | 2 — one runs all 15 conformance checks against the driver: every one on the JVM, all but the 3 known upstream defects on Native |
+| `sqliteJVM` / `sqliteNative` | 2 — one runs all 17 conformance checks against the driver: every one on the JVM, all but the 5 known upstream gaps on Native |
 | `shimGen` | 15 |
 | `sbtThicket` | 9 |
 
 Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run; the
 storage and sqlite rows 2026-10-21. On top of these, the self-tests drive the real toolkits:
-GTK gallery **118** and todo **69** (`bin/gtk-selftests.sh`, which also fails on any
-`Gtk-CRITICAL`), Android gallery **28** and todo **84** on the `s2test` emulator (2026-10-21,
-the storage section's four checks each included).
+GTK gallery **119** and todo **69** (`bin/gtk-selftests.sh`, which also fails on any
+`Gtk-CRITICAL`), Android gallery **29** and todo **84** on the `s2test` emulator (2026-10-21,
+the storage section's five checks each included).
 
 Four rules the migration established:
 
@@ -399,7 +399,7 @@ exits non-zero when any of it fails.
 ### What the number does *not* cover
 
 **The three renderers.** GTK, Android and Apple are Scala Native and ART code, exercised by
-self-tests that drive the real toolkit in a real process — 118 + 69 checks on GTK and 28 + 84
+self-tests that drive the real toolkit in a real process — 119 + 69 checks on GTK and 29 + 84
 on Android (2026-10-21), 87 and 82 on macOS and iOS. scoverage instruments none of that, so those modules contribute
 nothing to the figure above and **their absence is not a gap in testing**. The number is
 coverage of the effect-free core, and quoting it as "the project's coverage" would be

@@ -69,6 +69,17 @@ object Sqlite {
   /** Opens, creating if needed, the database in `file`. */
   def open(file: Path)(using driver: SqliteDriver): Connection = driver.connect(s"jdbc:sqlite:$file")
 
+  /** The database `name` in the app's data directory, as a `javax.sql.DataSource`: what libraries such as Magnum take.
+    */
+  def dataSource(
+    dirs:         AppDirs,
+    name:         String
+  )(using driver: SqliteDriver
+  ): javax.sql.DataSource = {
+    require(name.nonEmpty && !name.contains('/'), s"a database name, not a path: '$name'")
+    SqliteDataSource(s"jdbc:sqlite:${dirs.data.resolve(name)}", driver)
+  }
+
   /** A database that lives as long as its connection: for tests and scratch work. */
   def memory()(using driver: SqliteDriver): Connection = driver.connect("jdbc:sqlite::memory:")
 

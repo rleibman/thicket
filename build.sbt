@@ -564,6 +564,9 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
   .jvmSettings(scalacOptions ++= Seq("-release", "17"))
+  // Magnum, the typed layer over JDBC the docs point apps to (docs/16 §16.5), checked against the Native driver. Native
+  // only: the official build does not run on Android (see MagnumChecks).
+  .nativeSettings(libraryDependencies += "com.github.lolgab" % "magnum_native0.5_3" % "1.3.1")
 
 
 lazy val galleryGtk = project
