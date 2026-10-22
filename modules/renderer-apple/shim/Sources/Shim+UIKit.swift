@@ -392,8 +392,29 @@ private var rootView: UIView?
 private var windowTitle = ""
 
 /// Called by the host, not by Scala, before `ScalaNativeInit`.
+/// #72: an Objective-C exception that unwinds into Scala Native frames ends in `std::terminate`
+/// as "uncaught foreign exception", and its name and reason are lost. So every exception is
+/// written to stderr as it is thrown, before any unwinding. One the toolkit throws and catches
+/// itself is logged too; that is rare, and a line too many beats a crash with no reason.
+private var previousPreprocessor: objc_exception_preprocessor?
+private var exceptionLogInstalled = false
+
+private func logObjCExceptions() {
+  guard !exceptionLogInstalled else { return }
+  exceptionLogInstalled = true
+  previousPreprocessor = objc_setExceptionPreprocessor { e in
+    if let ex = e as? NSException {
+      let line = "thicket: Objective-C exception \(ex.name.rawValue): \(ex.reason ?? "(no reason)")\n"
+      FileHandle.standardError.write(line.data(using: .utf8)!)
+    }
+    return previousPreprocessor?(e) ?? e
+  }
+}
+
 @_cdecl("sui_set_root_view")
 public func sui_set_root_view(_ h: UnsafeMutableRawPointer) {
+  // The host calls this before any Scala runs, so every later exception is logged.
+  logObjCExceptions()
   rootView = view(h)
 }
 

@@ -34,7 +34,7 @@ Android, Android's Spinner selection and its `-1`, Android tab reordering, `Safe
 on Android, GTK's `Scroll(padding)` and indeterminate `ProgressBar`, and the GTK `LazyColumn`
 showing stale rows after an edit. Open, on Apple: taps on leaf views, the UIKit Checkbox's
 label and right-to-left alignment (#75), `SafeArea` and `Scroll` padding (#76), selection
-when options change and `-1` (#77), unbuilt kinds (#74). The Android gallery, which this
+when options change and `-1` (#77), unbuilt kinds (#74, since fixed). The Android gallery, which this
 document and its README said was built, had no Gradle project until then; it now builds and
 self-tests (24/24 on the `s2test` emulator).
 
@@ -278,8 +278,8 @@ dormant, until a frame-based renderer needs it (decision log 2026-10-20, D11).
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
-are done. Open for the Mac: #69 (TabView), #72 (an unbuilt kind crashes
-the macOS run), and the review's #73–#79. Everything else is built and measured on the
+are done. Open for the Mac: #69 (TabView), and the review's #73 and
+#75–#79. An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74). Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:

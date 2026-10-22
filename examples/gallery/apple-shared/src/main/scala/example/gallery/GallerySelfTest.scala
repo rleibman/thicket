@@ -140,6 +140,13 @@ object GallerySelfTest {
     * that from code — a `UIAction` cannot be performed — the check says so instead of passing.
     */
   private def newControls(all: List[thicket.renderer.apple.Shim.Handle]): Unit = {
+    // D9: under a self-test an unbuilt kind throws, so this is reached with placeholders only when
+    // THICKET_ALLOW_UNBUILT was set for a local run. Say so, so "all passed" is not misread.
+    val stand = AppleApp.renderer.placeholderHandles.flatMap(AppleApp.renderer.kindOf).map(_.toString).toList.sorted
+    if stand.nonEmpty then
+      println(
+        s"[gallery]   (placeholders, allowed by THICKET_ALLOW_UNBUILT: ${stand.distinct.mkString(", ")} not built)"
+      )
     def ofKind(k: WidgetKind) = all.filter(h => AppleApp.renderer.kindOf(h).contains(k))
     def texts = AppleInspect.allTexts(AppleApp.rootHandle)
 

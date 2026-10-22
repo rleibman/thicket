@@ -72,6 +72,25 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **D9 on Apple: an unbuilt kind is a labelled placeholder, a named failure
+  under self-test, and Objective-C exceptions keep their reason** (#74, #72). shim-gen now
+  generates `ShimKind.unbuilt` from the `None`s in `Abi.kinds` (today `{24, 25}`, TabView and
+  Tab), so the list shrinks as kinds are built. `AppleRenderer` never sends one to the shim:
+  it builds a Column labelled "TabView is not built on Apple yet" holding the kind's
+  children, and under a self-test it throws, which the error barrier reports by name. One
+  set for both toolkits, because the renderer cannot yet tell which it runs on (#79).
+  `THICKET_ALLOW_UNBUILT=1` turns the throw back into the placeholder for a local run, so
+  other work can be measured before every kind is built; CI never sets it, and the gallery
+  then prints which kinds stood in. Both shims log each Objective-C exception's name and
+  reason to stderr as it is thrown: the AppKit crash #72 lost now reads
+  `NSGenericException: Unable to activate constraint … NSBox … no common ancestor` (control:
+  `unbuilt` emptied, so TabView reached the shim's old fallback). Measured: strict, the
+  macOS run no longer aborts and fails by name; with placeholders allowed the gallery is
+  **66/66** on macOS and 64 of 65 on the iOS simulator. The one iOS failure is the review's
+  new bytes-backed Image section (#73). `main` stays red until #69 builds TabView, not
+  until #65 as #72 first expected. Also red on `main`: the iOS getting-started template
+  still imports `GcState` from `thicket.renderer.apple`, which #81 moved to core (#73).
+
 - 2026-10-21 — **IconButton on Apple: SF Symbols, read back from the platform and counted in
   pixels** (#66). `AppleIcons` maps the 24 curated icons, all 24 present on macOS 27.0.1 and
   the iOS 27 simulator. An `NSButton`, borderless and image-only, on AppKit; a plain
