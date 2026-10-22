@@ -1,7 +1,9 @@
 # 16 — Device services: a plan for review
 
-**Status (2026-10-21): decided, nothing built.** The owner's answers are in §16.9; the iOS
-HTTP transport is #90 (Mac). Covers location, motion, camera, files, storage and the rest:
+**Status (2026-10-21): decided; storage and SQLite built on GTK and Android.** The owner's
+answers are in §16.9. Built: app directories, preferences and SQLite through JDBC (§16.5,
+§16.6), measured on GTK and on the Android emulator; Apple is #98. The iOS HTTP transport is
+#90 (Mac). Covers location, motion, camera, files, storage and the rest:
 what a real app is likely to need, what existing libraries already cover, and what Thicket
 itself has to provide.
 
@@ -141,9 +143,37 @@ What Thicket provides, then, is small, and none of it is a query language:
   swallowed errors, and it decides when "the same JDBC code runs everywhere" is true.
 - **Tests need no fakes:** `jdbc:sqlite::memory:` works on every driver.
 
-Query libraries are the app's choice. Magnum and Quill are JDBC-based but JVM-only, so they
-run on Android and not on GTK or Apple, which breaks the one-codebase promise; the docs will
-say so rather than recommend them.
+**Built, 2026-10-21** (`modules/sqlite`, `modules/sqlite-android`):
+- `JdbcConformance` has 15 checks. xerial passes all 15 on the JVM. Thicket's Android driver
+  passes all 15 on the `s2test` emulator. The Native driver fails exactly 3: errors from a
+  plain `executeUpdate` (invalid SQL, a violated constraint) and a bind to a parameter index
+  that does not exist. All three are the same upstream bug: `SQLiteOps` builds the
+  `SQLException` and does not `throw` it. A failed prepare is not thrown either, but surfaces
+  at the first `next()`, so that check passes.
+- **The Android driver** implements the subset; the rest of `java.sql` (374 methods) throws
+  `SQLFeatureNotSupportedException`, generated from the JDK's signatures by
+  `modules/sqlite-android/gen-unsupported.py`. Query parameters keep their types through a
+  `CursorFactory`, since `rawQuery` binds strings only. Its jar is 101 KB.
+- **Falsified:** with the Android driver made to swallow `executeUpdate` errors as the Native
+  one does, the gallery's conformance check fails on "a constraint violated by a plain
+  executeUpdate throws".
+
+**Query libraries are the app's choice, and one exists on both runtimes.** The author of
+the Native driver also publishes Scala Native builds of Magnum
+(`com.github.lolgab::magnum` 1.3.1, the same version as the official
+`com.augustnagro::magnum` 1.3.1 on the JVM) and of ScalaSql (`com.github.lolgab::scalasql`
+0.1.15, well behind the official 0.3.x). Quill has none.
+
+**Measured, 2026-10-21:** a scala-cli spike on Scala 3.9.0 and Scala Native 0.5.12, with
+`scala-native-jdbc-sqlite` 0.0.6. These work:
+- `sql"…"` with bound parameters;
+- a `derives DbCodec` case class read back with `query[Meal]`;
+- `transact`;
+- `Repo.count` and `findById`.
+
+It logs every query at TRACE by default. **Not measured:** the official Magnum on Android
+over Thicket's driver, which may need `getObject` or metadata the driver does not provide.
+If it works, Magnum is a typed layer with the same API everywhere, written by someone else.
 
 ## 16.6 The shape of the API
 
@@ -248,7 +278,8 @@ Every service gets a gallery section and self-test checks on every host where it
    Unblocks phase 6.
 2. **Storage:** app directories, preferences, secrets; SQLite as the Android JDBC driver,
    `Sqlite.open`, the conformance suite, and the upstream fix for the Native driver's
-   swallowed errors.
+   swallowed errors. *Done on GTK and Android, 2026-10-21, except secrets and the upstream
+   fix; Apple is #98.*
 3. **Lifecycle and permissions:** the host plumbing every later service sits on.
 4. **Location,** then **motion**, each with emulator-injected self-tests.
 5. **Pickers, camera capture, share, clipboard, haptics.**

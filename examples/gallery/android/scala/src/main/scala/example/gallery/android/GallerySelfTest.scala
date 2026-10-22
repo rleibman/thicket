@@ -20,11 +20,14 @@ import _root_.android.os.{Handler, Looper, SystemClock}
 import _root_.android.util.Log
 import _root_.android.view.{View, ViewGroup}
 import _root_.android.widget.{Button, EditText, ImageView, Spinner, TextView}
-import example.gallery.Gallery
+import example.gallery.{Gallery, StorageDemo}
 import scala.collection.mutable
 import thicket.core.Reconciler
 import thicket.core.dsl.*
 import thicket.signals.{ErrorSink, Owner}
+import thicket.sqlite.android.AndroidSqlite
+import thicket.sqlite.testing.JdbcConformance
+import thicket.storage.android.AndroidStorage
 
 /** The gallery's checks on Android, read back out of the real view tree.
   *
@@ -95,6 +98,7 @@ object GallerySelfTest {
     def spinner = findAll(screen) { case _: Spinner => true; case _ => false }.headOption.map(_.asInstanceOf[Spinner])
     var reportsBefore = ""
     var entriesBefore = 0
+    var notesBefore = -1
 
     Log.i(Tag, "[gallery] reading the catalogue back out of Android")
     sequence(
@@ -112,6 +116,44 @@ object GallerySelfTest {
             "a ZIO effect's result reached the screen through UiThread",
             texts.contains(Gallery.effectResult),
             texts.filter(_.startsWith("Load")).toString
+          )
+        },
+        // Device services (docs/16): SharedPreferences, the app's internal directories, and SQLite through
+        // Thicket's own JDBC driver over android.database.sqlite, held to the same conformance checks as the
+        // JVM's reference driver, all of which it must pass.
+        () => {
+          Gallery.currentStorage match {
+            case None       => check("the Android host provides storage", false)
+            case Some(demo) =>
+              val storage = AndroidStorage(activity)
+              check(
+                "the launch counter is on screen and stored in SharedPreferences",
+                texts.contains(s"Opened ${demo.opens} times") &&
+                  storage.preferences.getLong(StorageDemo.opensKey).contains(demo.opens),
+                texts.filter(_.startsWith("Opened")).toString
+              )
+              check(
+                "the data directory is the app's private files directory",
+                storage.dirs.data == activity.getFilesDir.toPath,
+                storage.dirs.toString
+              )
+              val results = JdbcConformance.run(AndroidSqlite.driver, storage.dirs.temp.resolve("conformance"))
+              check(
+                s"JDBC conformance on Thicket's Android driver: all ${results.size} checks pass",
+                results.size >= 15 && results.forall(_.passed),
+                results.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
+              )
+              notesBefore = demo.notes.now.toOption.getOrElse(-1)
+              click("Add a note")
+          }
+        },
+        () => (), // the insert runs on the database worker; give it a turn
+        () => {
+          check(
+            "\"Add a note\" writes a row on the worker and the count reaches the screen",
+            notesBefore >= 0 && texts.contains(StorageDemo.notesLabel(notesBefore + 1)) &&
+              java.nio.file.Files.exists(activity.getFilesDir.toPath.resolve("gallery.db")),
+            s"before $notesBefore; " + texts.filter(_.contains("SQLite")).toString
           )
         },
         () => {

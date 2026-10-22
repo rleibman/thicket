@@ -16,6 +16,9 @@
 
 package example.gallery
 
+import thicket.sqlite.NativeSqlite
+import thicket.sqlite.testing.JdbcConformance
+import thicket.storage.gtk.GtkStorage
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 import scala.scalanative.unsafe.Ptr
@@ -506,8 +509,61 @@ object GalleryGtk {
       s"${GtkInspect.cssParseErrors} CSS parse errors"
     )
 
-    presentedAndNav(root)
+    storageChecks(root)(presentedAndNav(root))
   }
+
+  /** Device services on GTK (docs/16): preferences in the XDG data directory, SQLite through the Scala Native driver,
+    * and the "Add a note" button really writing a row. The database works on a worker, so the check waits for the count
+    * to change, letting the main loop run.
+    */
+  private def storageChecks(root: Ptr[GtkWidget])(next: => Unit): Unit =
+    Gallery.currentStorage match {
+      case None =>
+        check("the GTK host provides storage", false, "Gallery.currentStorage is None")
+        next
+      case Some(demo) =>
+        val dirs = storage.dirs
+        val texts = GtkInspect.allTexts(root)
+        check(
+          "the launch counter is on screen and stored in preferences",
+          texts.contains(s"Opened ${demo.opens} times") &&
+            storage.preferences.getLong(StorageDemo.opensKey).contains(demo.opens),
+          texts.filter(_.startsWith("Opened")).toString
+        )
+        check(
+          "preferences are in a file under the XDG data directory, and a new instance reads them back",
+          dirs.data.toString.endsWith("/dev.thicket.gallery") &&
+            thicket.storage
+              .FilePreferences(dirs.data.resolve("preferences.properties"))
+              .getLong(StorageDemo.opensKey).contains(demo.opens),
+          dirs.toString
+        )
+        val results = JdbcConformance.run(NativeSqlite.driver, dirs.temp.resolve("conformance"))
+        val failed = results.filterNot(_.passed).map(_.name).toSet
+        check(
+          s"JDBC conformance on the Scala Native driver: ${results.size} checks, only the known upstream defects fail",
+          results.size >= 15 && failed == JdbcConformance.knownNativeFailures,
+          results.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
+        )
+        def count = demo.notes.now.toOption
+        when(250)(count.isDefined) {
+          val before = count.getOrElse(-1)
+          GtkInspect
+            .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Add a note"))
+            .headOption.foreach(GtkInspect.click)
+          when(250)(count.exists(_ == before + 1)) {
+            check(
+              "\"Add a note\" writes a row on the worker and the count reaches the screen",
+              before >= 0 && GtkInspect.allTexts(root).contains(StorageDemo.notesLabel(before + 1)) &&
+                java.nio.file.Files.exists(dirs.data.resolve("gallery.db")),
+              s"before $before, now ${demo.notes.now}, " + GtkInspect.allTexts(root).filter(_.contains("SQLite"))
+            )
+            next
+          }
+        }
+    }
+
+  lazy private val storage = GtkStorage("dev.thicket.gallery")
 
   /** The verdict, and the exit status: 0, or the failure count (capped below 124, which `timeout` uses). */
   private def finish(): Unit = {
@@ -555,7 +611,12 @@ object GalleryGtk {
         )
         Gallery.currentNav.foreach(_.pop())
         // The page is freed when its transition ends, and its content released after that.
-        when(200)(GtkApp.containerDepth == 1 && GtkInspect.liveListBinders == 0) {
+        // ...and the replaced catalogue is released, which is asynchronous too: GTK finalises a page when it lets go
+        // of it, and after a frame has been drawn that is later than the pop (a ~200 ms pause before the reset was
+        // enough to make the count below read one too many, then settle).
+        when(200)(
+          GtkApp.containerDepth == 1 && GtkInspect.liveListBinders == 0 && GtkInspect.liveCssProviders == providers
+        ) {
           check(
             "leaving the list releases its list-view callbacks",
             GtkInspect.liveListBinders == 0,
@@ -759,7 +820,7 @@ object GalleryGtk {
   def main(args: Array[String]): Unit = {
     val status = GtkApp.run("dev.thicket.gallery", width = 520, height = 760) {
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => afterEffect(200)(selfTest()))
-      Gallery.app(Gallery.logoSvg)
+      Gallery.app(Gallery.logoSvg, services = Some(Services(storage, NativeSqlite.driver)))
     }
     sys.exit(status)
   }

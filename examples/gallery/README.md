@@ -110,4 +110,6 @@ badge and as a centred overlay, `Image` in all three fits from a file and from b
 and horizontal `Scroll` (padded), keyed `ForEach`, virtualised `LazyColumn` whose first row
 can be deleted and renamed, a per-row `ContextMenu`, subtree theming with `Provide`, a
 handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet`), toolbar
-`Action`s, a navigation push, and a `TabView` with a tab inserted in the middle.
+`Action`s, a navigation push, a `TabView` with a tab inserted in the middle, and storage: a
+launch counter in preferences and notes in SQLite, written on a worker thread, with the JDBC
+conformance checks run against the platform's driver (GTK and Android; Apple is #98).
