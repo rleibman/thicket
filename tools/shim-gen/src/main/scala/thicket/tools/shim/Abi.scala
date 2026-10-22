@@ -597,6 +597,13 @@ object Abi {
     ),
     Fn("sui_option_label", Str, List(p("h", Handle), p("index", I32))),
     Fn(
+      "sui_shown_option",
+      Str,
+      List(p("h", Handle)),
+      doc = "The option a Picker or SegmentedControl *shows* as chosen, read from what the control\n" +
+        "   draws (the pop-up's title, the selected segment); \"\" when it shows none (D13, #77)."
+    ),
+    Fn(
       "sui_choose",
       I32,
       List(p("h", Handle), p("index", I32)),

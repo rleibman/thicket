@@ -132,6 +132,123 @@ object GallerySelfTest {
     else println(s"[gallery] $failures CHECK(S) FAILED")
   }
 
+  private type H = thicket.renderer.apple.Shim.Handle
+
+  /** The button labelled `label` in the same section as `control`: the gallery has two "Clear"s. The nearest ancestor
+    * holding such a button is the last one in a pre-order walk, which visits ancestors before descendants.
+    */
+  private def buttonNear(
+    all:     List[H],
+    control: H,
+    label:   String
+  ): Option[H] = {
+    def button(h: H) =
+      AppleInspect
+        .all(h).find(b =>
+          AppleApp.renderer.kindOf(b).contains(WidgetKind.Button) && AppleInspect.text(b).contains(label)
+        )
+    all.filter(h => h != control && AppleInspect.all(h).contains(control)).flatMap(button).lastOption
+  }
+
+  /** #77 (review 2026-10-20 P1-10, P1-11; D13). The Picker keeps its selection — an index — when its options are
+    * replaced, reports no choice the user did not make, and shows a blank for `-1`. What it shows is read from what the
+    * control draws (`shownOption`), not from what the renderer told it.
+    */
+  private def pickerSelection(
+    all: List[H],
+    p:   H
+  ): Unit = {
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    def reports = texts.find(_.startsWith("The picker reported")).getOrElse("")
+    def chose = texts.filter(t => t.startsWith("Chose") || t == "(nothing selected)").toString
+    def shows =
+      s"shows '${AppleInspect.shownOption(p)}', selected ${AppleInspect.selected(p)}, options ${AppleInspect.options(p)}"
+    def press(label: String): Unit =
+      buttonNear(all, p, label) match {
+        case Some(b) => AppleInspect.click(b)
+        case None    => check(s"the Picker's '$label' button is on screen", false)
+      }
+    val reportsBefore = reports
+    press("Select last")
+    press("Swap the options")
+    check(
+      "swapping the Picker's options keeps its selection",
+      AppleInspect.options(p) == Gallery.vegetables && AppleInspect.shownOption(p) == Gallery.vegetables.last &&
+        AppleInspect.selected(p) == Gallery.vegetables.length - 1,
+      shows
+    )
+    check("and the app agrees", texts.contains(s"Chose ${Gallery.vegetables.last} (index 2)"), chose)
+    val (_, _, chosenW, chosenH) = AppleInspect.frame(p)
+    press("Clear")
+    check(
+      "Selected(-1) shows a blank Picker, not the first option (D13)",
+      AppleInspect.shownOption(p) == "" && AppleInspect.selected(p) == -1,
+      shows
+    )
+    // A blank title must not take the control with it: a pop-up the user cannot see or tap is
+    // a selection they cannot make again.
+    val (_, _, blankW, blankH) = AppleInspect.frame(p)
+    check(
+      "and the blank Picker is still there to tap",
+      blankW >= 20 && blankH >= 20,
+      f"$blankW%.0fx$blankH%.0f blank, $chosenW%.0fx$chosenH%.0f showing ${Gallery.vegetables.last}"
+    )
+    println(f"[gallery]   picker frame: $chosenW%.0fx$chosenH%.0f showing an option, $blankW%.0fx$blankH%.0f blank")
+    press("Swap the options")
+    check(
+      "and swapping its options with nothing selected selects nothing",
+      AppleInspect.options(p) == Gallery.fruit && AppleInspect.shownOption(p) == "" && AppleInspect.selected(p) == -1,
+      shows
+    )
+    check("and the app agrees", texts.contains("(nothing selected)"), chose)
+    check(
+      "and no swap or app write reported a choice the user did not make",
+      reports == reportsBefore,
+      s"$reportsBefore -> $reports"
+    )
+  }
+
+  /** The SegmentedControl's half of #77. The gallery has no button that replaces its options, so the renderer is given
+    * new ones directly — the patch the reconciler would send — and then the originals back.
+    */
+  private def segmentedSelection(
+    all: List[H],
+    s:   H
+  ): Unit = {
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    def showing = texts.filter(t => t.startsWith("Showing a ") || t == "(no span)")
+    def shows =
+      s"shows '${AppleInspect.shownOption(s)}', selected ${AppleInspect.selected(s)}, options ${AppleInspect.options(s)}"
+    val before = AppleInspect.selected(s)
+    val appBefore = showing
+    val renamed = Gallery.spans.map(_.toUpperCase)
+    AppleApp.renderer.update(s, Seq(Prop.Options(renamed)))
+    check(
+      "new segments keep the selected index",
+      AppleInspect.options(s) == renamed && AppleInspect.selected(s) == before &&
+        AppleInspect.shownOption(s) == renamed.lift(before).getOrElse(""),
+      shows
+    )
+    AppleApp.renderer.update(s, Seq(Prop.Options(Gallery.spans)))
+    check(
+      "and so do the old ones, put back",
+      AppleInspect.selected(s) == before && AppleInspect.shownOption(s) == Gallery.spans.lift(before).getOrElse(""),
+      shows
+    )
+    check("and neither change reported a choice", showing == appBefore, s"$appBefore -> $showing")
+    buttonNear(all, s, "Clear") match {
+      case Some(b) =>
+        AppleInspect.click(b)
+        check(
+          "Selected(-1) leaves no segment chosen (D13)",
+          AppleInspect.selected(s) == -1 && AppleInspect.shownOption(s) == "",
+          shows
+        )
+        check("and the app agrees", showing == List("(no span)"), showing.toString)
+      case None => check("the SegmentedControl's 'Clear' button is on screen", false)
+    }
+  }
+
   /** The questions the GTK gallery asks of the controls #45 and #46 added, asked of AppKit and UIKit.
     *
     * Each control is found through the renderer (which handles are the framework's own Picker, ZStack, …) and every
@@ -167,6 +284,7 @@ object GallerySelfTest {
           texts.filter(_.startsWith("Chose")).toString
         )
       else println("[gallery]   (this platform offers no way to choose a Picker option from code; not exercised)")
+      pickerSelection(all, p)
     }
 
     // --- DatePicker ---
@@ -213,6 +331,7 @@ object GallerySelfTest {
         texts.contains("Showing a Month"),
         texts.filter(_.startsWith("Showing")).toString
       )
+      segmentedSelection(all, s)
     }
 
     // --- Link: clicked for real, with the opener recording instead of launching a browser ---

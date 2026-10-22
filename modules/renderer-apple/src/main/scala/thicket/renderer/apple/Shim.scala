@@ -112,6 +112,7 @@ object Shim {
   def sui_menu_item_label(h: Handle, index: CInt): CString = extern
   def sui_option_count(h: Handle): CInt = extern
   def sui_option_label(h: Handle, index: CInt): CString = extern
+  def sui_shown_option(h: Handle): CString = extern
   def sui_choose(h: Handle, index: CInt): CInt = extern
   def sui_option_symbol(h: Handle, index: CInt): CString = extern
   def sui_tab_shown(h: Handle): Handle = extern

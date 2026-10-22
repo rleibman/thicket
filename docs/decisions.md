@@ -103,6 +103,32 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   dropping unselected pages' content fails 3 on macOS; items without their images fail the
   symbol check on macOS. `getting-started` still fails on the iOS template's `GcState`
   import (#73).
+- 2026-10-21 — **Apple Picker and SegmentedControl keep their selection when the options
+  change, and `-1` is a blank on both toolkits (D13)** (#77; review 2026-10-20 P1-10, P1-11).
+  `AppleRenderer` reads the index the control holds before `Options` clears it and writes it
+  back after: AppKit's pop-up and segmented control and UIKit's segmented control all lost it,
+  and nothing re-applied it. The shims send no action for either step, so nothing reaches
+  `OnSelect`. Two `-1` bugs were behind it. UIKit's menu button always has an element on, and
+  with none on it turns the first one on and shows it ("Apple" after Clear), so while nothing
+  is chosen its menu leads with a blank element, as Android's list does; the option
+  read-backs skip it, and it goes once the user chooses. AppKit's segmented control ignored
+  `setSelected(false, …)` per segment under `.selectOne`, so the chosen segment stayed chosen;
+  `selectedSegment = -1` clears it. Nothing saw that while a change of options cleared it
+  anyway. The pop-up maps an index past the end to no selection. A new read-back,
+  `sui_shown_option`, reports what the control *draws*: `NSPopUpButtonCell.menuItem`, the
+  selected segment's label, and the UIKit button's `currentTitle`. Its `titleLabel.text` was
+  still the previous choice when read straight after a change, even after a layout pass.
+  Measured with `THICKET_ALLOW_UNBUILT=1` (TabView is #69): gallery **78/78** on macOS and
+  76 of 77 on the "iPhone 18 Pro" simulator, where the one failure is #73's Image. Twelve new
+  checks: after Select last and Swap the pop-up shows "Pea" at index 2 and the label reads
+  `Chose Pea (index 2)`; Clear shows "" with index -1, and a following Swap keeps it; the
+  report counter does not move; the blank pop-up keeps its size (77×24 on AppKit, 370×30 on
+  UIKit). Each fix was reverted to show its checks fail. Without the re-apply, 4 fail on
+  macOS (the pop-up shows "Leek" after Swap, the segments show none) and 2 on iOS (the
+  segments). The UIKit Picker was already right there. Without the blank lead, 2 fail on iOS
+  ("Leek", then "Apple"). With the per-segment loop alone, 1 fails on macOS ("Month" stays
+  chosen). Not exercised: a user's choice on the UIKit Picker, because UIKit cannot perform a
+  `UIAction` from code. That includes the menu rebuild that drops the blank lead.
 
 - 2026-10-21 — **D9 on Apple: an unbuilt kind is a labelled placeholder, a named failure
   under self-test, and Objective-C exceptions keep their reason** (#74, #72). shim-gen now

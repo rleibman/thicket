@@ -59,6 +59,14 @@ cell plus the spacing, every row at its tallest. **58/58** on macOS and **57/57*
 Falsified on both: ignoring the column count fails five checks, inserting at the end instead
 of in place fails two.
 
+**#77** added the selection checks GTK has, asked of what the Apple control draws
+(`sui_shown_option`). After **Select last** and **Swap the options**, the Picker shows "Pea" at
+index 2. **Clear** shows a blank (D13), and so does a Swap after it. The report counter does
+not move. The SegmentedControl keeps its index across new options, which the self-test hands
+the renderer directly, because the screen has no button for it. Its **Clear** leaves no segment
+chosen. Results: **78/78** on macOS, and 76 of 77 on the iOS simulator with #73's Image
+failing, both with `THICKET_ALLOW_UNBUILT=1` until TabView (#69) is built.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name
