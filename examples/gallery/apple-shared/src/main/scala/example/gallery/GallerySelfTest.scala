@@ -569,6 +569,130 @@ object GallerySelfTest {
       texts.contains("Tapped Share"),
       texts.filter(_.startsWith("Tapped")).toString
     )
+
+    tabView(ofKind(WidgetKind.TabView), ofKind)
+  }
+
+  /** The questions GTK asks of its `AdwViewStack` (#69), asked of `NSTabViewController` and `UITabBarController`.
+    *
+    * The bar's items are read from the bar the controller draws — AppKit's segmented control, UIKit's `UITabBar` — the
+    * pages from the controller's own items, and the page on screen from the controller and the window. A tab is
+    * switched through the bar, the way a user does. Where GTK reads a page's content from the stack, this reads it from
+    * the item's view: a controller keeps only the selected page in the window, and the others alive but out of it,
+    * which is what "kept alive" means on Apple.
+    */
+  private def tabView(
+    tabViews: List[thicket.renderer.apple.Shim.Handle],
+    ofKind:   WidgetKind => List[thicket.renderer.apple.Shim.Handle]
+  ): Unit = {
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    def showing = texts.filter(_.startsWith("Showing")).toString
+    check(
+      "one TabView, with the platform's tab bar",
+      tabViews.length == 1 && tabViews.forall(t => AppleInspect.options(t).nonEmpty),
+      s"${tabViews.length} TabViews, bars: ${tabViews.map(AppleInspect.options)}"
+    )
+    tabViews.headOption.foreach { tv =>
+      def pages = AppleInspect.children(tv)
+      def bar = AppleInspect.options(tv)
+      def contentOf(t: String) = s"The ${t.toLowerCase} tab's content"
+      def pagesHold(titles: Seq[String]) =
+        pages.length == titles.length && titles
+          .zip(pages).forall(
+            (
+              t,
+              p
+            ) => AppleInspect.allTexts(p) == List(contentOf(t))
+          )
+      def described = s"bar=$bar symbols=${AppleInspect.optionSymbols(tv)} pages=${pages.map(AppleInspect.allTexts)}"
+      def shownIndex = AppleInspect.tabShown(tv).map(pages.indexOf).getOrElse(-1)
+      def button(t: String) = ofKind(WidgetKind.Button).find(h => AppleInspect.text(h).contains(t))
+
+      check(
+        "the bar's items are the tabs, in order, with their mapped symbols",
+        bar == Gallery.tabTitles &&
+          AppleInspect.optionSymbols(tv) == List(Icon.Home, Icon.Mail, Icon.Settings).map(i =>
+            Some(AppleIcons.name(i))
+          ),
+        described
+      )
+      check(
+        "every tab's content is mounted, not only the visible one's",
+        pagesHold(Gallery.tabTitles),
+        described
+      )
+      // The gallery starts on Mail, index 1, not the controller's default first item.
+      check(
+        "the app's initial tab is the visible page, not the controller's default",
+        shownIndex == 1 && AppleInspect.selected(tv) == 1 && texts.contains("Showing tab 1"),
+        s"shown=$shownIndex selected=${AppleInspect.selected(tv)} $showing"
+      )
+      // Laid out, not only present: the page on screen holds its content, inside the TabView,
+      // which is tall enough for the bar and the page. A controller's page is placed by frame,
+      // so nothing in it would size the TabView unless the shim does.
+      def framed: (Boolean, String) = {
+        val (tx, ty, tw, th) = AppleInspect.frame(tv)
+        AppleInspect.tabShown(tv).flatMap(AppleInspect.children(_).headOption) match {
+          case Some(c) =>
+            val (cx, cy, cw, ch) = AppleInspect.frame(c)
+            val inside = cx >= tx - 0.5 && cy >= ty - 0.5 && cx + cw <= tx + tw + 0.5 && cy + ch <= ty + th + 0.5
+            (
+              inside && cw > 0 && ch > 0 && th >= ch + 20,
+              f"tabView ($tx%.0f,$ty%.0f $tw%.0fx$th%.0f) content ($cx%.0f,$cy%.0f $cw%.0fx$ch%.0f)"
+            )
+          case None => (false, f"tabView ($tx%.0f,$ty%.0f $tw%.0fx$th%.0f), no page on screen")
+        }
+      }
+      val (laidOut, frames) = framed
+      check("the page on screen is laid out inside the TabView, below or above its bar", laidOut, frames)
+      println(s"[gallery]   tab frames: $frames")
+
+      check("the bar's Settings item can be clicked", AppleInspect.choose(tv, bar.indexOf("Settings")))
+      check(
+        "clicking the bar's Settings item shows that page",
+        shownIndex == 2 && AppleInspect.selected(tv) == 2,
+        s"shown=$shownIndex selected=${AppleInspect.selected(tv)}"
+      )
+      check("and reaches the app, as its index", texts.contains("Showing tab 2"), showing)
+
+      button("Add a tab in the middle").foreach(AppleInspect.click)
+      check(
+        "a tab inserted in the middle lands there, and the others keep their order",
+        bar == List("Home", "Extra", "Mail", "Settings"),
+        described
+      )
+      check(
+        "the user stays on Settings, and the app is told its new index",
+        shownIndex == 3 && texts.contains("Showing tab 3"),
+        s"shown=$shownIndex $showing"
+      )
+      check("and every tab still has its content", pagesHold(List("Home", "Extra", "Mail", "Settings")), described)
+
+      button("Remove the extra tab").foreach(AppleInspect.click)
+      check(
+        "and removing it restores the three",
+        bar == Gallery.tabTitles && pagesHold(Gallery.tabTitles),
+        described
+      )
+      check(
+        "and the user is still on Settings, told its index again",
+        shownIndex == 2 && texts.contains("Showing tab 2"),
+        s"shown=$shownIndex $showing"
+      )
+
+      // Selected(-1) and an index past the end leave the visible tab alone. Sent to the renderer
+      // directly, as a model would send them; the answer is read from the controller.
+      AppleApp.renderer.update(tv, Seq(Prop.Selected(-1)))
+      val afterNone = shownIndex
+      AppleApp.renderer.update(tv, Seq(Prop.Selected(7)))
+      val afterPast = shownIndex
+      AppleApp.renderer.update(tv, Seq(Prop.Selected(2)))
+      check(
+        "Selected(-1) or past the end leaves the visible tab alone",
+        afterNone == 2 && afterPast == 2,
+        s"after -1: $afterNone, after 7: $afterPast"
+      )
+    }
   }
 
 }
