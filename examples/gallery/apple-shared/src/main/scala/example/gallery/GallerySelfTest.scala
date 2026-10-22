@@ -181,6 +181,7 @@ object GallerySelfTest {
     insetsAndTaps()
     tapsCheckboxAndDirection(AppleInspect.all(root))
     layout(AppleInspect.all(root))
+    crossAxis(AppleInspect.all(root))
     robustness(AppleInspect.all(root))
 
     // Presented widgets must not be in the tree until asked for.
@@ -558,6 +559,125 @@ object GallerySelfTest {
         check("and the app agrees", showing == List("(no span)"), showing.toString)
       case None => check("the SegmentedControl's 'Clear' button is on screen", false)
     }
+  }
+
+  /** The cross axis of the Layout section (#87), from the frames the platform laid out, beside [[layout]]'s checks
+    * (#73): a Row spans its Column, children stay inside the screen's padding, and each aligned label is as wide as its
+    * section, which is what it needs for its alignment to show. Within a point, as the ZStack's checks are.
+    *
+    * `THICKET_FRAME_DUMP=1` also prints every widget's kind, text and frame, so a layout change can be compared across
+    * the whole screen before and after.
+    */
+  private def crossAxis(all: List[thicket.renderer.apple.Shim.Handle]): Unit = {
+    type H = thicket.renderer.apple.Shim.Handle
+    def kind(
+      h: H,
+      k: WidgetKind
+    ) = AppleApp.renderer.kindOf(h).contains(k)
+    def near(
+      a: Double,
+      b: Double
+    ) = math.abs(a - b) <= 1.0
+    def labels(t: String) = all.filter(h => kind(h, WidgetKind.Label) && AppleInspect.text(h).contains(t))
+    def f(t:      String) = labels(t).lastOption.map(AppleInspect.frame).getOrElse((0.0, 0.0, 0.0, 0.0))
+    def right(t:  String) = f(t)._1 + f(t)._3
+    def bottom(t: String) = f(t)._2 + f(t)._4
+    def fr(r:     (Double, Double, Double, Double)) = f"(${r._1}%.0f,${r._2}%.0f ${r._3}%.0fx${r._4}%.0f)"
+    def show(ts:  String*) = ts.map(t => s"$t${fr(f(t))}").mkString(" ")
+    val parentOf: Map[H, H] = all.flatMap(p => AppleInspect.children(p).map(_ -> p)).toMap
+
+    // The section's body: the Column holding the Row that holds "left". Everything below is
+    // measured against it, so a Column that does not stretch its children shows here.
+    val leftRow = labels("left").lastOption.flatMap(parentOf.get)
+    val body = leftRow.flatMap(parentOf.get)
+    val (bx, _, bw, _) = body.map(AppleInspect.frame).getOrElse((0.0, 0.0, 0.0, 0.0))
+    val bodyRight = bx + bw
+    check(
+      "a Row spans its Column",
+      bw > 100 && leftRow.exists(r => near(AppleInspect.frame(r)._3, bw)),
+      s"(#87) row ${leftRow.map(r => fr(AppleInspect.frame(r)))}, column ${body.map(c => fr(AppleInspect.frame(c)))}"
+    )
+    // A stretched child stays inside its Column's padding: the screen Column's first section is
+    // as far in from its leading and trailing edges as from its top, which the stack's own
+    // spacing rules set.
+    val screen = body.flatMap(parentOf.get).flatMap(parentOf.get)
+    val inset = for r <- screen; s <- AppleInspect.children(r).headOption yield {
+      val (sx, sy, sw, _) = AppleInspect.frame(s)
+      val (rx, ry, rw, _) = AppleInspect.frame(r)
+      (sy - ry, sx - rx, (rx + rw) - (sx + sw))
+    }
+    check(
+      "a stretched child stays inside its Column's padding",
+      inset.exists(
+        (
+          t,
+          l,
+          r
+        ) => near(l, t) && near(r, t)
+      ),
+      s"(#87) first section's inset from the screen Column (top, leading, trailing): $inset"
+    )
+    check(
+      "a Spacer in a Row pushes the next label to the far edge",
+      near(right("right"), bodyRight) && f("right")._1 - right("left") > 100,
+      s"(#87) ${show("left", "right")}, section ends at $bodyRight"
+    )
+    check(
+      "a grown label in a Row takes the room its sibling does not",
+      near(right("grown") + 8, f("fixed")._1) && near(right("fixed"), bodyRight) && f("grown")._3 > f("fixed")._3,
+      s"(#87) ${show("grown", "fixed")}, section ends at $bodyRight"
+    )
+    check(
+      "a Spacer in a Column pushes the next label down, level with the taller column beside it",
+      // and by the Spacer: "bottom" keeps its own height, rather than stretching to reach.
+      near(f("top")._2, f("one")._2) && near(bottom("bottom"), bottom("four")) && near(f("bottom")._4, f("top")._4),
+      s"(#87) ${show("top", "bottom", "one", "four")}"
+    )
+    // Labels only: the Spinner section's button is labelled "Start" too.
+    val aligned = List(Alignment.Start, Alignment.Center, Alignment.End).map(_.toString)
+    check(
+      "Start, Center and End labels each span the section, so their alignment can show",
+      aligned.forall(a => near(f(a)._1, bx) && near(f(a)._3, bw)),
+      s"(#87) ${show(aligned*)}, section ${fr((bx, 0, bw, 0))}"
+    )
+
+    // What the cross-axis rule must not do on AppKit: stretch a bezelled push button across a
+    // Column. The DatePicker section's button is a direct child of a section's body. UIKit's
+    // Column is .fill, as GTK's and Android's are, and a UIButton has no bezel to stretch, so
+    // there it fills like everything else; the width is printed for the record.
+    val leap = all.find(h => kind(h, WidgetKind.Button) && AppleInspect.text(h).contains("Back to the leap day"))
+    val leapW = leap.map(AppleInspect.frame(_)._3).getOrElse(0.0)
+    val leapDetail = s"button ${leap.map(b => fr(AppleInspect.frame(b)))}, section ${fr((bx, 0, bw, 0))}"
+    if leap.exists(b => AppleInspect.className(b) == "NSButton") then {
+      check("an AppKit push Button in a Column keeps its own width", leapW > 20 && leapW < bw / 2, s"(#87) $leapDetail")
+      // A Row now spans its Column, so it is wider than its children; with nothing grown the
+      // slack goes after them, as on GTK. UIKit's .fill Row gives it to one of them (a
+      // pre-existing difference, not checked there).
+      val accent = all.find(h => kind(h, WidgetKind.Button) && AppleInspect.text(h).contains("Accent"))
+      val accentW = accent.map(AppleInspect.frame(_)._3).getOrElse(0.0)
+      check(
+        "a Row with nothing grown leaves its slack after its children",
+        accentW > 20 && accentW < bw / 2,
+        s"(#87) Accent ${accent.map(b => fr(AppleInspect.frame(b)))}, section ${fr((bx, 0, bw, 0))}"
+      )
+    } else println(s"[gallery]   (a Button in a Column fills it here: $leapDetail)")
+
+    // A ZStack is as big as its largest child, in a Row with room to spare too.
+    val spinnerStack =
+      all.find(h => kind(h, WidgetKind.ZStack) && AppleInspect.allTexts(h).exists(_.startsWith("Underneath")))
+    val under = labels("Underneath\nthe spinner").lastOption.map(AppleInspect.frame)
+    check(
+      "a ZStack in a Row is as wide as its widest child",
+      spinnerStack.exists(z => under.exists(u => near(AppleInspect.frame(z)._3, u._3))),
+      s"(#87) ZStack ${spinnerStack.map(z => fr(AppleInspect.frame(z)))}, its label ${under.map(fr)}"
+    )
+
+    if sys.env.get("THICKET_FRAME_DUMP").contains("1") then
+      all.foreach { h =>
+        val k = AppleApp.renderer.kindOf(h).map(_.toString).getOrElse("-")
+        val t = AppleInspect.text(h).map(_.take(24)).getOrElse("")
+        println(s"[frames] $k|$t|${fr(AppleInspect.frame(h))}")
+      }
   }
 
   /** The questions the GTK gallery asks of the controls #45 and #46 added, asked of AppKit and UIKit.

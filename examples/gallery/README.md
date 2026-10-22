@@ -81,6 +81,15 @@ Measured with `THICKET_ALLOW_UNBUILT=1` (TabView is #69): **102 of 107** on macO
 (#77), the Apple layout cross-axis (#87), and `Scroll(padding)` on both (#76). Each new
 check was falsified, and the controls are listed in `docs/decisions.md`.
 
+**#87** added the Layout section's checks, from frames: a Row spans its Column and stays
+inside the screen Column's padding, a Spacer pushes "right" to the far edge, a grown label
+takes the room its sibling does not, a Spacer in a Column lines "bottom" up with the taller
+column beside it, and the aligned labels span the section; on AppKit also that a push button
+in a Column and the buttons of a Row keep their own width; and a ZStack in a Row is as wide
+as its widest child. **75/75** on macOS and **71/72** on the iOS simulator (the miss is the
+bytes-backed Image, #73). `THICKET_FRAME_DUMP=1` prints every widget's kind, text and frame,
+for comparing a layout change across the whole screen.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name

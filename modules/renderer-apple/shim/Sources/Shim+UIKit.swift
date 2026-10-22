@@ -234,7 +234,14 @@ private final class TextLabel: UILabel {
 
 private let proxy = Proxy()
 
-/// Kinds 0 and 1, a `Column` or `Row`: a stack that hears about its safe area (#76).
+/// Kinds 0 and 1, a `Column` or `Row`: a stack that hears about its safe area (#76), and lets
+/// a grown label go past half a row (#87).
+///
+/// A horizontal UIStackView holding two or more multi-line labels caps each at half its width,
+/// at priority 951 (`UISV-text-width-disambiguation`), which outranks any hugging. So a grown
+/// label stopped at half the row and its plain sibling was stretched over the other half: 181
+/// and 181 pt on a 370 pt row. A grown label is already disambiguated by its lower hugging, so
+/// its cap is let go each time the stack rebuilds its constraints; a plain label keeps its own.
 private final class StackView: UIStackView {
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -253,6 +260,16 @@ private final class StackView: UIStackView {
   override func safeAreaInsetsDidChange() {
     super.safeAreaInsetsDidChange()
     refreshInsets(self)
+  }
+
+  override func updateConstraints() {
+    super.updateConstraints()
+    guard axis == .horizontal else { return }
+    for c in constraints where c.isActive && c.identifier == "UISV-text-width-disambiguation" {
+      if let l = c.firstItem as? UILabel, l.contentHuggingPriority(for: .horizontal) < .defaultLow {
+        c.isActive = false
+      }
+    }
   }
 }
 
@@ -1234,9 +1251,14 @@ public func sui_set_text_emphasis(_ h: UnsafeMutableRawPointer, _ emphasis: Int3
 @_cdecl("sui_set_grow")
 public func sui_set_grow(_ h: UnsafeMutableRawPointer, _ on: Int32) {
   let v = view(h)
-  let priority: UILayoutPriority = on != 0 ? .defaultLow : .defaultHigh
+  // Below every plain view's 250, so a grown child is the one a .fill stack stretches (#87). At
+  // .defaultLow it tied with a label's own 250. The same 248 as AppKit, where a stack's own
+  // slack sits between the two.
+  let priority: UILayoutPriority = on != 0 ? UILayoutPriority(248) : .defaultHigh
   v.setContentHuggingPriority(priority, for: .horizontal)
   v.setContentHuggingPriority(priority, for: .vertical)
+  // A grown label's half-width cap is let go by its Row (`StackView`) when it next rebuilds.
+  v.superview?.setNeedsUpdateConstraints()
 }
 
 @_cdecl("sui_set_align")
@@ -1625,7 +1647,26 @@ public func sui_insert_after(
     index = 0
   }
   stack.insertArrangedSubview(c, at: min(index, stack.arrangedSubviews.count))
+
+  // #87: a Column or Row inside a Row is as tall as the Row, as GTK's boxes fill their cross
+  // axis. The Row is .center aligned, so a control beside a taller one sits in the middle
+  // rather than stretching; but a shorter Column was centred too, and a Spacer in it had no
+  // room to push "bottom" down to line up with its taller neighbour.
+  //
+  // At 999, not required: the Row's own required constraints keep a child inside its margins,
+  // so it stops there — padding and safe area included, whenever they change.
+  if stack.axis == .horizontal, c is UIStackView, !stack.constraints.contains(where: {
+    $0.identifier == rowFillId && $0.firstItem === c
+  }) {
+    let fill = c.heightAnchor.constraint(equalTo: stack.heightAnchor)
+    fill.priority = UILayoutPriority(999)
+    fill.identifier = rowFillId
+    fill.isActive = true
+  }
 }
+
+/// Identifies a Row's stretch constraint on a nested stack (#87), so a moved child does not get two.
+private let rowFillId = "thicket.row-fill"
 
 /// Kind 9 rather than kind 6. The axis is not stored anywhere on the Scala side of the
 /// boundary, so it is read back off the scroller's own configuration.

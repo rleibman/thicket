@@ -36,7 +36,7 @@ showing stale rows after an edit. Fixed on Apple since: taps on leaf views, the 
 Checkbox's label and right-to-left alignment (#75), and `SafeArea` and `Scroll` padding (#76). Open, on Apple: selection when options change and `-1` (#77, since fixed), unbuilt kinds (#74,
 since fixed), and the cross axis of a Row or Column — a Row that does not span its Column on
 AppKit, `Grow` and a Spacer in a Column that do nothing on UIKit (#87, found by the gallery
-checks #73 added). The Android gallery, which this
+checks #73 added, since fixed; a UIKit Row with nothing grown is #96). The Android gallery, which this
 document and its README said was built, had no Gradle project until then; it now builds and
 self-tests (24/24 on the `s2test` emulator).
 
@@ -51,8 +51,8 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
-| `Column` | `WidgetKind.Column` | done | done | done | done | `GtkBox` / `LinearLayout` / `NSStackView` / `UIStackView` |
-| `Row` | `WidgetKind.Row` | done | done | done | done | Clips on overflow; the answer is a horizontal `Scroll`, not a wrapping row |
+| `Column` | `WidgetKind.Column` | done | done | done | done | `GtkBox` / `LinearLayout` / `NSStackView` / `UIStackView`. Children span its width on all four (#87); on AppKit the controls drawn at their own size — buttons of every kind, checkboxes, switches, pop-ups, segmented controls, date fields, spinners — and `Image` and `Grid` keep their own width at the leading edge |
+| `Row` | `WidgetKind.Row` | done | done | done | done | Clips on overflow; the answer is a horizontal `Scroll`, not a wrapping row. A nested `Column` or `Row` is as tall as the Row; other children are centred (#87). Room left over goes to a grown child; with none, after the children on GTK and AppKit, and to one of them on UIKit, whose `.fill` stack has no gap to put it in |
 | `Label` | `WidgetKind.Label` | done | done | done | done | `Text` in §7.10's naming |
 | `Button` | `WidgetKind.Button` | done | done | done | done | |
 | `TextField` | `WidgetKind.TextField` | done | done | done | done | Two-way bound; renderers must not disturb a widget showing the value already written |
@@ -284,7 +284,7 @@ raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virt
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
 are done, and so is #69 (TabView: `NSTabViewController` with its segmented control on top,
-`UITabBarController` as a child controller). Open for the Mac: the review's #77–#79, and #87 (#75 and #76 are fixed).
+`UITabBarController` as a child controller). Open for the Mac: the review's #78 and #79, and #96 (#75, #76, #77 and #87 are fixed).
 An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74); since
 #69 no kind is unbuilt on Apple. Everything else is built and measured on the
 Linux box.

@@ -72,6 +72,43 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **Apple cross-axis rule: a Column spans its children across, a Row its nested
+  stacks down, and a grown child takes the slack** (#87). **AppKit:** a vertical `NSStackView`
+  stays `.leading` aligned but gives each child a `width == stack.width − side insets`
+  constraint, kept in step whenever the insets are written (`edgeInsets` didSet, so #76's
+  safe-area writes reach it too). Exempt, at their own width on the leading edge: every
+  `NSButton` (push, checkbox, link, pop-up, icon), `NSSwitch`, `NSSegmentedControl`,
+  `NSDatePicker`, a spinning `NSProgressIndicator`, `Image` (it would scale up) and `Grid`
+  (its last column would widen). Main-axis slack is ordered by hugging: a grown child 248,
+  the stack's own 249, a plain child 250 — so with nothing grown it goes after the children,
+  as on GTK; at the old shared 250 the first button of a now-spanning Row was stretched to
+  800 pt. `GridView` hugs its cells at 251 and `ZStackView` at 251 (was 50), just above the
+  stack's pull, or they took the slack (Grid's second column at x 899, a ZStack 630 pt wide).
+  **UIKit:** Columns were already `.fill`. A nested `Column`/`Row` in a Row is now as tall as
+  the Row (`height == row.height` at 999 — the Row's own required constraints keep it inside
+  its margins: measured with `padding = 6`, the columns sat at 6 pt in on both edges), so a
+  Spacer in the shorter Column has room. Grow is 248, not 250 (a tie with every label), and a
+  `StackView` subclass drops `UISV-text-width-disambiguation` — UIKit's 951-priority
+  half-width cap on each of two multi-line labels in a horizontal stack — for a grown label
+  only: that cap, not hugging, is what held "grown" and "fixed" at 181 pt each. The ABI's
+  UIKit kind 0/1 is now `StackView(`, as #76 (PR #94) also makes it. **Not changed:** UIKit
+  Columns still stretch buttons (no bezel to look wrong; GTK and Android stretch them too),
+  and a UIKit Row with nothing grown still gives its slack to one child, since a `.fill`
+  `UIStackView` has no gap to put it in (the "Accent" button is 244 pt wide, as before).
+  **Measured** with `bin/verify-apple.sh "iPhone 18 Pro"` and `THICKET_ALLOW_UNBUILT=1`
+  (TabView is still a placeholder on this base): gallery **75/75** on macOS 27.0.1 (was 66),
+  **71/72** on the iOS 27 simulator, the one failure the known bytes-backed Image (#73);
+  todo 88/88 and 83/83, lazy 6/6 both; getting-started fails only on the known iOS `GcState`
+  import. Frames, macOS: the Layout body 84 → 961 pt, "right" at x 72 → 949 (the edge, 977),
+  "grown" 38 → 924 beside "fixed" at the edge, "Start/Center/End" 30/45/24 → 961; iOS: "grown"
+  181 → 325 and "fixed" 181 → 37, "bottom" y 1524 → 1546, level with "four". A whole-gallery
+  frame dump (`THICKET_FRAME_DUMP=1`) before and after changed nothing else on iOS but the
+  ForEach rows, whose grown titles now take the room their Remove buttons had. **Controls**,
+  each reverted and seen to fail: no Column fill (macOS 5 checks); stack hugging 250 (2:
+  Accent 800 pt, and the disabled IconButton painted 1 %); grown 250 (1); no Grid hug (2, the
+  Grid layout checks); ZStack back at 50 (1); fill ignoring insets (1, the padding check);
+  UIKit Grow at 250 (3); the cap kept (1); no Row fill (1). Not falsifiable here: the
+  `edgeInsets` didSet, since on this base padding is written before children are inserted.
 - 2026-10-21 — **Apple: `SafeArea` is added to `Padding` once the view is in a window, a
   `Scroll`'s padding is its content inset, a horizontal `Scroll` has one height constraint,
   and an AppKit container taps on release** (#76; review 2026-10-20 P1-18, P2-26, R-M8, L1,
