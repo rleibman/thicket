@@ -18,7 +18,7 @@ Android gallery built, Apple gaps the review found filed as #73–#79).
 | Props in the contract | **37** |
 | Props implemented on every renderer | **37** |
 
-**Twenty-two of thirty-two, every one on every renderer, and measured on every one.** `Grid` reached AppKit and UIKit in #62: gallery **58/58** on macOS and **57/57** on the iOS simulator. `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
+**Twenty-three of thirty-two, every one on every renderer, and measured on every one.** `IconButton` reached AppKit and UIKit in #66. `Grid` reached AppKit and UIKit in #62: gallery **58/58** on macOS and **57/57** on the iOS simulator. `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
 menus followed in #19, and the Apple hosts render `AppRoot.pages` since #25. The Apple
 self-test is **87/87** on macOS and **82/82** on the iOS simulator; the five iOS does not
@@ -34,7 +34,7 @@ Android, Android's Spinner selection and its `-1`, Android tab reordering, `Safe
 on Android, GTK's `Scroll(padding)` and indeterminate `ProgressBar`, and the GTK `LazyColumn`
 showing stale rows after an edit. Open, on Apple: taps on leaf views, the UIKit Checkbox's
 label and right-to-left alignment (#75), `SafeArea` and `Scroll` padding (#76, fixed 2026-10-21), selection
-when options change and `-1` (#77), unbuilt kinds (#74). The Android gallery, which this
+when options change and `-1` (#77), unbuilt kinds (#74, since fixed). The Android gallery, which this
 document and its README said was built, had no Gradle project until then; it now builds and
 self-tests (24/24 on the `s2test` emulator).
 
@@ -57,7 +57,7 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Checkbox` | `WidgetKind.Checkbox` | done | done | done | done | |
 | `Scroll` | `WidgetKind.Scroll` | done | done | done | done | Vertical and horizontal (`Prop.Axis`) on all four. The axis is read at `create`; Apple folds it into the kind code |
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
-| `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
+| `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. GTK decodes SVG too (gdk-pixbuf, `librsvg2-common`), so the GTK apps show `docs/assets/thicket-logo.svg`; Android and Apple are given the PNG made from it (`bin/logo-assets.sh`). All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
 | `ZStack` | `WidgetKind.ZStack` | done | done | done | done | `GtkOverlay` with every child an overlay that `measure`s / `FrameLayout` / a plain view and constraints. Last child on top; each child at its **natural size**, placed by one `Prop.StackAlignment` on the stack. Not called `Stack`: that is what `NSStackView`, `UIStackView` and `GtkStack` already mean, and none of them overlaps anything |
 
 ### Added in phase 3 — done on all four (#18 for Apple)
@@ -248,8 +248,7 @@ exhaustive under `-Werror` — a new prop breaks every renderer until it is hand
 the point of doing this in Scala. (This section said 22, and then thirty, after more had
 been added; the enum is the count.)
 
-**"Handled" is not "honoured."** As of 2026-10-20, honoured everywhere except: `Glyph` and
-`AccessibleLabel` on Apple (#66); `OnTap` on Apple leaf views and `Text` on the UIKit
+**"Handled" is not "honoured."** As of 2026-10-20, honoured everywhere except: `OnTap` on Apple leaf views and `Text` on the UIKit
 Checkbox (#75). (`SafeArea` and `Padding` on a `Scroll` on Apple were on this list until #76,
 2026-10-21: the safe area is now added to the padding once the view is in a window, and a
 scroller's padding is its content inset, as on GTK and Android.) `Message`, `Actions`
@@ -281,8 +280,8 @@ dormant, until a frame-based renderer needs it (decision log 2026-10-20, D11).
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
-are done. Open for the Mac: #69 (TabView), and the review's #73 and
-#75–#79. An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74). Everything else is built and measured on the
+are done. Open for the Mac: #69 (TabView), and the review's #73, #75 and
+#77–#79 (#76 is fixed). An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74). Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:
@@ -371,23 +370,26 @@ backends.** Phase 2 shipped a test that only ever passed on the JVM.
 ./bin/coverage.sh
 ```
 
-**91.10% statement, 87.64% branch**, 1596 of 1752 statements, measured 2026-09-29.
+**94.04% statement, 88.22% branch**, 2507 of 2666 statements, measured 2026-10-21.
 
 | Package | Statement |
 |---|---|
-| `thicket.tools.shim` | 94.31% |
-| `thicket.signals` | 91.71% |
-| `thicket.core` | 89.94% |
-| `thicket.zio` (now `thicket.effect.zio`) | 69.44% |
+| `thicket.tools.shim` | 96.71% |
+| `thicket.signals` | 91.97% |
+| `thicket.core` | 91.96% |
+| `thicket.effect.zio` | 91.11% |
 
-**Not measuring, as of 2026-10-20 (#80).** `bin/coverage.sh` reports `thicket.signals`
-0.00% and `thicket.core` 0.35% on `9c98d28` — the tests run, their measurements are lost —
-so the 91.10% above is the last real reading, not the current one, and the ratchet below has
-not been checking anything since. effect-zio's own figure, which is measured, is 90.37%.
+`effect.zio` moves by a statement or two between runs (90.37% and 91.11% on the same tree);
+why has not been investigated.
 
-`build.sbt` sets a ratchet just under the measured figure — 87% statement, 83% branch,
-`coverageFailOnMinimum := true`. It exists to stop coverage sliding, not to be hit exactly.
-Raise it when the real number moves up.
+From 2026-09-29 until #80 the script was not measuring `signals` or `core` (0.00% and 0.35%
+on `9c98d28`), and the ratchet could not have failed anyway; both are explained under the
+traps below. 91.10% / 87.64% on 2026-09-29 was the last reading before that.
+
+The ratchet is in `build.sbt` (`coverageGate`, on the root project): **93% statement and
+87% branch in total, and 85% statement for every package**. It exists to stop coverage
+sliding, not to be hit exactly; raise it when the real number moves up. `bin/coverage.sh`
+exits non-zero when any of it fails.
 
 ### What the number does *not* cover
 
@@ -403,19 +405,31 @@ measurements into its *own* module's data directory, which only exists once that
 tests run, and `renderer-api` is pure types with no tests. Its default methods are reached
 through `core`'s tests either way.
 
-### Two traps, both of which hand you a wrong answer silently
+### Four traps, each of which hands you a wrong answer silently
 
 1. **sbt 2's disk cache restores compiled classes without running the compiler.**
-   `scoverage.coverage` — the metadata mapping a measurement back to a statement — is a
-   compile *side-effect*, not a tracked output, so a cache hit gives you instrumented
-   classes with no metadata, and that module **disappears from the aggregate with no
-   error**. This is how `signals` vanished while still producing measurement files.
-   `bin/coverage.sh` clears `~/.cache/sbt/v2` for this reason; a coverage run that skips
-   that step is not measuring what you think.
-2. **A report with no metadata at all reads `100% of 0 statements`** — and passes
-   `coverageFailOnMinimum` at any threshold. The script checks the statement count is
-   non-zero before printing the percentage, because a coverage gate that cannot fail is
-   worse than no gate.
+   `scoverage.coverage`, the metadata that maps a measurement back to a statement, is a
+   compile *side effect*, not a tracked output. A cache hit gives you instrumented classes
+   with no metadata, and that module **disappears from the aggregate with no error**.
+   `bin/coverage.sh` passes a fresh `-Dthicket.coverageRun`, which `coverageSettings` adds to
+   the compile's options, so no cache entry can match and every run compiles; it still works
+   after `target/out` is deleted. Without the marker, the same run, after deleting `target/out`,
+   produced no report at all. Until #80 the script cleared the machine-wide `~/.cache/sbt/v2` instead.
+2. **A coverage compile erases the module's measurements, and they are not written again.**
+   The Scala 3 compiler deletes `scoverage.measurements.*` in the module's data directory
+   every time it compiles with coverage on, and the runtime (`scala.runtime.coverage.Invoker`)
+   records each statement once per JVM, through a file it keeps open. So anything that
+   recompiles a module after its tests have run, in the same sbt invocation, leaves it near
+   0%. `BuildInfoOption.BuildTime` did exactly that, regenerating `BuildInfo.scala` on every
+   task: it is why `signals` read 0.00% and `core` 0.35% from 2026-09-29 until #81 made the
+   timestamp opt-in. Turning it back on reproduces 0.49% / 0.54%. The per-package minimum is
+   what catches this — the total alone still looked plausible at 47.90%.
+3. **The minimums have to be on the project that aggregates.** `coverageAggregate` checks the
+   root project's own settings. Until #80 they were set on the modules and the root kept the
+   plugin's `coverageFailOnMinimum := false`, so a 47.90% report exited 0.
+4. **A report with no metadata at all reads `100% of 0 statements`** and passes
+   `coverageFailOnMinimum` at any threshold. The script fails on a zero statement count and
+   on any of the four expected packages being absent from the report.
 
 Related: the same disk cache does not notice a *deleted* source file (`decisions.md`,
 2026-09-29). It is worth suspecting early.
