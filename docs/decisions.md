@@ -111,6 +111,129 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   `Scroll`'s padding dropped (macOS 8); the old constant per child (macOS 4: 2 then 3 height
   constraints, `NSGenericException: layout constraints are not satisfiable`, the scroller
   still 16 tall over 32 of content); firing on mouse-down (2: 1 tap from a press, 2 after a drag-off).
+- 2026-10-21 — **Apple: taps on any view, a captioned UIKit Checkbox, Start/End that follow
+  the layout direction** (#75; review 2026-10-20 M6, M7, M9). `OnTap` and `OpenUrl` now
+  attach a recogniser to any view without an action of its own: an `NSClickGestureRecognizer`
+  (it fires on mouse-up inside the view) and a `UITapGestureRecognizer` with user
+  interaction turned on. Buttons keep their target/action and AppKit's `TapView` its
+  `mouseDown`, unchanged. On UIKit, Column and Row tap recognisers now begin only when the view
+  has a handler, so they no longer compete with a tappable child. A UIKit `Checkbox` is a
+  `UISwitch` beside a `UILabel` caption (the settings-row idiom); the switch still sends the
+  event, and a tap on the caption flips it. Alignment: UIKit maps Start to `.natural` and
+  works End out from `effectiveUserInterfaceLayoutDirection`. On AppKit `.natural` follows the
+  text's script and not the view's direction. Measured: "Start" in a right-to-left
+  `NSTextField` still draws at the left. So AppKit works out both from
+  `userInterfaceLayoutDirection`, and a Label works them out again when its direction changes.
+  The gallery gains a tappable `Label`. New read-backs: `sui_perform_tap` (AppKit sends a real
+  mouse-down/up through `NSWindow.sendEvent`; UIKit cannot make a touch, so it hit-tests the
+  view's centre and runs the recogniser's action once the recogniser agrees to begin),
+  `sui_set_layout_direction`, `sui_ink_span` (where the painted pixels are) and
+  `sui_pin_width`. That last one exists because an AppKit Column hugs its children: each
+  one-word label is exactly as wide as its text (84 pt), so the test gives each label its
+  column's width before measuring. A Column that does not stretch its children on AppKit is a
+  separate gap, not fixed here. Measured, using a
+  `THICKET_ALLOW_UNBUILT=1` gallery (TabView is #69/#89): macOS **76/76**; iOS simulator
+  (iPhone 18 Pro) 74 of 75, and the one failure is #73's Image. Ink, given as fractions of
+  label width. macOS left-to-right: Start 0.03–0.35, Center 0.27–0.73, End 0.72–0.97;
+  macOS right-to-left: Start 0.64–0.97, End 0.03–0.27. iOS left-to-right: Start 0.00–0.10,
+  End 0.92–1.00; iOS right-to-left: Start 0.90–1.00, End 0.00–0.08. Falsified with all three
+  fixes broken together (no recogniser, `.left`/`.right`, a bare `UISwitch`): macOS failed 2
+  (the tap never reached the app; right-to-left ink unchanged); iOS failed 7 (no tap
+  delivered, the tap did not reach the app, the Checkbox had no caption, no drawn label,
+  could not be flipped, right-to-left unchanged, plus #73).
+- 2026-10-21 — **The review's native-safety changes on Apple: verified, and iOS was running
+  every callback Unmanaged** (#73). This was the review's first run on a Mac, and it found a
+  P0 that only iOS has. `releaseMainThread` set the depth to 0. An iOS host calls it from
+  *inside* a guarded entry (`thicket_*_start` → `AppleApp.run`), so the entry's own exit left
+  the depth at -1. After that no callback ever took it from 0 to 1, and Scala ran on the main
+  thread with the GC told it was not there. The gallery measured this: the self-test ran at
+  depth 0, and after 1 474 of 1 474 nested calls the thread was still Unmanaged.
+  `releaseMainThread` now takes away only the level the thread started with. On iOS the
+  outermost entry's exit is what hands the thread to the loop. GTK and macOS call it at
+  depth 1, so nothing changes for them. GTK was not re-run on this Mac.
+  The iOS gallery's bytes-backed `Image` showed nothing. The platform says why: the app's
+  `user.dir` is `/`, so `Gallery.logoBytes` read 0 bytes. The same file in the bundle has
+  50 476. `AppleApp.resourcePath` (the shim's `sui_resource_path`) does the lookup that
+  `FromFile` already made, and the iOS host now passes the bundle's bytes, as Android passes
+  its assets. The iOS template imported `GcState` from its old package, and now imports
+  `thicket.core`. Four read-backs were added to the ABI: `sui_table_row_view`,
+  `sui_get_content_fit`, `sui_get_align` and `sui_resource_path` (110 externs).
+  The gallery self-test gained the GTK checks for the review's new sections, read from the
+  platform (see `examples/gallery/README.md`). Measured with `THICKET_ALLOW_UNBUILT=1`: **102
+  of 107** on macOS and **103 of 106** on the iPhone Air simulator. The failures are real,
+  and each names the issue that owns it. AppKit's pop-up shows index 0 after an option swap
+  while the app says otherwise (#77, 2 checks). An AppKit Row takes its natural width, so a
+  Spacer pushes nothing and aligned labels hug their text. On UIKit, Grow and a Spacer in a
+  Column do nothing (#87, new; 2 checks on each). `Scroll(padding)` is dropped on both (#76).
+  Each check was **falsified on macOS** and the change restored. Without `Host.install`, the
+  effect check fails ("Loading…"). Without the error barrier, the first throwing click
+  aborts the app: `_Unwind_RaiseException returned 3`, exit 134, no verdict. Re-binding only
+  until a table has rows fails the delete and rename checks (`Row 0` stays on top). An exit
+  that always marks the thread Unmanaged fails the two nested-GC checks (3 456 of 3 456).
+  Skipping the per-handle sweep in `destroy` leaves 312 → 317 table entries. Keeping the
+  sheet button's tap id leaves 61 → 62 callbacks. On iOS, an iOS host without the bundle
+  bytes fails the two Image checks (the `Fill` image is empty). The run before the
+  `GcState` fix fails 5 robustness checks.
+  sbt-git's JGit cannot read a git worktree ("Bare Repository has neither a working tree,
+  nor an index"). Agents in worktrees ran sbt with an untracked
+  `ThisBuild / GitKeys.useConsoleForROGit := true`.
+- 2026-10-21 — **TabView on Apple: `NSTabViewController` with its segmented control on top,
+  `UITabBarController` as a child controller; the selection rule stays in `TabSelection`**
+  (#69). Kinds 24 and 25 are built, so `ShimKind.unbuilt` is empty and D9's placeholder no
+  longer stands in for anything on Apple. Each shim has a `TabHostView` holding the
+  controller's view and a `TabPage` per `Tab`, held by the item's view controller; the order,
+  the selection and the page on screen are the controller's, and the self-test asks it.
+  **AppKit idiom: `.segmentedControlOnTop`**, not `.toolbar`: the toolbar style puts the tabs
+  in the *window's* toolbar — the idiom for a window that is nothing but tabs, such as a
+  Settings window, and one per window — while a TabView here is a view in a tree with
+  siblings; a segmented control over the content is AppKit's in-content tab idiom, and it
+  shows each item's SF Symbol beside its label. **UIKit**: the tab bar controller becomes a
+  child of whichever controller hosts the view when it reaches a window (containment), and
+  `tabBarMinimizeBehavior = .never` on iOS 26+. A controller lays its page out by frame, so
+  neither shim's TabView would size itself to its content: the shim gives it a minimum of
+  the bar plus the tallest page's content (homogeneous, as GTK's stack). The rule for keeping
+  the user on their tab is `TabSelection`'s, applied by `AppleTabs` exactly as on Android;
+  the shims report only the user's choice (`tabView(_:didSelect:)` outside our own changes,
+  `tabBarController(_:didSelect:)`). Mounted on Apple means alive and owned by the
+  controller: only the selected page is in the window, as the controllers do it.
+  **iOS 26's floating tab bar draws every item twice** (the platter and the selection lens:
+  six `_UITabButton`s for three items on the iOS 27 simulator), so a test tap groups the
+  bar's buttons by position and sends `.touchUpInside` to one that actually selects.
+  Measured with `bin/verify-apple.sh "iPhone 17e"`: gallery **80/80** on macOS 27.0.1 and
+  **78 of 79** on the iOS simulator (the one is #73's bytes-backed Image), strict, no
+  placeholders; todo 88/88 and 83/83, lazy 6/6 both. Fourteen TabView checks on each: GTK's,
+  the page laid out inside the TabView, the user still on Settings after the removal, and `Selected(-1)`/`Selected(7)`
+  leaving the page alone. Controls: staying at the old index on insert fails 1 check on
+  macOS and on iOS ("the user stays on Settings, and the app is told its new index");
+  dropping unselected pages' content fails 3 on macOS; items without their images fail the
+  symbol check on macOS. `getting-started` still fails on the iOS template's `GcState`
+  import (#73).
+- 2026-10-21 — **Apple Picker and SegmentedControl keep their selection when the options
+  change, and `-1` is a blank on both toolkits (D13)** (#77; review 2026-10-20 P1-10, P1-11).
+  `AppleRenderer` reads the index the control holds before `Options` clears it and writes it
+  back after: AppKit's pop-up and segmented control and UIKit's segmented control all lost it,
+  and nothing re-applied it. The shims send no action for either step, so nothing reaches
+  `OnSelect`. Two `-1` bugs were behind it. UIKit's menu button always has an element on, and
+  with none on it turns the first one on and shows it ("Apple" after Clear), so while nothing
+  is chosen its menu leads with a blank element, as Android's list does; the option
+  read-backs skip it, and it goes once the user chooses. AppKit's segmented control ignored
+  `setSelected(false, …)` per segment under `.selectOne`, so the chosen segment stayed chosen;
+  `selectedSegment = -1` clears it. Nothing saw that while a change of options cleared it
+  anyway. The pop-up maps an index past the end to no selection. A new read-back,
+  `sui_shown_option`, reports what the control *draws*: `NSPopUpButtonCell.menuItem`, the
+  selected segment's label, and the UIKit button's `currentTitle`. Its `titleLabel.text` was
+  still the previous choice when read straight after a change, even after a layout pass.
+  Measured with `THICKET_ALLOW_UNBUILT=1` (TabView is #69): gallery **78/78** on macOS and
+  76 of 77 on the "iPhone 18 Pro" simulator, where the one failure is #73's Image. Twelve new
+  checks: after Select last and Swap the pop-up shows "Pea" at index 2 and the label reads
+  `Chose Pea (index 2)`; Clear shows "" with index -1, and a following Swap keeps it; the
+  report counter does not move; the blank pop-up keeps its size (77×24 on AppKit, 370×30 on
+  UIKit). Each fix was reverted to show its checks fail. Without the re-apply, 4 fail on
+  macOS (the pop-up shows "Leek" after Swap, the segments show none) and 2 on iOS (the
+  segments). The UIKit Picker was already right there. Without the blank lead, 2 fail on iOS
+  ("Leek", then "Apple"). With the per-segment loop alone, 1 fails on macOS ("Month" stays
+  chosen). Not exercised: a user's choice on the UIKit Picker, because UIKit cannot perform a
+  `UIAction` from code. That includes the menu rebuild that drops the blank lead.
 
 - 2026-10-21 — **D9 on Apple: an unbuilt kind is a labelled placeholder, a named failure
   under self-test, and Objective-C exceptions keep their reason** (#74, #72). shim-gen now

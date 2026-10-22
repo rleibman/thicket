@@ -61,11 +61,12 @@ object Gallery {
     val picked:  Var[Int] = Var(1)
     val produce: Var[Seq[String]] = Var(Gallery.fruit)
     // How many choices the picker has reported: one the user did not make shows up here.
-    val reports:  Var[Int] = Var(0)
-    val span:     Var[Int] = Var(1)
-    val due:      Var[CalendarDate] = Var(Gallery.firstDue)
-    val linkTaps: Var[Int] = Var(0)
-    val rowTaps:  Var[Int] = Var(0)
+    val reports:   Var[Int] = Var(0)
+    val span:      Var[Int] = Var(1)
+    val due:       Var[CalendarDate] = Var(Gallery.firstDue)
+    val linkTaps:  Var[Int] = Var(0)
+    val labelTaps: Var[Int] = Var(0)
+    val rowTaps:   Var[Int] = Var(0)
     // Swaps the horizontal Scroll's child for a taller one: its height has to follow (#76).
     val tallCols:  Var[Boolean] = Var(false)
     val gridExtra: Var[Boolean] = Var(false)
@@ -246,7 +247,11 @@ object Gallery {
             // A link that also does something in the app. Both must run: a renderer that wires
             // one click handler per widget would let whichever came last win.
             Link("Apache License 2.0", Gallery.licenceUrl).onTap(model.linkTaps.set(model.linkTaps.now + 1)),
-            Label(model.linkTaps.map(n => s"The licence link was tapped $n times"), style = TextRole.Caption)
+            Label(model.linkTaps.map(n => s"The licence link was tapped $n times"), style = TextRole.Caption),
+            // A leaf with no action of its own, made tappable: OnTap must fire on any element, not
+            // only on a Button or a container (review 2026-10-20 M6, #75).
+            Label("Tap this label").onTap(model.labelTaps.set(model.labelTaps.now + 1)),
+            Label(model.labelTaps.map(n => s"The label was tapped $n times"), style = TextRole.Caption)
           ),
           section("Slider, ProgressBar, ActivityIndicator")(
             Slider(model.volume, min = 0, max = 11)(model.volume.set),

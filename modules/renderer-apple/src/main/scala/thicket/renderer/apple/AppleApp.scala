@@ -51,6 +51,16 @@ object AppleApp {
   def postToUiAfter(delayMs: Int)(f: () => Unit): Unit =
     Shim.sui_run_on_main_after(delayMs, Handles.tapTrampoline, Handles.registerOneShot(f))
 
+  /** Where a relative path of the app's own is — the lookup `ImageSource.FromFile` makes: as given when it exists from
+    * the working directory (a binary run from its project), otherwise inside the app bundle's resources. An iOS app's
+    * working directory is `/`, so an app that wants the *bytes* of its own file reads them from here (#73).
+    */
+  def resourcePath(path: String): String =
+    Zone {
+      val p = Shim.sui_resource_path(toCString(path))
+      if p == null then path else fromCString(p)
+    }
+
   /** Fired by the shim from `applicationDidFinishLaunching`, so the window and its root view exist by the time the tree
     * is mounted.
     */

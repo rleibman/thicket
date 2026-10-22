@@ -86,6 +86,12 @@ private final class Proxy: NSObject, NSTextFieldDelegate {
     fireTap(ObjectIdentifier(sender))
   }
 
+  /// A click recogniser on a view with no action of its own recognises on mouse-up inside it.
+  @objc func clicked(_ gesture: NSGestureRecognizer) {
+    guard let v = gesture.view else { return }
+    fireTap(ObjectIdentifier(v))
+  }
+
   /// A checkbox is an `NSButton` and a `Toggle` is an `NSSwitch`, which is not one; both
   /// carry `state`, so this reads it from whichever it is.
   @objc func toggled(_ sender: NSControl) {
@@ -269,6 +275,48 @@ private func refreshInsets(_ v: NSView) {
   case let s as ScrollView: s.setInsets(e)
   case let s as NSStackView: s.edgeInsets = e
   default: break
+  }
+}
+
+/// The recogniser `OnTap` and `OpenUrl` put on a view with no action of its own. Its own class,
+/// so the shim can tell it from any other.
+private final class ClickRecognizer: NSClickGestureRecognizer {}
+
+/// Makes any view report clicks (#75): a Label, an Image, a ZStack — not only a Button, whose
+/// target/action already goes through `fireTap`, and a Column or Row, whose `TapView` takes
+/// its own mouse-down. GTK puts a click gesture on any widget and Android a click listener on
+/// any view; before this, `Image(...).onTap` did nothing on macOS. `NSClickGestureRecognizer`
+/// recognises on mouse-up inside the view, so a press dragged off it does not fire.
+private func makeTappable(_ v: NSView) {
+  if v is NSButton || v is TapView { return }
+  if v.gestureRecognizers.contains(where: { $0 is ClickRecognizer }) { return }
+  let g = ClickRecognizer(target: proxy, action: #selector(Proxy.clicked(_:)))
+  // A control other than a label keeps its own mouse-down: a tappable slider still slides.
+  let isLabel = (v as? NSTextField).map { !$0.isEditable } ?? false
+  if v is NSControl && !isLabel { g.delaysPrimaryMouseButtonEvents = false }
+  v.addGestureRecognizer(g)
+}
+
+/// `Alignment` against a layout direction. AppKit's `.natural` follows the *text's* script, not
+/// the view's direction (measured: "Start" in a right-to-left NSTextField still draws at the
+/// left with `.natural`), so Start and End are resolved here, and a `LabelField` resolves them
+/// again when its direction changes. `.left`/`.right`, as before #75, ignored the direction.
+private func resolvedAlignment(_ align: Int32, _ direction: NSUserInterfaceLayoutDirection) -> NSTextAlignment {
+  let rtl = direction == .rightToLeft
+  switch align {
+  case 1: return .center
+  case 2: return rtl ? .left : .right
+  default: return rtl ? .right : .left
+  }
+}
+
+/// A Label: a non-editable `NSTextField` that remembers its `Alignment`, so a change of layout
+/// direction moves its text. A view's direction starts as the app's, which a right-to-left
+/// locale makes `.rightToLeft`.
+private final class LabelField: NSTextField {
+  var logicalAlign: Int32 = 0
+  override var userInterfaceLayoutDirection: NSUserInterfaceLayoutDirection {
+    didSet { alignment = resolvedAlignment(logicalAlign, userInterfaceLayoutDirection) }
   }
 }
 
@@ -522,6 +570,165 @@ private final class GridView: NSView {
 /// The grid a view is a cell of: its superview is the `NSGridView`, whose superview is ours.
 private func gridOf(_ v: NSView) -> GridView? { v.superview?.superview as? GridView }
 
+/// Kind 25, one `Tab`: a plain view holding its one child. Inserting a second child replaces
+/// the first, as on GTK and Android. The title and the symbol are kept here and put on the
+/// `NSTabViewItem` while the page is in a TabView, which is where AppKit shows them.
+private final class TabPage: NSView {
+  var title = "" { didSet { item?.label = title } }
+  var symbol: String?
+  var image: NSImage? { didSet { item?.image = image } }
+  /// This page's item while it is in a TabView. The controller owns the item, the item's view
+  /// controller owns this view; the handle's own retain is what keeps the page alive between.
+  weak var item: NSTabViewItem?
+  weak var host: TabHostView?
+
+  init() { super.init(frame: .zero) }
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  var content: NSView? { subviews.first }
+
+  func setContent(_ c: NSView) {
+    subviews.forEach { $0.removeFromSuperview() }
+    c.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(c)
+    // Top-aligned: a page as tall as the TabView's tallest leaves a short one at the top,
+    // as GTK's homogeneous stack does.
+    NSLayoutConstraint.activate([
+      c.leadingAnchor.constraint(equalTo: leadingAnchor),
+      c.trailingAnchor.constraint(equalTo: trailingAnchor),
+      c.topAnchor.constraint(equalTo: topAnchor),
+      c.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor)
+    ])
+    host?.refit()
+  }
+}
+
+/// `tabView(_:didSelect:)` is the one place every selection passes, the user's and ours, so
+/// ours are counted here and only the user's reach the app.
+private final class TabsController: NSTabViewController {
+  var programmatic = 0
+  var onUser: (() -> Void)?
+
+  override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+    super.tabView(tabView, didSelect: tabViewItem)
+    if programmatic == 0 { onUser?() }
+  }
+}
+
+/// Kind 24, a `TabView`: an `NSTabViewController` whose view this view holds.
+///
+/// `.segmentedControlOnTop`, not `.toolbar`: the toolbar style puts the tabs in the *window's*
+/// toolbar, which is the idiom for a window that is nothing but tabs (a Settings window) and
+/// allows one per window; a TabView here is a view in a tree, with siblings, and a segmented
+/// control over its content is AppKit's in-content idiom for that.
+///
+/// The order is the controller's own `tabViewItems`, so every question about tabs — which are
+/// there, which is selected, which is on screen — is answered by AppKit, not by a list kept
+/// beside it. The rules for keeping the user on their tab are the renderer's (`TabSelection`);
+/// this only inserts, removes and selects, and reports the user's choices.
+private final class TabHostView: NSView {
+  let controller = TabsController()
+  private var fit: [NSLayoutConstraint] = []
+
+  init() {
+    super.init(frame: .zero)
+    controller.tabStyle = .segmentedControlOnTop
+    // No cross-fade: a switch is immediate, and a test reads the result in the same turn.
+    controller.transitionOptions = []
+    let v = controller.view
+    v.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(v)
+    NSLayoutConstraint.activate([
+      v.leadingAnchor.constraint(equalTo: leadingAnchor),
+      v.trailingAnchor.constraint(equalTo: trailingAnchor),
+      v.topAnchor.constraint(equalTo: topAnchor),
+      v.bottomAnchor.constraint(equalTo: bottomAnchor)
+    ])
+    controller.onUser = { [weak self] in self?.userChose() }
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  var pages: [TabPage] { controller.tabViewItems.compactMap { $0.viewController?.view as? TabPage } }
+
+  /// Our own changes to the controller: none of them is the user's choice.
+  private func quietly(_ f: () -> Void) {
+    controller.programmatic += 1
+    f()
+    controller.programmatic -= 1
+  }
+
+  func insert(_ p: TabPage, after: NSView?) {
+    quietly {
+      // A move arrives as an insert of a page that is already here.
+      if let old = p.item, controller.tabViewItems.contains(old) { controller.removeTabViewItem(old) }
+      let current = pages
+      let at: Int
+      if let a = after { at = current.firstIndex { $0 === a }.map { $0 + 1 } ?? current.count } else { at = 0 }
+      let vc = NSViewController()
+      vc.view = p
+      let item = NSTabViewItem(viewController: vc)
+      item.label = p.title
+      item.image = p.image
+      p.item = item
+      p.host = self
+      controller.insertTabViewItem(item, at: at)
+    }
+    refit()
+  }
+
+  func remove(_ p: TabPage) {
+    quietly {
+      if let item = p.item, controller.tabViewItems.contains(item) { controller.removeTabViewItem(item) }
+    }
+    p.item = nil
+    p.host = nil
+    refit()
+  }
+
+  var selected: Int {
+    let i = controller.selectedTabViewItemIndex
+    return i >= 0 && i < controller.tabViewItems.count ? i : -1
+  }
+
+  /// -1 or past the end leaves the tab shown, as on GTK and Android.
+  func select(_ i: Int) {
+    guard i >= 0, i < controller.tabViewItems.count, i != selected else { return }
+    quietly { controller.selectedTabViewItemIndex = i }
+  }
+
+  private func userChose() {
+    guard let s = selections[ObjectIdentifier(self)], selected >= 0 else { return }
+    s.cb(s.ctx, Int32(selected))
+  }
+
+  /// The segmented control the controller draws its tabs with: what a user clicks.
+  var bar: NSSegmentedControl? { firstSegmented(in: controller.view) }
+
+  private func firstSegmented(in v: NSView) -> NSSegmentedControl? {
+    if let s = v as? NSSegmentedControl { return s }
+    for c in v.subviews { if let s = firstSegmented(in: c) { return s } }
+    return nil
+  }
+
+  /// The tab view lays a page out by its frame, so nothing in a page's content reaches the
+  /// TabView's own size. It is given one: as tall as the tallest page's content and as wide
+  /// as the widest — homogeneous, as GTK's stack is, so switching tabs does not move the
+  /// views below.
+  func refit() {
+    NSLayoutConstraint.deactivate(fit)
+    let contents = pages.compactMap(\.content)
+    let h = contents.map { $0.fittingSize.height }.max() ?? 0
+    let w = contents.map { $0.fittingSize.width }.max() ?? 0
+    let tv = controller.tabView
+    fit = [
+      tv.heightAnchor.constraint(greaterThanOrEqualToConstant: h),
+      tv.widthAnchor.constraint(greaterThanOrEqualToConstant: w)
+    ]
+    NSLayoutConstraint.activate(fit)
+  }
+}
+
 /// Escape on a sheet arrives as `cancelOperation`. That is the platform closing it without
 /// a choice, which is what `OnDismiss` reports; the app then takes it down by unmounting.
 private final class SheetWindow: NSWindow {
@@ -612,6 +819,12 @@ public func sui_window_set_title(_ title: UnsafePointer<CChar>) {
   window?.title = String(cString: title)
 }
 
+/// The lookup `sui_set_image_file` makes, for an app that wants the bytes of its own file.
+@_cdecl("sui_resource_path")
+public func sui_resource_path(_ path: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+  scratch(resolveImagePath(String(cString: path)))
+}
+
 // MARK: - construction
 
 @_cdecl("sui_create")
@@ -628,7 +841,7 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
 
   case 2:
     // AppKit has no NSLabel; a non-editable, non-bordered NSTextField is the label.
-    let l = NSTextField(labelWithString: "")
+    let l = LabelField(labelWithString: "")
     l.lineBreakMode = .byWordWrapping
     l.maximumNumberOfLines = 0
     return retained(l)
@@ -731,6 +944,12 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
 
   case 22:
     return retained(GridView())
+
+  case 24:
+    return retained(TabHostView())
+
+  case 25:
+    return retained(TabPage())
 
   case 23:
     // Borderless and image-only: AppKit's icon button, as in a window's toolbar. The symbol
@@ -870,6 +1089,9 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   // keyed it by.
   tableSources.removeValue(forKey: id)
   suppressed.remove(id)
+  selections.removeValue(forKey: id)
+  // A page leaves its TabView's controller, which would otherwise keep it alive and shown.
+  if let page = v as? TabPage { page.host?.remove(page) }
   if let sheet = v as? SheetView {
     // The window held the stack as its content; the handle's own retain is what keeps the
     // view alive until here, so dropping the window now frees nothing early.
@@ -898,6 +1120,8 @@ public func sui_set_text(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CCh
   case let sheet as SheetView:
     sheet.title = s
     sheet.heading?.stringValue = s
+  case let page as TabPage:
+    page.title = s
   case let f as NSTextField:
     // Only write when it actually differs. Writing unconditionally moves the caret to the
     // end on every keystroke, because the app writes back what the user just typed.
@@ -978,6 +1202,9 @@ public func sui_set_symbol(_ h: UnsafeMutableRawPointer, _ name: UnsafePointer<C
   switch v {
   case let b as NSButton: b.image = image
   case let i as NSImageView: i.image = image
+  case let page as TabPage:
+    page.symbol = image == nil ? nil : n
+    page.image = image
   default: break
   }
 }
@@ -1021,11 +1248,8 @@ public func sui_set_grow(_ h: UnsafeMutableRawPointer, _ on: Int32) {
 @_cdecl("sui_set_align")
 public func sui_set_align(_ h: UnsafeMutableRawPointer, _ align: Int32) {
   guard let f = view(h) as? NSTextField else { return }
-  switch align {
-  case 1: f.alignment = .center
-  case 2: f.alignment = .right
-  default: f.alignment = .left
-  }
+  (f as? LabelField)?.logicalAlign = align
+  f.alignment = resolvedAlignment(align, f.userInterfaceLayoutDirection)
 }
 
 @_cdecl("sui_set_progress")
@@ -1062,7 +1286,9 @@ public func sui_set_value(_ h: UnsafeMutableRawPointer, _ value: Double) {
 
 @_cdecl("sui_on_tap")
 public func sui_on_tap(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_void_cb, _ ctx: Int64) {
-  taps[ObjectIdentifier(view(h))] = Tap(cb: cb, ctx: ctx)
+  let v = view(h)
+  taps[ObjectIdentifier(v)] = Tap(cb: cb, ctx: ctx)
+  makeTappable(v)
 }
 
 @_cdecl("sui_set_open_url")
@@ -1070,6 +1296,7 @@ public func sui_set_open_url(_ h: UnsafeMutableRawPointer, _ url: UnsafePointer<
   let v = view(h)
   // A string the platform cannot parse as a URL opens nothing, rather than crashing a tap.
   links[ObjectIdentifier(v)] = URL(string: str(url))
+  makeTappable(v)
   // AppKit has no link button. A borderless button titled in the system link colour is
   // what Finder and System Settings use for one; the accent fill a Link never sends is
   // what would otherwise make it look like a command.
@@ -1119,14 +1346,18 @@ public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafeP
 
 @_cdecl("sui_set_selected")
 public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
+  if let t = view(h) as? TabHostView { t.select(Int(index)); return }
   if let seg = view(h) as? NSSegmentedControl {
     let id = ObjectIdentifier(seg)
     suppressed.insert(id)
     if index >= 0 && Int(index) < seg.segmentCount {
       seg.selectedSegment = Int(index)
     } else {
-      // -1: nothing chosen, which .selectOne allows when no segment is selected.
-      for i in 0..<seg.segmentCount { seg.setSelected(false, forSegment: i) }
+      // -1: nothing chosen, which .selectOne allows when no segment is selected. Deselecting
+      // segment by segment did not do it: under .selectOne the chosen segment stayed chosen
+      // (measured, #77) — which nothing saw while a change of options cleared it anyway.
+      seg.selectedSegment = -1
+      for i in 0..<seg.segmentCount where seg.isSelected(forSegment: i) { seg.setSelected(false, forSegment: i) }
     }
     suppressed.remove(id)
     return
@@ -1134,12 +1365,15 @@ public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
   guard let b = view(h) as? NSPopUpButton, b.indexOfSelectedItem != Int(index) else { return }
   let id = ObjectIdentifier(b)
   suppressed.insert(id)
-  if index < 0 { b.select(nil) } else { b.selectItem(at: Int(index)) }
+  // -1, or an index past the end after the options shrank: nothing chosen, which a pop-up
+  // draws as a blank title (D13).
+  if index < 0 || Int(index) >= b.numberOfItems { b.select(nil) } else { b.selectItem(at: Int(index)) }
   suppressed.remove(id)
 }
 
 @_cdecl("sui_get_selected")
 public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
+  if let t = view(h) as? TabHostView { return Int32(t.selected) }
   if let seg = view(h) as? NSSegmentedControl { return Int32(seg.selectedSegment) }
   guard let b = view(h) as? NSPopUpButton else { return -1 }
   return Int32(b.indexOfSelectedItem)
@@ -1219,6 +1453,16 @@ public func sui_insert_after(
 
   if let g = p as? GridView {
     g.insert(c, after: after.map(view))
+    return
+  }
+
+  if let t = p as? TabHostView, let page = c as? TabPage {
+    t.insert(page, after: after.map(view))
+    return
+  }
+
+  if let page = p as? TabPage {
+    page.setContent(c)
     return
   }
 
@@ -1416,6 +1660,18 @@ public func sui_table_live() -> Int32 {
   Int32(tableSources.count)
 }
 
+/// The row view NSTableView holds for `row`, only while that row is on screen: `makeIfNecessary`
+/// false, so asking never makes the table bind a row it would not otherwise show.
+@_cdecl("sui_table_row_view")
+public func sui_table_row_view(_ h: UnsafeMutableRawPointer, _ row: Int32) -> UnsafeMutableRawPointer? {
+  guard let (t, _) = table(of: h), row >= 0, Int(row) < t.numberOfRows else { return nil }
+  t.layoutSubtreeIfNeeded()
+  guard NSLocationInRange(Int(row), t.rows(in: t.visibleRect)),
+        let v = t.view(atColumn: 0, row: Int(row), makeIfNecessary: false)
+  else { return nil }
+  return Unmanaged.passUnretained(v).toOpaque()
+}
+
 @_cdecl("sui_remove_child")
 public func sui_remove_child(_ parent: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer) {
   let p = view(parent)
@@ -1424,9 +1680,14 @@ public func sui_remove_child(_ parent: UnsafeMutableRawPointer, _ child: UnsafeM
     if scroll.documentView === c { scroll.documentView = nil }
     return
   }
+  if let t = p as? TabHostView, let page = c as? TabPage {
+    t.remove(page)
+    return
+  }
   if let stack = p as? NSStackView { stack.removeArrangedSubview(c) }
   (p as? GridView)?.remove(c)
   c.removeFromSuperview()
+  (p as? TabPage)?.host?.refit()
 }
 
 // MARK: - layout
@@ -1484,6 +1745,8 @@ private func arranged(_ v: NSView) -> [NSView] {
   if let s = v as? NSStackView { return s.arrangedSubviews }
   if let s = v as? NSScrollView { return s.documentView.map { [$0] } ?? [] }
   if let g = v as? GridView { return g.placed }
+  // Every tab, in the controller's order, whether or not its view is in the window now.
+  if let t = v as? TabHostView { return t.pages }
   return v.subviews
 }
 
@@ -1716,6 +1979,40 @@ public func sui_perform_click(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let b = view(h) as? NSButton else { return 0 }
   b.performClick(nil)
   return 1
+}
+
+/// A real click: the view is scrolled into sight, a point at its centre must hit-test to it,
+/// and a left mouse-down and mouse-up there are sent through the window's `sendEvent`, the path
+/// the window server's events take — so gesture recognisers, `mouseDown` overrides and
+/// controls all see what a user's click gives them. 0 when the view is not in a window or
+/// something else would take the click.
+@_cdecl("sui_perform_tap")
+public func sui_perform_tap(_ h: UnsafeMutableRawPointer) -> Int32 {
+  let v = view(h)
+  guard let w = v.window, let content = w.contentView else { return 0 }
+  v.scrollToVisible(v.bounds)
+  w.layoutIfNeeded()
+  let centre = v.convert(NSPoint(x: v.bounds.midX, y: v.bounds.midY), to: nil)
+  let probe = content.superview.map { $0.convert(centre, from: nil) } ?? centre
+  guard let hit = (content.superview ?? content).hitTest(probe), hit === v || hit.isDescendant(of: v)
+  else { return 0 }
+  for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+    guard let e = NSEvent.mouseEvent(
+      with: type, location: centre, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+    ) else { return 0 }
+    w.sendEvent(e)
+  }
+  return 1
+}
+
+/// Forces a view's layout direction, as a right-to-left locale sets it for the whole app, so
+/// a test can measure what the view does under it. 1 right-to-left, 0 back to the app's.
+@_cdecl("sui_set_layout_direction")
+public func sui_set_layout_direction(_ h: UnsafeMutableRawPointer, _ rtl: Int32) {
+  let v = view(h)
+  v.userInterfaceLayoutDirection = rtl != 0 ? .rightToLeft : NSApp.userInterfaceLayoutDirection
+  v.needsDisplay = true
 }
 
 @_cdecl("sui_alert_choose")
@@ -1988,6 +2285,24 @@ public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
   return iv.image != nil ? 1 : 0
 }
 
+/// Read from what draws: ImageView's own cover flag, else NSImageView's scaling.
+@_cdecl("sui_get_content_fit")
+public func sui_get_content_fit(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let iv = view(h) as? NSImageView else { return -1 }
+  if (iv as? ImageView)?.cover == true { return 1 }
+  return iv.imageScaling == .scaleAxesIndependently ? 2 : 0
+}
+
+@_cdecl("sui_get_align")
+public func sui_get_align(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let f = view(h) as? NSTextField else { return -1 }
+  switch f.alignment {
+  case .center: return 1
+  case .right: return 2
+  default: return 0
+  }
+}
+
 /// Measured from the *top* of the content whatever the document view's coordinate system: in
 /// an unflipped document the origin is bottom-left, so the top is at `frame.height`.
 @_cdecl("sui_scroll_offset")
@@ -2006,6 +2321,7 @@ public func sui_option_count(_ h: UnsafeMutableRawPointer) -> Int32 {
   switch view(h) {
   case let p as NSPopUpButton: return Int32(p.numberOfItems)
   case let s as NSSegmentedControl: return Int32(s.segmentCount)
+  case let t as TabHostView: return Int32(t.bar?.segmentCount ?? 0)
   default: return 0
   }
 }
@@ -2016,7 +2332,26 @@ public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Un
   switch view(h) {
   case let p as NSPopUpButton where i >= 0 && i < p.numberOfItems: return scratch(p.itemTitle(at: i))
   case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount: return scratch(s.label(forSegment: i) ?? "")
+  case let t as TabHostView:
+    guard let s = t.bar, i >= 0, i < s.segmentCount else { return nil }
+    return scratch(s.label(forSegment: i) ?? "")
   default: return nil
+  }
+}
+
+/// What the control draws as the choice (#77, D13). For the pop-up that is the item its cell
+/// draws — `NSPopUpButtonCell.menuItem` — rather than `indexOfSelectedItem`, which is the
+/// state the renderer just wrote and so cannot disagree with it.
+@_cdecl("sui_shown_option")
+public func sui_shown_option(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  switch view(h) {
+  case let p as NSPopUpButton:
+    return scratch((p.cell as? NSPopUpButtonCell)?.menuItem?.title ?? "")
+  case let s as NSSegmentedControl:
+    let i = s.selectedSegment
+    return scratch(i >= 0 && i < s.segmentCount ? (s.label(forSegment: i) ?? "") : "")
+  default:
+    return nil
   }
 }
 
@@ -2032,9 +2367,35 @@ public func sui_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
   case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount:
     s.selectedSegment = i
     return s.sendAction(s.action, to: s.target) ? 1 : 0
+  case let t as TabHostView:
+    // The controller's own segmented control, clicked through its own action.
+    guard let s = t.bar, i >= 0, i < s.segmentCount else { return 0 }
+    s.selectedSegment = i
+    return s.sendAction(s.action, to: s.target) ? 1 : 0
   default:
     return 0
   }
+}
+
+/// The symbol the bar shows for item `index`: recorded only when AppKit resolved the name,
+/// and only while the bar shows that very image.
+@_cdecl("sui_option_symbol")
+public func sui_option_symbol(_ h: UnsafeMutableRawPointer, _ index: Int32) -> UnsafePointer<CChar>? {
+  let i = Int(index)
+  guard let t = view(h) as? TabHostView, let s = t.bar, i >= 0, i < s.segmentCount, i < t.pages.count
+  else { return nil }
+  let page = t.pages[i]
+  guard let shown = s.image(forSegment: i), shown === page.image, let n = page.symbol else { return nil }
+  return scratch(n)
+}
+
+/// The page AppKit has on screen: the selected item's view, while it is in the window.
+@_cdecl("sui_tab_shown")
+public func sui_tab_shown(_ h: UnsafeMutableRawPointer) -> UnsafeMutableRawPointer? {
+  guard let t = view(h) as? TabHostView, let v = t.controller.tabView.selectedTabViewItem?.view,
+    v.window != nil, !v.isHiddenOrHasHiddenAncestor
+  else { return nil }
+  return Unmanaged.passUnretained(v).toOpaque()
 }
 
 @_cdecl("sui_choose_date")
@@ -2215,13 +2576,17 @@ public func sui_get_tooltip(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar
 /// button whose symbol resolved but drew nothing reads 0. -1 when the view has no size.
 @_cdecl("sui_painted_fraction")
 public func sui_painted_fraction(_ h: UnsafeMutableRawPointer) -> Double {
-  let v = view(h)
+  guard let image = drawnImage(view(h)) else { return -1 }
+  return paintedFraction(image)
+}
+
+/// The view drawn by AppKit into a bitmap; nil when it has no size.
+private func drawnImage(_ v: NSView) -> CGImage? {
   v.window?.layoutIfNeeded()
   guard v.bounds.width >= 1, v.bounds.height >= 1, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds)
-  else { return -1 }
+  else { return nil }
   v.cacheDisplay(in: v.bounds, to: rep)
-  guard let image = rep.cgImage else { return -1 }
-  return paintedFraction(image)
+  return rep.cgImage
 }
 
 /// Drawn into an RGBA buffer of our own, so the pixel format is known whatever the source's.
@@ -2241,4 +2606,61 @@ private func paintedFraction(_ image: CGImage) -> Double {
   var painted = 0
   for i in stride(from: 3, to: pixels.count, by: 4) where pixels[i] > 25 { painted += 1 }
   return Double(painted) / Double(w * h)
+}
+
+/// Where the painted pixels of a drawn view sit across it: the first and last column holding
+/// any, as fractions of its width (0 = the left edge, 1 = the right). Measures where text
+/// actually lands, which `textAlignment` alone cannot say for `.natural`.
+private func inkSpan(_ image: CGImage) -> (Double, Double)? {
+  let w = image.width, h = image.height
+  guard w > 0, h > 0 else { return nil }
+  var pixels = [UInt8](repeating: 0, count: w * h * 4)
+  let drawn: Bool = pixels.withUnsafeMutableBytes { buf in
+    guard let ctx = CGContext(
+      data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return false }
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    return true
+  }
+  guard drawn else { return nil }
+  var lo = Int.max, hi = -1
+  for y in 0..<h {
+    for x in 0..<w where pixels[(y * w + x) * 4 + 3] > 25 {
+      lo = min(lo, x)
+      hi = max(hi, x)
+    }
+  }
+  guard hi >= 0 else { return nil }
+  return (Double(lo) / Double(w), Double(hi + 1) / Double(w))
+}
+
+@_cdecl("sui_ink_span")
+public func sui_ink_span(
+  _ h: UnsafeMutableRawPointer, _ outLeft: UnsafeMutablePointer<Double>, _ outRight: UnsafeMutablePointer<Double>
+) -> Int32 {
+  guard let image = drawnImage(view(h)), let (l, r) = inkSpan(image) else { return 0 }
+  outLeft.pointee = l
+  outRight.pointee = r
+  return 1
+}
+
+/// Width pins a test has put on views, so they can be taken off again.
+private var widthPins: [ObjectIdentifier: NSLayoutConstraint] = [:]
+
+/// Pins a view's width for a measurement, or takes the pin off when `width` is negative. An
+/// AppKit Column hugs its children, so a one-word label is exactly as wide as its text and has
+/// no room in which to show its alignment; this gives it the room a wider column would.
+@_cdecl("sui_pin_width")
+public func sui_pin_width(_ h: UnsafeMutableRawPointer, _ width: Double) {
+  let v = view(h)
+  let id = ObjectIdentifier(v)
+  widthPins.removeValue(forKey: id)?.isActive = false
+  if width >= 0 {
+    let c = v.widthAnchor.constraint(equalToConstant: CGFloat(width))
+    c.priority = .required
+    c.isActive = true
+    widthPins[id] = c
+  }
+  v.window?.layoutIfNeeded()
 }

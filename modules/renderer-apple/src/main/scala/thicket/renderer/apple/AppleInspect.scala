@@ -91,6 +91,33 @@ object AppleInspect {
   /** Clicks a button through its own action, as a user would. False if `h` is not a button. */
   def click(h: Shim.Handle): Boolean = Shim.sui_perform_click(h) != 0
 
+  /** Taps any view at its centre through the platform's event path (see `sui_perform_tap`). False when it could not be
+    * tapped: off screen, covered, or — on UIKit — carrying no tap recogniser.
+    */
+  def tap(h: Shim.Handle): Boolean = Shim.sui_perform_tap(h) != 0
+
+  /** A Checkbox's or Toggle's state, read from the platform's control. */
+  def checked(h: Shim.Handle): Boolean = Shim.sui_get_checked(h) != 0
+
+  /** Forces `h` right-to-left, as an Arabic or Hebrew locale would, or returns it to the inherited direction. */
+  def setRightToLeft(
+    h:   Shim.Handle,
+    rtl: Boolean
+  ): Unit = Shim.sui_set_layout_direction(h, if rtl then 1 else 0)
+
+  /** Pins `h`'s width for a measurement; `None` takes the pin off. */
+  def pinWidth(
+    h:     Shim.Handle,
+    width: Option[Double]
+  ): Unit = Shim.sui_pin_width(h, width.getOrElse(-1.0))
+
+  /** Where the platform paints `h`'s pixels across its width, as (first, last) fractions; `None` if it paints none. */
+  def inkSpan(h: Shim.Handle): Option[(Double, Double)] =
+    Zone {
+      val out = alloc[Double](2)
+      if Shim.sui_ink_span(h, out, out + 1) != 0 then Some((out(0), out(1))) else None
+    }
+
   /** Chooses an alert action through the platform's response path. False where the platform offers no way to. */
   def chooseAlert(
     h:     Shim.Handle,
@@ -134,6 +161,30 @@ object AppleInspect {
       case _ => None
     }
 
+  /** The fit an image view draws with, read from it: `Some(ContentFit)`, or `None` when `h` is not an image view. */
+  def contentFit(h: Shim.Handle): Option[thicket.renderer.ContentFit] =
+    Shim.sui_get_content_fit(h) match {
+      case 0 => Some(thicket.renderer.ContentFit.Contain)
+      case 1 => Some(thicket.renderer.ContentFit.Cover)
+      case 2 => Some(thicket.renderer.ContentFit.Fill)
+      case _ => None
+    }
+
+  /** A text view's horizontal text alignment, read from it; `None` when it has none. */
+  def textAlign(h: Shim.Handle): Option[thicket.renderer.Alignment] =
+    Shim.sui_get_align(h) match {
+      case 0 => Some(thicket.renderer.Alignment.Start)
+      case 1 => Some(thicket.renderer.Alignment.Center)
+      case 2 => Some(thicket.renderer.Alignment.End)
+      case _ => None
+    }
+
+  /** The view a virtual list's table is showing for `row` now; `None` when that row is not on screen. */
+  def rowView(
+    table: Shim.Handle,
+    row:   Int
+  ): Option[Shim.Handle] = Option(Shim.sui_table_row_view(table, row))
+
   /** How far a vertical scroller is from the top of its content; 0 at the top, -1 if `h` is not a scroller. */
   def scrollOffset(h: Shim.Handle): Double = Shim.sui_scroll_offset(h)
 
@@ -141,8 +192,19 @@ object AppleInspect {
   def options(h: Shim.Handle): List[String] =
     (0 until Shim.sui_option_count(h)).toList.flatMap(i => str(Shim.sui_option_label(h, i)))
 
+  /** The SF Symbol a TabView's bar shows for each item, in the bar's order; `None` where it shows none that resolved.
+    */
+  def optionSymbols(h: Shim.Handle): List[Option[String]] =
+    (0 until Shim.sui_option_count(h)).toList.map(i => str(Shim.sui_option_symbol(h, i)))
+
+  /** The Tab a TabView's controller has on screen, read from the controller and the window; `None` when none is. */
+  def tabShown(h: Shim.Handle): Option[Shim.Handle] = Option(Shim.sui_tab_shown(h))
+
   /** The selected index, read from the control; -1 for none. */
   def selected(h: Shim.Handle): Int = Shim.sui_get_selected(h)
+
+  /** The option the control draws as chosen; `""` when it shows none (D13). */
+  def shownOption(h: Shim.Handle): String = str(Shim.sui_shown_option(h)).getOrElse("")
 
   /** Chooses an option through the control's own action. False where the platform offers no way to. */
   def choose(
