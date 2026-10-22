@@ -43,6 +43,8 @@ object Shim {
   def sui_set_spacing(h: Handle, dp: CInt): Unit = extern
   def sui_set_padding(h: Handle, dp: CInt): Unit = extern
   def sui_set_grid_columns(h: Handle, count: CInt): Unit = extern
+  def sui_set_symbol(h: Handle, name: CString): Unit = extern
+  def sui_set_accessible_label(h: Handle, text: CString): Unit = extern
   def sui_set_text_role(h: Handle, role: CInt): Unit = extern
   def sui_set_text_emphasis(h: Handle, emphasis: CInt): Unit = extern
   def sui_set_grow(h: Handle, on: CInt): Unit = extern
@@ -113,6 +115,11 @@ object Shim {
   def sui_choose(h: Handle, index: CInt): CInt = extern
   def sui_choose_date(h: Handle, epochDay: CInt): CInt = extern
   def sui_get_frame(h: Handle, outX: Ptr[CDouble], outY: Ptr[CDouble], outW: Ptr[CDouble], outH: Ptr[CDouble]): Unit = extern
+  def sui_symbol_exists(name: CString): CInt = extern
+  def sui_get_symbol(h: Handle): CString = extern
+  def sui_get_accessible_label(h: Handle): CString = extern
+  def sui_get_tooltip(h: Handle): CString = extern
+  def sui_painted_fraction(h: Handle): CDouble = extern
   def sui_grid_cell(h: Handle, child: Handle, outRow: Ptr[CDouble], outColumn: Ptr[CDouble]): CInt = extern
   def sui_record_opened_urls(on: CInt): Unit = extern
   def sui_opened_url_count(): CInt = extern

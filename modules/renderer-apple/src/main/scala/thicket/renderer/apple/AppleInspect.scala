@@ -177,6 +177,18 @@ object AppleInspect {
       if Shim.sui_grid_cell(grid, child, out, out + 1) != 0 then Some((out(0).toInt, out(1).toInt)) else None
     }
 
+  /** Whether the SDK has an SF Symbol of this name. */
+  def symbolExists(name: String): Boolean = Zone(Shim.sui_symbol_exists(toCString(name)) != 0)
+
+  /** The SF Symbol a view shows, or `None` when its name did not resolve. */
+  def symbol(h: Shim.Handle): Option[String] = str(Shim.sui_get_symbol(h))
+
+  def accessibleLabel(h: Shim.Handle): Option[String] = str(Shim.sui_get_accessible_label(h))
+  def tooltip(h:         Shim.Handle): Option[String] = str(Shim.sui_get_tooltip(h))
+
+  /** The share of a view's pixels the platform paints when drawing it into a bitmap. */
+  def paintedFraction(h: Shim.Handle): Double = Shim.sui_painted_fraction(h)
+
   /** Records the URLs links would open instead of opening them, until stopped; returns a reader for them. */
   def recordOpenedUrls(): () => List[String] = {
     Shim.sui_record_opened_urls(1)

@@ -72,6 +72,20 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **IconButton on Apple: SF Symbols, read back from the platform and counted in
+  pixels** (#66). `AppleIcons` maps the 24 curated icons, all 24 present on macOS 27.0.1 and
+  the iOS 27 simulator. An `NSButton`, borderless and image-only, on AppKit; a plain
+  `UIButton.Configuration` on UIKit; the symbol is sized by the body text style on both.
+  `AccessibleLabel` is the VoiceOver label everywhere, and the tooltip: `toolTip` on AppKit,
+  a `UIToolTipInteraction` (shown with a pointer) on UIKit. An `NSImage`/`UIImage` cannot
+  say which symbol it is, so the shim records a name only when the SDK resolved it. That
+  record alone would prove little, so the self-test also asks the SDK for every mapped name,
+  and draws each button into a bitmap and counts its painted pixels: 3.9–34.9 % of each
+  button on macOS, 2.1–18.5 % on iOS. Measured on the pre-#70 base with `bin/verify-apple.sh`
+  13/13: gallery 65/65 macOS and 64/64 iOS. Falsified on macOS: Share mapped to a symbol
+  the SDK lacks fails 3 checks (the SDK check, the mapped symbol, the paint); a label with no
+  tooltip fails 1. On today's `main` the gallery cannot mount on AppKit at all until #74,
+  because TabView's kinds 24 and 25 are unbuilt there (#72).
 - 2026-10-21 — **Device services: what Thicket provides, and how it is packaged**
   (`docs/16-device-services.md`). Thicket provides only what needs the host: app directories,
   permissions, hardware streams, system UI, lifecycle. Everything else uses existing

@@ -43,6 +43,9 @@ private var taps: [ObjectIdentifier: Tap] = [:]
 /// every tap path goes through `fireTap`, which runs both, so `.link(url)` on a tappable row
 /// cannot displace the row's own handler — the same rule GTK and Android keep.
 private var links: [ObjectIdentifier: URL] = [:]
+/// The SF Symbol each view shows, kept only when UIKit resolved the name: a `UIImage` has no
+/// public way to say which symbol it is, so this is what `sui_get_symbol` reads back.
+private var symbols: [ObjectIdentifier: String] = [:]
 
 private func fireTap(_ id: ObjectIdentifier) {
   if let t = taps[id] { t.cb(t.ctx) }
@@ -555,6 +558,15 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 22:
     return retained(GridView())
 
+  case 23:
+    // A plain button showing only its image, as in a toolbar or a navigation bar. The symbol
+    // is sized by the body text style, so it follows Dynamic Type like the text beside it.
+    var c = UIButton.Configuration.plain()
+    c.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .body, scale: .large)
+    let b = UIButton(configuration: c)
+    b.addTarget(proxy, action: #selector(Proxy.tapped(_:)), for: .touchUpInside)
+    return retained(b)
+
   case 20:
     let s = UISegmentedControl()
     s.addTarget(proxy, action: #selector(Proxy.segmented(_:)), for: .valueChanged)
@@ -596,6 +608,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   taps.removeValue(forKey: id)
   dateChanges.removeValue(forKey: id)
   links.removeValue(forKey: id)
+  symbols.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
   valueChanges.removeValue(forKey: id)
@@ -694,6 +707,35 @@ public func sui_set_padding(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
 @_cdecl("sui_set_grid_columns")
 public func sui_set_grid_columns(_ h: UnsafeMutableRawPointer, _ count: Int32) {
   (view(h) as? GridView)?.columns = max(1, Int(count))
+}
+
+/// An SF Symbol. A name the SDK lacks leaves the view with no image and is not recorded,
+/// which the self-test reports: `UIImage(systemName:)` returns nil and would draw nothing.
+@_cdecl("sui_set_symbol")
+public func sui_set_symbol(_ h: UnsafeMutableRawPointer, _ name: UnsafePointer<CChar>) {
+  let n = String(cString: name)
+  let v = view(h)
+  let image = UIImage(systemName: n)
+  symbols[ObjectIdentifier(v)] = image == nil ? nil : n
+  switch v {
+  case let b as UIButton:
+    var c = b.configuration ?? .plain()
+    c.image = image
+    b.configuration = c
+  case let i as UIImageView: i.image = image
+  default: break
+  }
+}
+
+/// What VoiceOver announces, and the pointer tooltip, which iPadOS shows with a trackpad or
+/// mouse — the same label GNOME, Android and macOS show as theirs.
+@_cdecl("sui_set_accessible_label")
+public func sui_set_accessible_label(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CChar>) {
+  let s = String(cString: text)
+  let v = view(h)
+  v.accessibilityLabel = s
+  for old in v.interactions where old is UIToolTipInteraction { v.removeInteraction(old) }
+  v.addInteraction(UIToolTipInteraction(defaultToolTip: s))
 }
 
 @_cdecl("sui_set_text_role")
@@ -1872,4 +1914,74 @@ public func sui_grid_cell(
   outRow.pointee = Double(at.row)
   outColumn.pointee = Double(at.column)
   return 1
+}
+
+// MARK: - read-back for icons (#66)
+
+@_cdecl("sui_symbol_exists")
+public func sui_symbol_exists(_ name: UnsafePointer<CChar>) -> Int32 {
+  UIImage(systemName: String(cString: name)) == nil ? 0 : 1
+}
+
+/// The symbol a view shows: recorded only when UIKit resolved it, and only while the button's
+/// configuration still holds an image.
+@_cdecl("sui_get_symbol")
+public func sui_get_symbol(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  let v = view(h)
+  let shown: UIImage?
+  switch v {
+  case let b as UIButton: shown = b.configuration?.image ?? b.image(for: .normal)
+  case let i as UIImageView: shown = i.image
+  default: shown = nil
+  }
+  guard shown?.isSymbolImage == true, let n = symbols[ObjectIdentifier(v)] else { return nil }
+  return scratch(n)
+}
+
+@_cdecl("sui_get_accessible_label")
+public func sui_get_accessible_label(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  guard let s = view(h).accessibilityLabel else { return nil }
+  return scratch(s)
+}
+
+@_cdecl("sui_get_tooltip")
+public func sui_get_tooltip(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  let tip = view(h).interactions.compactMap { $0 as? UIToolTipInteraction }.first?.defaultToolTip
+  guard let s = tip else { return nil }
+  return scratch(s)
+}
+
+/// The share of a view's pixels that are painted, from UIKit rendering its layer into a
+/// bitmap: a button whose symbol resolved but drew nothing reads 0. -1 when it has no size.
+@_cdecl("sui_painted_fraction")
+public func sui_painted_fraction(_ h: UnsafeMutableRawPointer) -> Double {
+  let v = view(h)
+  v.window?.layoutIfNeeded()
+  guard v.bounds.width >= 1, v.bounds.height >= 1 else { return -1 }
+  let format = UIGraphicsImageRendererFormat.preferred()
+  format.opaque = false
+  let image = UIGraphicsImageRenderer(bounds: v.bounds, format: format).image { ctx in
+    v.layer.render(in: ctx.cgContext)
+  }
+  guard let cg = image.cgImage else { return -1 }
+  return paintedFraction(cg)
+}
+
+/// Drawn into an RGBA buffer of our own, so the pixel format is known whatever the source's.
+private func paintedFraction(_ image: CGImage) -> Double {
+  let w = image.width, h = image.height
+  guard w > 0, h > 0 else { return -1 }
+  var pixels = [UInt8](repeating: 0, count: w * h * 4)
+  let drawn: Bool = pixels.withUnsafeMutableBytes { buf in
+    guard let ctx = CGContext(
+      data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return false }
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    return true
+  }
+  guard drawn else { return -1 }
+  var painted = 0
+  for i in stride(from: 3, to: pixels.count, by: 4) where pixels[i] > 25 { painted += 1 }
+  return Double(painted) / Double(w * h)
 }

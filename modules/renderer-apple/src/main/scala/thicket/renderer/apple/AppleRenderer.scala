@@ -301,10 +301,9 @@ final class AppleRenderer extends Renderer {
       // An NSGridView on AppKit; a constraint construction on UIKit, which has no grid view.
       case Prop.Columns(n) => Shim.sui_set_grid_columns(handle, n)
 
-      // Reserved for the Mac (#66): kind code 23 maps, but the SF Symbol (AppleIcons) and the
-      // accessibility label need shim functions that are part of that work.
-      case Prop.Glyph(_)           => ()
-      case Prop.AccessibleLabel(_) => ()
+      // An SF Symbol, named by AppleIcons; the label is VoiceOver's and the tooltip.
+      case Prop.Glyph(icon)        => Zone(Shim.sui_set_symbol(handle, toCString(AppleIcons.name(icon))))
+      case Prop.AccessibleLabel(t) => Zone(Shim.sui_set_accessible_label(handle, toCString(t)))
 
       case Prop.OpenUrl(url) => Zone(Shim.sui_set_open_url(handle, toCString(url)))
 

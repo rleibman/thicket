@@ -41,6 +41,9 @@ private var taps: [ObjectIdentifier: Tap] = [:]
 /// every tap path goes through `fireTap`, which runs both, so `.link(url)` on a tappable row
 /// cannot displace the row's own handler — the same rule GTK and Android keep.
 private var links: [ObjectIdentifier: URL] = [:]
+/// The SF Symbol each view shows, kept only when AppKit resolved the name: an `NSImage` has
+/// no public way to say which symbol it is, so this is what `sui_get_symbol` reads back.
+private var symbols: [ObjectIdentifier: String] = [:]
 
 private func fireTap(_ id: ObjectIdentifier) {
   if let t = taps[id] { t.cb(t.ctx) }
@@ -572,6 +575,14 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 22:
     return retained(GridView())
 
+  case 23:
+    // Borderless and image-only: AppKit's icon button, as in a window's toolbar. The symbol
+    // is a template image, so it draws in the control's text colour and dims when disabled.
+    let b = NSButton(title: "", target: proxy, action: #selector(Proxy.tapped(_:)))
+    b.isBordered = false
+    b.imagePosition = .imageOnly
+    return retained(b)
+
   case 20:
     // .selectOne: one segment at a time, and a click on the chosen one leaves it chosen —
     // a segmented control is a choice, not a set of toggles.
@@ -692,6 +703,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   taps.removeValue(forKey: id)
   dateChanges.removeValue(forKey: id)
   links.removeValue(forKey: id)
+  symbols.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
   valueChanges.removeValue(forKey: id)
@@ -791,6 +803,32 @@ public func sui_set_padding(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
 @_cdecl("sui_set_grid_columns")
 public func sui_set_grid_columns(_ h: UnsafeMutableRawPointer, _ count: Int32) {
   (view(h) as? GridView)?.columns = max(1, Int(count))
+}
+
+/// An SF Symbol, at the body text style's size so it scales with the text beside it. A
+/// name the SDK lacks leaves the view with no image and is not recorded, which the
+/// self-test reports: `NSImage(systemSymbolName:)` returns nil and would draw nothing.
+@_cdecl("sui_set_symbol")
+public func sui_set_symbol(_ h: UnsafeMutableRawPointer, _ name: UnsafePointer<CChar>) {
+  let n = String(cString: name)
+  let v = view(h)
+  let image = NSImage(systemSymbolName: n, accessibilityDescription: nil)?
+    .withSymbolConfiguration(NSImage.SymbolConfiguration(textStyle: .body, scale: .large))
+  symbols[ObjectIdentifier(v)] = image == nil ? nil : n
+  switch v {
+  case let b as NSButton: b.image = image
+  case let i as NSImageView: i.image = image
+  default: break
+  }
+}
+
+/// What VoiceOver announces, and the tooltip — which macOS shows, as GNOME and Android do.
+@_cdecl("sui_set_accessible_label")
+public func sui_set_accessible_label(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CChar>) {
+  let s = String(cString: text)
+  let v = view(h)
+  v.setAccessibilityLabel(s)
+  v.toolTip = s
 }
 
 @_cdecl("sui_set_text_role")
@@ -1871,4 +1909,70 @@ public func sui_grid_cell(
   outRow.pointee = Double(at.row)
   outColumn.pointee = Double(at.column)
   return 1
+}
+
+// MARK: - read-back for icons (#66)
+
+@_cdecl("sui_symbol_exists")
+public func sui_symbol_exists(_ name: UnsafePointer<CChar>) -> Int32 {
+  NSImage(systemSymbolName: String(cString: name), accessibilityDescription: nil) == nil ? 0 : 1
+}
+
+/// The symbol a view shows: recorded only when AppKit resolved it, and only while the button
+/// still holds an image.
+@_cdecl("sui_get_symbol")
+public func sui_get_symbol(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  let v = view(h)
+  let shown: NSImage?
+  switch v {
+  case let b as NSButton: shown = b.image
+  case let i as NSImageView: shown = i.image
+  default: shown = nil
+  }
+  guard shown != nil, let n = symbols[ObjectIdentifier(v)] else { return nil }
+  return scratch(n)
+}
+
+@_cdecl("sui_get_accessible_label")
+public func sui_get_accessible_label(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  guard let s = view(h).accessibilityLabel() else { return nil }
+  return scratch(s)
+}
+
+@_cdecl("sui_get_tooltip")
+public func sui_get_tooltip(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  guard let s = view(h).toolTip else { return nil }
+  return scratch(s)
+}
+
+/// The share of a view's pixels that are painted, from AppKit drawing it into a bitmap: a
+/// button whose symbol resolved but drew nothing reads 0. -1 when the view has no size.
+@_cdecl("sui_painted_fraction")
+public func sui_painted_fraction(_ h: UnsafeMutableRawPointer) -> Double {
+  let v = view(h)
+  v.window?.layoutIfNeeded()
+  guard v.bounds.width >= 1, v.bounds.height >= 1, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds)
+  else { return -1 }
+  v.cacheDisplay(in: v.bounds, to: rep)
+  guard let image = rep.cgImage else { return -1 }
+  return paintedFraction(image)
+}
+
+/// Drawn into an RGBA buffer of our own, so the pixel format is known whatever the source's.
+private func paintedFraction(_ image: CGImage) -> Double {
+  let w = image.width, h = image.height
+  guard w > 0, h > 0 else { return -1 }
+  var pixels = [UInt8](repeating: 0, count: w * h * 4)
+  let drawn: Bool = pixels.withUnsafeMutableBytes { buf in
+    guard let ctx = CGContext(
+      data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return false }
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    return true
+  }
+  guard drawn else { return -1 }
+  var painted = 0
+  for i in stride(from: 3, to: pixels.count, by: 4) where pixels[i] > 25 { painted += 1 }
+  return Double(painted) / Double(w * h)
 }
