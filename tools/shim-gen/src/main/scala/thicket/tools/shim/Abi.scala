@@ -158,7 +158,15 @@ object Abi {
       List(p("width", I32), p("height", I32), p("title", Str), p("ready", VoidCb), p("ctx", I64))
     ),
     Fn("sui_root_view", Handle, Nil),
-    Fn("sui_window_set_title", Void, List(p("title", Str)))
+    Fn("sui_window_set_title", Void, List(p("title", Str))),
+    Fn(
+      "sui_resource_path",
+      Str,
+      List(p("path", Str)),
+      doc = "Where a relative path of the app's own is: as given when it exists from the working\n" +
+        "   directory, otherwise inside the app bundle's resources — the lookup ImageSource.FromFile\n" +
+        "   makes. An iOS app's working directory is `/`, so its files are only in the bundle (#73)."
+    )
   )
 
   /** One `sui_create` kind code, and the view each toolkit builds for it.
@@ -265,8 +273,20 @@ object Abi {
       "UIButton(",
       "image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit"
     ),
-    Kind(24, "TabView", None, None, "reserved for the Mac (#69): UITabBarController / NSTabViewController"),
-    Kind(25, "Tab", None, None, "reserved for the Mac (#69): one tab of a TabView")
+    built(
+      24,
+      "TabView",
+      "TabHostView(",
+      "TabHostView(",
+      "an NSTabViewController, segmented control on top / a UITabBarController, a child controller"
+    ),
+    built(
+      25,
+      "Tab",
+      "TabPage(",
+      "TabPage(",
+      "one tab: holds its one child; the title and symbol go on the item"
+    )
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of
@@ -415,6 +435,13 @@ object Abi {
       Nil,
       doc = "How many table sources the shim still owns. Falls back to zero once every" + "\n" +
         "   virtual list is destroyed; the measurement that says destroying one frees it."
+    ),
+    Fn(
+      "sui_table_row_view",
+      Handle,
+      List(p("h", Handle), p("row", I32)),
+      doc = "The view the table is showing for `row` now, or NULL when that row is not on screen." + "\n" +
+        "   The platform's answer, so a table that kept a stale row after its data changed shows it."
     )
   )
 
@@ -449,10 +476,13 @@ object Abi {
   val picker: List[Fn] = List(
     setter("sui_picker_clear_options"),
     setter("sui_picker_add_option", "label" -> Str),
-    setter("sui_set_selected", "index" -> I32).copy(doc = "-1 for no selection."),
+    setter("sui_set_selected", "index" -> I32)
+      .copy(doc = "-1 for no selection. On a TabView, -1 or an index past the end leaves the tab shown."),
     Fn("sui_get_selected", I32, List(p("h", Handle))),
     setter("sui_on_select", "cb" -> IntCb, "ctx" -> I64)
-      .copy(doc = "The index the user chose.")
+      .copy(doc =
+        "The index the user chose. Never fired for the app's own selection, nor a TabView's insert or remove."
+      )
   )
 
   /** A `ZStack`'s placement of its children, on both axes. `0` start, `1` centre, `2` end — the order of the contract's
@@ -558,6 +588,20 @@ object Abi {
         "   an image view. The difference between a picture and an empty frame of the right size."
     ),
     Fn(
+      "sui_get_content_fit",
+      I32,
+      List(p("h", Handle)),
+      doc = "The fit an image view draws with, as sui_set_content_fit takes it: 0 contain, 1 cover,\n" +
+        "   2 fill. -1 when `h` is not an image view."
+    ),
+    Fn(
+      "sui_get_align",
+      I32,
+      List(p("h", Handle)),
+      doc = "A text view's horizontal text alignment, as sui_set_align takes it: 0 leading, 1 centre,\n" +
+        "   2 trailing. -1 when `h` carries no text alignment."
+    ),
+    Fn(
       "sui_scroll_offset",
       F64,
       List(p("h", Handle)),
@@ -589,15 +633,38 @@ object Abi {
       "sui_option_count",
       I32,
       List(p("h", Handle)),
-      doc = "How many options a Picker or SegmentedControl holds, as the platform's control has them."
+      doc = "How many options a Picker or SegmentedControl holds, as the platform's control has them;\n" +
+        "   for a TabView, the items in its tab bar."
     ),
     Fn("sui_option_label", Str, List(p("h", Handle), p("index", I32))),
+    Fn(
+      "sui_shown_option",
+      Str,
+      List(p("h", Handle)),
+      doc = "The option a Picker or SegmentedControl *shows* as chosen, read from what the control\n" +
+        "   draws (the pop-up's title, the selected segment); \"\" when it shows none (D13, #77)."
+    ),
     Fn(
       "sui_choose",
       I32,
       List(p("h", Handle), p("index", I32)),
       doc = "Chooses option `index` through the control's own action, as a user would. 0 where the\n" +
-        "   platform offers no way to do that from code (UIKit's menu-backed Picker)."
+        "   platform offers no way to do that from code (UIKit's menu-backed Picker). A TabView's\n" +
+        "   item is chosen through its tab bar."
+    ),
+    Fn(
+      "sui_option_symbol",
+      Str,
+      List(p("h", Handle), p("index", I32)),
+      doc = "The SF Symbol a TabView's bar shows for item `index`, or NULL when it shows none that\n" +
+        "   resolved."
+    ),
+    Fn(
+      "sui_tab_shown",
+      Handle,
+      List(p("h", Handle)),
+      doc = "The Tab a TabView's controller has on screen: its selected item's view, and only while\n" +
+        "   that view is in the window. NULL when none is."
     ),
     Fn(
       "sui_choose_date",

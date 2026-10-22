@@ -32,7 +32,7 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | | |
 |---|---|
 | Works today | Linux/GTK4, Android, macOS, iOS simulator — the same app on all four |
-| Widgets | **24 of 32** as widgets — 23 measured on every renderer, and `TabView` on GTK and Android with its Apple half in [#69](https://github.com/rleibman/thicket/issues/69). **30 of 32** covered, counting the six the framework provides another way (SafeArea and Link as props, List as `LazyColumn`, NavigationStack as `Nav`, Menu as a context-menu prop, Toolbar as screen actions); the last two, Radio and Stepper, are reclassified under §12.2a → [docs/12](docs/12-component-status.md) |
+| Widgets | **24 of 32** as widgets, every one measured on every renderer (`TabView` reached AppKit and UIKit in [#69](https://github.com/rleibman/thicket/issues/69)). **30 of 32** covered, counting the six the framework provides another way (SafeArea and Link as props, List as `LazyColumn`, NavigationStack as `Nav`, Menu as a context-menu prop, Toolbar as screen actions); the last two, Radio and Stepper, are reclassified under §12.2a → [docs/12](docs/12-component-status.md) |
 | Navigation | Native container on all four: `AdwNavigationView`, a `FrameLayout` + `Slide`, `UINavigationController`, a macOS sidebar. Back gesture and title bar are the platform's own |
 | Theming | By role, scoped to a subtree with `Provide` |
 | Published artefacts | `net.leibman`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |
@@ -40,8 +40,7 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | Windows | Not started, and out of the 0.1 scope |
 
 This is early, and the honest shape of it is: the parts that exist are finished on all four
-platforms rather than sketched on one. Twenty-three widgets on every renderer and one more on
-GTK and Android, with a self-test on each host that reads the tree back out of the real
+platforms rather than sketched on one. Twenty-four widgets on every renderer, with a self-test on each host that reads the tree back out of the real
 toolkit. Where a prop is handled but not yet honoured on a platform, docs/12 §12.4 says which.
 
 What is genuinely missing: nothing from the v1 catalogue — its last two entries, Radio and

@@ -59,6 +59,28 @@ cell plus the spacing, every row at its tallest. **58/58** on macOS and **57/57*
 Falsified on both: ignoring the column count fails five checks, inserting at the end instead
 of in place fails two.
 
+**#77** added the selection checks GTK has, asked of what the Apple control draws
+(`sui_shown_option`). After **Select last** and **Swap the options**, the Picker shows "Pea" at
+index 2. **Clear** shows a blank (D13), and so does a Swap after it. The report counter does
+not move. The SegmentedControl keeps its index across new options, which the self-test hands
+the renderer directly, because the screen has no button for it. Its **Clear** leaves no segment
+chosen. Results: **78/78** on macOS, and 76 of 77 on the iOS simulator with #73's Image
+failing, both with `THICKET_ALLOW_UNBUILT=1` until TabView (#69) is built.
+
+**#73** added the Apple checks for the sections the whole-repo review added. They cover the
+Errors section: the throw reaches `ErrorSink`, and the next click works. They cover the
+Effects section's result, a picker option swap, and the layout labels and Spacers, read as
+frames. They cover the indeterminate `ProgressBar` and the padded horizontal `Scroll`. They
+read each `Image`'s fit and picture from the image view. A GC stress step drives the
+nested Scala → Swift → Scala path while a worker collects. A sheet is opened and closed
+against the renderer's tables and `Handles.count`. The 10 000-row list's rows are read by
+position from the platform's table after a delete and a rename. The self-test now waits for
+the effect, as GTK's does, and ends asynchronously.
+Measured with `THICKET_ALLOW_UNBUILT=1` (TabView is #69): **102 of 107** on macOS and
+**103 of 106** on iOS. Every failure names the issue that owns it: AppKit's picker swap
+(#77), the Apple layout cross-axis (#87), and `Scroll(padding)` on both (#76). Each new
+check was falsified, and the controls are listed in `docs/decisions.md`.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name
