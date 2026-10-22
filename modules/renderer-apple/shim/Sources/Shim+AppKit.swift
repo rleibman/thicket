@@ -476,8 +476,10 @@ private final class ZStackView: NSView {
 /// An `NSGridView`, AppKit's own grid, inside a plain view that supplies the padding
 /// (`NSGridView` has none). Its rows are built from arrays of views, so it has no notion of
 /// a cell's *index*: inserting one in the middle means every later cell moves. So the order
-/// is kept here, and the rows are rebuilt from it on every insert and removal — the same
-/// re-placing GTK does through `GtkGridLayoutChild`.
+/// is kept here, and the rows are rebuilt from it — the same re-placing GTK does through
+/// `GtkGridLayoutChild` — except that an append fills the next slot, and a removal empties
+/// its slot and leaves the rebuild to the next constraint pass, so mounting and tearing down
+/// n cells is linear (#78, review 2026-10-20 P2-14).
 ///
 /// Every way a cell leaves comes through [[remove]]: `sui_remove_child` and `sui_destroy`
 /// call it before detaching, because a removed view would otherwise linger in the row arrays.
@@ -487,6 +489,8 @@ private final class GridView: NSView {
     didSet { if columns != oldValue { reflow() } }
   }
   private(set) var cells: [NSView] = []
+  /// A cell was removed since the rows were last built; see [[remove]].
+  private var stale = false
   private var insets: [NSLayoutConstraint] = []
   /// What the constraints in `insets` hold, for `sui_get_insets`.
   private(set) var current = NSEdgeInsetsZero
@@ -540,6 +544,16 @@ private final class GridView: NSView {
   }
 
   func insert(_ c: NSView, after: NSView?) {
+    // Appending a new cell, which is every cell of a mount, fills the next slot rather than
+    // rebuilding every row: nothing before it moves. Rebuilding made mounting n cells O(n²)
+    // (#78, review 2026-10-20 P2-14). A move is never this case, because a moved view is
+    // already a cell.
+    if !stale, let a = after, a === cells.last, gridOf(c) !== self {
+      c.translatesAutoresizingMaskIntoConstraints = false
+      cells.append(c)
+      append(c)
+      return
+    }
     // A move arrives as an insert of a view that is already a cell.
     cells.removeAll { $0 === c }
     let at: Int
@@ -549,13 +563,48 @@ private final class GridView: NSView {
     reflow()
   }
 
+  /// The cell's slot is emptied at once, so the grid never holds a view that has left it;
+  /// moving every later cell along waits for the next constraint pass, so a teardown that
+  /// removes every cell rebuilds once rather than once per cell (#78).
   func remove(_ c: NSView) {
     guard let i = cells.firstIndex(of: c) else { return }
     cells.remove(at: i)
-    reflow()
+    grid.cell(for: c)?.contentView = NSGridCell.emptyContentView
+    stale = true
+    needsUpdateConstraints = true
+  }
+
+  override func updateConstraints() {
+    flush()
+    super.updateConstraints()
+  }
+
+  /// Brings the rows up to date with `cells` after a removal. Anything that reads them first
+  /// calls this.
+  func flush() {
+    if stale { reflow() }
+  }
+
+  /// Places the last of `cells`, which every other cell precedes, exactly where [[reflow]]
+  /// would: into the empty slot of a short last row, as a new column while the first row is
+  /// still filling, or as a new row padded to the grid's width.
+  private func append(_ c: NSView) {
+    let k = cells.count - 1
+    let row = k / columns
+    let column = k % columns
+    if row == grid.numberOfRows {
+      var views = [c]
+      while views.count < grid.numberOfColumns { views.append(NSGridCell.emptyContentView) }
+      grid.addRow(with: views)
+    } else if column == grid.numberOfColumns {
+      grid.addColumn(with: [c])
+    } else {
+      grid.cell(atColumnIndex: column, rowIndex: row).contentView = c
+    }
   }
 
   private func reflow() {
+    stale = false
     while grid.numberOfRows > 0 { grid.removeRow(at: 0) }
     while grid.numberOfColumns > 0 { grid.removeColumn(at: 0) }
     // As many columns as there are cells to fill them, up to `columns`: a grid of two cells
@@ -570,13 +619,15 @@ private final class GridView: NSView {
 
   /// Where the grid itself has placed `c`, read from its rows and columns.
   func position(of c: NSView) -> (row: Int, column: Int)? {
+    flush()
     guard let cell = grid.cell(for: c), let r = cell.row, let col = cell.column else { return nil }
     return (grid.index(of: r), grid.index(of: col))
   }
 
   /// The cells in reading order, as the grid holds them — not as `cells` says.
   var placed: [NSView] {
-    (0..<grid.numberOfRows).flatMap { r in
+    flush()
+    return (0..<grid.numberOfRows).flatMap { r in
       (0..<grid.numberOfColumns).compactMap { c -> NSView? in
         let v = grid.cell(atColumnIndex: c, rowIndex: r).contentView
         return v === NSGridCell.emptyContentView ? nil : v
@@ -1557,14 +1608,23 @@ public func sui_insert_after(
     return
   }
 
+  // A move re-inserts a child already in the stack, whose fill constraint is still there.
+  let moving = c.superview === stack
+
+  // Appending after the last child, which is every child of a mount, is answered without a
+  // search. The search below is linear, and doing it for every child made mounting n
+  // children O(n²) (#78, review 2026-10-20 P2-14).
+  let arranged = stack.arrangedSubviews
   let index: Int
   if let a = after {
     let target = view(a)
-    index = (stack.arrangedSubviews.firstIndex(of: target).map { $0 + 1 }) ?? stack.arrangedSubviews.count
+    index = arranged.last === target
+      ? arranged.count
+      : (arranged.firstIndex(of: target).map { $0 + 1 }) ?? arranged.count
   } else {
     index = 0
   }
-  stack.insertArrangedSubview(c, at: min(index, stack.arrangedSubviews.count))
+  stack.insertArrangedSubview(c, at: min(index, arranged.count))
 
   // #87: a Column stretches its children across, as GTK's boxes, Android's LinearLayout and
   // UIKit's .fill stack do. A vertical NSStackView aligned .leading gave each child its own
@@ -1575,12 +1635,16 @@ public func sui_insert_after(
   // The stack's width less its side insets, kept in step with them by `syncColumnFill`. Not a
   // weaker "as wide as the stack" left to the stack's own inset constraints to cut short: those
   // are not required, and at 999 the child ran over the padding to the stack's edge.
-  if stack.orientation == .vertical, fillsColumn(c), !hasColumnFill(c, in: stack) {
-    let fill = c.widthAnchor.constraint(equalTo: stack.widthAnchor)
+  //
+  // O(1) per child, so mounting a Column stays linear (#78): the constant is set here rather
+  // than by re-syncing every fill constraint, a move is told by the child already being in the
+  // stack rather than by searching its constraints, and nothing is laid out until the next
+  // pass. Laying out the stack after each insert, as the first version did, made mounting 2 000
+  // children take minutes off screen (measured: sampled inside layoutSubtreeIfNeeded).
+  if stack.orientation == .vertical, fillsColumn(c), !moving {
+    let fill = c.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right))
     fill.identifier = columnFillId
     fill.isActive = true
-    syncColumnFill(stack)
-    stack.layoutSubtreeIfNeeded()
   }
 }
 
@@ -1615,11 +1679,6 @@ private func fillsColumn(_ c: NSView) -> Bool {
   }
 }
 
-/// A move arrives as a second insert of a child already in the stack.
-private func hasColumnFill(_ c: NSView, in stack: NSStackView) -> Bool {
-  stack.constraints.contains { $0.identifier == columnFillId && $0.firstItem === c }
-}
-
 /// Kind 9 rather than kind 6. The axis is not stored anywhere on the Scala side of the
 /// boundary, so it is read back off the scroller's own configuration.
 private func isHorizontalScroller(_ s: NSScrollView) -> Bool {
@@ -1641,10 +1700,11 @@ private final class TableSource: NSObject, NSTableViewDataSource, NSTableViewDel
   let ctx: Int64
   var count: Int = 0
 
-  /// Every row view handed out, so `sui_table_materialised` can answer with a number rather
-  /// than an impression. Identity, not equality: two rows are different views even when
-  /// they show the same text.
-  var materialised = Set<ObjectIdentifier>()
+  /// Row views the table was handed that it did not already hold, and how many of those it
+  /// has handed back, so `sui_table_materialised` can answer with a number rather than an
+  /// impression.
+  var built = 0
+  var discarded = 0
 
   init(cb: @escaping sui_row_cb, ctx: Int64) {
     self.cb = cb
@@ -1662,7 +1722,7 @@ private final class TableSource: NSObject, NSTableViewDataSource, NSTableViewDel
     // The identifier is what makes the view eligible for recycling next time; without it
     // `makeView` always returns nil and the table quietly builds every row.
     view.identifier = rowId
-    materialised.insert(ObjectIdentifier(view))
+    if view !== recycled { built += 1 }
     return view
   }
 }
@@ -1722,7 +1782,30 @@ public func sui_table_reload(_ h: UnsafeMutableRawPointer, _ count: Int32) {
 @_cdecl("sui_table_materialised")
 public func sui_table_materialised(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let (_, s) = table(of: h) else { return 0 }
-  return Int32(s.materialised.count)
+  return Int32(s.built)
+}
+
+@_cdecl("sui_table_discarded")
+public func sui_table_discarded(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let (_, s) = table(of: h) else { return 0 }
+  return Int32(s.discarded)
+}
+
+@_cdecl("sui_table_scroll_to")
+public func sui_table_scroll_to(_ h: UnsafeMutableRawPointer, _ row: Int32) {
+  guard let (t, s) = table(of: h), row >= 0, Int(row) < s.count else { return }
+  t.scrollRowToVisible(Int(row))
+  t.enclosingScrollView?.layoutSubtreeIfNeeded()
+  t.layoutSubtreeIfNeeded()
+}
+
+/// AppKit has no memory warning to post. Nor, measured, does an `NSTableView` let go of a
+/// row view while it is mounted: scrolling all 10 000 rows of the probe built 43 and freed
+/// none (#78). The row view is AppKit's unit of reuse, and Scala holds a reference to it, so
+/// one the table dropped could not be noticed here; none is.
+@_cdecl("sui_post_memory_warning")
+public func sui_post_memory_warning() -> Int32 {
+  0
 }
 
 @_cdecl("sui_table_live")

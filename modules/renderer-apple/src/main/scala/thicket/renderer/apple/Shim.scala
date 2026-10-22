@@ -73,6 +73,9 @@ object Shim {
   def sui_create_table(cb: RowCb, ctx: Long): Handle = extern
   def sui_table_reload(h: Handle, count: CInt): Unit = extern
   def sui_table_materialised(h: Handle): CInt = extern
+  def sui_table_discarded(h: Handle): CInt = extern
+  def sui_table_scroll_to(h: Handle, row: CInt): Unit = extern
+  def sui_post_memory_warning(): CInt = extern
   def sui_table_live(): CInt = extern
   def sui_table_row_view(h: Handle, row: CInt): Handle = extern
   def sui_present(h: Handle): Unit = extern

@@ -19,10 +19,11 @@ package example.gallery
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 import scala.scalanative.unsafe.{Zone, toCString}
-import thicket.core.GcState
+import thicket.core.{Element, GcState, Reconciler}
+import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim}
-import thicket.signals.ErrorSink
+import thicket.signals.{ErrorSink, Owner}
 
 /** The gallery's conformance check on AppKit and UIKit — the same questions the GTK host asks, through `AppleInspect`
   * instead of `GtkInspect`.
@@ -182,6 +183,7 @@ object GallerySelfTest {
     tapsCheckboxAndDirection(AppleInspect.all(root))
     layout(AppleInspect.all(root))
     crossAxis(AppleInspect.all(root))
+    mountScaling()
     robustness(AppleInspect.all(root))
 
     // Presented widgets must not be in the tree until asked for.
@@ -678,6 +680,64 @@ object GallerySelfTest {
         val t = AppleInspect.text(h).map(_.take(24)).getOrElse("")
         println(s"[frames] $k|$t|${fr(AppleInspect.frame(h))}")
       }
+  }
+
+  /** Twice the children should take about twice the time (#78, review 2026-10-20 P2-14). Every insert into a stack
+    * searched its arranged subviews for the anchor, and every insert into a Grid rebuilt all of its placement, so
+    * mounting n children was O(n²).
+    *
+    * Timed off screen (the container is never attached), and only the mount: the platform's own layout of 2 000 stacked
+    * views is superlinear by itself (measured on AppKit before any change here: 0.5 s for 1 000, 3.9 s for 2 000), and
+    * is not what this is about. Nothing is deferred to layout, so nothing is hidden by stopping before it. The teardown
+    * is timed too, and printed rather than checked. Each size is mounted three times and the fastest is kept: the
+    * machine is shared, and the slow runs are other work, not this. The check is the Android one: 2 000 under three
+    * times 1 000.
+    */
+  private def mountScaling(): Unit = {
+    val renderer = AppleApp.renderer
+    def once(
+      n:    Int,
+      make: Seq[Element] => Element
+    ): (Double, Double) = {
+      val o = Owner()
+      given Owner = o
+      val t0 = System.nanoTime()
+      val m = Reconciler.mount(renderer, make(Seq.tabulate(n)(i => Label(s"r$i"))))
+      val t1 = System.nanoTime()
+      m.dispose()
+      o.dispose()
+      val t2 = System.nanoTime()
+      ((t1 - t0) / 1e6, (t2 - t1) / 1e6)
+    }
+    def best(
+      n:    Int,
+      make: Seq[Element] => Element
+    ): (Double, Double) = {
+      val runs = List.fill(3)(once(n, make))
+      (runs.map(_._1).min, runs.map(_._2).min)
+    }
+    List[(String, Seq[Element] => Element)](
+      "Column" -> (kids => Column(spacing = 4)(kids*)),
+      "Row"    -> (kids => Row(spacing = 4)(kids*)),
+      "Grid"   -> (kids => Grid(columns = 4, spacing = 4)(kids*))
+    ).foreach {
+      (
+        name,
+        make
+      ) =>
+        val _ = once(500, make) // warm-up
+        val (small, goneSmall) = best(1000, make)
+        val (large, goneLarge) = best(2000, make)
+        println(
+          f"[gallery] info mounting 1000 children in a $name: $small%.1f ms, 2000: $large%.1f ms " +
+            f"(ratio ${large / small}%.2f); unmounting them: $goneSmall%.1f ms, $goneLarge%.1f ms"
+        )
+        check(
+          s"mounting a $name scales linearly (2000 children < 3x 1000)",
+          large < small * 3,
+          f"$small%.1f -> $large%.1f ms"
+        )
+    }
   }
 
   /** The questions the GTK gallery asks of the controls #45 and #46 added, asked of AppKit and UIKit.

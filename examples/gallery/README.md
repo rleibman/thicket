@@ -90,6 +90,13 @@ as its widest child. **75/75** on macOS and **71/72** on the iOS simulator (the 
 bytes-backed Image, #73). `THICKET_FRAME_DUMP=1` prints every widget's kind, text and frame,
 for comparing a layout change across the whole screen.
 
+**#78** added the Android gallery's linear-mount check to both Apple hosts, for a Column, a
+Row and a Grid: 2 000 children must mount in under three times 1 000 (off screen, fastest of
+three; unmounting is timed and printed, not checked). Grid on iOS went from 3.9 s / 16.6 s
+(ratio 4.2) to 42 ms / 93 ms (2.2), on macOS from 472 ms / 2.1 s (4.5) to 44 ms / 91 ms
+(2.1). The stack checks passed before the fix too (ratio 2.6–2.8, now 2.1–2.5), so for stacks
+the check guards a regression to quadratic, not the small search the fix removed.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name

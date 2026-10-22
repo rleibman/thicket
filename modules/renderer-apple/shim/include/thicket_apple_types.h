@@ -22,6 +22,10 @@ typedef void (*sui_bool_cb)(int64_t ctx, int32_t value);
 /* Asks Scala for the view of row `index`, returning it. `recycled` is a view the table is
    no longer showing, or NULL; handing it back is what makes scrolling cheap.
 
+   Index -1 means the opposite: the table has let go of `recycled` for good and will never
+   show it again (RowSource.discard). Scala disposes the row and returns NULL. One callback
+   rather than two, so a table still carries a single id across the boundary (#78).
+
    This is the only callback that returns a value. A pointer is a single register, which is
    not the case S4 and S3 found broken — that was a small *struct* returned by value, in the
    wrong registers and silently. Verified here rather than assumed: see the round-trip check

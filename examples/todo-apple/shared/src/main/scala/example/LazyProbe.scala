@@ -91,7 +91,93 @@ object LazyProbe {
     check("the materialised rows carry their text", texts.nonEmpty, s"${texts.size} row labels")
     println(s"[lazytest] ${texts.size} row labels readable in the tree")
 
-    unmount()
+    table match {
+      case Some(t) => scrollThrough(t, 0)
+      case None    => unmount()
+    }
+  }
+
+  /** Every row, top to bottom, a screenful at a time, a few screenfuls per main-loop turn so the platform can free what
+    * it lets go of between them (#78, review 2026-10-20 P2-8).
+    *
+    * What has to stay bounded is what the table *holds*: the row views built minus those handed back through
+    * `RowSource.discard`. Before #78 UIKit never handed one back, so a cell the table freed left its row — slot, owner,
+    * effects — alive until the list was unmounted.
+    */
+  private val step = 8
+  private val stepsPerTurn = 25
+
+  private def scrollThrough(
+    t:    Shim.Handle,
+    from: Int
+  ): Unit = {
+    var row = from
+    while row < rowCount && row < from + step * stepsPerTurn do {
+      Shim.sui_table_scroll_to(t, row)
+      row += step
+    }
+    if row < rowCount then AppleApp.postToUi(() => scrollThrough(t, row))
+    else {
+      Shim.sui_table_scroll_to(t, rowCount - 1)
+      AppleApp.postToUi(() => afterScroll(t))
+    }
+  }
+
+  private def afterScroll(t: Shim.Handle): Unit = {
+    val renderer = AppleApp.renderer
+    val built = renderer.materialisedRows(t)
+    val discarded = renderer.discardedRows(t)
+    println(
+      s"[lazytest] scrolled through all $rowCount rows: $built row views built, $discarded discarded, " +
+        s"${built - discarded} held"
+    )
+    check(
+      "scrolling every row keeps what the table holds bounded",
+      built - discarded > 0 && built - discarded < rowCount / 10,
+      s"${built - discarded} held"
+    )
+    val last = AppleInspect.allTexts(AppleApp.rootHandle).filter(_.startsWith("Row "))
+    check(
+      "the last row is bound and readable",
+      last.contains(s"Row ${rowCount - 1}"),
+      last.takeRight(3).toString
+    )
+    memoryWarning(t)
+  }
+
+  /** UIKit frees the cells in a table's reuse queue when memory is short. The row views they hosted are then shown by
+    * nothing, so each must come back to the source as a discard, and the source must dispose it: the renderer's
+    * per-handle tables shrink by the rows' widgets. AppKit has no such notice, and says so.
+    */
+  private def memoryWarning(t: Shim.Handle): Unit = {
+    val renderer = AppleApp.renderer
+    val discardedBefore = renderer.discardedRows(t)
+    val entriesBefore = renderer.tableEntries
+    if Shim.sui_post_memory_warning() == 0 then {
+      println("[lazytest] (this platform posts no memory warning; the discard on a freed cell is not exercised)")
+      unmount()
+    } else
+      // The cells go when the table's purge releases them, and each discard is posted to the
+      // turn after that.
+      AppleApp.postToUiAfter(200) { () =>
+        val discarded = renderer.discardedRows(t) - discardedBefore
+        val entries = renderer.tableEntries
+        println(
+          s"[lazytest] memory warning: $discarded row views discarded; renderer table entries $entriesBefore -> $entries"
+        )
+        check("a memory warning frees cells and their rows are discarded", discarded > 0, s"$discarded discarded")
+        check(
+          "and the source disposed them: the renderer forgot their widgets",
+          entries <= entriesBefore - discarded,
+          s"$entriesBefore -> $entries for $discarded rows"
+        )
+        Shim.sui_table_scroll_to(t, 0)
+        AppleApp.postToUi { () =>
+          val texts = AppleInspect.allTexts(AppleApp.rootHandle).filter(_.startsWith("Row "))
+          check("and rows are built again on demand", texts.contains("Row 0"), texts.take(3).toString)
+          unmount()
+        }
+      }
   }
 
   /** Counted on both sides, because each side owns something the other cannot see: the shim owns the table's source
