@@ -116,7 +116,10 @@ object Shim {
   def sui_menu_item_label(h: Handle, index: CInt): CString = extern
   def sui_option_count(h: Handle): CInt = extern
   def sui_option_label(h: Handle, index: CInt): CString = extern
+  def sui_shown_option(h: Handle): CString = extern
   def sui_choose(h: Handle, index: CInt): CInt = extern
+  def sui_option_symbol(h: Handle, index: CInt): CString = extern
+  def sui_tab_shown(h: Handle): Handle = extern
   def sui_choose_date(h: Handle, epochDay: CInt): CInt = extern
   def sui_get_frame(h: Handle, outX: Ptr[CDouble], outY: Ptr[CDouble], outW: Ptr[CDouble], outH: Ptr[CDouble]): Unit = extern
   def sui_symbol_exists(name: CString): CInt = extern
@@ -176,5 +179,5 @@ object ShimKind {
   /** Codes reserved and not built on AppKit or on UIKit (D9). `AppleRenderer` shows a labelled placeholder for one, and
     * throws under a self-test. One set for both toolkits: the renderer cannot yet tell which it runs on (#79).
     */
-  val unbuilt: Set[Int] = Set(24, 25)
+  val unbuilt: Set[Int] = Set()
 }

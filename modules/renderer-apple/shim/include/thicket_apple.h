@@ -59,8 +59,8 @@ const char *sui_resource_path(const char *path);
      21 DatePicker         NSDatePicker()                 UIDatePicker()    compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC
      22 Grid               GridView()                     GridView()        an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row
      23 IconButton         NSButton()                     UIButton()        image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit
-     24 TabView            -                              -                 reserved for the Mac (#69): UITabBarController / NSTabViewController
-     25 Tab                -                              -                 reserved for the Mac (#69): one tab of a TabView */
+     24 TabView            TabHostView()                  TabHostView()     an NSTabViewController, segmented control on top / a UITabBarController, a child controller
+     25 Tab                TabPage()                      TabPage()         one tab: holds its one child; the title and symbol go on the item */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -174,10 +174,10 @@ void sui_menu_add_item(sui_handle h, const char *label, int32_t enabled,
 /* --- picker ------------------------------------------------------------------ */
 void sui_picker_clear_options(sui_handle h);
 void sui_picker_add_option(sui_handle h, const char *label);
-/* -1 for no selection. */
+/* -1 for no selection. On a TabView, -1 or an index past the end leaves the tab shown. */
 void sui_set_selected(sui_handle h, int32_t index);
 int32_t sui_get_selected(sui_handle h);
-/* The index the user chose. */
+/* The index the user chose. Never fired for the app's own selection, nor a TabView's insert or remove. */
 void sui_on_select(sui_handle h, sui_int_cb cb, int64_t ctx);
 
 /* --- zstack ------------------------------------------------------------------ */
@@ -243,12 +243,23 @@ const char *sui_presented_message(sui_handle h);
 /* How many items the platform's menu for this view holds; 0 when it has none. */
 int32_t sui_menu_item_count(sui_handle h);
 const char *sui_menu_item_label(sui_handle h, int32_t index);
-/* How many options a Picker or SegmentedControl holds, as the platform's control has them. */
+/* How many options a Picker or SegmentedControl holds, as the platform's control has them;
+   for a TabView, the items in its tab bar. */
 int32_t sui_option_count(sui_handle h);
 const char *sui_option_label(sui_handle h, int32_t index);
+/* The option a Picker or SegmentedControl *shows* as chosen, read from what the control
+   draws (the pop-up's title, the selected segment); "" when it shows none (D13, #77). */
+const char *sui_shown_option(sui_handle h);
 /* Chooses option `index` through the control's own action, as a user would. 0 where the
-   platform offers no way to do that from code (UIKit's menu-backed Picker). */
+   platform offers no way to do that from code (UIKit's menu-backed Picker). A TabView's
+   item is chosen through its tab bar. */
 int32_t sui_choose(sui_handle h, int32_t index);
+/* The SF Symbol a TabView's bar shows for item `index`, or NULL when it shows none that
+   resolved. */
+const char *sui_option_symbol(sui_handle h, int32_t index);
+/* The Tab a TabView's controller has on screen: its selected item's view, and only while
+   that view is in the window. NULL when none is. */
+sui_handle sui_tab_shown(sui_handle h);
 /* Sets a DatePicker's day through the control's own action, as a user's choice would. */
 int32_t sui_choose_date(sui_handle h, int32_t epochDay);
 /* A view's alignment rect — what Auto Layout positions — in its window, top-left origin. */

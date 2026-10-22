@@ -165,8 +165,19 @@ object AppleInspect {
   def options(h: Shim.Handle): List[String] =
     (0 until Shim.sui_option_count(h)).toList.flatMap(i => str(Shim.sui_option_label(h, i)))
 
+  /** The SF Symbol a TabView's bar shows for each item, in the bar's order; `None` where it shows none that resolved.
+    */
+  def optionSymbols(h: Shim.Handle): List[Option[String]] =
+    (0 until Shim.sui_option_count(h)).toList.map(i => str(Shim.sui_option_symbol(h, i)))
+
+  /** The Tab a TabView's controller has on screen, read from the controller and the window; `None` when none is. */
+  def tabShown(h: Shim.Handle): Option[Shim.Handle] = Option(Shim.sui_tab_shown(h))
+
   /** The selected index, read from the control; -1 for none. */
   def selected(h: Shim.Handle): Int = Shim.sui_get_selected(h)
+
+  /** The option the control draws as chosen; `""` when it shows none (D13). */
+  def shownOption(h: Shim.Handle): String = str(Shim.sui_shown_option(h)).getOrElse("")
 
   /** Chooses an option through the control's own action. False where the platform offers no way to. */
   def choose(

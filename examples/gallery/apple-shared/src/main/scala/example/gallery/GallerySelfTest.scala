@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 import scala.scalanative.unsafe.{Zone, toCString}
 import thicket.core.GcState
-import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, WidgetKind}
+import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim}
 import thicket.signals.ErrorSink
 
@@ -438,6 +438,123 @@ object GallerySelfTest {
     }
   }
 
+  private type H = thicket.renderer.apple.Shim.Handle
+
+  /** The button labelled `label` in the same section as `control`: the gallery has two "Clear"s. The nearest ancestor
+    * holding such a button is the last one in a pre-order walk, which visits ancestors before descendants.
+    */
+  private def buttonNear(
+    all:     List[H],
+    control: H,
+    label:   String
+  ): Option[H] = {
+    def button(h: H) =
+      AppleInspect
+        .all(h).find(b =>
+          AppleApp.renderer.kindOf(b).contains(WidgetKind.Button) && AppleInspect.text(b).contains(label)
+        )
+    all.filter(h => h != control && AppleInspect.all(h).contains(control)).flatMap(button).lastOption
+  }
+
+  /** #77 (review 2026-10-20 P1-10, P1-11; D13). The Picker keeps its selection — an index — when its options are
+    * replaced, reports no choice the user did not make, and shows a blank for `-1`. What it shows is read from what the
+    * control draws (`shownOption`), not from what the renderer told it.
+    */
+  private def pickerSelection(
+    all: List[H],
+    p:   H
+  ): Unit = {
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    def reports = texts.find(_.startsWith("The picker reported")).getOrElse("")
+    def chose = texts.filter(t => t.startsWith("Chose") || t == "(nothing selected)").toString
+    def shows =
+      s"shows '${AppleInspect.shownOption(p)}', selected ${AppleInspect.selected(p)}, options ${AppleInspect.options(p)}"
+    def press(label: String): Unit =
+      buttonNear(all, p, label) match {
+        case Some(b) => AppleInspect.click(b)
+        case None    => check(s"the Picker's '$label' button is on screen", false)
+      }
+    val reportsBefore = reports
+    press("Select last")
+    press("Swap the options")
+    check(
+      "swapping the Picker's options keeps its selection",
+      AppleInspect.options(p) == Gallery.vegetables && AppleInspect.shownOption(p) == Gallery.vegetables.last &&
+        AppleInspect.selected(p) == Gallery.vegetables.length - 1,
+      shows
+    )
+    check("and the app agrees", texts.contains(s"Chose ${Gallery.vegetables.last} (index 2)"), chose)
+    val (_, _, chosenW, chosenH) = AppleInspect.frame(p)
+    press("Clear")
+    check(
+      "Selected(-1) shows a blank Picker, not the first option (D13)",
+      AppleInspect.shownOption(p) == "" && AppleInspect.selected(p) == -1,
+      shows
+    )
+    // A blank title must not take the control with it: a pop-up the user cannot see or tap is
+    // a selection they cannot make again.
+    val (_, _, blankW, blankH) = AppleInspect.frame(p)
+    check(
+      "and the blank Picker is still there to tap",
+      blankW >= 20 && blankH >= 20,
+      f"$blankW%.0fx$blankH%.0f blank, $chosenW%.0fx$chosenH%.0f showing ${Gallery.vegetables.last}"
+    )
+    println(f"[gallery]   picker frame: $chosenW%.0fx$chosenH%.0f showing an option, $blankW%.0fx$blankH%.0f blank")
+    press("Swap the options")
+    check(
+      "and swapping its options with nothing selected selects nothing",
+      AppleInspect.options(p) == Gallery.fruit && AppleInspect.shownOption(p) == "" && AppleInspect.selected(p) == -1,
+      shows
+    )
+    check("and the app agrees", texts.contains("(nothing selected)"), chose)
+    check(
+      "and no swap or app write reported a choice the user did not make",
+      reports == reportsBefore,
+      s"$reportsBefore -> $reports"
+    )
+  }
+
+  /** The SegmentedControl's half of #77. The gallery has no button that replaces its options, so the renderer is given
+    * new ones directly — the patch the reconciler would send — and then the originals back.
+    */
+  private def segmentedSelection(
+    all: List[H],
+    s:   H
+  ): Unit = {
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    def showing = texts.filter(t => t.startsWith("Showing a ") || t == "(no span)")
+    def shows =
+      s"shows '${AppleInspect.shownOption(s)}', selected ${AppleInspect.selected(s)}, options ${AppleInspect.options(s)}"
+    val before = AppleInspect.selected(s)
+    val appBefore = showing
+    val renamed = Gallery.spans.map(_.toUpperCase)
+    AppleApp.renderer.update(s, Seq(Prop.Options(renamed)))
+    check(
+      "new segments keep the selected index",
+      AppleInspect.options(s) == renamed && AppleInspect.selected(s) == before &&
+        AppleInspect.shownOption(s) == renamed.lift(before).getOrElse(""),
+      shows
+    )
+    AppleApp.renderer.update(s, Seq(Prop.Options(Gallery.spans)))
+    check(
+      "and so do the old ones, put back",
+      AppleInspect.selected(s) == before && AppleInspect.shownOption(s) == Gallery.spans.lift(before).getOrElse(""),
+      shows
+    )
+    check("and neither change reported a choice", showing == appBefore, s"$appBefore -> $showing")
+    buttonNear(all, s, "Clear") match {
+      case Some(b) =>
+        AppleInspect.click(b)
+        check(
+          "Selected(-1) leaves no segment chosen (D13)",
+          AppleInspect.selected(s) == -1 && AppleInspect.shownOption(s) == "",
+          shows
+        )
+        check("and the app agrees", showing == List("(no span)"), showing.toString)
+      case None => check("the SegmentedControl's 'Clear' button is on screen", false)
+    }
+  }
+
   /** The questions the GTK gallery asks of the controls #45 and #46 added, asked of AppKit and UIKit.
     *
     * Each control is found through the renderer (which handles are the framework's own Picker, ZStack, …) and every
@@ -473,37 +590,7 @@ object GallerySelfTest {
           texts.filter(_.startsWith("Chose")).toString
         )
       else println("[gallery]   (this platform offers no way to choose a Picker option from code; not exercised)")
-
-      // New options, same length: the selection is an index and stays where it is, and no
-      // swap reports a choice the user did not make (review 2026-10-20, P1-10). Asked of
-      // the control, and of the app's label. AppKit fails both: its pop-up shows index 0
-      // after the swap while the app says otherwise (#77).
-      def reports = texts.find(_.startsWith("The picker reported")).getOrElse("")
-      def button(t: String) = ofKind(WidgetKind.Button).find(h => AppleInspect.text(h).contains(t))
-      val reportsBefore = reports
-      button("Clear").foreach(AppleInspect.click)
-      button("Swap the options").foreach(AppleInspect.click)
-      check(
-        "swapping the options with nothing selected selects nothing",
-        AppleInspect.options(p) == Gallery.vegetables && AppleInspect.selected(p) == -1 &&
-          texts.contains("(nothing selected)"),
-        s"(#77) ${AppleInspect.options(p)} selected ${AppleInspect.selected(p)}; " +
-          texts.filter(t => t.startsWith("Chose") || t.contains("nothing")).toString
-      )
-      button("Select last").foreach(AppleInspect.click)
-      button("Swap the options").foreach(AppleInspect.click)
-      check(
-        "swapping them with a selection keeps it",
-        AppleInspect.options(p) == Gallery.fruit && AppleInspect.selected(p) == 2 &&
-          texts.contains("Chose Cherry (index 2)"),
-        s"(#77) ${AppleInspect.options(p)} selected ${AppleInspect.selected(p)}; " +
-          texts.filter(_.startsWith("Chose")).toString
-      )
-      check(
-        "and no swap reported a choice the user did not make",
-        reports == reportsBefore,
-        s"$reportsBefore -> $reports"
-      )
+      pickerSelection(all, p)
     }
 
     // --- DatePicker ---
@@ -550,6 +637,7 @@ object GallerySelfTest {
         texts.contains("Showing a Month"),
         texts.filter(_.startsWith("Showing")).toString
       )
+      segmentedSelection(all, s)
     }
 
     // --- Link: clicked for real, with the opener recording instead of launching a browser ---
@@ -787,6 +875,130 @@ object GallerySelfTest {
       texts.contains("Tapped Share"),
       texts.filter(_.startsWith("Tapped")).toString
     )
+
+    tabView(ofKind(WidgetKind.TabView), ofKind)
+  }
+
+  /** The questions GTK asks of its `AdwViewStack` (#69), asked of `NSTabViewController` and `UITabBarController`.
+    *
+    * The bar's items are read from the bar the controller draws — AppKit's segmented control, UIKit's `UITabBar` — the
+    * pages from the controller's own items, and the page on screen from the controller and the window. A tab is
+    * switched through the bar, the way a user does. Where GTK reads a page's content from the stack, this reads it from
+    * the item's view: a controller keeps only the selected page in the window, and the others alive but out of it,
+    * which is what "kept alive" means on Apple.
+    */
+  private def tabView(
+    tabViews: List[thicket.renderer.apple.Shim.Handle],
+    ofKind:   WidgetKind => List[thicket.renderer.apple.Shim.Handle]
+  ): Unit = {
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    def showing = texts.filter(_.startsWith("Showing")).toString
+    check(
+      "one TabView, with the platform's tab bar",
+      tabViews.length == 1 && tabViews.forall(t => AppleInspect.options(t).nonEmpty),
+      s"${tabViews.length} TabViews, bars: ${tabViews.map(AppleInspect.options)}"
+    )
+    tabViews.headOption.foreach { tv =>
+      def pages = AppleInspect.children(tv)
+      def bar = AppleInspect.options(tv)
+      def contentOf(t: String) = s"The ${t.toLowerCase} tab's content"
+      def pagesHold(titles: Seq[String]) =
+        pages.length == titles.length && titles
+          .zip(pages).forall(
+            (
+              t,
+              p
+            ) => AppleInspect.allTexts(p) == List(contentOf(t))
+          )
+      def described = s"bar=$bar symbols=${AppleInspect.optionSymbols(tv)} pages=${pages.map(AppleInspect.allTexts)}"
+      def shownIndex = AppleInspect.tabShown(tv).map(pages.indexOf).getOrElse(-1)
+      def button(t: String) = ofKind(WidgetKind.Button).find(h => AppleInspect.text(h).contains(t))
+
+      check(
+        "the bar's items are the tabs, in order, with their mapped symbols",
+        bar == Gallery.tabTitles &&
+          AppleInspect.optionSymbols(tv) == List(Icon.Home, Icon.Mail, Icon.Settings).map(i =>
+            Some(AppleIcons.name(i))
+          ),
+        described
+      )
+      check(
+        "every tab's content is mounted, not only the visible one's",
+        pagesHold(Gallery.tabTitles),
+        described
+      )
+      // The gallery starts on Mail, index 1, not the controller's default first item.
+      check(
+        "the app's initial tab is the visible page, not the controller's default",
+        shownIndex == 1 && AppleInspect.selected(tv) == 1 && texts.contains("Showing tab 1"),
+        s"shown=$shownIndex selected=${AppleInspect.selected(tv)} $showing"
+      )
+      // Laid out, not only present: the page on screen holds its content, inside the TabView,
+      // which is tall enough for the bar and the page. A controller's page is placed by frame,
+      // so nothing in it would size the TabView unless the shim does.
+      def framed: (Boolean, String) = {
+        val (tx, ty, tw, th) = AppleInspect.frame(tv)
+        AppleInspect.tabShown(tv).flatMap(AppleInspect.children(_).headOption) match {
+          case Some(c) =>
+            val (cx, cy, cw, ch) = AppleInspect.frame(c)
+            val inside = cx >= tx - 0.5 && cy >= ty - 0.5 && cx + cw <= tx + tw + 0.5 && cy + ch <= ty + th + 0.5
+            (
+              inside && cw > 0 && ch > 0 && th >= ch + 20,
+              f"tabView ($tx%.0f,$ty%.0f $tw%.0fx$th%.0f) content ($cx%.0f,$cy%.0f $cw%.0fx$ch%.0f)"
+            )
+          case None => (false, f"tabView ($tx%.0f,$ty%.0f $tw%.0fx$th%.0f), no page on screen")
+        }
+      }
+      val (laidOut, frames) = framed
+      check("the page on screen is laid out inside the TabView, below or above its bar", laidOut, frames)
+      println(s"[gallery]   tab frames: $frames")
+
+      check("the bar's Settings item can be clicked", AppleInspect.choose(tv, bar.indexOf("Settings")))
+      check(
+        "clicking the bar's Settings item shows that page",
+        shownIndex == 2 && AppleInspect.selected(tv) == 2,
+        s"shown=$shownIndex selected=${AppleInspect.selected(tv)}"
+      )
+      check("and reaches the app, as its index", texts.contains("Showing tab 2"), showing)
+
+      button("Add a tab in the middle").foreach(AppleInspect.click)
+      check(
+        "a tab inserted in the middle lands there, and the others keep their order",
+        bar == List("Home", "Extra", "Mail", "Settings"),
+        described
+      )
+      check(
+        "the user stays on Settings, and the app is told its new index",
+        shownIndex == 3 && texts.contains("Showing tab 3"),
+        s"shown=$shownIndex $showing"
+      )
+      check("and every tab still has its content", pagesHold(List("Home", "Extra", "Mail", "Settings")), described)
+
+      button("Remove the extra tab").foreach(AppleInspect.click)
+      check(
+        "and removing it restores the three",
+        bar == Gallery.tabTitles && pagesHold(Gallery.tabTitles),
+        described
+      )
+      check(
+        "and the user is still on Settings, told its index again",
+        shownIndex == 2 && texts.contains("Showing tab 2"),
+        s"shown=$shownIndex $showing"
+      )
+
+      // Selected(-1) and an index past the end leave the visible tab alone. Sent to the renderer
+      // directly, as a model would send them; the answer is read from the controller.
+      AppleApp.renderer.update(tv, Seq(Prop.Selected(-1)))
+      val afterNone = shownIndex
+      AppleApp.renderer.update(tv, Seq(Prop.Selected(7)))
+      val afterPast = shownIndex
+      AppleApp.renderer.update(tv, Seq(Prop.Selected(2)))
+      check(
+        "Selected(-1) or past the end leaves the visible tab alone",
+        afterNone == 2 && afterPast == 2,
+        s"after -1: $afterNone, after 7: $afterPast"
+      )
+    }
   }
 
 }

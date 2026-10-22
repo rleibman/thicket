@@ -385,6 +385,165 @@ private final class GridView: NSView {
 /// The grid a view is a cell of: its superview is the `NSGridView`, whose superview is ours.
 private func gridOf(_ v: NSView) -> GridView? { v.superview?.superview as? GridView }
 
+/// Kind 25, one `Tab`: a plain view holding its one child. Inserting a second child replaces
+/// the first, as on GTK and Android. The title and the symbol are kept here and put on the
+/// `NSTabViewItem` while the page is in a TabView, which is where AppKit shows them.
+private final class TabPage: NSView {
+  var title = "" { didSet { item?.label = title } }
+  var symbol: String?
+  var image: NSImage? { didSet { item?.image = image } }
+  /// This page's item while it is in a TabView. The controller owns the item, the item's view
+  /// controller owns this view; the handle's own retain is what keeps the page alive between.
+  weak var item: NSTabViewItem?
+  weak var host: TabHostView?
+
+  init() { super.init(frame: .zero) }
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  var content: NSView? { subviews.first }
+
+  func setContent(_ c: NSView) {
+    subviews.forEach { $0.removeFromSuperview() }
+    c.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(c)
+    // Top-aligned: a page as tall as the TabView's tallest leaves a short one at the top,
+    // as GTK's homogeneous stack does.
+    NSLayoutConstraint.activate([
+      c.leadingAnchor.constraint(equalTo: leadingAnchor),
+      c.trailingAnchor.constraint(equalTo: trailingAnchor),
+      c.topAnchor.constraint(equalTo: topAnchor),
+      c.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor)
+    ])
+    host?.refit()
+  }
+}
+
+/// `tabView(_:didSelect:)` is the one place every selection passes, the user's and ours, so
+/// ours are counted here and only the user's reach the app.
+private final class TabsController: NSTabViewController {
+  var programmatic = 0
+  var onUser: (() -> Void)?
+
+  override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+    super.tabView(tabView, didSelect: tabViewItem)
+    if programmatic == 0 { onUser?() }
+  }
+}
+
+/// Kind 24, a `TabView`: an `NSTabViewController` whose view this view holds.
+///
+/// `.segmentedControlOnTop`, not `.toolbar`: the toolbar style puts the tabs in the *window's*
+/// toolbar, which is the idiom for a window that is nothing but tabs (a Settings window) and
+/// allows one per window; a TabView here is a view in a tree, with siblings, and a segmented
+/// control over its content is AppKit's in-content idiom for that.
+///
+/// The order is the controller's own `tabViewItems`, so every question about tabs — which are
+/// there, which is selected, which is on screen — is answered by AppKit, not by a list kept
+/// beside it. The rules for keeping the user on their tab are the renderer's (`TabSelection`);
+/// this only inserts, removes and selects, and reports the user's choices.
+private final class TabHostView: NSView {
+  let controller = TabsController()
+  private var fit: [NSLayoutConstraint] = []
+
+  init() {
+    super.init(frame: .zero)
+    controller.tabStyle = .segmentedControlOnTop
+    // No cross-fade: a switch is immediate, and a test reads the result in the same turn.
+    controller.transitionOptions = []
+    let v = controller.view
+    v.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(v)
+    NSLayoutConstraint.activate([
+      v.leadingAnchor.constraint(equalTo: leadingAnchor),
+      v.trailingAnchor.constraint(equalTo: trailingAnchor),
+      v.topAnchor.constraint(equalTo: topAnchor),
+      v.bottomAnchor.constraint(equalTo: bottomAnchor)
+    ])
+    controller.onUser = { [weak self] in self?.userChose() }
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  var pages: [TabPage] { controller.tabViewItems.compactMap { $0.viewController?.view as? TabPage } }
+
+  /// Our own changes to the controller: none of them is the user's choice.
+  private func quietly(_ f: () -> Void) {
+    controller.programmatic += 1
+    f()
+    controller.programmatic -= 1
+  }
+
+  func insert(_ p: TabPage, after: NSView?) {
+    quietly {
+      // A move arrives as an insert of a page that is already here.
+      if let old = p.item, controller.tabViewItems.contains(old) { controller.removeTabViewItem(old) }
+      let current = pages
+      let at: Int
+      if let a = after { at = current.firstIndex { $0 === a }.map { $0 + 1 } ?? current.count } else { at = 0 }
+      let vc = NSViewController()
+      vc.view = p
+      let item = NSTabViewItem(viewController: vc)
+      item.label = p.title
+      item.image = p.image
+      p.item = item
+      p.host = self
+      controller.insertTabViewItem(item, at: at)
+    }
+    refit()
+  }
+
+  func remove(_ p: TabPage) {
+    quietly {
+      if let item = p.item, controller.tabViewItems.contains(item) { controller.removeTabViewItem(item) }
+    }
+    p.item = nil
+    p.host = nil
+    refit()
+  }
+
+  var selected: Int {
+    let i = controller.selectedTabViewItemIndex
+    return i >= 0 && i < controller.tabViewItems.count ? i : -1
+  }
+
+  /// -1 or past the end leaves the tab shown, as on GTK and Android.
+  func select(_ i: Int) {
+    guard i >= 0, i < controller.tabViewItems.count, i != selected else { return }
+    quietly { controller.selectedTabViewItemIndex = i }
+  }
+
+  private func userChose() {
+    guard let s = selections[ObjectIdentifier(self)], selected >= 0 else { return }
+    s.cb(s.ctx, Int32(selected))
+  }
+
+  /// The segmented control the controller draws its tabs with: what a user clicks.
+  var bar: NSSegmentedControl? { firstSegmented(in: controller.view) }
+
+  private func firstSegmented(in v: NSView) -> NSSegmentedControl? {
+    if let s = v as? NSSegmentedControl { return s }
+    for c in v.subviews { if let s = firstSegmented(in: c) { return s } }
+    return nil
+  }
+
+  /// The tab view lays a page out by its frame, so nothing in a page's content reaches the
+  /// TabView's own size. It is given one: as tall as the tallest page's content and as wide
+  /// as the widest — homogeneous, as GTK's stack is, so switching tabs does not move the
+  /// views below.
+  func refit() {
+    NSLayoutConstraint.deactivate(fit)
+    let contents = pages.compactMap(\.content)
+    let h = contents.map { $0.fittingSize.height }.max() ?? 0
+    let w = contents.map { $0.fittingSize.width }.max() ?? 0
+    let tv = controller.tabView
+    fit = [
+      tv.heightAnchor.constraint(greaterThanOrEqualToConstant: h),
+      tv.widthAnchor.constraint(greaterThanOrEqualToConstant: w)
+    ]
+    NSLayoutConstraint.activate(fit)
+  }
+}
+
 /// Escape on a sheet arrives as `cancelOperation`. That is the platform closing it without
 /// a choice, which is what `OnDismiss` reports; the app then takes it down by unmounting.
 private final class SheetWindow: NSWindow {
@@ -601,6 +760,12 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 22:
     return retained(GridView())
 
+  case 24:
+    return retained(TabHostView())
+
+  case 25:
+    return retained(TabPage())
+
   case 23:
     // Borderless and image-only: AppKit's icon button, as in a window's toolbar. The symbol
     // is a template image, so it draws in the control's text colour and dims when disabled.
@@ -738,6 +903,9 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   // keyed it by.
   tableSources.removeValue(forKey: id)
   suppressed.remove(id)
+  selections.removeValue(forKey: id)
+  // A page leaves its TabView's controller, which would otherwise keep it alive and shown.
+  if let page = v as? TabPage { page.host?.remove(page) }
   if let sheet = v as? SheetView {
     // The window held the stack as its content; the handle's own retain is what keeps the
     // view alive until here, so dropping the window now frees nothing early.
@@ -766,6 +934,8 @@ public func sui_set_text(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CCh
   case let sheet as SheetView:
     sheet.title = s
     sheet.heading?.stringValue = s
+  case let page as TabPage:
+    page.title = s
   case let f as NSTextField:
     // Only write when it actually differs. Writing unconditionally moves the caret to the
     // end on every keystroke, because the app writes back what the user just typed.
@@ -844,6 +1014,9 @@ public func sui_set_symbol(_ h: UnsafeMutableRawPointer, _ name: UnsafePointer<C
   switch v {
   case let b as NSButton: b.image = image
   case let i as NSImageView: i.image = image
+  case let page as TabPage:
+    page.symbol = image == nil ? nil : n
+    page.image = image
   default: break
   }
 }
@@ -985,14 +1158,18 @@ public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafeP
 
 @_cdecl("sui_set_selected")
 public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
+  if let t = view(h) as? TabHostView { t.select(Int(index)); return }
   if let seg = view(h) as? NSSegmentedControl {
     let id = ObjectIdentifier(seg)
     suppressed.insert(id)
     if index >= 0 && Int(index) < seg.segmentCount {
       seg.selectedSegment = Int(index)
     } else {
-      // -1: nothing chosen, which .selectOne allows when no segment is selected.
-      for i in 0..<seg.segmentCount { seg.setSelected(false, forSegment: i) }
+      // -1: nothing chosen, which .selectOne allows when no segment is selected. Deselecting
+      // segment by segment did not do it: under .selectOne the chosen segment stayed chosen
+      // (measured, #77) — which nothing saw while a change of options cleared it anyway.
+      seg.selectedSegment = -1
+      for i in 0..<seg.segmentCount where seg.isSelected(forSegment: i) { seg.setSelected(false, forSegment: i) }
     }
     suppressed.remove(id)
     return
@@ -1000,12 +1177,15 @@ public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
   guard let b = view(h) as? NSPopUpButton, b.indexOfSelectedItem != Int(index) else { return }
   let id = ObjectIdentifier(b)
   suppressed.insert(id)
-  if index < 0 { b.select(nil) } else { b.selectItem(at: Int(index)) }
+  // -1, or an index past the end after the options shrank: nothing chosen, which a pop-up
+  // draws as a blank title (D13).
+  if index < 0 || Int(index) >= b.numberOfItems { b.select(nil) } else { b.selectItem(at: Int(index)) }
   suppressed.remove(id)
 }
 
 @_cdecl("sui_get_selected")
 public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
+  if let t = view(h) as? TabHostView { return Int32(t.selected) }
   if let seg = view(h) as? NSSegmentedControl { return Int32(seg.selectedSegment) }
   guard let b = view(h) as? NSPopUpButton else { return -1 }
   return Int32(b.indexOfSelectedItem)
@@ -1080,6 +1260,16 @@ public func sui_insert_after(
 
   if let g = p as? GridView {
     g.insert(c, after: after.map(view))
+    return
+  }
+
+  if let t = p as? TabHostView, let page = c as? TabPage {
+    t.insert(page, after: after.map(view))
+    return
+  }
+
+  if let page = p as? TabPage {
+    page.setContent(c)
     return
   }
 
@@ -1283,9 +1473,14 @@ public func sui_remove_child(_ parent: UnsafeMutableRawPointer, _ child: UnsafeM
     if scroll.documentView === c { scroll.documentView = nil }
     return
   }
+  if let t = p as? TabHostView, let page = c as? TabPage {
+    t.remove(page)
+    return
+  }
   if let stack = p as? NSStackView { stack.removeArrangedSubview(c) }
   (p as? GridView)?.remove(c)
   c.removeFromSuperview()
+  (p as? TabPage)?.host?.refit()
 }
 
 // MARK: - layout
@@ -1343,6 +1538,8 @@ private func arranged(_ v: NSView) -> [NSView] {
   if let s = v as? NSStackView { return s.arrangedSubviews }
   if let s = v as? NSScrollView { return s.documentView.map { [$0] } ?? [] }
   if let g = v as? GridView { return g.placed }
+  // Every tab, in the controller's order, whether or not its view is in the window now.
+  if let t = v as? TabHostView { return t.pages }
   return v.subviews
 }
 
@@ -1881,6 +2078,7 @@ public func sui_option_count(_ h: UnsafeMutableRawPointer) -> Int32 {
   switch view(h) {
   case let p as NSPopUpButton: return Int32(p.numberOfItems)
   case let s as NSSegmentedControl: return Int32(s.segmentCount)
+  case let t as TabHostView: return Int32(t.bar?.segmentCount ?? 0)
   default: return 0
   }
 }
@@ -1891,7 +2089,26 @@ public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Un
   switch view(h) {
   case let p as NSPopUpButton where i >= 0 && i < p.numberOfItems: return scratch(p.itemTitle(at: i))
   case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount: return scratch(s.label(forSegment: i) ?? "")
+  case let t as TabHostView:
+    guard let s = t.bar, i >= 0, i < s.segmentCount else { return nil }
+    return scratch(s.label(forSegment: i) ?? "")
   default: return nil
+  }
+}
+
+/// What the control draws as the choice (#77, D13). For the pop-up that is the item its cell
+/// draws — `NSPopUpButtonCell.menuItem` — rather than `indexOfSelectedItem`, which is the
+/// state the renderer just wrote and so cannot disagree with it.
+@_cdecl("sui_shown_option")
+public func sui_shown_option(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  switch view(h) {
+  case let p as NSPopUpButton:
+    return scratch((p.cell as? NSPopUpButtonCell)?.menuItem?.title ?? "")
+  case let s as NSSegmentedControl:
+    let i = s.selectedSegment
+    return scratch(i >= 0 && i < s.segmentCount ? (s.label(forSegment: i) ?? "") : "")
+  default:
+    return nil
   }
 }
 
@@ -1907,9 +2124,35 @@ public func sui_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
   case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount:
     s.selectedSegment = i
     return s.sendAction(s.action, to: s.target) ? 1 : 0
+  case let t as TabHostView:
+    // The controller's own segmented control, clicked through its own action.
+    guard let s = t.bar, i >= 0, i < s.segmentCount else { return 0 }
+    s.selectedSegment = i
+    return s.sendAction(s.action, to: s.target) ? 1 : 0
   default:
     return 0
   }
+}
+
+/// The symbol the bar shows for item `index`: recorded only when AppKit resolved the name,
+/// and only while the bar shows that very image.
+@_cdecl("sui_option_symbol")
+public func sui_option_symbol(_ h: UnsafeMutableRawPointer, _ index: Int32) -> UnsafePointer<CChar>? {
+  let i = Int(index)
+  guard let t = view(h) as? TabHostView, let s = t.bar, i >= 0, i < s.segmentCount, i < t.pages.count
+  else { return nil }
+  let page = t.pages[i]
+  guard let shown = s.image(forSegment: i), shown === page.image, let n = page.symbol else { return nil }
+  return scratch(n)
+}
+
+/// The page AppKit has on screen: the selected item's view, while it is in the window.
+@_cdecl("sui_tab_shown")
+public func sui_tab_shown(_ h: UnsafeMutableRawPointer) -> UnsafeMutableRawPointer? {
+  guard let t = view(h) as? TabHostView, let v = t.controller.tabView.selectedTabViewItem?.view,
+    v.window != nil, !v.isHiddenOrHasHiddenAncestor
+  else { return nil }
+  return Unmanaged.passUnretained(v).toOpaque()
 }
 
 @_cdecl("sui_choose_date")
