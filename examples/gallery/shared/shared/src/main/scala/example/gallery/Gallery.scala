@@ -65,6 +65,10 @@ object Gallery {
     val span:      Var[Int] = Var(1)
     val due:       Var[CalendarDate] = Var(Gallery.firstDue)
     val linkTaps:  Var[Int] = Var(0)
+    val labelTaps: Var[Int] = Var(0)
+    val rowTaps:   Var[Int] = Var(0)
+    // Swaps the horizontal Scroll's child for a taller one: its height has to follow (#76).
+    val tallCols:  Var[Boolean] = Var(false)
     val gridExtra: Var[Boolean] = Var(false)
     val lastIcon:  Var[String] = Var("")
     // Not 0: the platform shows the first tab by default, so starting anywhere else is what
@@ -164,8 +168,10 @@ object Gallery {
       title = "Thicket gallery",
       actions = Seq(Action("Add")(model.add()), Action("Rotate")(model.rotate())),
       // The gallery asks for it too, so a screenshot on a notched device is not clipped.
-      content = Scroll()(
-        Column(spacing = 16, padding = 16)(
+      // The padding is the Scroll's, not the Column's, so the one view `.safeArea()` is on has
+      // both: the insets are added to the padding, not written over it (#76).
+      content = Scroll(padding = 16)(
+        Column(spacing = 16)(
           section("Label — every text role")(
             Label("Title", style = TextRole.Title),
             Label("Body"),
@@ -241,7 +247,11 @@ object Gallery {
             // A link that also does something in the app. Both must run: a renderer that wires
             // one click handler per widget would let whichever came last win.
             Link("Apache License 2.0", Gallery.licenceUrl).onTap(model.linkTaps.set(model.linkTaps.now + 1)),
-            Label(model.linkTaps.map(n => s"The licence link was tapped $n times"), style = TextRole.Caption)
+            Label(model.linkTaps.map(n => s"The licence link was tapped $n times"), style = TextRole.Caption),
+            // A leaf with no action of its own, made tappable: OnTap must fire on any element, not
+            // only on a Button or a container (review 2026-10-20 M6, #75).
+            Label("Tap this label").onTap(model.labelTaps.set(model.labelTaps.now + 1)),
+            Label(model.labelTaps.map(n => s"The label was tapped $n times"), style = TextRole.Caption)
           ),
           section("Slider, ProgressBar, ActivityIndicator")(
             Slider(model.volume, min = 0, max = 11)(model.volume.set),
@@ -266,7 +276,12 @@ object Gallery {
             // Start, Center and End, so a renderer that maps them wrongly — or not RTL-aware — shows it.
             Label("Start", align = Alignment.Start),
             Label("Center", align = Alignment.Center),
-            Label("End", align = Alignment.End)
+            Label("End", align = Alignment.End),
+            // A tappable Row: a tap is a press and a release inside it, not the press alone (#76).
+            Row(spacing = 8)(
+              Label("Tap this row"),
+              Label(model.rowTaps.map(n => s"Row tapped $n times"), style = TextRole.Caption)
+            ).onTap(model.rowTaps.set(model.rowTaps.now + 1))
           ),
           section("ZStack — children drawn over one another, last on top")(
             Row(spacing = 16)(
@@ -340,7 +355,14 @@ object Gallery {
           section("Scroll — horizontal, inside a vertical one")(
             // Padded: on every platform the padding insets the content and scrolls with it.
             Scroll(padding = 8, axis = Orientation.Horizontal)(
-              Row(spacing = 8)(Seq.tabulate(12)(i => Label(s"col $i"))*)
+              // Replaced, not changed: the scroller's height follows its new child (#76).
+              Switch(model.tallCols) { tall =>
+                if tall then Row(spacing = 8)(Seq.tabulate(12)(i => Label(s"col $i\ntaller"))*)
+                else Row(spacing = 8)(Seq.tabulate(12)(i => Label(s"col $i"))*)
+              }
+            ),
+            Button(model.tallCols.map(t => if t then "Shorter columns" else "Taller columns"))(
+              model.tallCols.set(!model.tallCols.now)
             )
           ),
           section("ForEach — keyed, with a context menu on each row")(

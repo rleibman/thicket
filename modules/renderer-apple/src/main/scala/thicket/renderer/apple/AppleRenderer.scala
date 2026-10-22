@@ -50,7 +50,10 @@ final class AppleRenderer extends Renderer {
   }
 
   /** Entries across every per-handle table. For the self-tests: it must come back down when widgets go. */
-  def tableEntries: Int = perHandleMaps.map(_.size).sum + perHandleSets.map(_.size).sum
+  def tableEntries: Int = perHandleMaps.map(_.size).sum + perHandleSets.map(_.size).sum + tabs.entries
+
+  /** TabView and Tab (#69): the controllers are the shim's; the rule for keeping the user on their tab is here. */
+  private val tabs = AppleTabs()
 
   private val kinds = perHandle[WidgetKind]
   private val tapIds = perHandle[Long]
@@ -137,7 +140,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.DatePicker        => ShimKind.DatePicker
       case WidgetKind.Grid              => ShimKind.Grid
       case WidgetKind.IconButton        => ShimKind.IconButton
-      // Reserved for the Mac (#69); the shims build them as their default view until then.
+      // An NSTabViewController / a UITabBarController, and one item each (#69).
       case WidgetKind.TabView => ShimKind.TabView
       case WidgetKind.Tab     => ShimKind.Tab
 
@@ -171,6 +174,8 @@ final class AppleRenderer extends Renderer {
     val h = Shim.sui_create(code)
     kinds(h) = kind
     if kind == WidgetKind.Scroll && isHorizontal(props) then horizontalScrolls += h
+    // Before `update`: the selection arrives with the props, before any tab does.
+    if kind == WidgetKind.TabView then tabs.register(h)
     update(h, props)
     h
   }
@@ -359,8 +364,22 @@ final class AppleRenderer extends Renderer {
       case Prop.Options(values) =>
         // Clear-then-add, the shape the ABI uses for an alert's actions. No handles to
         // release here: options are strings, not callbacks.
+        //
+        // The selection is an index and survives new options, as on GTK and Android (#77,
+        // review 2026-10-20 P1-10). Clearing empties an NSSegmentedControl, an NSPopUpButton
+        // and a UISegmentedControl, and adding back auto-selects the pop-up's first item, so
+        // the index the control held is read first and written back after. The shims do not
+        // fire the action for either step, so nothing is reported to the app. A Selected in
+        // the same patch, before or after this, still wins: it was applied to the control
+        // and is what is read here, or it is applied next.
+        val keep = Shim.sui_get_selected(handle)
         Shim.sui_picker_clear_options(handle)
         values.foreach(v => Zone(Shim.sui_picker_add_option(handle, toCString(v))))
+        if Shim.sui_get_selected(handle) != keep then Shim.sui_set_selected(handle, keep)
+
+      // A TabView's selection keeps the app's choice until its tab arrives, and -1 or past the end
+      // leaves the tab shown; see AppleTabs.
+      case Prop.Selected(index) if tabs.isTabView(handle) => tabs.select(handle, index)
 
       case Prop.Selected(index) =>
         // Read first and skip a no-op write, as the toggle does: setting the selection makes
@@ -384,6 +403,8 @@ final class AppleRenderer extends Renderer {
         }
 
       case Prop.OnSelect(f) =>
+        // A TabView also reports an index that moved under the user; the shim reports only clicks.
+        if tabs.isTabView(handle) then tabs.onSelect(handle, f)
         selectIds.get(handle) match {
           case Some(id) => Handles.replaceInt(id, f)
           case None     =>
@@ -455,21 +476,36 @@ final class AppleRenderer extends Renderer {
     parent: Handle,
     child:  Handle,
     after:  Option[Handle]
-  ): Unit = {
-    // In a placeholder, "first" means after its label, which stays on top.
-    val anchor = after.orElse(placeholders.get(parent))
-    Shim.sui_insert_after(parent, child, anchor.getOrElse(null.asInstanceOf[Handle]))
-  }
+  ): Unit =
+    if tabs.isTabView(parent) then tabs.insertAfter(parent, child, after)
+    else {
+      // In a placeholder, "first" means after its label, which stays on top.
+      val anchor = after.orElse(placeholders.get(parent))
+      Shim.sui_insert_after(parent, child, anchor.getOrElse(null.asInstanceOf[Handle]))
+    }
 
   def removeChild(
     parent: Handle,
     child:  Handle
-  ): Unit = Shim.sui_remove_child(parent, child)
+  ): Unit =
+    if tabs.isTabView(parent) then tabs.remove(parent, child)
+    else Shim.sui_remove_child(parent, child)
+
+  /** A tab moved is inserted where it goes, not removed first: removing the tab on screen would move the user. */
+  override def moveAfter(
+    parent: Handle,
+    child:  Handle,
+    after:  Option[Handle]
+  ): Unit =
+    if tabs.isTabView(parent) then tabs.insertAfter(parent, child, after)
+    else super.moveAfter(parent, child, after)
 
   /** `NSStackView` has no reorder primitive, so the contract's remove+insert default is what this does — inherited
     * rather than overridden, deliberately.
     */
   def destroy(handle: Handle): Unit = {
+    // A tab leaves its TabView through the same rule as a removal, so the user stays put.
+    tabs.destroy(handle)
     tapIds.remove(handle).foreach(Handles.release)
     editIds.remove(handle).foreach(Handles.release)
     boolIds.remove(handle).foreach(Handles.release)

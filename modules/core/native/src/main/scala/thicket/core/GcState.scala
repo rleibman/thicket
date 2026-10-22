@@ -97,8 +97,13 @@ object GcState {
     */
   def releaseMainThread(): Unit = {
     val d = depth.get()
-    d(0) = 0
-    set(d, Unmanaged)
+    // Takes away the level the thread started with, not every level: an iOS host calls this
+    // from *inside* a guarded entry (`thicket_gallery_start` → `AppleApp.run`), and zeroing
+    // the depth there left it at -1 once that entry returned. From then on no entry reached
+    // depth 0 → 1, so every callback ran with the thread Unmanaged (#73). Here the entry's own
+    // exit is what hands the thread to the loop.
+    if d(0) > 0 then d(0) -= 1
+    if d(0) == 0 then set(d, Unmanaged)
   }
 
   /** The reverse, for a host whose loop returns control (GTK's `g_application_run` does, at quit): Scala is running on

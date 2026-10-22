@@ -13,12 +13,12 @@ Android gallery built, Apple gaps the review found filed as #73–#79).
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
 | Widgets implemented on at least one renderer | **24** |
-| Widgets implemented on **every** renderer that exists | **23** — measured on all four since #45/#46, `Grid` since #62 and `IconButton` since #66; `TabView` is on GTK and Android, its Apple half is #69 |
+| Widgets implemented on **every** renderer that exists | **24** — measured on all four since #45/#46, `Grid` since #62, `IconButton` since #66 and `TabView` since #69 |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **37** |
 | Props implemented on every renderer | **37** |
 
-**Twenty-three of thirty-two, every one on every renderer, and measured on every one.** `IconButton` reached AppKit and UIKit in #66. `Grid` reached AppKit and UIKit in #62: gallery **58/58** on macOS and **57/57** on the iOS simulator. `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
+**Twenty-four of thirty-two, every one on every renderer, and measured on every one.** `IconButton` reached AppKit and UIKit in #66, and `TabView` in #69. `Grid` reached AppKit and UIKit in #62: gallery **58/58** on macOS and **57/57** on the iOS simulator. `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
 menus followed in #19, and the Apple hosts render `AppRoot.pages` since #25. The Apple
 self-test is **87/87** on macOS and **82/82** on the iOS simulator; the five iOS does not
@@ -32,9 +32,11 @@ renderer" above was true of *construction*, and the review found places where a 
 handled but not honoured. Fixed on Linux in the same PR: `Grow` along a Column on GTK and
 Android, Android's Spinner selection and its `-1`, Android tab reordering, `SafeArea` padding
 on Android, GTK's `Scroll(padding)` and indeterminate `ProgressBar`, and the GTK `LazyColumn`
-showing stale rows after an edit. Open, on Apple: taps on leaf views, the UIKit Checkbox's
-label and right-to-left alignment (#75), `SafeArea` and `Scroll` padding (#76), selection
-when options change and `-1` (#77), unbuilt kinds (#74, since fixed). The Android gallery, which this
+showing stale rows after an edit. Fixed on Apple since: taps on leaf views, the UIKit
+Checkbox's label and right-to-left alignment (#75), and `SafeArea` and `Scroll` padding (#76). Open, on Apple: selection when options change and `-1` (#77, since fixed), unbuilt kinds (#74,
+since fixed), and the cross axis of a Row or Column — a Row that does not span its Column on
+AppKit, `Grow` and a Spacer in a Column that do nothing on UIKit (#87, found by the gallery
+checks #73 added, since fixed; a UIKit Row with nothing grown is #96). The Android gallery, which this
 document and its README said was built, had no Gradle project until then; it now builds and
 self-tests (24/24 on the `s2test` emulator).
 
@@ -49,12 +51,12 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
-| `Column` | `WidgetKind.Column` | done | done | done | done | `GtkBox` / `LinearLayout` / `NSStackView` / `UIStackView` |
-| `Row` | `WidgetKind.Row` | done | done | done | done | Clips on overflow; the answer is a horizontal `Scroll`, not a wrapping row |
+| `Column` | `WidgetKind.Column` | done | done | done | done | `GtkBox` / `LinearLayout` / `NSStackView` / `UIStackView`. Children span its width on all four (#87); on AppKit the controls drawn at their own size — buttons of every kind, checkboxes, switches, pop-ups, segmented controls, date fields, spinners — and `Image` and `Grid` keep their own width at the leading edge |
+| `Row` | `WidgetKind.Row` | done | done | done | done | Clips on overflow; the answer is a horizontal `Scroll`, not a wrapping row. A nested `Column` or `Row` is as tall as the Row; other children are centred (#87). Room left over goes to a grown child; with none, after the children on GTK and AppKit, and to one of them on UIKit, whose `.fill` stack has no gap to put it in |
 | `Label` | `WidgetKind.Label` | done | done | done | done | `Text` in §7.10's naming |
 | `Button` | `WidgetKind.Button` | done | done | done | done | |
 | `TextField` | `WidgetKind.TextField` | done | done | done | done | Two-way bound; renderers must not disturb a widget showing the value already written |
-| `Checkbox` | `WidgetKind.Checkbox` | done | done | done | done | |
+| `Checkbox` | `WidgetKind.Checkbox` | done | done | done | done | UIKit has no checkbox: a `UILabel` caption beside a `UISwitch`, which a tap on the caption flips (#75) |
 | `Scroll` | `WidgetKind.Scroll` | done | done | done | done | Vertical and horizontal (`Prop.Axis`) on all four. The axis is read at `create`; Apple folds it into the kind code |
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
 | `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. GTK decodes SVG too (gdk-pixbuf, `librsvg2-common`), so the GTK apps show `docs/assets/thicket-logo.svg`; Android and Apple are given the PNG made from it (`bin/logo-assets.sh`). All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png` |
@@ -164,8 +166,8 @@ Slice 2:
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
 | `Slider` | `WidgetKind.Slider` | done | done | done | done | `GtkScale` / `SeekBar`. `Prop.Value` is in the **app's units**, not a fraction |
-| `Picker` | `WidgetKind.Picker` | done | done | done | done | `GtkDropDown` over a `GtkStringList` model / `Spinner` / `NSPopUpButton` / a menu-backed `UIButton` — **not** `UIPickerView`, which is a wheel. Selection is an **index**: two options may share a label |
-| `TabView` | `WidgetKind.TabView`, `WidgetKind.Tab` | done | done | #69 | #69 | **A §12.2a exception** (#61): Android's framework tab controls are all deprecated, so its bottom bar is built from framework views. `AdwViewStack` + `AdwViewSwitcherBar` / `UITabBarController` / `NSTabViewController`. Every tab stays mounted; the selection is an index; inserting or removing tabs keeps the user on their tab and reports its new index |
+| `Picker` | `WidgetKind.Picker` | done | done | done | done | `GtkDropDown` over a `GtkStringList` model / `Spinner` / `NSPopUpButton` / a menu-backed `UIButton` — **not** `UIPickerView`, which is a wheel. Selection is an **index**: two options may share a label, and it survives new options. `-1` is a blank on all four (D13): an empty drop-down / a leading blank entry / no item chosen / a leading blank menu element (#77) |
+| `TabView` | `WidgetKind.TabView`, `WidgetKind.Tab` | done | done | done | done | **A §12.2a exception** (#61): Android's framework tab controls are all deprecated, so its bottom bar is built from framework views. `AdwViewStack` + `AdwViewSwitcherBar` / `UITabBarController` / `NSTabViewController`. Every tab stays mounted; the selection is an index; inserting or removing tabs keeps the user on their tab and reports its new index |
 | `IconButton` | `WidgetKind.IconButton` | done | done | done | done | Icon-only, so `Prop.AccessibleLabel` is required (screen reader and tooltip). `GtkButton` with a theme icon / a borderless `ImageButton` drawing bundled Material Symbols / an SF Symbol. Its own kind because Android's icon button is a different class. The 24 curated `Icon`s and the `Icon.Platform` escape hatch are #61 |
 | `Grid` | `WidgetKind.Grid` | done | done | done | done | **A §12.2a exception** (#60, the project owner's decision): UIKit has no grid view. `GtkGrid` with cells placed through `GtkGridLayoutChild` / `GridLayout`'s own auto-flow / `NSGridView` / a constraint grid on UIKit. Children flow into `Prop.Columns` columns in child order; each column as wide as its widest cell |
 | `DatePicker` | `WidgetKind.DatePicker` | done | done | done | done | The **compact** idiom on all four: a `GtkMenuButton` opening a `GtkCalendar` / a field opening `DatePickerDialog` / a text-field `NSDatePicker` / a `.compact` `UIDatePicker`. The value is a `CalendarDate` — a day, no time, no zone — and crosses the Apple ABI as an epoch day read at midnight UTC |
@@ -239,7 +241,7 @@ every remaining entry before it is built, not after.
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, **per-subtree `Provide`**; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
-| Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (99 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
+| Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
 
 ## 12.4 Props
 
@@ -248,8 +250,11 @@ exhaustive under `-Werror` — a new prop breaks every renderer until it is hand
 the point of doing this in Scala. (This section said 22, and then thirty, after more had
 been added; the enum is the count.)
 
-**"Handled" is not "honoured."** As of 2026-10-20, honoured everywhere except: `OnTap` on Apple leaf views and `Text` on the UIKit
-Checkbox (#75); `SafeArea` and `Padding` on a `Scroll` on Apple (#76). `Message`, `Actions`
+**"Handled" is not "honoured."** Since #76 (2026-10-21), every prop is honoured on every
+renderer. (`OnTap` on Apple leaf views and `Text` on the UIKit Checkbox were on this list
+until #75; `SafeArea` and `Padding` on a `Scroll` on Apple until #76, 2026-10-21: the safe area is
+now added to the padding once the view is in a window, and a scroller's padding is its content
+inset, as on GTK and Android.) `Message`, `Actions`
 and `OnDismiss` were unreachable on Apple until `Alert` could be presented (#18), and
 `ContextMenu` until #19.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
@@ -278,8 +283,10 @@ dormant, until a frame-based renderer needs it (decision log 2026-10-20, D11).
 raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virtualised
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
-are done. Open for the Mac: #69 (TabView), and the review's #73 and
-#75–#79. An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74). Everything else is built and measured on the
+are done, and so is #69 (TabView: `NSTabViewController` with its segmented control on top,
+`UITabBarController` as a child controller). Open for the Mac: the review's #79, and #96 (#75–#78 and #87 are fixed).
+An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74); since
+#69 no kind is unbuilt on Apple. Everything else is built and measured on the
 Linux box.
 
 Two rules, so it stays true:

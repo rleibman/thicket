@@ -3,7 +3,7 @@ package hello
 import scala.scalanative.unsafe.exported
 import thicket.core.*
 import thicket.core.dsl.*
-import thicket.renderer.apple.{AppleApp, GcState}
+import thicket.renderer.apple.AppleApp
 import thicket.signals.Var
 
 /** The smallest Thicket app: a counter, on iOS.

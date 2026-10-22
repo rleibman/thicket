@@ -33,6 +33,7 @@ object Shim {
   def sui_app_start(width: CInt, height: CInt, title: CString, ready: VoidCb, ctx: Long): Unit = extern
   def sui_root_view(): Handle = extern
   def sui_window_set_title(title: CString): Unit = extern
+  def sui_resource_path(path: CString): CString = extern
   def sui_create(kind: CInt): Handle = extern
   def sui_destroy(h: Handle): Unit = extern
   def sui_set_text(h: Handle, text: CString): Unit = extern
@@ -76,6 +77,7 @@ object Shim {
   def sui_table_scroll_to(h: Handle, row: CInt): Unit = extern
   def sui_post_memory_warning(): CInt = extern
   def sui_table_live(): CInt = extern
+  def sui_table_row_view(h: Handle, row: CInt): Handle = extern
   def sui_present(h: Handle): Unit = extern
   def sui_dismiss(h: Handle): Unit = extern
   def sui_set_message(h: Handle, text: CString): Unit = extern
@@ -107,6 +109,8 @@ object Shim {
   def sui_get_value(h: Handle): CDouble = extern
   def sui_is_secure(h: Handle): CInt = extern
   def sui_has_image(h: Handle): CInt = extern
+  def sui_get_content_fit(h: Handle): CInt = extern
+  def sui_get_align(h: Handle): CInt = extern
   def sui_scroll_offset(h: Handle): CDouble = extern
   def sui_is_presented(h: Handle): CInt = extern
   def sui_presented_title(h: Handle): CString = extern
@@ -115,7 +119,10 @@ object Shim {
   def sui_menu_item_label(h: Handle, index: CInt): CString = extern
   def sui_option_count(h: Handle): CInt = extern
   def sui_option_label(h: Handle, index: CInt): CString = extern
+  def sui_shown_option(h: Handle): CString = extern
   def sui_choose(h: Handle, index: CInt): CInt = extern
+  def sui_option_symbol(h: Handle, index: CInt): CString = extern
+  def sui_tab_shown(h: Handle): Handle = extern
   def sui_choose_date(h: Handle, epochDay: CInt): CInt = extern
   def sui_get_frame(h: Handle, outX: Ptr[CDouble], outY: Ptr[CDouble], outW: Ptr[CDouble], outH: Ptr[CDouble]): Unit = extern
   def sui_symbol_exists(name: CString): CInt = extern
@@ -124,6 +131,11 @@ object Shim {
   def sui_get_tooltip(h: Handle): CString = extern
   def sui_painted_fraction(h: Handle): CDouble = extern
   def sui_grid_cell(h: Handle, child: Handle, outRow: Ptr[CDouble], outColumn: Ptr[CDouble]): CInt = extern
+  def sui_height_constraint_count(h: Handle): CInt = extern
+  def sui_get_insets(h: Handle, outTop: Ptr[CDouble], outLeft: Ptr[CDouble], outBottom: Ptr[CDouble], outRight: Ptr[CDouble]): Unit = extern
+  def sui_get_safe_area(h: Handle, outTop: Ptr[CDouble], outLeft: Ptr[CDouble], outBottom: Ptr[CDouble], outRight: Ptr[CDouble]): Unit = extern
+  def sui_set_extra_safe_area(top: CDouble, left: CDouble, bottom: CDouble, right: CDouble): Unit = extern
+  def sui_send_mouse(h: Handle, kind: CInt, x: CDouble, y: CDouble): CInt = extern
   def sui_record_opened_urls(on: CInt): Unit = extern
   def sui_opened_url_count(): CInt = extern
   def sui_opened_url(index: CInt): CString = extern
@@ -138,6 +150,10 @@ object Shim {
   def sui_alert_action_count(h: Handle): CInt = extern
   def sui_alert_action_label(h: Handle, index: CInt): CString = extern
   def sui_perform_click(h: Handle): CInt = extern
+  def sui_perform_tap(h: Handle): CInt = extern
+  def sui_set_layout_direction(h: Handle, rtl: CInt): Unit = extern
+  def sui_pin_width(h: Handle, width: CDouble): Unit = extern
+  def sui_ink_span(h: Handle, outLeft: Ptr[CDouble], outRight: Ptr[CDouble]): CInt = extern
   def sui_alert_choose(h: Handle, index: CInt): CInt = extern
 }
 
@@ -175,5 +191,5 @@ object ShimKind {
   /** Codes reserved and not built on AppKit or on UIKit (D9). `AppleRenderer` shows a labelled placeholder for one, and
     * throws under a self-test. One set for both toolkits: the renderer cannot yet tell which it runs on (#79).
     */
-  val unbuilt: Set[Int] = Set(24, 25)
+  val unbuilt: Set[Int] = Set()
 }
