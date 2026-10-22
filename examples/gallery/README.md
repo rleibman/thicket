@@ -125,7 +125,7 @@ A component counts as present in the gallery when:
 Labels in every `TextRole` and alignment, buttons by role and disabled, `TextField`,
 `SecureField`, `Checkbox`, `Toggle`, a `Picker` whose options can be swapped and its
 selection cleared, every curated `Icon` as an `IconButton`, `SegmentedControl`, a
-`DatePicker` on a leap day, two `Link`s (one also tappable), `Slider`, determinate and
+`DatePicker` on a leap day, two `Link`s (one also tappable), a tappable `Label`, `Slider`, determinate and
 indeterminate `ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer` in a Row and in a
 Column, `Grow`, a two-column `Grid` with a row inserted in the middle, `ZStack` as a corner
 badge and as a centred overlay, `Image` in all three fits from a file and from bytes, nested

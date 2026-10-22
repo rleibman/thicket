@@ -37,10 +37,10 @@ const char *sui_resource_path(const char *path);
 
       0 Column             TapView()                      UIStackView()
       1 Row                TapView()                      UIStackView()
-      2 Label              NSTextField(labelWithString:)  UILabel()         AppKit has no label class
+      2 Label              LabelField(labelWithString:)   TextLabel()       an NSTextField / UILabel that keeps its Alignment
       3 Button             NSButton(title:)               UIButton(type:)
       4 TextField          NSTextField(string:)           UITextField()
-      5 Checkbox           NSButton(checkboxWithTitle:)   UISwitch()        UIKit has no checkbox
+      5 Checkbox           NSButton(checkboxWithTitle:)   CheckboxView()    UIKit has no checkbox: a UISwitch captioned by a UILabel
       6 Scroll             NSScrollView()                 UIScrollView()    vertical
       7 Divider            NSBox()                        UIView()          the shims' default: branch
       8 Image              ImageView()                    UIImageView()
@@ -308,8 +308,23 @@ int32_t sui_presented_count(void);
 int32_t sui_alert_action_count(sui_handle h);
 /* In the order the platform holds them, which need not be the order declared. */
 const char *sui_alert_action_label(sui_handle h, int32_t index);
-/* Clicks a button the way a user would, through the control's own action. 0 if not a button. */
+/* Clicks a button the way a user would, through the control's own action. 0 if not a button.
+   A UIKit Checkbox is flipped through its switch's value-changed event. */
 int32_t sui_perform_click(sui_handle h);
+/* Taps any view at its centre, after scrolling it into sight and checking a touch there
+   would reach it: AppKit sends a mouse-down and mouse-up through the window; UIKit, which
+   cannot synthesise a touch, runs the view's tap recogniser once it agrees to begin.
+   0 when the view could not be tapped. */
+int32_t sui_perform_tap(sui_handle h);
+/* Forces a view's layout direction, as a right-to-left locale sets it for the whole app,
+   so a test can measure what it does under it. 1 right-to-left, 0 back to inherited. */
+void sui_set_layout_direction(sui_handle h, int32_t rtl);
+/* Pins a view's width for a measurement — an AppKit Column hugs its children, so a short
+   label has no room to show its alignment. Negative takes the pin off. */
+void sui_pin_width(sui_handle h, double width);
+/* Where a drawn view's painted pixels sit across it: the first and last painted column
+   as fractions of its width. 0 when nothing is painted. */
+int32_t sui_ink_span(sui_handle h, double *outLeft, double *outRight);
 /* Chooses action `index` through the platform's own response path. 0 where the platform
    offers no way to do that from code (UIKit), rather than a simulation that would pass. */
 int32_t sui_alert_choose(sui_handle h, int32_t index);

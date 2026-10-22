@@ -142,6 +142,10 @@ object Shim {
   def sui_alert_action_count(h: Handle): CInt = extern
   def sui_alert_action_label(h: Handle, index: CInt): CString = extern
   def sui_perform_click(h: Handle): CInt = extern
+  def sui_perform_tap(h: Handle): CInt = extern
+  def sui_set_layout_direction(h: Handle, rtl: CInt): Unit = extern
+  def sui_pin_width(h: Handle, width: CDouble): Unit = extern
+  def sui_ink_span(h: Handle, outLeft: Ptr[CDouble], outRight: Ptr[CDouble]): CInt = extern
   def sui_alert_choose(h: Handle, index: CInt): CInt = extern
 }
 

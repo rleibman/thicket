@@ -175,6 +175,7 @@ object GallerySelfTest {
     )
 
     newControls(all)
+    tapsCheckboxAndDirection(all)
     layout(all)
     robustness(all)
 
@@ -999,6 +1000,141 @@ object GallerySelfTest {
         s"after -1: $afterNone, after 7: $afterPast"
       )
     }
+  }
+
+  /** #75 (review 2026-10-20 M6, M7, M9): a tap on a leaf, a UIKit Checkbox's caption, and Start/End under a
+    * right-to-left layout — each answered by the platform.
+    */
+  private def tapsCheckboxAndDirection(all: List[thicket.renderer.apple.Shim.Handle]): Unit = {
+    def ofKind(k: WidgetKind) = all.filter(h => AppleApp.renderer.kindOf(h).contains(k))
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    val labels = ofKind(WidgetKind.Label)
+
+    // --- A tap on a leaf: a Label, which has no action of its own on either toolkit. Tapped
+    // through the platform (a mouse-down and -up sent through the NSWindow; on UIKit, a hit test
+    // at its centre and its tap recogniser), never by calling the stored handler.
+    val tappable = labels.filter(h => AppleInspect.text(h).contains("Tap this label"))
+    check("one tappable label", tappable.length == 1, tappable.length.toString)
+    tappable.headOption.foreach { l =>
+      check("the platform delivers a tap to the label", AppleInspect.tap(l))
+      check(
+        "and the tap reaches the app",
+        texts.contains("The label was tapped 1 times"),
+        texts.filter(_.startsWith("The label was")).toString
+      )
+    }
+
+    // --- Checkbox: its caption is the platform's — NSButton's title, the UILabel beside the
+    // UISwitch — and a click flips the control the platform shows.
+    val boxes = ofKind(WidgetKind.Checkbox)
+    check("one Checkbox", boxes.length == 1, boxes.length.toString)
+    boxes.headOption.foreach { b =>
+      check(
+        "the Checkbox carries its label",
+        AppleInspect.text(b).contains("Checkbox"),
+        AppleInspect.text(b).toString
+      )
+      check(
+        "and the label is drawn",
+        AppleInspect.allTexts(b) == List("Checkbox") && AppleInspect.paintedFraction(b) > 0,
+        s"${AppleInspect.allTexts(b)}, painted ${AppleInspect.paintedFraction(b)}"
+      )
+      val before = AppleInspect.checked(b)
+      check("clicking it flips it", AppleInspect.click(b) && AppleInspect.checked(b) != before)
+      AppleInspect.click(b)
+    }
+
+    // --- Start, Center and End, measured as where the platform paints the text across each
+    // label: left to right, then with the label forced right-to-left as an Arabic or Hebrew
+    // locale would lay it out. Start must follow the direction, End must oppose it, Center stay.
+    val aligned = List("Start", "Center", "End").flatMap(t =>
+      labels.filter(h => AppleInspect.text(h).contains(t)).lastOption.map(t -> _)
+    )
+    check("Start, Center and End labels", aligned.length == 3, aligned.map(_._1).toString)
+    def spans(rtl: Boolean) =
+      aligned.map {
+        (
+          t,
+          h
+        ) =>
+          AppleInspect.setRightToLeft(h, rtl)
+          t -> AppleInspect.inkSpan(h)
+      }.toMap
+    // An AppKit Column hugs its children, so each label is first given its column's width — the
+    // width it has on GTK, Android and UIKit — or a one-word label has no room to show anything.
+    aligned.foreach {
+      (
+        _,
+        h
+      ) =>
+        val column = all.find(p => AppleInspect.children(p).contains(h))
+        column.foreach(c => AppleInspect.pinWidth(h, Some(AppleInspect.frame(c)._3)))
+    }
+    println(
+      s"[gallery]   label widths: ${aligned
+          .map(
+            (
+              t,
+              h
+            ) => f"$t ${AppleInspect.frame(h)._3}%.0f"
+          ).mkString(", ")}"
+    )
+    val ltr = spans(rtl = false)
+    val rtl = spans(rtl = true)
+    aligned.foreach {
+      (
+        _,
+        h
+      ) =>
+        AppleInspect.setRightToLeft(h, false)
+        AppleInspect.pinWidth(h, None)
+    }
+    def show(m: Map[String, Option[(Double, Double)]]) =
+      List("Start", "Center", "End")
+        .map(t =>
+          t + m
+            .get(t).flatten.fold(" none")(
+              (
+                a,
+                b
+              ) => f" $a%.2f–$b%.2f"
+            )
+        )
+        .mkString(", ")
+    println(s"[gallery]   ink, left to right: ${show(ltr)}")
+    println(s"[gallery]   ink, right to left: ${show(rtl)}")
+    // Each label is as wide as its column and its text is not, so the ink sits at one side.
+    def atLeft(s: Option[(Double, Double)]) =
+      s.exists(
+        (
+          a,
+          b
+        ) => a < 0.1 && b < 0.5
+      )
+    def atRight(s: Option[(Double, Double)]) =
+      s.exists(
+        (
+          a,
+          b
+        ) => a > 0.5 && b > 0.9
+      )
+    def centred(s: Option[(Double, Double)]) =
+      s.exists(
+        (
+          a,
+          b
+        ) => math.abs((a + b) / 2 - 0.5) < 0.05 && b - a < 0.5
+      )
+    check(
+      "left to right: Start at the left, Center centred, End at the right",
+      atLeft(ltr("Start")) && centred(ltr("Center")) && atRight(ltr("End")),
+      show(ltr)
+    )
+    check(
+      "right to left: Start at the right, Center centred, End at the left",
+      atRight(rtl("Start")) && centred(rtl("Center")) && atLeft(rtl("End")),
+      show(rtl)
+    )
   }
 
 }

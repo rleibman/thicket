@@ -72,6 +72,36 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **Apple: taps on any view, a captioned UIKit Checkbox, Start/End that follow
+  the layout direction** (#75; review 2026-10-20 M6, M7, M9). `OnTap` and `OpenUrl` now
+  attach a recogniser to any view without an action of its own: an `NSClickGestureRecognizer`
+  (it fires on mouse-up inside the view) and a `UITapGestureRecognizer` with user
+  interaction turned on. Buttons keep their target/action and AppKit's `TapView` its
+  `mouseDown`, unchanged. On UIKit, Column and Row tap recognisers now begin only when the view
+  has a handler, so they no longer compete with a tappable child. A UIKit `Checkbox` is a
+  `UISwitch` beside a `UILabel` caption (the settings-row idiom); the switch still sends the
+  event, and a tap on the caption flips it. Alignment: UIKit maps Start to `.natural` and
+  works End out from `effectiveUserInterfaceLayoutDirection`. On AppKit `.natural` follows the
+  text's script and not the view's direction. Measured: "Start" in a right-to-left
+  `NSTextField` still draws at the left. So AppKit works out both from
+  `userInterfaceLayoutDirection`, and a Label works them out again when its direction changes.
+  The gallery gains a tappable `Label`. New read-backs: `sui_perform_tap` (AppKit sends a real
+  mouse-down/up through `NSWindow.sendEvent`; UIKit cannot make a touch, so it hit-tests the
+  view's centre and runs the recogniser's action once the recogniser agrees to begin),
+  `sui_set_layout_direction`, `sui_ink_span` (where the painted pixels are) and
+  `sui_pin_width`. That last one exists because an AppKit Column hugs its children: each
+  one-word label is exactly as wide as its text (84 pt), so the test gives each label its
+  column's width before measuring. A Column that does not stretch its children on AppKit is a
+  separate gap, not fixed here. Measured, using a
+  `THICKET_ALLOW_UNBUILT=1` gallery (TabView is #69/#89): macOS **76/76**; iOS simulator
+  (iPhone 18 Pro) 74 of 75, and the one failure is #73's Image. Ink, given as fractions of
+  label width. macOS left-to-right: Start 0.03–0.35, Center 0.27–0.73, End 0.72–0.97;
+  macOS right-to-left: Start 0.64–0.97, End 0.03–0.27. iOS left-to-right: Start 0.00–0.10,
+  End 0.92–1.00; iOS right-to-left: Start 0.90–1.00, End 0.00–0.08. Falsified with all three
+  fixes broken together (no recogniser, `.left`/`.right`, a bare `UISwitch`): macOS failed 2
+  (the tap never reached the app; right-to-left ink unchanged); iOS failed 7 (no tap
+  delivered, the tap did not reach the app, the Checkbox had no caption, no drawn label,
+  could not be flipped, right-to-left unchanged, plus #73).
 - 2026-10-21 — **The review's native-safety changes on Apple: verified, and iOS was running
   every callback Unmanaged** (#73). This was the review's first run on a Mac, and it found a
   P0 that only iOS has. `releaseMainThread` set the depth to 0. An iOS host calls it from

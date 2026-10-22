@@ -172,10 +172,10 @@ object Abi {
   /** One `sui_create` kind code, and the view each toolkit builds for it.
     *
     * This is where per-platform widget *choice* is expressed, not only per-platform naming: kind 5 is a checkbox on the
-    * Mac and a switch on iOS, because UIKit has no checkbox. The strings are the Swift construction each shim's `case`
-    * must contain — `NSButton( checkboxWithTitle:` and `UISwitch(` — and ConsistencySpec reads both `sui_create` bodies
-    * to check it does. So a shim that quietly builds a different widget, or handles a code this table does not know,
-    * fails on any machine.
+    * Mac and a captioned switch on iOS, because UIKit has no checkbox. The strings are the Swift construction each
+    * shim's `case` must contain — `NSButton( checkboxWithTitle:` and `CheckboxView(` — and ConsistencySpec reads both
+    * `sui_create` bodies to check it does. So a shim that quietly builds a different widget, or handles a code this
+    * table does not know, fails on any machine.
     *
     * `None` is a code that is reserved and not built by that shim (write it as `Kind(code, name, None, None, why)`).
     * **What happens to one (D9, #74):** the generated `ShimKind.unbuilt` lists it, and `AppleRenderer` never sends it
@@ -203,10 +203,22 @@ object Abi {
   val kinds: List[Kind] = List(
     built(0, "Column", "TapView(", "UIStackView("),
     built(1, "Row", "TapView(", "UIStackView("),
-    built(2, "Label", "NSTextField(labelWithString:", "UILabel(", "AppKit has no label class"),
+    built(
+      2,
+      "Label",
+      "LabelField(labelWithString:",
+      "TextLabel(",
+      "an NSTextField / UILabel that keeps its Alignment"
+    ),
     built(3, "Button", "NSButton(title:", "UIButton(type:"),
     built(4, "TextField", "NSTextField(string:", "UITextField("),
-    built(5, "Checkbox", "NSButton(checkboxWithTitle:", "UISwitch(", "UIKit has no checkbox"),
+    built(
+      5,
+      "Checkbox",
+      "NSButton(checkboxWithTitle:",
+      "CheckboxView(",
+      "UIKit has no checkbox: a UISwitch captioned by a UILabel"
+    ),
     built(6, "Scroll", "NSScrollView(", "UIScrollView(", "vertical"),
     built(7, "Divider", "NSBox(", "UIView(", "the shims' default: branch"),
     built(8, "Image", "ImageView(", "UIImageView("),
@@ -758,7 +770,38 @@ object Abi {
       "sui_perform_click",
       I32,
       List(p("h", Handle)),
-      doc = "Clicks a button the way a user would, through the control's own action. 0 if not a button."
+      doc = "Clicks a button the way a user would, through the control's own action. 0 if not a button.\n" +
+        "   A UIKit Checkbox is flipped through its switch's value-changed event."
+    ),
+    Fn(
+      "sui_perform_tap",
+      I32,
+      List(p("h", Handle)),
+      doc = "Taps any view at its centre, after scrolling it into sight and checking a touch there\n" +
+        "   would reach it: AppKit sends a mouse-down and mouse-up through the window; UIKit, which\n" +
+        "   cannot synthesise a touch, runs the view's tap recogniser once it agrees to begin.\n" +
+        "   0 when the view could not be tapped."
+    ),
+    Fn(
+      "sui_set_layout_direction",
+      Void,
+      List(p("h", Handle), p("rtl", I32)),
+      doc = "Forces a view's layout direction, as a right-to-left locale sets it for the whole app,\n" +
+        "   so a test can measure what it does under it. 1 right-to-left, 0 back to inherited."
+    ),
+    Fn(
+      "sui_pin_width",
+      Void,
+      List(p("h", Handle), p("width", F64)),
+      doc = "Pins a view's width for a measurement — an AppKit Column hugs its children, so a short\n" +
+        "   label has no room to show its alignment. Negative takes the pin off."
+    ),
+    Fn(
+      "sui_ink_span",
+      I32,
+      List(p("h", Handle), p("outLeft", OutF64), p("outRight", OutF64)),
+      doc = "Where a drawn view's painted pixels sit across it: the first and last painted column\n" +
+        "   as fractions of its width. 0 when nothing is painted."
     ),
     Fn(
       "sui_alert_choose",
