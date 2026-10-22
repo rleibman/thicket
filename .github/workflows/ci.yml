@@ -46,7 +46,7 @@ jobs:
       - name: Native toolchain, GTK 4 and libadwaita
         run: |
           sudo apt-get update -q
-          sudo apt-get install -yq clang libunwind-dev zlib1g-dev libgtk-4-dev libadwaita-1-dev xvfb
+          sudo apt-get install -yq clang libunwind-dev zlib1g-dev libgtk-4-dev libadwaita-1-dev librsvg2-common xvfb
 
       - name: android.jar for renderer-android
         run: |

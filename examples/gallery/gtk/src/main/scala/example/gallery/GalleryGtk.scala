@@ -759,7 +759,7 @@ object GalleryGtk {
   def main(args: Array[String]): Unit = {
     val status = GtkApp.run("dev.thicket.gallery", width = 520, height = 760) {
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => afterEffect(200)(selfTest()))
-      Gallery.app()
+      Gallery.app(Gallery.logoSvg)
     }
     sys.exit(status)
   }
