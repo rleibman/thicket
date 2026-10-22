@@ -28,7 +28,15 @@ import java.nio.file.{Path, Paths}
   */
 final class GtkStorage(appId: String) extends Storage {
 
-  val dirs: AppDirs = XdgDirs.resolve(sys.env, sys.props.getOrElse("user.home", "/tmp"), appId).ensure()
+  // No fallback to a shared directory such as /tmp: with no home, there is nowhere private to put the app's files.
+  private val home: String =
+    sys.props.get("user.home").orElse(sys.env.get("HOME")).filter(_.startsWith("/")).getOrElse {
+      throw new IllegalStateException(
+        "no home directory (user.home and HOME are unset): nowhere private to store files"
+      )
+    }
+
+  val dirs: AppDirs = XdgDirs.resolve(sys.env, home, appId).ensure()
 
   lazy val preferences: Preferences = FilePreferences(dirs.data.resolve("preferences.properties"))
 
@@ -51,12 +59,14 @@ object XdgDirs {
       fallback: String
     ): Path =
       env.get(variable).filter(_.startsWith("/")).map(Paths.get(_)).getOrElse(Paths.get(home, fallback))
-    val tmp = env.get("TMPDIR").filter(_.startsWith("/")).getOrElse("/tmp")
+    val cache = base("XDG_CACHE_HOME", ".cache").resolve(appId)
     AppDirs(
       data = base("XDG_DATA_HOME", ".local/share").resolve(appId),
-      cache = base("XDG_CACHE_HOME", ".cache").resolve(appId),
-      // Not XDG_RUNTIME_DIR: that is for sockets and is often a small tmpfs.
-      temp = Paths.get(tmp, s"$appId-${sys.props.getOrElse("user.name", "user")}")
+      cache = cache,
+      // Inside the user's own cache directory, as Android's is inside its cache directory. Not `/tmp/<appId>-<user>`:
+      // a path anyone can predict in a directory anyone can write, which another local user could create first and
+      // read from (review of #99, CWE-377). Not XDG_RUNTIME_DIR either: that is for sockets, and often a small tmpfs.
+      temp = cache.resolve("tmp")
     )
   }
 

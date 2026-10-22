@@ -6,7 +6,7 @@ Where an app keeps its files, and its preferences. The plan and the decisions ar
 | Module | Platform | Directories | Preferences |
 |---|---|---|---|
 | `thicket-storage` | JVM, Native | the API: `AppDirs`, `Preferences`, `Storage`; `FilePreferences`; `testing.MemoryStorage` | |
-| `thicket-storage-gtk` | Scala Native | XDG: `$XDG_DATA_HOME/<appId>`, `$XDG_CACHE_HOME/<appId>`, `$TMPDIR/<appId>-<user>` | `FilePreferences` in the data directory |
+| `thicket-storage-gtk` | Scala Native | XDG: `$XDG_DATA_HOME/<appId>`, `$XDG_CACHE_HOME/<appId>`, and `tmp` inside that cache directory | `FilePreferences` in the data directory |
 | `thicket-storage-android` | Android | `getFilesDir`, `getCacheDir`, `getCacheDir/tmp` | `SharedPreferences` |
 | Apple | | not yet: #98 | |
 

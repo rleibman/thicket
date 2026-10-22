@@ -29,7 +29,7 @@ object XdgDirsSpec extends ZIOSpecDefault {
         assertTrue(
           d.data == Paths.get("/home/ann/.local/share/dev.thicket.app"),
           d.cache == Paths.get("/home/ann/.cache/dev.thicket.app"),
-          d.temp.toString.startsWith("/tmp/dev.thicket.app-")
+          d.temp == Paths.get("/home/ann/.cache/dev.thicket.app/tmp")
         )
       },
       test("absolute XDG variables are used; relative ones are ignored, as the spec says") {
@@ -41,8 +41,13 @@ object XdgDirsSpec extends ZIOSpecDefault {
         assertTrue(
           d.data == Paths.get("/srv/data/app"),
           d.cache == Paths.get("/home/ann/.cache/app"),
-          d.temp.toString.startsWith("/var/tmp/app-")
+          // TMPDIR is not used: temp lives in the user's own cache directory, never a shared one.
+          d.temp == Paths.get("/home/ann/.cache/app/tmp")
         )
+      },
+      test("temp is inside the cache directory, wherever XDG_CACHE_HOME puts it, and never under /tmp or TMPDIR") {
+        val d = XdgDirs.resolve(Map("XDG_CACHE_HOME" -> "/srv/cache", "TMPDIR" -> "/tmp"), "/home/ann", "app")
+        assertTrue(d.temp == Paths.get("/srv/cache/app/tmp"), d.temp.startsWith(d.cache), !d.temp.startsWith("/tmp"))
       },
       test("an app id that would escape its directory is refused") {
         val bad = Seq("", "..", ".", "a/b")
