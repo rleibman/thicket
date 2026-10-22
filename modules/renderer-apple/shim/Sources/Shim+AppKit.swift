@@ -143,6 +143,11 @@ private final class TapView: NSStackView {
   /// from the top on the todo screen (#28). Layout is by constraints, so nothing else moves.
   override var isFlipped: Bool { true }
 
+  /// A Column's stretched children follow its insets (#87).
+  override var edgeInsets: NSEdgeInsets {
+    didSet { syncColumnFill(self) }
+  }
+
   override func mouseDown(with event: NSEvent) {
     let id = ObjectIdentifier(self)
     if taps[id] != nil || links[id] != nil { fireTap(id) } else { super.mouseDown(with: event) }
@@ -209,6 +214,11 @@ private final class SheetView: NSStackView {
   /// otherwise `Sheet("Quick note")` would set a window title nobody can see, which is the
   /// exact bug GTK and Android shipped.
   var heading: NSTextField?
+
+  /// Its stretched children follow its insets, as a Column's do (#87).
+  override var edgeInsets: NSEdgeInsets {
+    didSet { syncColumnFill(self) }
+  }
 }
 
 /// Kind 19, a `ZStack`: children drawn over one another, later subviews on top — which is
@@ -229,10 +239,11 @@ private final class ZStackView: NSView {
     super.init(frame: .zero)
     let w = widthAnchor.constraint(equalToConstant: 0)
     let h = heightAnchor.constraint(equalToConstant: 0)
-    // AppKit's name for UIKit's .fittingSizeLevel: the same 50, the weakest priority that
-    // still takes part.
-    w.priority = .fittingSizeCompression
-    h.priority = .fittingSizeCompression
+    // Just above a stack's own hugging (249, #87), so in a Row with room to spare the slack
+    // goes after the children rather than into the ZStack — at the weakest priority, 50, it
+    // took all of it, 630pt — and still below anything a child asks for.
+    w.priority = NSLayoutConstraint.Priority(251)
+    h.priority = NSLayoutConstraint.Priority(251)
     NSLayoutConstraint.activate([w, h])
   }
 
@@ -316,6 +327,13 @@ private final class GridView: NSView {
     grid.yPlacement = .top
     addSubview(grid)
     setPadding(0)
+    // As narrow as its cells allow (#87). It has no intrinsic size, so in a Column wider than it
+    // — every one, now that Columns stretch — the stack's own pull towards its trailing edge
+    // (at its hugging, 250 at most) widened the last column to 883pt. Just above that pull,
+    // and below any cell's compression resistance.
+    let hug = widthAnchor.constraint(equalToConstant: 0)
+    hug.priority = NSLayoutConstraint.Priority(251)
+    hug.isActive = true
   }
 
   required init?(coder: NSCoder) { fatalError("not used") }
@@ -485,8 +503,12 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     s.orientation = (kind == 0) ? .vertical : .horizontal
     s.alignment = (kind == 0) ? .leading : .centerY
     s.spacing = 0
-    // Without this a stack hugs its content and a Grow child cannot expand into it.
-    s.setHuggingPriority(.defaultLow, for: kind == 0 ? .vertical : .horizontal)
+    // Without this a stack hugs its content and a Grow child cannot expand into it. Below a
+    // plain child's hugging (250) and above a grown one's (248): a stack wider than its
+    // children — every Row, now that a Column stretches it across (#87) — puts the slack after
+    // them, as GTK does, unless a child grows into it. At 250 it tied with a button's hugging,
+    // and AppKit stretched the first button in the row to 800pt.
+    s.setHuggingPriority(stackHugging, for: kind == 0 ? .vertical : .horizontal)
     return retained(s)
 
   case 2:
@@ -873,7 +895,10 @@ public func sui_set_text_emphasis(_ h: UnsafeMutableRawPointer, _ emphasis: Int3
 @_cdecl("sui_set_grow")
 public func sui_set_grow(_ h: UnsafeMutableRawPointer, _ on: Int32) {
   let v = view(h)
-  let priority: NSLayoutConstraint.Priority = on != 0 ? .defaultLow : .defaultHigh
+  // Below the stacks' own hugging and every plain view's 250, so a grown child takes the slack
+  // (#87). At .defaultLow it tied with a label's own 250, and only the row being exactly as wide
+  // as its children hid that.
+  let priority: NSLayoutConstraint.Priority = on != 0 ? grownHugging : .defaultHigh
   v.setContentHuggingPriority(priority, for: .horizontal)
   v.setContentHuggingPriority(priority, for: .vertical)
 }
@@ -1138,13 +1163,58 @@ public func sui_insert_after(
   }
   stack.insertArrangedSubview(c, at: min(index, stack.arrangedSubviews.count))
 
-  // A vertical NSStackView aligned .leading gives each child its own natural width, which
-  // for a horizontal scroller is zero. Filling the stack is what gives it a viewport to
-  // clip against, and is what turns the overflow into something scrollable.
-  if let sv = c as? NSScrollView, isHorizontalScroller(sv), stack.orientation == .vertical {
-    sv.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+  // #87: a Column stretches its children across, as GTK's boxes, Android's LinearLayout and
+  // UIKit's .fill stack do. A vertical NSStackView aligned .leading gave each child its own
+  // natural width instead, so a Row did not span its Column, a Spacer in it had no room to
+  // push into, and an aligned Label hugged its text. A horizontal scroller was the one child
+  // that already filled, because its natural width is zero.
+  //
+  // The stack's width less its side insets, kept in step with them by `syncColumnFill`. Not a
+  // weaker "as wide as the stack" left to the stack's own inset constraints to cut short: those
+  // are not required, and at 999 the child ran over the padding to the stack's edge.
+  if stack.orientation == .vertical, fillsColumn(c), !hasColumnFill(c, in: stack) {
+    let fill = c.widthAnchor.constraint(equalTo: stack.widthAnchor)
+    fill.identifier = columnFillId
+    fill.isActive = true
+    syncColumnFill(stack)
     stack.layoutSubtreeIfNeeded()
   }
+}
+
+/// The main-axis order of who takes a stack's slack (#87): a grown child first, then the gap
+/// after the children, and a plain child (hugging 250, AppKit's default) never.
+private let grownHugging = NSLayoutConstraint.Priority(248)
+private let stackHugging = NSLayoutConstraint.Priority(249)
+
+/// Identifies a Column's stretch constraint (#87).
+private let columnFillId = "thicket.column-fill"
+
+/// A Column's stretched children are as wide as it, less its side insets. Called on insert and
+/// whenever the insets are written, by whatever writes them (padding, safe area).
+private func syncColumnFill(_ stack: NSStackView) {
+  let inset = -(stack.edgeInsets.left + stack.edgeInsets.right)
+  for c in stack.constraints where c.identifier == columnFillId && c.constant != inset { c.constant = inset }
+}
+
+/// Whether a Column stretches `c` across its width (#87). Everything does except the controls
+/// AppKit draws at their own size — a push button's bezel, a checkbox, a switch, a pop-up, a
+/// segmented control, a date field, a spinner — and the two whose content would change with
+/// the width: an Image would scale up to fill it, and a Grid's last column would widen, where
+/// each column is meant to be as wide as its widest cell. Those keep the leading edge.
+private func fillsColumn(_ c: NSView) -> Bool {
+  switch c {
+  case is NSButton, is NSSwitch, is NSSegmentedControl, is NSDatePicker, is ImageView, is GridView:
+    return false
+  case let p as NSProgressIndicator:
+    return p.style == .bar
+  default:
+    return true
+  }
+}
+
+/// A move arrives as a second insert of a child already in the stack.
+private func hasColumnFill(_ c: NSView, in stack: NSStackView) -> Bool {
+  stack.constraints.contains { $0.identifier == columnFillId && $0.firstItem === c }
 }
 
 /// Kind 9 rather than kind 6. The axis is not stored anywhere on the Scala side of the

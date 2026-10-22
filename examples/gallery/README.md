@@ -59,6 +59,15 @@ cell plus the spacing, every row at its tallest. **58/58** on macOS and **57/57*
 Falsified on both: ignoring the column count fails five checks, inserting at the end instead
 of in place fails two.
 
+**#87** added the Layout section's checks, from frames: a Row spans its Column and stays
+inside the screen Column's padding, a Spacer pushes "right" to the far edge, a grown label
+takes the room its sibling does not, a Spacer in a Column lines "bottom" up with the taller
+column beside it, and the aligned labels span the section; on AppKit also that a push button
+in a Column and the buttons of a Row keep their own width; and a ZStack in a Row is as wide
+as its widest child. **75/75** on macOS and **71/72** on the iOS simulator (the miss is the
+bytes-backed Image, #73). `THICKET_FRAME_DUMP=1` prints every widget's kind, text and frame,
+for comparing a layout change across the whole screen.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name

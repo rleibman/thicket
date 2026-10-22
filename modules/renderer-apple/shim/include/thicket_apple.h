@@ -31,8 +31,8 @@ void sui_window_set_title(const char *title);
    not only a different name. Generated from Abi.kinds; ConsistencySpec checks both
    shims' sui_create build what this says.
 
-      0 Column             TapView()                      UIStackView()
-      1 Row                TapView()                      UIStackView()
+      0 Column             TapView()                      StackView()
+      1 Row                TapView()                      StackView()
       2 Label              NSTextField(labelWithString:)  UILabel()         AppKit has no label class
       3 Button             NSButton(title:)               UIButton(type:)
       4 TextField          NSTextField(string:)           UITextField()

@@ -193,8 +193,8 @@ object Abi {
   ) = Kind(code, name, Some(appKit), Some(uiKit), comment)
 
   val kinds: List[Kind] = List(
-    built(0, "Column", "TapView(", "UIStackView("),
-    built(1, "Row", "TapView(", "UIStackView("),
+    built(0, "Column", "TapView(", "StackView("),
+    built(1, "Row", "TapView(", "StackView("),
     built(2, "Label", "NSTextField(labelWithString:", "UILabel(", "AppKit has no label class"),
     built(3, "Button", "NSButton(title:", "UIButton(type:"),
     built(4, "TextField", "NSTextField(string:", "UITextField("),

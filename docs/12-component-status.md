@@ -49,8 +49,8 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
-| `Column` | `WidgetKind.Column` | done | done | done | done | `GtkBox` / `LinearLayout` / `NSStackView` / `UIStackView` |
-| `Row` | `WidgetKind.Row` | done | done | done | done | Clips on overflow; the answer is a horizontal `Scroll`, not a wrapping row |
+| `Column` | `WidgetKind.Column` | done | done | done | done | `GtkBox` / `LinearLayout` / `NSStackView` / `UIStackView`. Children span its width on all four (#87); on AppKit the controls drawn at their own size — buttons of every kind, checkboxes, switches, pop-ups, segmented controls, date fields, spinners — and `Image` and `Grid` keep their own width at the leading edge |
+| `Row` | `WidgetKind.Row` | done | done | done | done | Clips on overflow; the answer is a horizontal `Scroll`, not a wrapping row. A nested `Column` or `Row` is as tall as the Row; other children are centred (#87). Room left over goes to a grown child; with none, after the children on GTK and AppKit, and to one of them on UIKit, whose `.fill` stack has no gap to put it in |
 | `Label` | `WidgetKind.Label` | done | done | done | done | `Text` in §7.10's naming |
 | `Button` | `WidgetKind.Button` | done | done | done | done | |
 | `TextField` | `WidgetKind.TextField` | done | done | done | done | Two-way bound; renderers must not disturb a widget showing the value already written |
