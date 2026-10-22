@@ -128,6 +128,11 @@ object Shim {
   def sui_get_tooltip(h: Handle): CString = extern
   def sui_painted_fraction(h: Handle): CDouble = extern
   def sui_grid_cell(h: Handle, child: Handle, outRow: Ptr[CDouble], outColumn: Ptr[CDouble]): CInt = extern
+  def sui_height_constraint_count(h: Handle): CInt = extern
+  def sui_get_insets(h: Handle, outTop: Ptr[CDouble], outLeft: Ptr[CDouble], outBottom: Ptr[CDouble], outRight: Ptr[CDouble]): Unit = extern
+  def sui_get_safe_area(h: Handle, outTop: Ptr[CDouble], outLeft: Ptr[CDouble], outBottom: Ptr[CDouble], outRight: Ptr[CDouble]): Unit = extern
+  def sui_set_extra_safe_area(top: CDouble, left: CDouble, bottom: CDouble, right: CDouble): Unit = extern
+  def sui_send_mouse(h: Handle, kind: CInt, x: CDouble, y: CDouble): CInt = extern
   def sui_record_opened_urls(on: CInt): Unit = extern
   def sui_opened_url_count(): CInt = extern
   def sui_opened_url(index: CInt): CString = extern

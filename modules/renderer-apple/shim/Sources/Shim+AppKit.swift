@@ -149,9 +149,132 @@ private final class TapView: NSStackView {
   /// from the top on the todo screen (#28). Layout is by constraints, so nothing else moves.
   override var isFlipped: Bool { true }
 
+  /// True between a press this view claimed and its release.
+  private var pressed = false
+
+  /// A tap is a press *and* a release inside the view, as on GTK (`released`), Android and
+  /// UIKit (touch-up). Firing on the press, as this did, activated a row the user then dragged
+  /// off, and fired before a drag could start (#76, review 2026-10-20 L10). AppKit sends the
+  /// mouse-up to the view that took the mouse-down, wherever the pointer is by then.
   override func mouseDown(with event: NSEvent) {
     let id = ObjectIdentifier(self)
-    if taps[id] != nil || links[id] != nil { fireTap(id) } else { super.mouseDown(with: event) }
+    if taps[id] != nil || links[id] != nil { pressed = true } else { super.mouseDown(with: event) }
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    guard pressed else {
+      super.mouseUp(with: event)
+      return
+    }
+    pressed = false
+    if bounds.contains(convert(event.locationInWindow, from: nil)) { fireTap(ObjectIdentifier(self)) }
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    refreshInsets(self)
+  }
+
+  override func layout() {
+    super.layout()
+    refreshInsets(self)
+  }
+}
+
+/// Kinds 6 and 15, a `Scroll`. Its own class for two things a plain `NSScrollView` cannot
+/// hold (#76): the safe-area hooks, and the constraints that depend on its insets — the
+/// document view's cross-axis edge, and a horizontal scroller's one height constraint.
+private final class ScrollView: NSScrollView {
+  /// Vertical: the document's trailing edge, short of the clip view's by the side insets.
+  /// Horizontal: the scroller's own height, the document's plus the top and bottom insets.
+  /// One per scroller, replaced with the document view and updated with the insets — it used
+  /// to be a fresh `heightAnchor == constant` per child, which stacked (review L4).
+  var tie: NSLayoutConstraint?
+
+  func setInsets(_ e: NSEdgeInsets) {
+    let old = contentInsets
+    let clip = contentView.bounds.origin
+    // At the start before, at the start after: the padding is where the content begins.
+    let atStart = abs(clip.x + old.left) < 0.5 && abs(clip.y + old.top) < 0.5
+    automaticallyAdjustsContentInsets = false
+    contentInsets = e
+    retie()
+    if atStart { scrollToStart() }
+  }
+
+  /// Where the content begins, its insets in from the corner. A new document view needs this:
+  /// AppKit shows it from the clip view's origin, which is the insets' far side.
+  func scrollToStart() {
+    contentView.scroll(to: NSPoint(x: -contentInsets.left, y: -contentInsets.top))
+    reflectScrolledClipView(contentView)
+  }
+
+  func retie() {
+    let e = contentInsets
+    if isHorizontalScroller(self) {
+      tie?.constant = e.top + e.bottom
+    } else {
+      tie?.constant = -(e.left + e.right)
+    }
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    refreshInsets(self)
+  }
+
+  override func layout() {
+    super.layout()
+    refreshInsets(self)
+  }
+}
+
+// MARK: - padding and the safe area (#76)
+
+/// What a container's insets are made of: the app's `Padding`, plus the safe-area insets on
+/// the edges `SafeArea` chose. Kept per view, so that each can change without losing the
+/// other — the safe area used to be written over the padding on UIKit and Android, and was
+/// read at create time, from a view in no window, where it is always zero (review M8).
+private struct InsetState {
+  var padding: CGFloat = 0
+  var edges: Int32 = 0
+  var applied: NSEdgeInsets?
+}
+
+private var insetStates: [ObjectIdentifier: InsetState] = [:]
+
+/// The window's safe-area insets on the chosen edges; zero until the view is in a window.
+/// Leading and trailing are resolved against the view's layout direction.
+private func safeInsets(_ v: NSView, _ edges: Int32) -> NSEdgeInsets {
+  guard edges != 0, v.window != nil else { return NSEdgeInsetsZero }
+  let i = v.safeAreaInsets
+  let rtl = v.userInterfaceLayoutDirection == .rightToLeft
+  return NSEdgeInsets(
+    top: (edges & 1) != 0 ? i.top : 0,
+    left: (edges & (rtl ? 8 : 4)) != 0 ? i.left : 0,
+    bottom: (edges & 2) != 0 ? i.bottom : 0,
+    right: (edges & (rtl ? 4 : 8)) != 0 ? i.right : 0
+  )
+}
+
+/// Writes padding + safe area to the view, if it changed. Called when either prop is set, when
+/// the view enters a window, and on every layout — which is how a safe area that changes
+/// (full screen, a titlebar accessory) reaches it, since AppKit has no
+/// `safeAreaInsetsDidChange`. Unchanged insets write nothing, so layout settles.
+private func refreshInsets(_ v: NSView) {
+  let id = ObjectIdentifier(v)
+  guard var st = insetStates[id] else { return }
+  let s = safeInsets(v, st.edges)
+  let p = st.padding
+  let e = NSEdgeInsets(top: p + s.top, left: p + s.left, bottom: p + s.bottom, right: p + s.right)
+  if let a = st.applied, NSEdgeInsetsEqual(a, e) { return }
+  st.applied = e
+  insetStates[id] = st
+  switch v {
+  case let g as GridView: g.setInsets(e)
+  case let s as ScrollView: s.setInsets(e)
+  case let s as NSStackView: s.edgeInsets = e
+  default: break
   }
 }
 
@@ -354,6 +477,8 @@ private final class GridView: NSView {
   }
   private(set) var cells: [NSView] = []
   private var insets: [NSLayoutConstraint] = []
+  /// What the constraints in `insets` hold, for `sui_get_insets`.
+  private(set) var current = NSEdgeInsetsZero
 
   init() {
     super.init(frame: .zero)
@@ -363,20 +488,32 @@ private final class GridView: NSView {
     grid.xPlacement = .leading
     grid.yPlacement = .top
     addSubview(grid)
-    setPadding(0)
+    setInsets(NSEdgeInsetsZero)
   }
 
   required init?(coder: NSCoder) { fatalError("not used") }
 
-  func setPadding(_ p: CGFloat) {
+  /// Padding plus any safe area, per edge (#76).
+  func setInsets(_ e: NSEdgeInsets) {
+    current = e
     NSLayoutConstraint.deactivate(insets)
     insets = [
-      grid.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
-      grid.topAnchor.constraint(equalTo: topAnchor, constant: p),
-      trailingAnchor.constraint(equalTo: grid.trailingAnchor, constant: p),
-      bottomAnchor.constraint(equalTo: grid.bottomAnchor, constant: p)
+      grid.leftAnchor.constraint(equalTo: leftAnchor, constant: e.left),
+      grid.topAnchor.constraint(equalTo: topAnchor, constant: e.top),
+      rightAnchor.constraint(equalTo: grid.rightAnchor, constant: e.right),
+      bottomAnchor.constraint(equalTo: grid.bottomAnchor, constant: e.bottom)
     ]
     NSLayoutConstraint.activate(insets)
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    refreshInsets(self)
+  }
+
+  override func layout() {
+    super.layout()
+    refreshInsets(self)
   }
 
   func setSpacing(_ s: CGFloat) {
@@ -726,7 +863,7 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     return retained(c)
 
   case 6:
-    let s = NSScrollView()
+    let s = ScrollView()
     s.hasVerticalScroller = true
     s.drawsBackground = false
     return retained(s)
@@ -735,7 +872,7 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     // The same class as 6, scrolling the other way. Turning the *cross*-axis scroller off
     // is what makes the scroller give its natural size there instead of reserving room for
     // a bar it will never show — the same reason GTK sets its cross-axis policy to NEVER.
-    let s = NSScrollView()
+    let s = ScrollView()
     s.hasHorizontalScroller = true
     s.hasVerticalScroller = false
     s.drawsBackground = false
@@ -943,6 +1080,7 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   dateChanges.removeValue(forKey: id)
   links.removeValue(forKey: id)
   symbols.removeValue(forKey: id)
+  insetStates.removeValue(forKey: id)
   edits.removeValue(forKey: id)
   toggles.removeValue(forKey: id)
   valueChanges.removeValue(forKey: id)
@@ -1038,10 +1176,12 @@ public func sui_set_spacing(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
 
 @_cdecl("sui_set_padding")
 public func sui_set_padding(_ h: UnsafeMutableRawPointer, _ dp: Int32) {
-  if let g = view(h) as? GridView { g.setPadding(CGFloat(dp)); return }
-  guard let s = view(h) as? NSStackView else { return }
-  let p = CGFloat(dp)
-  s.edgeInsets = NSEdgeInsets(top: p, left: p, bottom: p, right: p)
+  // A stack's and a grid's padding is around their children; a scroller's insets its content,
+  // which scrolls with it, as on GTK and Android (#76: it used to be dropped here).
+  let v = view(h)
+  guard v is NSStackView || v is GridView || v is ScrollView else { return }
+  insetStates[ObjectIdentifier(v), default: InsetState()].padding = CGFloat(dp)
+  refreshInsets(v)
 }
 
 @_cdecl("sui_set_grid_columns")
@@ -1276,19 +1416,24 @@ public func sui_on_date_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui
 @_cdecl("sui_set_safe_area")
 public func sui_set_safe_area(_ h: UnsafeMutableRawPointer, _ edges: Int32) {
   let v = view(h)
-  // AppKit has `safeAreaInsets` but no automatic padding, so this reads the window's insets
-  // and turns them into layout margins. On a Mac they are usually zero — the exceptions are
-  // a full-screen window under the menu bar and, on recent laptops, the camera housing.
-  let i = v.safeAreaInsets
-  let rtl = v.userInterfaceLayoutDirection == .rightToLeft
-  let leading: CGFloat = (edges & 4) != 0 ? (rtl ? i.right : i.left) : 0
-  let trailing: CGFloat = (edges & 8) != 0 ? (rtl ? i.left : i.right) : 0
-  v.additionalSafeAreaInsets = NSEdgeInsets(
-    top: (edges & 1) != 0 ? i.top : 0,
-    left: rtl ? trailing : leading,
-    bottom: (edges & 2) != 0 ? i.bottom : 0,
-    right: rtl ? leading : trailing
+  // AppKit has `safeAreaInsets` but no automatic padding, so the insets on the chosen edges are
+  // added to the view's own padding by `refreshInsets` — once the view is in a window, and
+  // again whenever it lays out. Here, at mount, the view is in no window and they are zero,
+  // which is all the old code here ever read (#76). On a Mac they are usually zero anyway: a
+  // titled window's content view sits below its title bar. The exceptions are a full-size
+  // content view, full screen under the menu bar, and the camera housing.
+  insetStates[ObjectIdentifier(v), default: InsetState()].edges = edges
+  refreshInsets(v)
+}
+
+/// Test only: extra safe area on the root view, as a full-size content view's title bar would
+/// add, so a self-test can see the insets arrive and change on a Mac whose safe area is zero.
+@_cdecl("sui_set_extra_safe_area")
+public func sui_set_extra_safe_area(_ top: Double, _ left: Double, _ bottom: Double, _ right: Double) {
+  rootView?.additionalSafeAreaInsets = NSEdgeInsets(
+    top: CGFloat(top), left: CGFloat(left), bottom: CGFloat(bottom), right: CGFloat(right)
   )
+  rootView?.window?.layoutIfNeeded()
 }
 
 // MARK: - tree
@@ -1334,25 +1479,39 @@ public func sui_insert_after(
     // content, so a child that in turn wants the container's width — a horizontal scroller
     // is exactly that — closes a loop, and Auto Layout resolves a circular width as zero.
     // That is what collapsed the button row to 0px rather than clipping it.
+    //
+    // A scroller's padding is its `contentInsets` (#76): the clip view starts the document that
+    // far in, and the document scrolls with it. So the cross-axis pin is short by the insets on
+    // that axis, or the document would overflow it by exactly them and scroll the wrong way.
     c.translatesAutoresizingMaskIntoConstraints = false
+    let mine = scroll as? ScrollView
+    let tie: NSLayoutConstraint
     if isHorizontalScroller(scroll) {
       NSLayoutConstraint.activate([
         c.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-        c.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-        c.bottomAnchor.constraint(equalTo: scroll.contentView.bottomAnchor)
+        c.topAnchor.constraint(equalTo: scroll.contentView.topAnchor)
       ])
-      // An NSScrollView has no intrinsic size in either direction. The height is the
-      // content's, fixed here so the scroller hugs the row instead of stretching; the width
-      // is the parent's, pinned below where the parent is known.
-      scroll.heightAnchor.constraint(equalToConstant: c.fittingSize.height).isActive = true
+      // An NSScrollView has no intrinsic size in either direction. Its height is the
+      // document's, through one constraint tied to the document, so it follows the content
+      // when that changes (#76). It used to be a constant read here, added afresh for every
+      // child — a replaced child left the old one behind to conflict, and a taller label
+      // never resized the row (review L4). The width is the parent's, pinned below.
+      tie = scroll.heightAnchor.constraint(equalTo: c.heightAnchor)
     } else {
       NSLayoutConstraint.activate([
         c.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-        c.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
         c.topAnchor.constraint(equalTo: scroll.contentView.topAnchor)
       ])
+      tie = c.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor)
     }
+    // The previous document's tie went with it: a constraint between two views is removed when
+    // either leaves the hierarchy. Deactivated anyway, in case the old document stays put.
+    mine?.tie?.isActive = false
+    tie.isActive = true
+    mine?.tie = tie
+    mine?.retie()
     scroll.layoutSubtreeIfNeeded()
+    mine?.scrollToStart()
     return
   }
 
@@ -2150,7 +2309,9 @@ public func sui_get_align(_ h: UnsafeMutableRawPointer) -> Int32 {
 public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
   guard let scroll = view(h) as? NSScrollView, let doc = scroll.documentView else { return -1 }
   let visible = scroll.contentView.bounds
-  return Double(doc.isFlipped ? visible.minY : doc.frame.height - visible.maxY)
+  // From where the content starts: its top inset (padding, safe area) is not scrolled.
+  let top = scroll.contentInsets.top
+  return Double(doc.isFlipped ? visible.minY + top : doc.frame.height - visible.maxY)
 }
 
 // MARK: - read-back for the new controls (#45, #46)
@@ -2262,6 +2423,91 @@ public func sui_get_frame(
   outY.pointee = Double(height - r.maxY)
   outW.pointee = Double(r.width)
   outH.pointee = Double(r.height)
+}
+
+/// Every active constraint on a view's height, wherever it is held: the view's own and its
+/// ancestors'. Constraints AppKit makes for itself (an autoresizing mask, an intrinsic size)
+/// are left out — they are not the renderer's.
+private func heightConstraints(_ v: NSView) -> [NSLayoutConstraint] {
+  var out: [NSLayoutConstraint] = []
+  var holder: NSView? = v
+  while let hv = holder {
+    for c in hv.constraints where c.isActive && type(of: c) == NSLayoutConstraint.self {
+      if (c.firstItem === v && c.firstAttribute == .height) || (c.secondItem === v && c.secondAttribute == .height) {
+        out.append(c)
+      }
+    }
+    holder = hv.superview
+  }
+  return out
+}
+
+private func write(
+  _ e: NSEdgeInsets, _ t: UnsafeMutablePointer<Double>, _ l: UnsafeMutablePointer<Double>,
+  _ b: UnsafeMutablePointer<Double>, _ r: UnsafeMutablePointer<Double>
+) {
+  t.pointee = Double(e.top)
+  l.pointee = Double(e.left)
+  b.pointee = Double(e.bottom)
+  r.pointee = Double(e.right)
+}
+
+@_cdecl("sui_get_insets")
+public func sui_get_insets(
+  _ h: UnsafeMutableRawPointer, _ outTop: UnsafeMutablePointer<Double>, _ outLeft: UnsafeMutablePointer<Double>,
+  _ outBottom: UnsafeMutablePointer<Double>, _ outRight: UnsafeMutablePointer<Double>
+) {
+  let v = view(h)
+  v.window?.layoutIfNeeded()
+  let e: NSEdgeInsets
+  switch v {
+  case let g as GridView: e = g.current
+  case let s as NSScrollView: e = s.contentInsets
+  case let s as NSStackView: e = s.edgeInsets
+  default: e = NSEdgeInsetsZero
+  }
+  write(e, outTop, outLeft, outBottom, outRight)
+}
+
+@_cdecl("sui_get_safe_area")
+public func sui_get_safe_area(
+  _ h: UnsafeMutableRawPointer, _ outTop: UnsafeMutablePointer<Double>, _ outLeft: UnsafeMutablePointer<Double>,
+  _ outBottom: UnsafeMutablePointer<Double>, _ outRight: UnsafeMutablePointer<Double>
+) {
+  let v = view(h)
+  v.window?.layoutIfNeeded()
+  write(v.safeAreaInsets, outTop, outLeft, outBottom, outRight)
+}
+
+@_cdecl("sui_height_constraint_count")
+public func sui_height_constraint_count(_ h: UnsafeMutableRawPointer) -> Int32 {
+  Int32(heightConstraints(view(h)).count)
+}
+
+/// Sends a left-button event through the window, the path a real click takes: hit-tested by
+/// `NSWindow.sendEvent`, and a mouse-up delivered to whatever took the mouse-down. (x, y) is a
+/// point in `h`, top-left origin; it may be outside it. kind: 0 down, 1 dragged, 2 up.
+@_cdecl("sui_send_mouse")
+public func sui_send_mouse(_ h: UnsafeMutableRawPointer, _ kind: Int32, _ x: Double, _ y: Double) -> Int32 {
+  let v = view(h)
+  guard let w = v.window else { return 0 }
+  w.layoutIfNeeded()
+  // The window hit-tests the point, so the view has to be where the point is: on screen.
+  if kind == 0 { _ = v.scrollToVisible(v.bounds) }
+  let local = NSPoint(x: x, y: v.isFlipped ? y : v.bounds.height - y)
+  let type: NSEvent.EventType
+  switch kind {
+  case 0: type = .leftMouseDown
+  case 1: type = .leftMouseDragged
+  default: type = .leftMouseUp
+  }
+  guard let e = NSEvent.mouseEvent(
+    with: type, location: v.convert(local, to: nil), modifierFlags: [],
+    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber, context: nil,
+    eventNumber: 0, clickCount: 1, pressure: kind == 2 ? 0 : 1
+  ) else { return 0 }
+  w.sendEvent(e)
+  return 1
 }
 
 @_cdecl("sui_record_opened_urls")

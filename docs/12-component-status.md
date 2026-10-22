@@ -33,8 +33,7 @@ handled but not honoured. Fixed on Linux in the same PR: `Grow` along a Column o
 Android, Android's Spinner selection and its `-1`, Android tab reordering, `SafeArea` padding
 on Android, GTK's `Scroll(padding)` and indeterminate `ProgressBar`, and the GTK `LazyColumn`
 showing stale rows after an edit. Fixed on Apple since: taps on leaf views, the UIKit
-Checkbox's label and right-to-left alignment (#75). Open, on Apple: `SafeArea` and `Scroll`
-padding (#76), selection when options change and `-1` (#77, since fixed), unbuilt kinds (#74,
+Checkbox's label and right-to-left alignment (#75), and `SafeArea` and `Scroll` padding (#76). Open, on Apple: selection when options change and `-1` (#77, since fixed), unbuilt kinds (#74,
 since fixed), and the cross axis of a Row or Column — a Row that does not span its Column on
 AppKit, `Grow` and a Spacer in a Column that do nothing on UIKit (#87, found by the gallery
 checks #73 added). The Android gallery, which this
@@ -251,8 +250,11 @@ exhaustive under `-Werror` — a new prop breaks every renderer until it is hand
 the point of doing this in Scala. (This section said 22, and then thirty, after more had
 been added; the enum is the count.)
 
-**"Handled" is not "honoured."** As of 2026-10-20, honoured everywhere except: `SafeArea` and
-`Padding` on a `Scroll` on Apple (#76). `Message`, `Actions`
+**"Handled" is not "honoured."** Since #76 (2026-10-21), every prop is honoured on every
+renderer. (`OnTap` on Apple leaf views and `Text` on the UIKit Checkbox were on this list
+until #75; `SafeArea` and `Padding` on a `Scroll` on Apple until #76, 2026-10-21: the safe area is
+now added to the padding once the view is in a window, and a scroller's padding is its content
+inset, as on GTK and Android.) `Message`, `Actions`
 and `OnDismiss` were unreachable on Apple until `Alert` could be presented (#18), and
 `ContextMenu` until #19.
 `Axis` was the last prop that was genuinely ignored on a renderer that *could* act on it,
@@ -282,7 +284,7 @@ raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virt
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
 are done, and so is #69 (TabView: `NSTabViewController` with its segmented control on top,
-`UITabBarController` as a child controller). Open for the Mac: the review's #76–#79, and #87 (#75 is fixed).
+`UITabBarController` as a child controller). Open for the Mac: the review's #77–#79, and #87 (#75 and #76 are fixed).
 An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74); since
 #69 no kind is unbuilt on Apple. Everything else is built and measured on the
 Linux box.

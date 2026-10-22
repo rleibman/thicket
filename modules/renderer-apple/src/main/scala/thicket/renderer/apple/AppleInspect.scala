@@ -239,6 +239,64 @@ object AppleInspect {
       if Shim.sui_grid_cell(grid, child, out, out + 1) != 0 then Some((out(0).toInt, out(1).toInt)) else None
     }
 
+  /** Four edges read from the shim: (top, left, bottom, right). */
+  private def edges(read: (Ptr[Double], Ptr[Double], Ptr[Double], Ptr[Double]) => Unit)
+    : (Double, Double, Double, Double) =
+    Zone {
+      val out = alloc[Double](4)
+      read(out, out + 1, out + 2, out + 3)
+      (out(0), out(1), out(2), out(3))
+    }
+
+  /** The insets the platform holds for a container — padding plus any safe area: (top, left, bottom, right). */
+  def insets(h: Shim.Handle): (Double, Double, Double, Double) =
+    edges(
+      (
+        t,
+        l,
+        b,
+        r
+      ) => Shim.sui_get_insets(h, t, l, b, r)
+    )
+
+  /** A view's safe-area insets as the platform reports them now: (top, left, bottom, right). */
+  def safeArea(h: Shim.Handle): (Double, Double, Double, Double) =
+    edges(
+      (
+        t,
+        l,
+        b,
+        r
+      ) => Shim.sui_get_safe_area(h, t, l, b, r)
+    )
+
+  /** Test only: adds safe area at the root, as a toolbar or a full-size content view would. */
+  def setExtraSafeArea(
+    top:    Double,
+    left:   Double,
+    bottom: Double,
+    right:  Double
+  ): Unit = Shim.sui_set_extra_safe_area(top, left, bottom, right)
+
+  /** How many active constraints, the renderer's own, are on a view's height. */
+  def heightConstraints(h: Shim.Handle): Int = Shim.sui_height_constraint_count(h)
+
+  /** A mouse event sent through the window at (x, y) in `h`, top-left origin. False where the platform cannot. */
+  enum Mouse(val code: Int) {
+
+    case Down extends Mouse(0)
+    case Dragged extends Mouse(1)
+    case Up extends Mouse(2)
+
+  }
+
+  def sendMouse(
+    h:     Shim.Handle,
+    event: Mouse,
+    x:     Double,
+    y:     Double
+  ): Boolean = Shim.sui_send_mouse(h, event.code, x, y) != 0
+
   /** Whether the SDK has an SF Symbol of this name. */
   def symbolExists(name: String): Boolean = Zone(Shim.sui_symbol_exists(toCString(name)) != 0)
 

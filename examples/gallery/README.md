@@ -128,8 +128,9 @@ selection cleared, every curated `Icon` as an `IconButton`, `SegmentedControl`, 
 `DatePicker` on a leap day, two `Link`s (one also tappable), a tappable `Label`, `Slider`, determinate and
 indeterminate `ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer` in a Row and in a
 Column, `Grow`, a two-column `Grid` with a row inserted in the middle, `ZStack` as a corner
-badge and as a centred overlay, `Image` in all three fits from a file and from bytes, nested
-and horizontal `Scroll` (padded), keyed `ForEach`, virtualised `LazyColumn` whose first row
+badge and as a centred overlay, `Image` in all three fits from a file and from bytes, a
+tappable `Row`, the screen's `Scroll` with both padding and `.safeArea()`, a padded horizontal
+`Scroll` inside it whose child can be replaced by a taller one, keyed `ForEach`, virtualised `LazyColumn` whose first row
 can be deleted and renamed, a per-row `ContextMenu`, subtree theming with `Provide`, a
 handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet`), toolbar
 `Action`s, a navigation push, and a `TabView` with a tab inserted in the middle.

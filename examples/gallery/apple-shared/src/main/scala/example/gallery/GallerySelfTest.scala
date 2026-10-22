@@ -175,9 +175,13 @@ object GallerySelfTest {
     )
 
     newControls(all)
-    tapsCheckboxAndDirection(all)
-    layout(all)
-    robustness(all)
+    // First, while the screen is scrolled to its top: it measures content positions against the
+    // safe area. It swaps the horizontal Scroll's child and back, so the steps after it gather
+    // their handles again rather than use `all`, whose labels in that Scroll are gone.
+    insetsAndTaps()
+    tapsCheckboxAndDirection(AppleInspect.all(root))
+    layout(AppleInspect.all(root))
+    robustness(AppleInspect.all(root))
 
     // Presented widgets must not be in the tree until asked for.
     check(
@@ -1135,6 +1139,183 @@ object GallerySelfTest {
       atRight(rtl("Start")) && centred(rtl("Center")) && atLeft(rtl("End")),
       show(rtl)
     )
+  }
+
+  /** #76: the safe area added to padding, a Scroll's padding and its height, and a container's tap on release.
+    *
+    * Every number is the platform's: insets as the view holds them, safe areas as it reports them, and frames as Auto
+    * Layout placed them. The safe area is also *changed* while the screen is up, through the root's
+    * `additionalSafeAreaInsets`, because on a Mac it is zero and a check of zero plus 16 cannot tell "added" from
+    * "never read".
+    */
+  private def insetsAndTaps(): Unit = {
+    type Edges = (Double, Double, Double, Double)
+    def all = AppleInspect.all(AppleApp.rootHandle)
+    def ofKind(k: WidgetKind) = all.filter(h => AppleApp.renderer.kindOf(h).contains(k))
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    def near(
+      a: Double,
+      b: Double
+    ) = math.abs(a - b) <= 0.5
+    def same(
+      a: Edges,
+      b: Edges
+    ) = near(a._1, b._1) && near(a._2, b._2) && near(a._3, b._3) && near(a._4, b._4)
+    def fmt(e: Edges) = f"(top ${e._1}%.1f, left ${e._2}%.1f, bottom ${e._3}%.1f, right ${e._4}%.1f)"
+    def plus(
+      p: Double,
+      e: Edges
+    ): Edges = (p + e._1, p + e._2, p + e._3, p + e._4)
+    // The renderer's own child of a scroller: UIKit's scroll indicators are subviews too.
+    def content(s: thicket.renderer.apple.Shim.Handle) =
+      AppleInspect.children(s).find(c => AppleApp.renderer.kindOf(c).isDefined)
+    // Where a scroller's content sits within it, and both heights: (dx, dy, scroller h, content h).
+    def placed(s: thicket.renderer.apple.Shim.Handle) =
+      content(s).map { c =>
+        val (sx, sy, _, sh) = AppleInspect.frame(s)
+        val (cx, cy, _, ch) = AppleInspect.frame(c)
+        (cx - sx, cy - sy, sh, ch)
+      }
+
+    // --- SafeArea: on the screen's Scroll, which has a padding of 16 of its own ---
+    // Parent first, so the first Scroll is the screen's.
+    ofKind(WidgetKind.Scroll).headOption.foreach { s =>
+      val safe0 = AppleInspect.safeArea(s)
+      println(s"[gallery]   the screen's safe area ${fmt(safe0)}, insets ${fmt(AppleInspect.insets(s))}")
+      check(
+        "the screen's insets are its padding plus its safe area",
+        same(AppleInspect.insets(s), plus(16, safe0)),
+        s"insets ${fmt(AppleInspect.insets(s))}, safe area ${fmt(safe0)}"
+      )
+      def startsAtInsets =
+        placed(s).exists(
+          (
+            x,
+            y,
+            _,
+            _
+          ) => near(x, AppleInspect.insets(s)._2) && near(y, AppleInspect.insets(s)._1)
+        )
+      check(
+        "and its content starts there",
+        startsAtInsets,
+        s"${placed(s)} against ${fmt(AppleInspect.insets(s))}"
+      )
+
+      AppleInspect.setExtraSafeArea(40, 0, 24, 0)
+      val safe1 = AppleInspect.safeArea(s)
+      println(
+        s"[gallery]   with 40 top and 24 bottom more: safe area ${fmt(safe1)}, insets ${fmt(AppleInspect.insets(s))}"
+      )
+      check(
+        "a safe area that changes reaches the view",
+        near(safe1._1, safe0._1 + 40) && near(safe1._3, safe0._3 + 24),
+        s"${fmt(safe0)} -> ${fmt(safe1)}"
+      )
+      check(
+        "and is added to the padding, which stays",
+        same(AppleInspect.insets(s), plus(16, safe1)),
+        s"insets ${fmt(AppleInspect.insets(s))}, safe area ${fmt(safe1)}"
+      )
+      check(
+        "and the content moves with it",
+        startsAtInsets,
+        s"${placed(s)} against ${fmt(AppleInspect.insets(s))}"
+      )
+      AppleInspect.setExtraSafeArea(0, 0, 0, 0)
+      check(
+        "and back when it shrinks",
+        same(AppleInspect.insets(s), plus(16, safe0)) && startsAtInsets,
+        s"insets ${fmt(AppleInspect.insets(s))}, ${placed(s)}"
+      )
+    }
+
+    // --- Scroll(padding = 8, horizontal): content inset by the padding, height its content's ---
+    ofKind(WidgetKind.Scroll).filter(h => AppleInspect.allTexts(h).exists(_.startsWith("col 0"))).lastOption.foreach {
+      s =>
+        def button(t: String) = ofKind(WidgetKind.Button).find(h => AppleInspect.text(h).contains(t))
+        def geometry =
+          placed(s).map(
+            (
+              x,
+              y,
+              sh,
+              ch
+            ) => f"content at ($x%.1f, $y%.1f), scroller $sh%.1f tall, content $ch%.1f"
+          )
+        check(
+          "a padded Scroll holds its padding as its content insets",
+          same(AppleInspect.insets(s), (8, 8, 8, 8)),
+          fmt(AppleInspect.insets(s))
+        )
+        check(
+          "and its content starts 8 in",
+          placed(s).exists(
+            (
+              x,
+              y,
+              _,
+              _
+            ) => near(x, 8) && near(y, 8)
+          ),
+          geometry.toString
+        )
+        def fits =
+          placed(s).exists(
+            (
+              _,
+              _,
+              sh,
+              ch
+            ) => ch > 0 && near(sh, ch + 16)
+          )
+        check("a horizontal Scroll is its content's height plus its padding", fits, geometry.toString)
+        check(
+          "with one constraint on its height",
+          AppleInspect.heightConstraints(s) == 1,
+          s"${AppleInspect.heightConstraints(s)} height constraints"
+        )
+        println(s"[gallery]   horizontal Scroll: ${geometry.getOrElse("no content")}")
+        val shortHeight = placed(s).map(_._4).getOrElse(0.0)
+        button("Taller columns").foreach(AppleInspect.click)
+        check(
+          "its child replaced by a taller one, it follows the new height",
+          fits && placed(s).exists(_._4 > shortHeight + 1),
+          geometry.toString
+        )
+        check(
+          "still with one constraint on its height",
+          AppleInspect.heightConstraints(s) == 1,
+          s"${AppleInspect.heightConstraints(s)} height constraints"
+        )
+        println(s"[gallery]   replaced: ${geometry.getOrElse("no content")}")
+        button("Shorter columns").foreach(AppleInspect.click)
+        check(
+          "and back to the shorter one",
+          fits && placed(s).exists(p => near(p._4, shortHeight)) && AppleInspect.heightConstraints(s) == 1,
+          s"$geometry ${AppleInspect.heightConstraints(s)} height constraints"
+        )
+    }
+
+    // --- A container's tap: a press and a release inside it, sent through the window ---
+    ofKind(WidgetKind.Row).find(h => AppleInspect.allTexts(h).contains("Tap this row")).foreach { row =>
+      import AppleInspect.Mouse
+      def tapped = texts.find(_.startsWith("Row tapped")).getOrElse("(none)")
+      val (_, _, w, h) = AppleInspect.frame(row)
+      if AppleInspect.sendMouse(row, Mouse.Down, w / 2, h / 2) then {
+        check("a press alone is not a tap", tapped == "Row tapped 0 times", tapped)
+        AppleInspect.sendMouse(row, Mouse.Up, w / 2, h / 2)
+        check("the release inside the row is", tapped == "Row tapped 1 times", tapped)
+        AppleInspect.sendMouse(row, Mouse.Down, w / 2, h / 2)
+        AppleInspect.sendMouse(row, Mouse.Dragged, w + 40, h / 2)
+        AppleInspect.sendMouse(row, Mouse.Up, w + 40, h / 2)
+        check("a press dragged off the row and released outside is not", tapped == "Row tapped 1 times", tapped)
+      } else
+        println(
+          "[gallery]   (UIKit offers no public way to synthesise a touch; its container tap is a " +
+            "UITapGestureRecognizer, which recognises on touch-up)"
+        )
+    }
   }
 
 }

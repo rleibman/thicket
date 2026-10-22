@@ -35,13 +35,13 @@ const char *sui_resource_path(const char *path);
    not only a different name. Generated from Abi.kinds; ConsistencySpec checks both
    shims' sui_create build what this says.
 
-      0 Column             TapView()                      UIStackView()
-      1 Row                TapView()                      UIStackView()
+      0 Column             TapView()                      StackView()
+      1 Row                TapView()                      StackView()
       2 Label              LabelField(labelWithString:)   TextLabel()       an NSTextField / UILabel that keeps its Alignment
       3 Button             NSButton(title:)               UIButton(type:)
       4 TextField          NSTextField(string:)           UITextField()
       5 Checkbox           NSButton(checkboxWithTitle:)   CheckboxView()    UIKit has no checkbox: a UISwitch captioned by a UILabel
-      6 Scroll             NSScrollView()                 UIScrollView()    vertical
+      6 Scroll             ScrollView()                   ScrollView()      vertical
       7 Divider            NSBox()                        UIView()          the shims' default: branch
       8 Image              ImageView()                    UIImageView()
       9 Toggle             NSSwitch()                     UISwitch()        no label: the caption is a sibling
@@ -50,7 +50,7 @@ const char *sui_resource_path(const char *path);
      12 ActivityIndicator  NSProgressIndicator()          UIActivityIndicatorView()  spins while mounted
      13 Slider             NSSlider()                     UISlider()
      14 SecureField        NSSecureTextField()            UITextField()     isSecureTextEntry on UIKit
-     15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create
+     15 ScrollHorizontal   ScrollView()                   ScrollView()      the axis is read at create
      16 Alert              AlertView()                    AlertView()       a placeholder; NSAlert / UIAlertController at present
      17 Sheet              SheetView()                    SheetView()       a container; a sheet window / a presented controller
      18 Picker             NSPopUpButton()                UIButton()        UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list
@@ -278,6 +278,22 @@ double sui_painted_fraction(sui_handle h);
 /* Where a Grid has placed a child: the NSGridView's own row and column on AppKit, the
    construction's on UIKit. 0 when the child is not one of its cells. */
 int32_t sui_grid_cell(sui_handle h, sui_handle child, double *outRow, double *outColumn);
+/* How many active constraints, the renderer's own, are on a view's height — held by the
+   view or any ancestor. A horizontal Scroll has exactly one (#76). */
+int32_t sui_height_constraint_count(sui_handle h);
+/* The insets the platform holds for a container: a stack's edge insets or layout margins,
+   a Grid's, a Scroll's content insets. Padding plus any safe area. Zeros for anything else. */
+void sui_get_insets(sui_handle h, double *outTop, double *outLeft,
+                    double *outBottom, double *outRight);
+/* A view's `safeAreaInsets`, as the platform reports them now. */
+void sui_get_safe_area(sui_handle h, double *outTop, double *outLeft,
+                       double *outBottom, double *outRight);
+/* Test only: adds safe area to the root — `additionalSafeAreaInsets` on the root view
+   (AppKit) or its view controller (UIKit) — so a self-test can watch the insets arrive. */
+void sui_set_extra_safe_area(double top, double left, double bottom, double right);
+/* AppKit: sends a left-button event through the window at (x, y) in `h`, top-left origin:
+   kind 0 down, 1 dragged, 2 up. UIKit: 0, there is no public way to synthesise a touch. */
+int32_t sui_send_mouse(sui_handle h, int32_t kind, double x, double y);
 /* 1: a Link records the URL it would open instead of opening it, so a test can check it
    without launching a browser. 0: open for real again. */
 void sui_record_opened_urls(int32_t on);
