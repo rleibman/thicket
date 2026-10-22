@@ -22,6 +22,9 @@ import java.sql.{Connection, SQLFeatureNotSupportedException}
 /** A `javax.sql.DataSource` for SQLite, for libraries that take one — Magnum's `Transactor`, `connect` and `transact`
   * among them. Each `getConnection` opens a new connection to the same URL; for `:memory:` that is a new, empty
   * database every time, so use a file.
+  *
+  * On Scala Native, call `unwrap` and `isWrapperFor` on this class, not through `javax.sql.DataSource`: there they bind
+  * to the JDK's `java.sql.Wrapper`, which Scala Native does not have, and the program does not link.
   */
 final class SqliteDataSource(
   url:    String,

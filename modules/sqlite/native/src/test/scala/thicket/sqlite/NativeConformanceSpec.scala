@@ -44,6 +44,11 @@ object NativeConformanceSpec extends ZIOSpecDefault {
         m.createStatement().executeUpdate("create table t(x)")
         m.close()
         assertTrue(Files.exists(dirs.data.resolve("app.db")))
+      },
+      test("Sqlite.dataSource: connections share one file in the data directory") {
+        import NativeSqlite.given
+        val problems = DataSourceRoundTrip.problems
+        assertTrue(problems.isEmpty) ?? problems.mkString("; ")
       }
     )
 

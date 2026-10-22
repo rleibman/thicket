@@ -39,6 +39,11 @@ object JvmConformanceSpec extends ZIOSpecDefault {
         c.createStatement().executeUpdate("create table t(x)")
         c.close()
         assertTrue(Files.exists(dirs.data.resolve("app.db")))
+      },
+      test("Sqlite.dataSource: connections share one file in the data directory") {
+        given SqliteDriver = SqliteDriver.fromJdbc(new org.sqlite.JDBC())
+        val problems = DataSourceRoundTrip.problems
+        assertTrue(problems.isEmpty) ?? problems.mkString("; ")
       }
     )
 
