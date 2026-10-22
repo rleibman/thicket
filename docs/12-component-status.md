@@ -34,7 +34,7 @@ Android, Android's Spinner selection and its `-1`, Android tab reordering, `Safe
 on Android, GTK's `Scroll(padding)` and indeterminate `ProgressBar`, and the GTK `LazyColumn`
 showing stale rows after an edit. Open, on Apple: taps on leaf views, the UIKit Checkbox's
 label and right-to-left alignment (#75), `SafeArea` and `Scroll` padding (#76), selection
-when options change and `-1` (#77), unbuilt kinds (#74, since fixed). The Android gallery, which this
+when options change and `-1` (#77, since fixed), unbuilt kinds (#74, since fixed). The Android gallery, which this
 document and its README said was built, had no Gradle project until then; it now builds and
 self-tests (24/24 on the `s2test` emulator).
 
@@ -164,7 +164,7 @@ Slice 2:
 | Widget | Contract | GTK4 | Android | AppKit | UIKit | Notes |
 |---|---|---|---|---|---|---|
 | `Slider` | `WidgetKind.Slider` | done | done | done | done | `GtkScale` / `SeekBar`. `Prop.Value` is in the **app's units**, not a fraction |
-| `Picker` | `WidgetKind.Picker` | done | done | done | done | `GtkDropDown` over a `GtkStringList` model / `Spinner` / `NSPopUpButton` / a menu-backed `UIButton` — **not** `UIPickerView`, which is a wheel. Selection is an **index**: two options may share a label |
+| `Picker` | `WidgetKind.Picker` | done | done | done | done | `GtkDropDown` over a `GtkStringList` model / `Spinner` / `NSPopUpButton` / a menu-backed `UIButton` — **not** `UIPickerView`, which is a wheel. Selection is an **index**: two options may share a label, and it survives new options. `-1` is a blank on all four (D13): an empty drop-down / a leading blank entry / no item chosen / a leading blank menu element (#77) |
 | `TabView` | `WidgetKind.TabView`, `WidgetKind.Tab` | done | done | #69 | #69 | **A §12.2a exception** (#61): Android's framework tab controls are all deprecated, so its bottom bar is built from framework views. `AdwViewStack` + `AdwViewSwitcherBar` / `UITabBarController` / `NSTabViewController`. Every tab stays mounted; the selection is an index; inserting or removing tabs keeps the user on their tab and reports its new index |
 | `IconButton` | `WidgetKind.IconButton` | done | done | done | done | Icon-only, so `Prop.AccessibleLabel` is required (screen reader and tooltip). `GtkButton` with a theme icon / a borderless `ImageButton` drawing bundled Material Symbols / an SF Symbol. Its own kind because Android's icon button is a different class. The 24 curated `Icon`s and the `Icon.Platform` escape hatch are #61 |
 | `Grid` | `WidgetKind.Grid` | done | done | done | done | **A §12.2a exception** (#60, the project owner's decision): UIKit has no grid view. `GtkGrid` with cells placed through `GtkGridLayoutChild` / `GridLayout`'s own auto-flow / `NSGridView` / a constraint grid on UIKit. Children flow into `Prop.Columns` columns in child order; each column as wide as its widest cell |

@@ -938,17 +938,32 @@ public func sui_on_value_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping su
 ///
 /// A `UIMenu` is immutable, so there is no "add one item" — every change replaces it. That
 /// is why the titles are kept in `pickerOptions` rather than read back off the control.
+private let blankPickerElement = UIAction.Identifier("thicket.picker.blank")
+
+/// The picker's own options in its installed menu: the blank lead (D13) is not one of them.
+private func pickerElements(_ b: UIButton) -> [UIMenuElement] {
+  (b.menu?.children ?? []).filter { ($0 as? UIAction)?.identifier != blankPickerElement }
+}
+
 private func rebuildPickerMenu(_ b: UIButton) {
   let id = ObjectIdentifier(b)
   let titles = pickerOptions[id] ?? []
   let chosen = pickerSelected[id] ?? -1
+  // D13 (#77): with nothing chosen the button shows a blank. A selecting menu always has one
+  // element on, and with none on UIKit turns the first one on and shows it — the picker read
+  // "Apple" after Clear. So while nothing is chosen the menu leads with a blank element, as
+  // Android's list leads with a blank entry; the read-backs skip it, and it goes again once
+  // the user chooses something.
+  let blank = !titles.isEmpty && (chosen < 0 || chosen >= titles.count)
   let actions = titles.enumerated().map { (i, title) in
-    UIAction(title: title, state: i == chosen ? .on : .off) { _ in
+    UIAction(title: title, state: i == chosen ? .on : .off) { [weak b] _ in
       pickerSelected[id] = i
+      if blank, let b { rebuildPickerMenu(b) }
       guard !suppressed.contains(id), let s = selections[id] else { return }
       s.cb(s.ctx, Int32(i))
     }
   }
+  let lead: [UIAction] = blank ? [UIAction(title: "", identifier: blankPickerElement, state: .on) { _ in }] : []
   // An Objective-C exception cannot be caught on the Scala side — it unwinds into Scala
   // frames and Scala Native's catch handler fails on it — so the empty menu UIKit rejects is
   // never handed to it: with no options the button is a plain menu button, and the selector
@@ -957,7 +972,7 @@ private func rebuildPickerMenu(_ b: UIButton) {
     b.changesSelectionAsPrimaryAction = false
     b.menu = nil
   } else {
-    b.menu = UIMenu(children: actions)
+    b.menu = UIMenu(children: lead + actions)
     b.changesSelectionAsPrimaryAction = true
   }
 }
@@ -1853,12 +1868,12 @@ public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
 public func sui_option_count(_ h: UnsafeMutableRawPointer) -> Int32 {
   switch view(h) {
   case let s as UISegmentedControl: return Int32(s.numberOfSegments)
-  case let b as UIButton: return Int32(b.menu?.children.count ?? 0)
+  case let b as UIButton: return Int32(pickerElements(b).count)
   default: return 0
   }
 }
 
-/// Read from the control: the segments, or the button's installed menu.
+/// Read from the control: the segments, or the button's installed menu, less the blank lead.
 @_cdecl("sui_option_label")
 public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> UnsafePointer<CChar>? {
   let i = Int(index)
@@ -1866,8 +1881,28 @@ public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Un
   case let s as UISegmentedControl where i >= 0 && i < s.numberOfSegments:
     return scratch(s.titleForSegment(at: i) ?? "")
   case let b as UIButton:
-    guard let items = b.menu?.children, i >= 0, i < items.count else { return nil }
+    let items = pickerElements(b)
+    guard i >= 0, i < items.count else { return nil }
     return scratch(items[i].title)
+  default:
+    return nil
+  }
+}
+
+/// What the control draws as the choice (#77, D13): the menu button's title, which UIKit
+/// sets from the selected element, and not `pickerSelected`, which is what the shim was told.
+/// With no element on, UIKit turns the first one on itself and shows it, which is what this
+/// caught.
+@_cdecl("sui_shown_option")
+public func sui_shown_option(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
+  switch view(h) {
+  case let s as UISegmentedControl:
+    let i = s.selectedSegmentIndex
+    return scratch(i >= 0 && i < s.numberOfSegments ? (s.titleForSegment(at: i) ?? "") : "")
+  case let b as UIButton:
+    // `currentTitle`, not `titleLabel.text`: the label is redrawn on a later pass, and read
+    // straight after a change it still held the previous choice (measured, #77).
+    return scratch(b.currentTitle ?? "")
   default:
     return nil
   }

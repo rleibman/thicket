@@ -359,8 +359,18 @@ final class AppleRenderer extends Renderer {
       case Prop.Options(values) =>
         // Clear-then-add, the shape the ABI uses for an alert's actions. No handles to
         // release here: options are strings, not callbacks.
+        //
+        // The selection is an index and survives new options, as on GTK and Android (#77,
+        // review 2026-10-20 P1-10). Clearing empties an NSSegmentedControl, an NSPopUpButton
+        // and a UISegmentedControl, and adding back auto-selects the pop-up's first item, so
+        // the index the control held is read first and written back after. The shims do not
+        // fire the action for either step, so nothing is reported to the app. A Selected in
+        // the same patch, before or after this, still wins: it was applied to the control
+        // and is what is read here, or it is applied next.
+        val keep = Shim.sui_get_selected(handle)
         Shim.sui_picker_clear_options(handle)
         values.foreach(v => Zone(Shim.sui_picker_add_option(handle, toCString(v))))
+        if Shim.sui_get_selected(handle) != keep then Shim.sui_set_selected(handle, keep)
 
       case Prop.Selected(index) =>
         // Read first and skip a no-op write, as the toggle does: setting the selection makes

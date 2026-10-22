@@ -233,6 +233,9 @@ const char *sui_menu_item_label(sui_handle h, int32_t index);
 /* How many options a Picker or SegmentedControl holds, as the platform's control has them. */
 int32_t sui_option_count(sui_handle h);
 const char *sui_option_label(sui_handle h, int32_t index);
+/* The option a Picker or SegmentedControl *shows* as chosen, read from what the control
+   draws (the pop-up's title, the selected segment); "" when it shows none (D13, #77). */
+const char *sui_shown_option(sui_handle h);
 /* Chooses option `index` through the control's own action, as a user would. 0 where the
    platform offers no way to do that from code (UIKit's menu-backed Picker). */
 int32_t sui_choose(sui_handle h, int32_t index);
