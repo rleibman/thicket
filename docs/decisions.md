@@ -72,6 +72,42 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **The review's native-safety changes on Apple: verified, and iOS was running
+  every callback Unmanaged** (#73). This was the review's first run on a Mac, and it found a
+  P0 that only iOS has. `releaseMainThread` set the depth to 0. An iOS host calls it from
+  *inside* a guarded entry (`thicket_*_start` → `AppleApp.run`), so the entry's own exit left
+  the depth at -1. After that no callback ever took it from 0 to 1, and Scala ran on the main
+  thread with the GC told it was not there. The gallery measured this: the self-test ran at
+  depth 0, and after 1 474 of 1 474 nested calls the thread was still Unmanaged.
+  `releaseMainThread` now takes away only the level the thread started with. On iOS the
+  outermost entry's exit is what hands the thread to the loop. GTK and macOS call it at
+  depth 1, so nothing changes for them. GTK was not re-run on this Mac.
+  The iOS gallery's bytes-backed `Image` showed nothing. The platform says why: the app's
+  `user.dir` is `/`, so `Gallery.logoBytes` read 0 bytes. The same file in the bundle has
+  50 476. `AppleApp.resourcePath` (the shim's `sui_resource_path`) does the lookup that
+  `FromFile` already made, and the iOS host now passes the bundle's bytes, as Android passes
+  its assets. The iOS template imported `GcState` from its old package, and now imports
+  `thicket.core`. Four read-backs were added to the ABI: `sui_table_row_view`,
+  `sui_get_content_fit`, `sui_get_align` and `sui_resource_path` (110 externs).
+  The gallery self-test gained the GTK checks for the review's new sections, read from the
+  platform (see `examples/gallery/README.md`). Measured with `THICKET_ALLOW_UNBUILT=1`: **102
+  of 107** on macOS and **103 of 106** on the iPhone Air simulator. The failures are real,
+  and each names the issue that owns it. AppKit's pop-up shows index 0 after an option swap
+  while the app says otherwise (#77, 2 checks). An AppKit Row takes its natural width, so a
+  Spacer pushes nothing and aligned labels hug their text. On UIKit, Grow and a Spacer in a
+  Column do nothing (#87, new; 2 checks on each). `Scroll(padding)` is dropped on both (#76).
+  Each check was **falsified on macOS** and the change restored. Without `Host.install`, the
+  effect check fails ("Loading…"). Without the error barrier, the first throwing click
+  aborts the app: `_Unwind_RaiseException returned 3`, exit 134, no verdict. Re-binding only
+  until a table has rows fails the delete and rename checks (`Row 0` stays on top). An exit
+  that always marks the thread Unmanaged fails the two nested-GC checks (3 456 of 3 456).
+  Skipping the per-handle sweep in `destroy` leaves 312 → 317 table entries. Keeping the
+  sheet button's tap id leaves 61 → 62 callbacks. On iOS, an iOS host without the bundle
+  bytes fails the two Image checks (the `Fill` image is empty). The run before the
+  `GcState` fix fails 5 robustness checks.
+  sbt-git's JGit cannot read a git worktree ("Bare Repository has neither a working tree,
+  nor an index"). Agents in worktrees ran sbt with an untracked
+  `ThisBuild / GitKeys.useConsoleForROGit := true`.
 - 2026-10-21 — **TabView on Apple: `NSTabViewController` with its segmented control on top,
   `UITabBarController` as a child controller; the selection rule stays in `TabSelection`**
   (#69). Kinds 24 and 25 are built, so `ShimKind.unbuilt` is empty and D9's placeholder no

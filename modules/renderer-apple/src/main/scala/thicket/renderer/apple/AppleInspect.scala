@@ -134,6 +134,30 @@ object AppleInspect {
       case _ => None
     }
 
+  /** The fit an image view draws with, read from it: `Some(ContentFit)`, or `None` when `h` is not an image view. */
+  def contentFit(h: Shim.Handle): Option[thicket.renderer.ContentFit] =
+    Shim.sui_get_content_fit(h) match {
+      case 0 => Some(thicket.renderer.ContentFit.Contain)
+      case 1 => Some(thicket.renderer.ContentFit.Cover)
+      case 2 => Some(thicket.renderer.ContentFit.Fill)
+      case _ => None
+    }
+
+  /** A text view's horizontal text alignment, read from it; `None` when it has none. */
+  def textAlign(h: Shim.Handle): Option[thicket.renderer.Alignment] =
+    Shim.sui_get_align(h) match {
+      case 0 => Some(thicket.renderer.Alignment.Start)
+      case 1 => Some(thicket.renderer.Alignment.Center)
+      case 2 => Some(thicket.renderer.Alignment.End)
+      case _ => None
+    }
+
+  /** The view a virtual list's table is showing for `row` now; `None` when that row is not on screen. */
+  def rowView(
+    table: Shim.Handle,
+    row:   Int
+  ): Option[Shim.Handle] = Option(Shim.sui_table_row_view(table, row))
+
   /** How far a vertical scroller is from the top of its content; 0 at the top, -1 if `h` is not a scroller. */
   def scrollOffset(h: Shim.Handle): Double = Shim.sui_scroll_offset(h)
 

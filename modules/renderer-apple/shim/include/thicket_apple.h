@@ -25,6 +25,10 @@ void sui_app_start(int32_t width, int32_t height, const char *title,
                    sui_void_cb ready, int64_t ctx);
 sui_handle sui_root_view(void);
 void sui_window_set_title(const char *title);
+/* Where a relative path of the app's own is: as given when it exists from the working
+   directory, otherwise inside the app bundle's resources — the lookup ImageSource.FromFile
+   makes. An iOS app's working directory is `/`, so its files are only in the bundle (#73). */
+const char *sui_resource_path(const char *path);
 
 /* --- widget construction ----------------------------------------------------- */
 /* kind: the view each toolkit builds. A different *widget* per platform is chosen here,
@@ -140,6 +144,9 @@ int32_t sui_table_materialised(sui_handle h);
 /* How many table sources the shim still owns. Falls back to zero once every
    virtual list is destroyed; the measurement that says destroying one frees it. */
 int32_t sui_table_live(void);
+/* The view the table is showing for `row` now, or NULL when that row is not on screen.
+   The platform's answer, so a table that kept a stale row after its data changed shows it. */
+sui_handle sui_table_row_view(sui_handle h, int32_t row);
 
 /* --- presentation ------------------------------------------------------------ */
 /* Shows an Alert or a Sheet over the app. Called after its children are mounted. */
@@ -217,6 +224,12 @@ int32_t sui_is_secure(sui_handle h);
 /* 1 when an image view holds a decoded image, 0 when it shows nothing, -1 when `h` is not
    an image view. The difference between a picture and an empty frame of the right size. */
 int32_t sui_has_image(sui_handle h);
+/* The fit an image view draws with, as sui_set_content_fit takes it: 0 contain, 1 cover,
+   2 fill. -1 when `h` is not an image view. */
+int32_t sui_get_content_fit(sui_handle h);
+/* A text view's horizontal text alignment, as sui_set_align takes it: 0 leading, 1 centre,
+   2 trailing. -1 when `h` carries no text alignment. */
+int32_t sui_get_align(sui_handle h);
 /* How far a vertical scroller's visible area is from the top of its content, in points:
    0 when it shows the top. -1 when `h` is not a scroller. */
 double sui_scroll_offset(sui_handle h);
