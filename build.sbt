@@ -98,29 +98,45 @@ val zioV = "2.1.26"
   * self-tests that drive the real toolkit in a real process; scoverage instruments neither, so those modules contribute
   * nothing here and their absence is not a gap in testing. `docs/12` §12.9 says which is which.
   *
-  * The minimum is a ratchet, set just under what is measured today. It exists to stop coverage sliding, not to be hit
-  * exactly — raise it when the real number moves up.
+  * The minimums are in [[coverageGate]], on the root project, because that is where `coverageAggregate` reads them.
   */
 lazy val coverageSettings = Seq(
-  coverageMinimumStmtTotal   := 87,
-  coverageMinimumBranchTotal := 83,
-  coverageFailOnMinimum      := true,
   // A `main` that parses argv and writes files. Its body is covered by running it, not by
   // a unit test, and mocking a filesystem to reach 100% would be testing the mock.
   coverageExcludedPackages := "thicket\\.tools\\.shim\\.Main.*",
-  // On sbt 2 nothing recreates the scoverage-data directory after a `clean`, and two
-  // separate things need it to exist:
-  //
-  //   - the *compiler* writes `scoverage.coverage` there, the metadata that maps a
-  //     measurement back to a statement. If the directory is missing it skips the file
-  //     silently, and the module then vanishes from the aggregate report with no error —
-  //     which is how `signals` disappeared while still producing measurements.
-  //   - instrumented code at *run* time writes one measurement file per thread, and
-  //     without the directory throws FileNotFoundException inside a test, which reads like
-  //     a test failure and is not one.
-  //
-  // `clean` must not share an sbt invocation with a coverage run: see docs/12 §12.9.
-  coverageOutputHTML := true
+  coverageOutputHTML       := true,
+  // `bin/coverage.sh` passes a fresh `-Dthicket.coverageRun` each run, and it goes into the
+  // compile's options so that no sbt 2 disk-cache entry can match: every coverage run really
+  // compiles. A cache hit restores the instrumented classes but not `scoverage.coverage`, the
+  // metadata that maps a measurement to a statement — the compiler writes that as a side
+  // effect — so a module whose metadata is gone drops out of the report with no error (#80).
+  // The option is inert: nothing reads the macro setting.
+  Compile / compile / scalacOptions ++= Def.uncached(
+    sys.props
+      .get("thicket.coverageRun")
+      .filter(_ => coverageEnabled.value)
+      .map(run => s"-Xmacro-settings:thicket.coverageRun=$run")
+      .toSeq
+  )
+)
+
+/** The coverage ratchet: set just under what is measured today, to stop coverage sliding, not to be hit exactly. Raise it
+  * when the real number moves up.
+  *
+  * It lives on the root project because `coverageAggregate` checks the aggregating project's own settings. Until #80 it
+  * sat on the modules, where nothing reads it, and the root kept the plugin's `coverageFailOnMinimum := false` — so the
+  * aggregate passed at 0.5%.
+  *
+  * The per-package floor is what catches a module losing its measurements. A Scala 3 coverage compile deletes the
+  * module's `scoverage.measurements.*` files, and the runtime records each statement once per JVM, so anything that
+  * recompiles a module after its tests have run in the same sbt invocation — a `BuildInfo` timestamp did, before #81 —
+  * leaves that module at ~0% while the total still looks plausible.
+  */
+lazy val coverageGate = Seq(
+  coverageMinimumStmtTotal      := 93,
+  coverageMinimumBranchTotal    := 87,
+  coverageMinimumStmtPerPackage := 85,
+  coverageFailOnMinimum         := true
 )
 
 lazy val commonSettings = Seq(
@@ -171,7 +187,8 @@ lazy val zioTestNative =
   * `buildTime` adds `BuildInfoOption.BuildTime` rather than a `buildTime` setting key — a setting is evaluated once per
   * sbt session, so it would record when the shell was started, not when the artefact was built. **Off by default**:
   * a timestamp makes every build of a published jar differ from the last, so the same commit never produces the same
-  * artefact (review 2026-10-20, P2-31). The gallery, which shows it, opts in.
+  * artefact (review 2026-10-20, P2-31). The gallery, which shows it, opts in. Turning it on for a tested module also
+  * breaks coverage: the regenerated source recompiles the module between its tests and the report (#80).
   */
 def thicketBuildInfo(
   pkg:       String,
@@ -668,6 +685,7 @@ lazy val root = project
     shimGen,
     sbtThicket
   )
+  .settings(coverageGate)
   .settings(
     publish / skip := true,
     name           := "thicket",
