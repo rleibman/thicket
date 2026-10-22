@@ -31,7 +31,7 @@ object NativeConformanceSpec extends ZIOSpecDefault {
       test("the failing checks are exactly the known upstream defects") {
         val results = JdbcConformance.run(NativeSqlite.driver, Files.createTempDirectory("thicket-conformance"))
         val failed = results.filterNot(_.passed).map(_.name).toSet
-        assertTrue(results.size >= 15, failed == JdbcConformance.knownNativeFailures) ??
+        assertTrue(results.size >= 17, failed == JdbcConformance.knownNativeFailures) ??
           results.map(r => s"${if r.passed then "ok  " else "FAIL"} ${r.name}: ${r.detail}").mkString("\n")
       },
       test("Sqlite.open and Sqlite.memory work with the given driver") {
@@ -44,6 +44,11 @@ object NativeConformanceSpec extends ZIOSpecDefault {
         m.createStatement().executeUpdate("create table t(x)")
         m.close()
         assertTrue(Files.exists(dirs.data.resolve("app.db")))
+      },
+      test("Sqlite.dataSource: connections share one file in the data directory") {
+        import NativeSqlite.given
+        val problems = DataSourceRoundTrip.problems
+        assertTrue(problems.isEmpty) ?? problems.mkString("; ")
       }
     )
 

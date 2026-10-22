@@ -346,7 +346,7 @@ SELFTEST=1 examples/todo-android/build.sh
 `checkLinux` is what CI runs (`.github/workflows/ci.yml`), with the GTK self-tests under
 xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 2026-10-21:
 signals 30, core 170, effect-zio 25, storage 14 and sqlite 2 per backend, storage-gtk 3,
-shim-gen 15, sbt-thicket 9; GTK 118 + 69 self-test checks, Android 28 + 84.
+shim-gen 15, sbt-thicket 9; GTK 119 + 69 self-test checks, Android 29 + 84.
 
 Coverage over the JVM-tested modules:
 
