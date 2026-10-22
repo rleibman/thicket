@@ -59,6 +59,13 @@ cell plus the spacing, every row at its tallest. **58/58** on macOS and **57/57*
 Falsified on both: ignoring the column count fails five checks, inserting at the end instead
 of in place fails two.
 
+**#78** added the Android gallery's linear-mount check to both Apple hosts, for a Column, a
+Row and a Grid: 2 000 children must mount in under three times 1 000 (off screen, fastest of
+three; unmounting is timed and printed, not checked). Grid on iOS went from 3.9 s / 16.6 s
+(ratio 4.2) to 42 ms / 93 ms (2.2), on macOS from 472 ms / 2.1 s (4.5) to 44 ms / 91 ms
+(2.1). The stack checks passed before the fix too (ratio 2.6–2.8, now 2.1–2.5), so for stacks
+the check guards a regression to quadratic, not the small search the fix removed.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name

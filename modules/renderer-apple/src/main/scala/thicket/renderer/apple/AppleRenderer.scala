@@ -525,12 +525,18 @@ final class AppleRenderer extends Renderer {
   override def createVirtualList(source: RowSource[Handle]): Handle = {
     // The id, not the closure, is what crosses to Swift: a C function pointer cannot close
     // over state (S4), so one static trampoline serves every table.
+    // Index -1 is the table handing a row view back for good (#78, review 2026-10-20 P2-8):
+    // the cell hosting it was freed, or a re-bind replaced it. `discard` disposes the row's
+    // slot and owner, and ignores a view the source no longer holds.
     val id = Handles.registerRow(
       (
         index,
         recycled
       ) =>
-        if index >= 0 && index < source.count then source.bind(index, recycled)
+        if index == -1 then {
+          recycled.foreach(source.discard)
+          null.asInstanceOf[Handle]
+        } else if index >= 0 && index < source.count then source.bind(index, recycled)
         else null.asInstanceOf[Handle]
     )
     val table = Shim.sui_create_table(Handles.rowTrampoline, id)
@@ -545,6 +551,11 @@ final class AppleRenderer extends Renderer {
     * 000-row list silently materialises 10 000 rows.
     */
   def materialisedRows(handle: Handle): Int = Shim.sui_table_materialised(handle)
+
+  /** How many of those row views the table has handed back for good, each through `RowSource.discard`. Built minus
+    * discarded is what the table still holds.
+    */
+  def discardedRows(handle: Handle): Int = Shim.sui_table_discarded(handle)
 
   def measure(
     handle:      Handle,

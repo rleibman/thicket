@@ -253,8 +253,12 @@ private final class ZStackView: UIView {
 /// so a column settles at its widest cell and a row at its tallest — what `NSGridView`,
 /// `GtkGrid` and `GridLayout` all do by default.
 ///
-/// The whole layout is rebuilt on every change, from the order kept here. Every way a cell
-/// leaves comes through [[remove]]: `sui_remove_child` and `sui_destroy` call it.
+/// The layout is rebuilt from the order kept here, with two exceptions that keep a mount and
+/// a teardown linear (#78, review 2026-10-20 P2-14): an append only adds the new cell's
+/// constraints, and a removal marks the layout stale and leaves the rebuild to the next
+/// constraint pass, so a teardown that removes every cell rebuilds once rather than once per
+/// cell. Every way a cell leaves comes through [[remove]]: `sui_remove_child` and
+/// `sui_destroy` call it.
 private final class GridView: UIView {
   var columns = 1 {
     didSet { if columns != oldValue { relayout() } }
@@ -267,7 +271,14 @@ private final class GridView: UIView {
   }
   private(set) var cells: [UIView] = []
   private var laid: [NSLayoutConstraint] = []
-  private var guides: [UILayoutGuide] = []
+  private var cols: [UILayoutGuide] = []
+  private var rows: [UILayoutGuide] = []
+  /// The grid's edges against its last column and last row: the only constraints an append
+  /// replaces rather than adds to.
+  private var trailingHug: [NSLayoutConstraint] = []
+  private var bottomHug: [NSLayoutConstraint] = []
+  /// A cell was removed since the last rebuild; the next constraint pass rebuilds.
+  private var stale = false
 
   init() {
     super.init(frame: .zero)
@@ -277,6 +288,17 @@ private final class GridView: UIView {
   required init?(coder: NSCoder) { fatalError("not used") }
 
   func insert(_ c: UIView, after: UIView?) {
+    // Appending a new cell, which is every cell of a mount, adds its own constraints and
+    // leaves everyone else's: nothing before it moves. Rebuilding made mounting n cells
+    // O(n²) (#78, review 2026-10-20 P2-14). A move is never this case, because a moved view
+    // is already a subview.
+    if !stale, let a = after, a === cells.last, c.superview !== self {
+      c.translatesAutoresizingMaskIntoConstraints = false
+      cells.append(c)
+      addSubview(c)
+      append(c)
+      return
+    }
     // A move arrives as an insert of a view that is already a cell.
     cells.removeAll { $0 === c }
     let at: Int
@@ -287,10 +309,24 @@ private final class GridView: UIView {
     relayout()
   }
 
+  /// The first removal also takes the whole placement down, in one batch. A view leaving its
+  /// superview has UIKit search the constraints there for the ones that name it, so with the
+  /// placement left up each removal cost O(n), and a teardown was still O(n²) (measured on
+  /// the simulator: 0.5 s for 1 000 cells, 2.2 s for 2 000). Nothing is laid out from the
+  /// missing constraints: the constraint pass that rebuilds them comes before any layout.
   func remove(_ c: UIView) {
     guard let i = cells.firstIndex(of: c) else { return }
     cells.remove(at: i)
-    relayout()
+    if !stale {
+      stale = true
+      takeDown()
+      setNeedsUpdateConstraints()
+    }
+  }
+
+  override func updateConstraints() {
+    if stale { relayout() }
+    super.updateConstraints()
   }
 
   /// Where this construction placed a cell. Ours, so the self-test checks the frames too.
@@ -298,11 +334,116 @@ private final class GridView: UIView {
     cells.firstIndex(of: c).map { ($0 / columns, $0 % columns) }
   }
 
-  private func relayout() {
+  // A guide's wish to be zero sits between the grid's wish to hug its columns (250, below)
+  // and a cell's compression resistance (750): it gives way to the cells, so a column is
+  // never narrower than its widest one, but not to a parent stretching the grid. At 50 it
+  // lost to the hug, and the stretch went into a column (measured: the first, 264 wide
+  // around a widest cell of 193).
+  private func weakly(_ c: NSLayoutConstraint) -> NSLayoutConstraint {
+    c.priority = UILayoutPriority(500)
+    return c
+  }
+
+  /// Column `j`'s guide, after column `j - 1` (or the padding), wanting to be zero wide.
+  private func columnGuide(_ j: Int) -> (UILayoutGuide, [NSLayoutConstraint]) {
+    let g = UILayoutGuide()
+    addLayoutGuide(g)
+    return (g, [
+      j == 0
+        ? g.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding)
+        : g.leadingAnchor.constraint(equalTo: cols[j - 1].trailingAnchor, constant: spacing),
+      weakly(g.widthAnchor.constraint(equalToConstant: 0))
+    ])
+  }
+
+  /// Row `i`'s guide, below row `i - 1` (or the padding), wanting to be zero tall.
+  private func rowGuide(_ i: Int) -> (UILayoutGuide, [NSLayoutConstraint]) {
+    let g = UILayoutGuide()
+    addLayoutGuide(g)
+    return (g, [
+      i == 0
+        ? g.topAnchor.constraint(equalTo: topAnchor, constant: padding)
+        : g.topAnchor.constraint(equalTo: rows[i - 1].bottomAnchor, constant: spacing),
+      weakly(g.heightAnchor.constraint(equalToConstant: 0))
+    ])
+  }
+
+  // The grid hugs its columns, but a parent that stretches it — a `.fill` stack does — gets
+  // the extra as space after the last column, as GTK leaves it, rather than in a column.
+  private func hug(_ edge: NSLayoutConstraint, _ floor: NSLayoutConstraint) -> [NSLayoutConstraint] {
+    edge.priority = .defaultLow
+    return [floor, edge]
+  }
+
+  private func hugTrailing() -> [NSLayoutConstraint] {
+    let last = cols[cols.count - 1]
+    return hug(
+      trailingAnchor.constraint(equalTo: last.trailingAnchor, constant: padding),
+      trailingAnchor.constraint(greaterThanOrEqualTo: last.trailingAnchor, constant: padding)
+    )
+  }
+
+  private func hugBottom() -> [NSLayoutConstraint] {
+    let last = rows[rows.count - 1]
+    return hug(
+      bottomAnchor.constraint(equalTo: last.bottomAnchor, constant: padding),
+      bottomAnchor.constraint(greaterThanOrEqualTo: last.bottomAnchor, constant: padding)
+    )
+  }
+
+  // Leading and top, inside the guides: a guide is pushed out to its largest cell, and a
+  // smaller cell keeps its own size rather than being stretched.
+  private func place(_ c: UIView, at k: Int) -> [NSLayoutConstraint] {
+    let col = cols[k % columns]
+    let row = rows[k / columns]
+    return [
+      c.leadingAnchor.constraint(equalTo: col.leadingAnchor),
+      c.trailingAnchor.constraint(lessThanOrEqualTo: col.trailingAnchor),
+      c.topAnchor.constraint(equalTo: row.topAnchor),
+      c.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor)
+    ]
+  }
+
+  /// The last of `cells`, constrained as [[relayout]] would constrain it. A new column only
+  /// while the first row is filling, a new row when the last one is full; then the grid's
+  /// edge moves out to it. Nothing else is touched.
+  private func append(_ c: UIView) {
+    let k = cells.count - 1
+    var cs: [NSLayoutConstraint] = []
+    if k % columns == cols.count {
+      let (g, gc) = columnGuide(cols.count)
+      cols.append(g)
+      cs += gc
+      NSLayoutConstraint.deactivate(trailingHug)
+      trailingHug = hugTrailing()
+      cs += trailingHug
+    }
+    if k / columns == rows.count {
+      let (g, gc) = rowGuide(rows.count)
+      rows.append(g)
+      cs += gc
+      NSLayoutConstraint.deactivate(bottomHug)
+      bottomHug = hugBottom()
+      cs += bottomHug
+    }
+    cs += place(c, at: k)
+    laid += cs
+    NSLayoutConstraint.activate(cs)
+  }
+
+  private func takeDown() {
     NSLayoutConstraint.deactivate(laid)
-    guides.forEach(removeLayoutGuide)
+    (cols + rows).forEach(removeLayoutGuide)
     laid = []
-    guides = []
+    cols = []
+    rows = []
+    trailingHug = []
+    bottomHug = []
+  }
+
+  private func relayout() {
+    stale = false
+    takeDown()
     guard !cells.isEmpty else {
       laid = [widthAnchor.constraint(equalToConstant: 2 * padding), heightAnchor.constraint(equalToConstant: 2 * padding)]
       NSLayoutConstraint.activate(laid)
@@ -311,63 +452,21 @@ private final class GridView: UIView {
     // As many columns as there are cells to fill them, up to `columns`, as on GTK.
     let width = min(columns, cells.count)
     let height = (cells.count + columns - 1) / columns
-    let cols = (0..<width).map { _ in UILayoutGuide() }
-    let rows = (0..<height).map { _ in UILayoutGuide() }
-    guides = cols + rows
-    guides.forEach(addLayoutGuide)
-
-    // A guide's wish to be zero sits between the grid's wish to hug its columns (250, below)
-    // and a cell's compression resistance (750): it gives way to the cells, so a column is
-    // never narrower than its widest one, but not to a parent stretching the grid. At 50 it
-    // lost to the hug, and the stretch went into a column (measured: the first, 264 wide
-    // around a widest cell of 193).
-    func weakly(_ c: NSLayoutConstraint) -> NSLayoutConstraint {
-      c.priority = UILayoutPriority(500)
-      return c
-    }
     var cs: [NSLayoutConstraint] = []
-    for (j, g) in cols.enumerated() {
-      cs.append(
-        j == 0
-          ? g.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding)
-          : g.leadingAnchor.constraint(equalTo: cols[j - 1].trailingAnchor, constant: spacing)
-      )
-      cs.append(weakly(g.widthAnchor.constraint(equalToConstant: 0)))
+    for j in 0..<width {
+      let (g, gc) = columnGuide(j)
+      cols.append(g)
+      cs += gc
     }
-    for (i, g) in rows.enumerated() {
-      cs.append(
-        i == 0
-          ? g.topAnchor.constraint(equalTo: topAnchor, constant: padding)
-          : g.topAnchor.constraint(equalTo: rows[i - 1].bottomAnchor, constant: spacing)
-      )
-      cs.append(weakly(g.heightAnchor.constraint(equalToConstant: 0)))
+    for i in 0..<height {
+      let (g, gc) = rowGuide(i)
+      rows.append(g)
+      cs += gc
     }
-    // The grid hugs its columns, but a parent that stretches it — a `.fill` stack does — gets
-    // the extra as space after the last column, as GTK leaves it, rather than in a column.
-    func hug(_ edge: NSLayoutConstraint, _ floor: NSLayoutConstraint) -> [NSLayoutConstraint] {
-      edge.priority = .defaultLow
-      return [floor, edge]
-    }
-    cs += hug(
-      trailingAnchor.constraint(equalTo: cols[width - 1].trailingAnchor, constant: padding),
-      trailingAnchor.constraint(greaterThanOrEqualTo: cols[width - 1].trailingAnchor, constant: padding)
-    )
-    cs += hug(
-      bottomAnchor.constraint(equalTo: rows[height - 1].bottomAnchor, constant: padding),
-      bottomAnchor.constraint(greaterThanOrEqualTo: rows[height - 1].bottomAnchor, constant: padding)
-    )
-    // Leading and top, inside the guides: a guide is pushed out to its largest cell, and a
-    // smaller cell keeps its own size rather than being stretched.
-    for (k, c) in cells.enumerated() {
-      let col = cols[k % columns]
-      let row = rows[k / columns]
-      cs += [
-        c.leadingAnchor.constraint(equalTo: col.leadingAnchor),
-        c.trailingAnchor.constraint(lessThanOrEqualTo: col.trailingAnchor),
-        c.topAnchor.constraint(equalTo: row.topAnchor),
-        c.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor)
-      ]
-    }
+    trailingHug = hugTrailing()
+    bottomHug = hugBottom()
+    cs += trailingHug + bottomHug
+    for (k, c) in cells.enumerated() { cs += place(c, at: k) }
     laid = cs
     NSLayoutConstraint.activate(laid)
   }
@@ -1123,14 +1222,20 @@ public func sui_insert_after(
     return
   }
 
+  // Appending after the last child, which is every child of a mount, is answered without a
+  // search. The search below is linear, and doing it for every child made mounting n
+  // children O(n²) (#78, review 2026-10-20 P2-14).
+  let arranged = stack.arrangedSubviews
   let index: Int
   if let a = after {
     let target = view(a)
-    index = (stack.arrangedSubviews.firstIndex(of: target).map { $0 + 1 }) ?? stack.arrangedSubviews.count
+    index = arranged.last === target
+      ? arranged.count
+      : (arranged.firstIndex(of: target).map { $0 + 1 }) ?? arranged.count
   } else {
     index = 0
   }
-  stack.insertArrangedSubview(c, at: min(index, stack.arrangedSubviews.count))
+  stack.insertArrangedSubview(c, at: min(index, arranged.count))
 }
 
 /// Kind 9 rather than kind 6. The axis is not stored anywhere on the Scala side of the
@@ -1147,11 +1252,21 @@ private func isHorizontalScroller(_ s: UIScrollView) -> Bool {
 /// `UITableView` recycles *cells*, not the views inside them, so the Scala view is hosted in
 /// a cell's `contentView` and the recycled handle is whatever that cell held last. AppKit
 /// hands back the row view itself.
+///
+/// A row view leaves for good in two ways, and both are handed back to Scala as
+/// `RowSource.discard` (index -1), which disposes its slot and owner (#78, review 2026-10-20
+/// P2-8): the table frees the cell hosting it, or a re-bind returns a different view and
+/// the old one is taken out of the cell. Before, nothing was handed back, so every row view a
+/// freed cell had hosted kept its slot, its owner and its effects for as long as the list
+/// was mounted.
 private final class TableSource: NSObject, UITableViewDataSource, UITableViewDelegate {
   let cb: sui_row_cb
   let ctx: Int64
   var count: Int = 0
-  var materialised = Set<ObjectIdentifier>()
+  /// Row views the table was handed that it did not already hold, and how many of those it
+  /// has handed back. Counts, not a set of identities: a freed view's address is reused.
+  var built = 0
+  var discarded = 0
 
   init(cb: @escaping sui_row_cb, ctx: Int64) {
     self.cb = cb
@@ -1161,20 +1276,25 @@ private final class TableSource: NSObject, UITableViewDataSource, UITableViewDel
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { count }
 
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-    let cell = tableView.dequeueReusableCell(withIdentifier: rowId)
-      ?? UITableViewCell(style: .default, reuseIdentifier: rowId)
+    let cell = (tableView.dequeueReusableCell(withIdentifier: rowId) as? RowCell)
+      ?? RowCell(style: .default, reuseIdentifier: rowId)
+    cell.source = self
 
     // Whatever this cell last hosted is the recycled view.
-    let previous = cell.contentView.subviews.first
+    let previous = cell.hosted
     let recycledPtr = previous.map { Unmanaged.passUnretained($0).toOpaque() }
     guard let produced = cb(ctx, Int32(indexPath.row), recycledPtr) else { return cell }
     let v = Unmanaged<UIView>.fromOpaque(produced).takeUnretainedValue()
-    materialised.insert(ObjectIdentifier(v))
 
     // Re-binding usually returns the same view, in which case re-pinning it would add a
     // duplicate set of constraints on every scroll.
     if v !== previous {
-      previous?.removeFromSuperview()
+      built += 1
+      if let old = previous {
+        old.removeFromSuperview()
+        discard(old)
+      }
+      cell.hosted = v
       v.translatesAutoresizingMaskIntoConstraints = false
       cell.contentView.addSubview(v)
       NSLayoutConstraint.activate([
@@ -1185,6 +1305,33 @@ private final class TableSource: NSObject, UITableViewDataSource, UITableViewDel
       ])
     }
     return cell
+  }
+
+  /// Hands `v` back to Scala. The Scala side ignores a view it no longer holds, so a late or
+  /// repeated discard is harmless; a view Scala has already destroyed is never passed,
+  /// because destroying one takes it out of its cell first.
+  func discard(_ v: UIView) {
+    discarded += 1
+    _ = cb(ctx, -1, Unmanaged.passUnretained(v).toOpaque())
+  }
+}
+
+/// A table cell that says when the table has freed it. `UITableView` frees cells on its own
+/// schedule — its reuse queue is purged on a memory warning, for one — and the row view the
+/// cell hosted is then shown by nothing, but still held by Scala until it is discarded.
+private final class RowCell: UITableViewCell {
+  weak var source: TableSource?
+  var hosted: UIView?
+
+  deinit {
+    // Not from inside the cell's deallocation: discarding destroys the view, which detaches
+    // it from this cell's content view, mid-teardown. On the next turn instead, holding the
+    // view until then. A source gone by then went with its table, whose rows were disposed
+    // with it.
+    guard let v = hosted, let s = source else { return }
+    DispatchQueue.main.async { [weak s] in
+      s?.discard(v)
+    }
   }
 }
 
@@ -1220,7 +1367,29 @@ public func sui_table_reload(_ h: UnsafeMutableRawPointer, _ count: Int32) {
 @_cdecl("sui_table_materialised")
 public func sui_table_materialised(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let (_, s) = table(of: h) else { return 0 }
-  return Int32(s.materialised.count)
+  return Int32(s.built)
+}
+
+@_cdecl("sui_table_discarded")
+public func sui_table_discarded(_ h: UnsafeMutableRawPointer) -> Int32 {
+  guard let (_, s) = table(of: h) else { return 0 }
+  return Int32(s.discarded)
+}
+
+@_cdecl("sui_table_scroll_to")
+public func sui_table_scroll_to(_ h: UnsafeMutableRawPointer, _ row: Int32) {
+  guard let (t, s) = table(of: h), row >= 0, Int(row) < s.count else { return }
+  t.scrollToRow(at: IndexPath(row: Int(row), section: 0), at: .top, animated: false)
+  t.layoutIfNeeded()
+}
+
+/// The notification the system posts, which a `UITableView` answers by freeing the cells in
+/// its reuse queue — and so the one way to have it free cells on demand.
+@_cdecl("sui_post_memory_warning")
+public func sui_post_memory_warning() -> Int32 {
+  NotificationCenter.default.post(
+    name: UIApplication.didReceiveMemoryWarningNotification, object: UIApplication.shared)
+  return 1
 }
 
 @_cdecl("sui_table_live")

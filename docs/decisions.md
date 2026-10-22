@@ -72,6 +72,37 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-21 — **Apple: UIKit discards the rows of freed cells; appends to stacks and grids
+  are O(1), grid removals are batched** (#78, review 2026-10-20 P2-8 and P2-14, Apple parts).
+  *Discard:* the row callback carries it, index -1 with the row view, so a table still
+  crosses the boundary as one id; `AppleRenderer` calls `RowSource.discard`. UIKit hosts each
+  row in a `RowCell` whose `deinit` posts the discard to the next turn (not from inside the
+  cell's deallocation), and a re-bind that replaces a cell's view discards the old one.
+  `sui_table_materialised` is now a count of row views built, plus `sui_table_discarded`,
+  `sui_table_scroll_to` and `sui_post_memory_warning` for the probe. Measured with the
+  extended `LazyProbe`, scrolling all 10 000 rows: UIKit built 46 and holds 46, AppKit built
+  43 and holds 43; a UIKit memory warning freed 10 cells, 10 rows were discarded and the
+  renderer's per-handle entries went 49 → 39. Control: with the `deinit` disabled, 0
+  discarded and 49 → 49, the check fails. AppKit needs no hook: `NSTableView` freed no row view
+  in the whole scroll, and it reuses the Scala view itself, so a drop could not be seen
+  without a wrapper view; none was added. *Appends:* a stack checks `arrangedSubviews.last`
+  before searching; both grids place an appended cell without rebuilding (AppKit fills the
+  next `NSGridView` slot, column or row; UIKit adds the cell's constraints and, when it opens
+  a column or row, one guide, moving the grid's hug edge to it). The guides' zero wish keeps
+  priority 500. A removal empties the cell (AppKit) or takes the whole placement down in one
+  batch (UIKit, where a view leaving searches its superview's constraints) and leaves the
+  rebuild to the next constraint pass; anything reading AppKit's grid flushes first. Mounting
+  1 000 vs 2 000 children, fastest of 3, off screen, both gallery self-tests (machine loaded
+  by other agents): Grid iOS 3 935 / 16 581 ms (4.21×) → 42.4 / 92.6 ms (2.18×), macOS 472 /
+  2 113 ms (4.48×) → 43.7 / 90.6 ms (2.08×); Column iOS 2.77× → 2.50×, macOS 2.56× → 2.13×;
+  Row similarly. Grid teardown iOS 4.3 / 18.2 s → 52 / 200 ms, macOS 431 / 2 013 ms → 13 / 36
+  ms. Reverting all three shim fixes on the final code brings every number back (Grid 4.08×
+  iOS, 4.34× macOS, and fails its check; stacks 2.5–2.8×). The new check is the Android one,
+  2 000 under 3× 1 000; stacks passed it before the fix as well, so for them it only guards
+  against a return to quadratic. Not done: a stack's own layout of 2 000 views is superlinear
+  in the platform (AppKit 0.5 s → 3.9 s), and stack teardown is ~3× for 2×; both are the
+  toolkit's, not the shim's.
+
 - 2026-10-21 — **D9 on Apple: an unbuilt kind is a labelled placeholder, a named failure
   under self-test, and Objective-C exceptions keep their reason** (#74, #72). shim-gen now
   generates `ShimKind.unbuilt` from the `None`s in `Abi.kinds` (today `{24, 25}`, TabView and

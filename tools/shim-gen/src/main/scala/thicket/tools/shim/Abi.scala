@@ -382,7 +382,8 @@ object Abi {
       Handle,
       List(p("cb", RowCb), p("ctx", I64)),
       doc = "An NSTableView / UITableView inside its scroller. `cb` is called for each row" + "\n" +
-        "   that becomes visible, with a recycled view or NULL."
+        "   that becomes visible, with a recycled view or NULL. It is called with index -1 and a" + "\n" +
+        "   row view when the table has let go of that view for good: RowSource.discard. NULL back."
     ),
     Fn(
       "sui_table_reload",
@@ -394,8 +395,31 @@ object Abi {
       "sui_table_materialised",
       I32,
       List(p("h", Handle)),
-      doc = "How many row views the table has actually created. The measurement that says" + "\n" +
-        "   virtualisation is working, so it is part of the ABI rather than the self-test."
+      doc = "How many row views the table has been handed that it did not already hold: every row" + "\n" +
+        "   built, ever. The measurement that says virtualisation is working, so it is part of" + "\n" +
+        "   the ABI rather than the self-test."
+    ),
+    Fn(
+      "sui_table_discarded",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many of those row views the table has handed back through `cb` with index -1." + "\n" +
+        "   Built minus discarded is what the table still holds, and must stay bounded."
+    ),
+    Fn(
+      "sui_table_scroll_to",
+      Void,
+      List(p("h", Handle), p("row", I32)),
+      doc = "Scrolls row `row` into view at once, without animation, and lays the table out, so the" + "\n" +
+        "   rows it needs are bound before this returns. For the self-test's long scroll."
+    ),
+    Fn(
+      "sui_post_memory_warning",
+      I32,
+      Nil,
+      doc = "Tells the app memory is short, as the system would: UIKit's memory-warning notification," + "\n" +
+        "   which has a table free the cells in its reuse queue. 0 where the platform has no such" + "\n" +
+        "   notice (AppKit). For the self-test that shows a freed row is discarded."
     ),
     Fn(
       "sui_table_live",

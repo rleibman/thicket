@@ -130,13 +130,25 @@ void sui_run_on_main_after(int32_t delay_ms, sui_void_cb cb, int64_t ctx);
 /* The one place control is inverted: everywhere else Scala builds a tree and the shim
    obeys, but a table asks for the row it is about to show and recycles the ones it is not. */
 /* An NSTableView / UITableView inside its scroller. `cb` is called for each row
-   that becomes visible, with a recycled view or NULL. */
+   that becomes visible, with a recycled view or NULL. It is called with index -1 and a
+   row view when the table has let go of that view for good: RowSource.discard. NULL back. */
 sui_handle sui_create_table(sui_row_cb cb, int64_t ctx);
 /* The new row count, from RowSource.onInvalidate. */
 void sui_table_reload(sui_handle h, int32_t count);
-/* How many row views the table has actually created. The measurement that says
-   virtualisation is working, so it is part of the ABI rather than the self-test. */
+/* How many row views the table has been handed that it did not already hold: every row
+   built, ever. The measurement that says virtualisation is working, so it is part of
+   the ABI rather than the self-test. */
 int32_t sui_table_materialised(sui_handle h);
+/* How many of those row views the table has handed back through `cb` with index -1.
+   Built minus discarded is what the table still holds, and must stay bounded. */
+int32_t sui_table_discarded(sui_handle h);
+/* Scrolls row `row` into view at once, without animation, and lays the table out, so the
+   rows it needs are bound before this returns. For the self-test's long scroll. */
+void sui_table_scroll_to(sui_handle h, int32_t row);
+/* Tells the app memory is short, as the system would: UIKit's memory-warning notification,
+   which has a table free the cells in its reuse queue. 0 where the platform has no such
+   notice (AppKit). For the self-test that shows a freed row is discarded. */
+int32_t sui_post_memory_warning(void);
 /* How many table sources the shim still owns. Falls back to zero once every
    virtual list is destroyed; the measurement that says destroying one frees it. */
 int32_t sui_table_live(void);

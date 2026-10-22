@@ -234,7 +234,7 @@ every remaining entry before it is built, not after.
 |---|---|---|
 | Fine-grained signals | `modules/signals` | done — glitch-free, property-tested on JVM/JS/Native |
 | Keyed reconciliation | `Reconciler` | done — `Show`, `Switch`, `ForEach`, `Fragment`, in-place `moveAfter` |
-| Virtualised list | `LazyColumn` + `RowSource` | done — all four recycle. Materialised rows for a 10 000-row list: GTK **205**, Android **66**, AppKit **40**, UIKit **34** |
+| Virtualised list | `LazyColumn` + `RowSource` | done — all four recycle. Materialised rows for a 10 000-row list: GTK **205**, Android **66**, AppKit **40**, UIKit **34**. Rows the platform lets go of are discarded (disposed) on GTK, Android and UIKit (#78: scrolling all 10 000 rows holds 43 on AppKit and 46 on UIKit; a UIKit memory warning frees 10 cells and their 10 rows are discarded). AppKit was measured never to free one while mounted |
 | Navigation | `Nav`, `NavHost`, `AppRoot` | done — stack, title, Up and toolbar actions are native chrome, and every renderer now consumes `AppRoot.pages` so the stack stays alive: `AdwNavigationView` on GTK (#32), `UINavigationController` on iOS and a sidebar on macOS (#29), a `FrameLayout` plus `android.transition.Slide` on Android. Android deliberately avoids Fragments — `android.app.Fragment` is deprecated and the AndroidX one would be a new dependency |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, **per-subtree `Provide`**; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
