@@ -121,12 +121,12 @@ object Gallery {
 
   /** The logo, as a file and as the bytes of that file. A host with no filesystem path to it — an APK — passes the
     * bytes to [[app]] itself; `FromFile` then finds it in the APK's assets at the same relative path.
+    *
+    * [[logoSvg]] where the platform's image decoder draws SVG (GTK, through gdk-pixbuf); [[logo]], the PNG made from it
+    * by `bin/logo-assets.sh`, where it takes raster only (Android's `BitmapFactory`).
     */
-  val logo: String = "docs/assets/thicket-logo.png"
-
-  /** The bytes at `path`, relative to the working directory — empty when there is nothing there. A host whose working
-    * directory is not the repository (an iOS app's is `/`) passes its own path to the file.
-    */
+  val logo:                           String = "docs/assets/thicket-logo.png"
+  val logoSvg:                        String = "docs/assets/thicket-logo.svg"
   def logoBytes(path: String = logo): Array[Byte] =
     scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path))).getOrElse(Array.emptyByteArray)
 
@@ -155,9 +155,10 @@ object Gallery {
   val effectResult: String = "Loaded 42, on the UI thread"
 
   def screen(
-    model:  Model,
-    loaded: Signal[RemoteData[Nothing, String]],
-    logo:   Array[Byte]
+    model:    Model,
+    loaded:   Signal[RemoteData[Nothing, String]],
+    logoFile: String,
+    logo:     Array[Byte]
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -272,7 +273,7 @@ object Gallery {
               // The badge case: trailing and top, so the two axes are told apart. The count is
               // the ForEach section's row count, so "Add" in the toolbar proves it is bound.
               ZStack(Alignment.End, Alignment.Start)(
-                Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Contain),
+                Image(ImageSource.FromFile(logoFile), fit = ContentFit.Contain),
                 Label(model.rows.map(rs => s"${rs.size} rows"), style = TextRole.Caption)
               ),
               // Centred, the default: a spinner over the content it is waiting on. Always
@@ -329,8 +330,8 @@ object Gallery {
           ),
           section("Image — the three content fits")(
             Row(spacing = 8)(
-              Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Contain),
-              Image(ImageSource.FromFile(Gallery.logo), fit = ContentFit.Cover),
+              Image(ImageSource.FromFile(logoFile), fit = ContentFit.Contain),
+              Image(ImageSource.FromFile(logoFile), fit = ContentFit.Cover),
               // The third fit, and the other source: bytes the app already holds, decoded by the
               // platform (review 2026-10-20, P2-23).
               Image(ImageSource.FromBytes(logo), fit = ContentFit.Fill)
@@ -464,8 +465,15 @@ object Gallery {
   /** The running app's navigation, for a host's self-test to drive. Set by [[app]]. */
   var currentNav: Option[Nav[Route]] = None
 
-  /** The whole app, for a host to mount. Hosts differ only in how they start. */
-  def app(logo: Array[Byte] = logoBytes())(using Owner): AppRoot = {
+  /** The whole app, for a host to mount. Hosts differ only in how they start, and in which logo file their platform can
+    * draw.
+    */
+  def app(
+    logoFile: String = logo,
+    logo:     Array[Byte] = Array.emptyByteArray
+  )(using Owner
+  ): AppRoot = {
+    val bytes = if logo.nonEmpty then logo else logoBytes(logoFile)
     val model = Model()
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
@@ -473,7 +481,7 @@ object Gallery {
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logo)
+        val s = screen(model, loaded, logoFile, bytes)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

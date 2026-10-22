@@ -421,3 +421,13 @@ should not be made until M1.
   `core` since its last real reading (#80); and some record of a previous compile survives a
   private sbt 2 cache, a fresh `sbt.cacheversion` and cleared `target/streams`, so
   `bin/coverage.sh` still has to wipe the machine-wide cache.
+
+## 9.10 Notes added 2026-10-21
+
+- **§9.9's coverage item is answered** (#80). `signals` and `core` lost their measurements because
+  a `BuildInfo` timestamp recompiled them after their tests ran, and a Scala 3 coverage compile
+  deletes the measurement files. The ratchet never fired because `coverageAggregate` reads the
+  minimums from the root project, not the modules. The machine-wide cache wipe is gone. Each
+  run puts a fresh marker in the coverage compile's options, so it never hits the cache. The
+  "inc_compile_3.zip is missing" failures from the earlier attempts did not recur with this
+  approach, including after deleting `target/out`; what caused them was not established.
