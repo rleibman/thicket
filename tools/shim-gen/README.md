@@ -3,8 +3,8 @@
 The Apple ABI, described once, plus the check that says the four hand-written copies of it
 still agree.
 
-*Counts below are from when this was written (34 functions). As of 2026-10-20 `Abi.scala`
-describes every `sui_*` function — 99 externs in the generated `Shim.scala` — and 26 kind
+*Counts below are from when this was written (34 functions). As of 2026-10-21 `Abi.scala`
+describes every `sui_*` function — 110 externs in the generated `Shim.scala` — and 26 kind
 codes; the argument for generating them only got stronger.*
 
 Plain JVM. No Scala Native, no Xcode, no Swift toolchain — `sbt shimGen/testOnly *` runs
