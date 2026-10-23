@@ -50,7 +50,10 @@ final class AppleRenderer extends Renderer {
   }
 
   /** Entries across every per-handle table. For the self-tests: it must come back down when widgets go. */
-  def tableEntries: Int = perHandleMaps.map(_.size).sum + perHandleSets.map(_.size).sum
+  def tableEntries: Int = perHandleMaps.map(_.size).sum + perHandleSets.map(_.size).sum + tabs.entries
+
+  /** TabView and Tab (#69): the controllers are the shim's; the rule for keeping the user on their tab is here. */
+  private val tabs = AppleTabs()
 
   private val kinds = perHandle[WidgetKind]
   private val tapIds = perHandle[Long]
@@ -74,6 +77,24 @@ final class AppleRenderer extends Renderer {
     * a test can tell the two scrollers in a screen apart without a tree-order guess.
     */
   private val horizontalScrolls = perHandleSet
+
+  /** D9 (#74): a kind the shims have not built yet (`ShimKind.unbuilt`, from `Abi.kinds`) is a Column holding a label
+    * that says so, with the kind's own children below the label. Before this, the shim's fallback built a plain view
+    * and a TabView's tabs piled up silently, and on AppKit the fallback could not hold children at all: the run died
+    * with "uncaught foreign exception" and no reason (#72). Keyed by the box; the value is the label, which the
+    * reconciler does not know about, so `destroy` frees it.
+    */
+  private val placeholders = perHandle[Handle]
+
+  /** Under a self-test an unbuilt kind throws instead, so CI cannot pass over it (D9). `THICKET_ALLOW_UNBUILT=1` lets a
+    * local run carry on with the placeholder, to measure everything else; CI never sets it.
+    */
+  lazy private val strictUnbuilt: Boolean =
+    Seq("THICKET_SELFTEST", "THICKET_GALLERY_SELFTEST", "THICKET_LAZYTEST").exists(sys.env.contains) &&
+      !sys.env.contains("THICKET_ALLOW_UNBUILT")
+
+  /** The handles standing in for unbuilt kinds, for a self-test to name them. */
+  def placeholderHandles: Set[Handle] = placeholders.keySet.toSet
 
   def platform: String = "appkit"
 
@@ -119,7 +140,7 @@ final class AppleRenderer extends Renderer {
       case WidgetKind.DatePicker        => ShimKind.DatePicker
       case WidgetKind.Grid              => ShimKind.Grid
       case WidgetKind.IconButton        => ShimKind.IconButton
-      // Reserved for the Mac (#69); the shims build them as their default view until then.
+      // An NSTabViewController / a UITabBarController, and one item each (#69).
       case WidgetKind.TabView => ShimKind.TabView
       case WidgetKind.Tab     => ShimKind.Tab
 
@@ -148,11 +169,31 @@ final class AppleRenderer extends Renderer {
     kind:  WidgetKind,
     props: Seq[Prop]
   ): Handle = {
-    val h = Shim.sui_create(kindCode(kind, props))
+    val code = kindCode(kind, props)
+    if ShimKind.unbuilt(code) then return placeholder(kind)
+    val h = Shim.sui_create(code)
     kinds(h) = kind
     if kind == WidgetKind.Scroll && isHorizontal(props) then horizontalScrolls += h
+    // Before `update`: the selection arrives with the props, before any tab does.
+    if kind == WidgetKind.TabView then tabs.register(h)
     update(h, props)
     h
+  }
+
+  private def placeholder(kind: WidgetKind): Handle = {
+    val message = s"$kind is not built on Apple yet"
+    if strictUnbuilt then
+      throw IllegalStateException(
+        s"$message (D9, #74): a self-test does not pass over an unbuilt kind. " +
+          "THICKET_ALLOW_UNBUILT=1 shows the placeholder instead, for a local run."
+      )
+    val box = Shim.sui_create(ShimKind.Column)
+    val label = Shim.sui_create(ShimKind.Label)
+    Zone(Shim.sui_set_text(label, toCString(message)))
+    Shim.sui_insert_after(box, label, null.asInstanceOf[Handle])
+    kinds(box) = kind
+    placeholders(box) = label
+    box
   }
 
   def update(
@@ -301,10 +342,9 @@ final class AppleRenderer extends Renderer {
       // An NSGridView on AppKit; a constraint construction on UIKit, which has no grid view.
       case Prop.Columns(n) => Shim.sui_set_grid_columns(handle, n)
 
-      // Reserved for the Mac (#66): kind code 23 maps, but the SF Symbol (AppleIcons) and the
-      // accessibility label need shim functions that are part of that work.
-      case Prop.Glyph(_)           => ()
-      case Prop.AccessibleLabel(_) => ()
+      // An SF Symbol, named by AppleIcons; the label is VoiceOver's and the tooltip.
+      case Prop.Glyph(icon)        => Zone(Shim.sui_set_symbol(handle, toCString(AppleIcons.name(icon))))
+      case Prop.AccessibleLabel(t) => Zone(Shim.sui_set_accessible_label(handle, toCString(t)))
 
       case Prop.OpenUrl(url) => Zone(Shim.sui_set_open_url(handle, toCString(url)))
 
@@ -324,8 +364,22 @@ final class AppleRenderer extends Renderer {
       case Prop.Options(values) =>
         // Clear-then-add, the shape the ABI uses for an alert's actions. No handles to
         // release here: options are strings, not callbacks.
+        //
+        // The selection is an index and survives new options, as on GTK and Android (#77,
+        // review 2026-10-20 P1-10). Clearing empties an NSSegmentedControl, an NSPopUpButton
+        // and a UISegmentedControl, and adding back auto-selects the pop-up's first item, so
+        // the index the control held is read first and written back after. The shims do not
+        // fire the action for either step, so nothing is reported to the app. A Selected in
+        // the same patch, before or after this, still wins: it was applied to the control
+        // and is what is read here, or it is applied next.
+        val keep = Shim.sui_get_selected(handle)
         Shim.sui_picker_clear_options(handle)
         values.foreach(v => Zone(Shim.sui_picker_add_option(handle, toCString(v))))
+        if Shim.sui_get_selected(handle) != keep then Shim.sui_set_selected(handle, keep)
+
+      // A TabView's selection keeps the app's choice until its tab arrives, and -1 or past the end
+      // leaves the tab shown; see AppleTabs.
+      case Prop.Selected(index) if tabs.isTabView(handle) => tabs.select(handle, index)
 
       case Prop.Selected(index) =>
         // Read first and skip a no-op write, as the toggle does: setting the selection makes
@@ -349,6 +403,8 @@ final class AppleRenderer extends Renderer {
         }
 
       case Prop.OnSelect(f) =>
+        // A TabView also reports an index that moved under the user; the shim reports only clicks.
+        if tabs.isTabView(handle) then tabs.onSelect(handle, f)
         selectIds.get(handle) match {
           case Some(id) => Handles.replaceInt(id, f)
           case None     =>
@@ -420,17 +476,36 @@ final class AppleRenderer extends Renderer {
     parent: Handle,
     child:  Handle,
     after:  Option[Handle]
-  ): Unit = Shim.sui_insert_after(parent, child, after.getOrElse(null.asInstanceOf[Handle]))
+  ): Unit =
+    if tabs.isTabView(parent) then tabs.insertAfter(parent, child, after)
+    else {
+      // In a placeholder, "first" means after its label, which stays on top.
+      val anchor = after.orElse(placeholders.get(parent))
+      Shim.sui_insert_after(parent, child, anchor.getOrElse(null.asInstanceOf[Handle]))
+    }
 
   def removeChild(
     parent: Handle,
     child:  Handle
-  ): Unit = Shim.sui_remove_child(parent, child)
+  ): Unit =
+    if tabs.isTabView(parent) then tabs.remove(parent, child)
+    else Shim.sui_remove_child(parent, child)
+
+  /** A tab moved is inserted where it goes, not removed first: removing the tab on screen would move the user. */
+  override def moveAfter(
+    parent: Handle,
+    child:  Handle,
+    after:  Option[Handle]
+  ): Unit =
+    if tabs.isTabView(parent) then tabs.insertAfter(parent, child, after)
+    else super.moveAfter(parent, child, after)
 
   /** `NSStackView` has no reorder primitive, so the contract's remove+insert default is what this does — inherited
     * rather than overridden, deliberately.
     */
   def destroy(handle: Handle): Unit = {
+    // A tab leaves its TabView through the same rule as a removal, so the user stays put.
+    tabs.destroy(handle)
     tapIds.remove(handle).foreach(Handles.release)
     editIds.remove(handle).foreach(Handles.release)
     boolIds.remove(handle).foreach(Handles.release)
@@ -444,6 +519,7 @@ final class AppleRenderer extends Renderer {
     // unmounted list alive. A table asking for a row after this gets null, which it treats as
     // no view.
     rowIds.remove(handle).foreach(Handles.release)
+    placeholders.remove(handle).foreach(Shim.sui_destroy)
     // Everything else keyed by this handle, in every table.
     perHandleMaps.foreach(_.remove(handle))
     perHandleSets.foreach(_ -= handle)
@@ -485,12 +561,18 @@ final class AppleRenderer extends Renderer {
   override def createVirtualList(source: RowSource[Handle]): Handle = {
     // The id, not the closure, is what crosses to Swift: a C function pointer cannot close
     // over state (S4), so one static trampoline serves every table.
+    // Index -1 is the table handing a row view back for good (#78, review 2026-10-20 P2-8):
+    // the cell hosting it was freed, or a re-bind replaced it. `discard` disposes the row's
+    // slot and owner, and ignores a view the source no longer holds.
     val id = Handles.registerRow(
       (
         index,
         recycled
       ) =>
-        if index >= 0 && index < source.count then source.bind(index, recycled)
+        if index == -1 then {
+          recycled.foreach(source.discard)
+          null.asInstanceOf[Handle]
+        } else if index >= 0 && index < source.count then source.bind(index, recycled)
         else null.asInstanceOf[Handle]
     )
     val table = Shim.sui_create_table(Handles.rowTrampoline, id)
@@ -505,6 +587,11 @@ final class AppleRenderer extends Renderer {
     * 000-row list silently materialises 10 000 rows.
     */
   def materialisedRows(handle: Handle): Int = Shim.sui_table_materialised(handle)
+
+  /** How many of those row views the table has handed back for good, each through `RowSource.discard`. Built minus
+    * discarded is what the table still holds.
+    */
+  def discardedRows(handle: Handle): Int = Shim.sui_table_discarded(handle)
 
   def measure(
     handle:      Handle,

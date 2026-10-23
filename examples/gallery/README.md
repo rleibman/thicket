@@ -59,6 +59,44 @@ cell plus the spacing, every row at its tallest. **58/58** on macOS and **57/57*
 Falsified on both: ignoring the column count fails five checks, inserting at the end instead
 of in place fails two.
 
+**#77** added the selection checks GTK has, asked of what the Apple control draws
+(`sui_shown_option`). After **Select last** and **Swap the options**, the Picker shows "Pea" at
+index 2. **Clear** shows a blank (D13), and so does a Swap after it. The report counter does
+not move. The SegmentedControl keeps its index across new options, which the self-test hands
+the renderer directly, because the screen has no button for it. Its **Clear** leaves no segment
+chosen. Results: **78/78** on macOS, and 76 of 77 on the iOS simulator with #73's Image
+failing, both with `THICKET_ALLOW_UNBUILT=1` until TabView (#69) is built.
+
+**#73** added the Apple checks for the sections the whole-repo review added. They cover the
+Errors section: the throw reaches `ErrorSink`, and the next click works. They cover the
+Effects section's result, a picker option swap, and the layout labels and Spacers, read as
+frames. They cover the indeterminate `ProgressBar` and the padded horizontal `Scroll`. They
+read each `Image`'s fit and picture from the image view. A GC stress step drives the
+nested Scala → Swift → Scala path while a worker collects. A sheet is opened and closed
+against the renderer's tables and `Handles.count`. The 10 000-row list's rows are read by
+position from the platform's table after a delete and a rename. The self-test now waits for
+the effect, as GTK's does, and ends asynchronously.
+Measured with `THICKET_ALLOW_UNBUILT=1` (TabView is #69): **102 of 107** on macOS and
+**103 of 106** on iOS. Every failure names the issue that owns it: AppKit's picker swap
+(#77), the Apple layout cross-axis (#87), and `Scroll(padding)` on both (#76). Each new
+check was falsified, and the controls are listed in `docs/decisions.md`.
+
+**#87** added the Layout section's checks, from frames: a Row spans its Column and stays
+inside the screen Column's padding, a Spacer pushes "right" to the far edge, a grown label
+takes the room its sibling does not, a Spacer in a Column lines "bottom" up with the taller
+column beside it, and the aligned labels span the section; on AppKit also that a push button
+in a Column and the buttons of a Row keep their own width; and a ZStack in a Row is as wide
+as its widest child. **75/75** on macOS and **71/72** on the iOS simulator (the miss is the
+bytes-backed Image, #73). `THICKET_FRAME_DUMP=1` prints every widget's kind, text and frame,
+for comparing a layout change across the whole screen.
+
+**#78** added the Android gallery's linear-mount check to both Apple hosts, for a Column, a
+Row and a Grid: 2 000 children must mount in under three times 1 000 (off screen, fastest of
+three; unmounting is timed and printed, not checked). Grid on iOS went from 3.9 s / 16.6 s
+(ratio 4.2) to 42 ms / 93 ms (2.2), on macOS from 472 ms / 2.1 s (4.5) to 44 ms / 91 ms
+(2.1). The stack checks passed before the fix too (ratio 2.6–2.8, now 2.1–2.5), so for stacks
+the check guards a regression to quadratic, not the small search the fix removed.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name
@@ -103,11 +141,12 @@ A component counts as present in the gallery when:
 Labels in every `TextRole` and alignment, buttons by role and disabled, `TextField`,
 `SecureField`, `Checkbox`, `Toggle`, a `Picker` whose options can be swapped and its
 selection cleared, every curated `Icon` as an `IconButton`, `SegmentedControl`, a
-`DatePicker` on a leap day, two `Link`s (one also tappable), `Slider`, determinate and
+`DatePicker` on a leap day, two `Link`s (one also tappable), a tappable `Label`, `Slider`, determinate and
 indeterminate `ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer` in a Row and in a
 Column, `Grow`, a two-column `Grid` with a row inserted in the middle, `ZStack` as a corner
-badge and as a centred overlay, `Image` in all three fits from a file and from bytes, nested
-and horizontal `Scroll` (padded), keyed `ForEach`, virtualised `LazyColumn` whose first row
+badge and as a centred overlay, `Image` in all three fits from a file and from bytes, a
+tappable `Row`, the screen's `Scroll` with both padding and `.safeArea()`, a padded horizontal
+`Scroll` inside it whose child can be replaced by a taller one, keyed `ForEach`, virtualised `LazyColumn` whose first row
 can be deleted and renamed, a per-row `ContextMenu`, subtree theming with `Provide`, a
 handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet`), toolbar
 `Action`s, a navigation push, a `TabView` with a tab inserted in the middle, and storage: a
