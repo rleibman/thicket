@@ -31,8 +31,14 @@ object GalleryMac {
   def main(args: Array[String]): Unit =
     AppleApp.run("Thicket gallery", 520, 760) {
       // Same switch as the GTK host, so one command shape checks any platform.
-      if sys.env.contains("THICKET_GALLERY_SELFTEST") then AppleApp.postToUi(() => GallerySelfTest.run())
-      Gallery.app()
+      if sys.env.contains("THICKET_GALLERY_SELFTEST") then
+        AppleApp.postToUi(() => GallerySelfTest.run(svgWhereDecoded = true))
+      // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise
+      // (#85). Asked of the decoder, not the OS version: on macOS 13, the shim's minimum, NSImage
+      // is not reported to take SVG, and an image view given bytes it cannot decode is an empty
+      // frame, with nothing beside it to fall back to.
+      val svg = Gallery.logoBytes(Gallery.logoSvg)
+      if AppleApp.decodesImage(svg) then Gallery.app(Gallery.logoSvg, svg) else Gallery.app()
     }
 
 }
