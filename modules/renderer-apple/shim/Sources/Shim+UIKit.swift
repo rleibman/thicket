@@ -288,6 +288,7 @@ private final class StackView: UIStackView {
     insertArrangedSubview(c, at: max(0, min(index, count)))
     childCount += 1
     if childCount == 1 { applyMargins() }
+    if let i = c as? ImageView { tie(i) }
   }
 
   override func removeArrangedSubview(_ view: UIView) {
@@ -298,6 +299,38 @@ private final class StackView: UIStackView {
       childCount = max(0, childCount - 1)
       if childCount == 0 { applyMargins() }
     }
+    (view as? ImageView)?.untie()
+  }
+
+  /// The one scale a Row shrinks all its pictures by (#104), as a width of 0 to
+  /// `pictureScaleUnit`: the unit at full size. It wishes to be the unit at 749 — under a
+  /// label's or a button's 750, so a picture gives way before text is cut short, as a
+  /// GtkPicture (minimum width 0) does — and every picture in the Row is at least its own
+  /// width times the scale. So when the pictures do not fit, the Row lowers the one scale until
+  /// they do, and all of them shrink in proportion. Made on the first picture.
+  private var pictureScale: UILayoutGuide?
+
+  /// Ties a picture in a Row to the Row's scale, replacing any tie it had: when it arrives
+  /// and whenever its picture changes. A Column does not tie: it scrolls its main axis, and a
+  /// picture's width there is the Column's (`alignment = .fill`).
+  func tie(_ i: ImageView) {
+    i.untie()
+    guard axis == .horizontal, i.superview === self, let size = i.image?.size, size.width > 0 else { return }
+    let g: UILayoutGuide
+    if let existing = pictureScale {
+      g = existing
+    } else {
+      g = UILayoutGuide()
+      addLayoutGuide(g)
+      let most = g.widthAnchor.constraint(lessThanOrEqualToConstant: pictureScaleUnit)
+      let wish = g.widthAnchor.constraint(equalToConstant: pictureScaleUnit)
+      wish.priority = UILayoutPriority(749)
+      NSLayoutConstraint.activate([most, wish])
+      pictureScale = g
+    }
+    let t = i.widthAnchor.constraint(greaterThanOrEqualTo: g.widthAnchor, multiplier: size.width / pictureScaleUnit)
+    t.isActive = true
+    i.scaleTie = t
   }
 
   /// The slack is the stack's last arranged view, so the stack puts its spacing before it as
@@ -341,6 +374,62 @@ private final class StackView: UIStackView {
       if let l = c.firstItem as? UILabel, l.contentHuggingPriority(for: .horizontal) < .defaultLow {
         c.isActive = false
       }
+    }
+  }
+}
+
+/// The width of a Row's `pictureScale` at full size (#104). Any length works; a large one keeps
+/// the multipliers away from rounding.
+private let pictureScaleUnit: CGFloat = 1000
+
+/// Kind 8, an `Image` (#104). A `UIImageView` wishes to be its picture's size, 560×710 pt for
+/// the gallery's logo, at the default compression resistance (750) on both axes. Three of
+/// them in a 358 pt Row tied: UIKit kept the first at 342 pt and squeezed the other two to
+/// 0 pt, each still 710 pt tall. Three changes, all as GTK lays a GtkPicture out:
+///
+/// - In a Row its width is tied to the Row's one picture scale (`StackView.tie`), so the
+///   pictures shrink together, in proportion to their widths.
+/// - It is no taller than its width allows at the picture's aspect ratio, at 751: a picture
+///   squeezed to 114 pt wide is 144 pt tall, not 710 with the picture letterboxed in the
+///   middle. Never taller than the picture either: a wider view keeps its picture's height
+///   (hugging), so nothing is scaled up.
+/// - It gives way before text and controls (750): 748 across, under a Row's scale (749), and
+///   747 down. Without that, the cap made its height a reason to widen it — at 750 down, a
+///   wider picture is a taller one — and the gallery's badge ZStack took the whole ZStack Row
+///   (252 → 342 pt), leaving the spinner's ZStack 0 pt wide.
+private final class ImageView: UIImageView {
+  /// Set by the Row it is in: `width >= picture width × scale`.
+  var scaleTie: NSLayoutConstraint?
+  private var aspectCap: NSLayoutConstraint?
+
+  init() {
+    super.init(frame: .zero)
+    setContentCompressionResistancePriority(UILayoutPriority(748), for: .horizontal)
+    setContentCompressionResistancePriority(UILayoutPriority(747), for: .vertical)
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  override var image: UIImage? {
+    didSet { pictureChanged() }
+  }
+
+  func untie() {
+    scaleTie?.isActive = false
+    scaleTie = nil
+  }
+
+  private func pictureChanged() {
+    aspectCap?.isActive = false
+    aspectCap = nil
+    if let s = image?.size, s.width > 0, s.height > 0 {
+      let cap = heightAnchor.constraint(lessThanOrEqualTo: widthAnchor, multiplier: s.height / s.width)
+      cap.priority = UILayoutPriority(751)
+      cap.isActive = true
+      aspectCap = cap
+    }
+    if let row = superview as? StackView {
+      row.tie(self)
     }
   }
 }
@@ -1150,7 +1239,7 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     return retained(s)
 
   case 8:
-    let iv = UIImageView()
+    let iv = ImageView()
     iv.contentMode = .scaleAspectFit
     iv.clipsToBounds = true
     return retained(iv)

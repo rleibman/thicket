@@ -43,7 +43,7 @@ const char *sui_resource_path(const char *path);
       5 Checkbox           NSButton(checkboxWithTitle:)   CheckboxView()    UIKit has no checkbox: a UISwitch captioned by a UILabel
       6 Scroll             ScrollView()                   ScrollView()      vertical
       7 Divider            NSBox()                        UIView()          the shims' default: branch
-      8 Image              ImageView()                    UIImageView()
+      8 Image              ImageView()                    ImageView()
       9 Toggle             NSSwitch()                     UISwitch()        no label: the caption is a sibling
      10 Spacer             NSView()                       UIView()          grows through Prop.Grow
      11 ProgressBar        NSProgressIndicator()          UIProgressView()
