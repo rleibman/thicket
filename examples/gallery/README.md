@@ -90,6 +90,11 @@ as its widest child. **75/75** on macOS and **71/72** on the iOS simulator (the 
 bytes-backed Image, #73). `THICKET_FRAME_DUMP=1` prints every widget's kind, text and frame,
 for comparing a layout change across the whole screen.
 
+**#96** made "a Row with nothing grown leaves its slack after its children" a check on both
+toolkits (it was AppKit's only): the "Accent" button is under half its section and the Row's
+last button ends at least 50 pt before the section does. On the iOS simulator "Accent" went
+from 232 pt to its own 48 pt.
+
 **#78** added the Android gallery's linear-mount check to both Apple hosts, for a Column, a
 Row and a Grid: 2 000 children must mount in under three times 1 000 (off screen, fastest of
 three; unmounting is timed and printed, not checked). Grid on iOS went from 3.9 s / 16.6 s

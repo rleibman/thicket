@@ -72,6 +72,46 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-22 — **UIKit: a Row or Column with nothing grown leaves its slack after its
+  children** (#96). A `.fill` `UIStackView` must fill its length, so one child took a Row's room
+  to spare: on the iPhone 17e simulator (iOS 27) "Accent" was 232 pt of a 358 pt Row, "Select
+  first" 314, "App accent" 271, "Open sheet" 277, the nested Columns beside "top"/"one" 175 pt
+  each. *Fix:* every `StackView` ends in a `SlackView` — 0×0, hugging 249 on both axes, between
+  a grown child's 248 and a plain one's 250, the order AppKit's stack hugging already has. It is
+  not a child: `arranged()` (inspection) and `sui_insert_after`'s indexing count it off, every
+  insert lands before it, and the stack counts its children rather than reading the arranged
+  subviews back, so appends stay O(1). The spacing UIKit puts before the slack is taken back
+  from the stack's trailing (Row) or bottom (Column) layout margin whenever it has children;
+  `refreshInsets` now writes a `StackView`'s insets, and `sui_get_insets` reports those, not
+  the shortened margins. A UIKit `ZStack`'s wish to be 0×0 goes from 50 to 251, as AppKit's
+  did in #87, so a ZStack in a Row does not take the slack from the slack view (not observable
+  on the gallery screen: its ZStack holds an Image that fills the Row anyway). *Alternatives
+  rejected:* no `distribution` leaves a gap at the end (`.equalSpacing` and `.equalCentering`
+  spread the children, the others stretch them — from UIKit's documentation, not run). The issue's
+  `setCustomSpacing(0, after:)` on the last child was built first and passed every check, but
+  in 11 of 13 gallery runs the horizontal Scroll's Row, once replaced ("Taller columns" and
+  back), had two of its twelve multi-line labels laid out with no content-size constraint
+  ("col 5" 0 pt wide, "col 1" 45 pt; `constraintsAffectingLayout` listed none for them), and
+  in the one run with the custom spacing removed it did not; root cause inside UIKit, not
+  found. A slack of minus the gap does not work either: UIKit lays the view out at 0, not −8.
+  A first version also sliced `arrangedSubviews` per insert: 1 000 children in a Column
+  36 → 52 ms (ratio 2.65 → 3.05, failing `mountScaling`); counted off instead, 34.5 / 91.6 ms
+  (2.66). **Measured**, `bin/verify-apple.sh "iPhone 17e"`, all 13 steps: gallery 168/168 on
+  macOS 27.0.1 (the check now runs on both) and 163/163 on iOS (was 162: the check is new
+  there), todo 88/88 and 83/83, lazy 8/8 and 11/11; getting-started failed once under the
+  machine's parallel load ("could not read the version from sbt") and passed re-run alone.
+  Mounting 1 000 / 2 000 children in a Column, iOS: 35.1 / 89.8 ms (2.56). Whole-screen iOS frame dump
+  (`THICKET_FRAME_DUMP=1`) before → after: "Accent" 232 → 48 pt and the Row's last button now
+  ends at x 190 of 374; "Swap the options" 234 → 119; "Select first" 314 → 74; "Start" 358 →
+  34; "App accent" 271 → 79; "Open sheet" 277 → 80; "Tap this row" / "Row tapped" 175/175 →
+  92/112; "Tapped Share" 302 → 105; the nested Columns 175/175 → 55/40 (the Spacer check still
+  lines "bottom" up with "four"); the horizontal Scroll's labels 45 pt each → their own 35–45
+  pt, its Row 624 → 616. Nothing else moved, grown labels included ("grown" 313, the ForEach
+  titles 295, "Toggle" 289). AppKit is untouched. **Control:** the same gallery on main's
+  shim fails the now-unconditional check on iOS — `Accent (16,-148 232x30), last button ends
+  at 374.0`. **Not changed:** UIKit Columns still stretch buttons full width (AppKit keeps a
+  push button at its own width) — the product question in #96, out of scope. The
+  `Image` row's 342/0/0 widths are as before.
 - 2026-10-21 — **Apple: UIKit discards the rows of freed cells; appends to stacks and grids
   are O(1), grid removals are batched** (#78, review 2026-10-20 P2-8 and P2-14, Apple parts).
   *Discard:* the row callback carries it, index -1 with the row view, so a table still
