@@ -442,7 +442,7 @@ lazy val sqlite = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies ++= zioTestJvm :+ ("org.xerial" % "sqlite-jdbc" % "3.53.4.0" % Test)
   )
   .nativeSettings(
-    libraryDependencies ++= zioTestNative :+ ("com.github.lolgab" % "scala-native-jdbc-sqlite_native0.5_3" % "0.0.6")
+    libraryDependencies ++= zioTestNative :+ ("com.github.lolgab" % "scala-native-jdbc-sqlite_native0.5_3" % "0.0.7")
   )
 
 /** SQLite on Android: a JDBC driver over `android.database.sqlite`, since none is maintained (`docs/16` §16.5). */

@@ -20,12 +20,10 @@ import com.github.lolgab.jdbc.sqlite.SQLiteDriver
 
 /** SQLite on Scala Native (GTK, macOS, iOS), through `com.github.lolgab::scala-native-jdbc-sqlite`.
   *
-  * **Known defect, upstream:** in 0.0.6 a failed plain `Statement.executeUpdate` and a failed parameter bind are not
-  * reported — the library builds the `SQLException` and does not throw it — so invalid SQL or a violated constraint in
-  * an `executeUpdate` reads as success. Errors while a statement runs (a constraint violated by a `PreparedStatement`)
-  * and errors in a query (at the first `next()`) are reported. `JdbcConformance` lists the affected checks as known
-  * failures on this driver, so they show up when it is fixed. Until then, check what you send: prefer prepared
-  * statements, and test your SQL on the JVM.
+  * **Known gaps, upstream:** in 0.0.7 JDBC batches (`addBatch` / `executeBatch`) and `setFetchSize` are not implemented
+  * and throw `NotImplementedError`. `JdbcConformance.knownNativeFailures` lists the affected checks, so they show up
+  * when upstream implements them. (0.0.6 also swallowed errors from a plain `executeUpdate` and a failed bind; 0.0.7
+  * throws them.)
   */
 object NativeSqlite {
 

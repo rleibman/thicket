@@ -167,7 +167,7 @@ object MagnumChecks {
     }
   }
 
-  /** What the Scala Native build fails, 2026-10-21: `scala-native-jdbc-sqlite` 0.0.6 leaves JDBC batches and
+  /** What the Scala Native build fails, 2026-10-22: `scala-native-jdbc-sqlite` 0.0.7 leaves JDBC batches and
     * `setFetchSize` unimplemented (`???`).
     */
   val knownNativeFailures: Set[String] = Set(

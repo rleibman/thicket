@@ -45,7 +45,7 @@ Resolved with `cs complete-dep` on 2026-10-21; versions are the newest published
 | GraphQL | caliban-client | 3.2.0 | 3.2.0 | Phase 6's meal-planner client; rides on sttp |
 | JSON | zio-json / upickle | 1.1.1 / 4.4.3 | same | |
 | HTTP, ZIO | zio-http | yes | **no Native artefact** | Not usable as the client on GTK/Apple |
-| SQLite, through JDBC | `java.sql` | in the platform; **no maintained driver** | `scala-native-jdbc(-sqlite)` 0.0.6 | See §16.5. (`sqlite4s` stops at SN 0.4) |
+| SQLite, through JDBC | `java.sql` | in the platform; **no maintained driver** | `scala-native-jdbc(-sqlite)` 0.0.7 | See §16.5. (`sqlite4s` stops at SN 0.4) |
 | Time | `java.time` | yes | scala-java-time 2.8.0 | |
 
 ## 16.3 The likely list, tiered
@@ -110,7 +110,7 @@ same on every platform, and Thicket supplies drivers where none exist.
 |---|---|---|
 | JVM (unit tests on Linux) | yes | `org.xerial:sqlite-jdbc` 3.53.4.0 |
 | Android | **yes, in the platform** (`java.sql.Connection`, `ResultSetMetaData` and the rest are in `android.jar`) | **none maintained**: xerial's jar has no Android native libraries (it ships FreeBSD, Linux, Mac and Windows only), and SQLDroid's last release is 1.1.0-rc1 from 2018. **Thicket writes one: `thicket-sqlite-android`, a JDBC driver over `android.database.sqlite`** |
-| Scala Native (GTK, macOS, iOS) | from `com.github.lolgab::scala-native-jdbc` 0.0.6 (2026-06) | `com.github.lolgab::scala-native-jdbc-sqlite` 0.0.6, which bundles the SQLite 3.53.2 amalgamation |
+| Scala Native (GTK, macOS, iOS) | from `com.github.lolgab::scala-native-jdbc` 0.0.7 (2026-10) | `com.github.lolgab::scala-native-jdbc-sqlite` 0.0.7, which bundles the SQLite 3.54.0 amalgamation (0.0.6: 3.53.2) |
 
 **Measured on Scala Native, 2026-10-21** (Scala 3.9.0, Scala Native 0.5.12, scala-cli on this
 Linux box; a spike, not in the repo):
@@ -123,7 +123,8 @@ Linux box; a spike, not in the repo):
 - **Defect: a plain `Statement` swallows errors.** `executeUpdate` on invalid SQL, a syntax
   error or a constraint violation returns 0 (once 1) instead of throwing, and `executeQuery`
   on invalid SQL returns a result set. Prepared statements are fine. This needs fixing
-  upstream before apps rely on it; until then, prepared statements only.
+  upstream before apps rely on it; until then, prepared statements only. *Fixed upstream in
+  0.0.7 (lolgab/scala-native-jdbc#17), 2026-10-22: see "Built" below.*
 - **Subset:** no `ResultSetMetaData` or `DatabaseMetaData`, so libraries that introspect
   columns will not work on Native.
 - **Size:** the spike binary is 5.26 MB against 3.79 MB for a file-I/O-only program, so the
@@ -152,6 +153,10 @@ What Thicket provides, then, is small, and none of it is a query language:
     thrown either, but surfaces at the first `next()`, so that check passes.
   - Two are unimplemented (`???`): JDBC batches (`addBatch` / `executeBatch`) and
     `setFetchSize`.
+- **0.0.7, 2026-10-22:** the fix for the three (lolgab/scala-native-jdbc#17, from this
+  project) is released. The Native driver now fails exactly the 2 unimplemented checks;
+  `sbt --error "sqliteNative/testOnly *"` with the known set still at 5 fails on precisely
+  the three, now passing.
 - **The Android driver** implements the subset, plus batches, `getObject` and `setObject`; the
   rest of `java.sql` throws
   `SQLFeatureNotSupportedException`, generated from the JDK's signatures by
@@ -303,8 +308,8 @@ Every service gets a gallery section and self-test checks on every host where it
    Unblocks phase 6.
 2. **Storage:** app directories, preferences, secrets; SQLite as the Android JDBC driver,
    `Sqlite.open`, the conformance suite, and the upstream fix for the Native driver's
-   swallowed errors. *Done on GTK and Android, 2026-10-21, except secrets and the upstream
-   fix; Apple is #98.*
+   swallowed errors. *Done on GTK and Android, 2026-10-21, except secrets; the upstream fix
+   is in `scala-native-jdbc-sqlite` 0.0.7, 2026-10-22. Apple is #98.*
 3. **Lifecycle and permissions:** the host plumbing every later service sits on.
 4. **Location,** then **motion**, each with emulator-injected self-tests.
 5. **Pickers, camera capture, share, clipboard, haptics.**

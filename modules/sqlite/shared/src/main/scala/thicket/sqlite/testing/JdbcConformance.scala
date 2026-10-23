@@ -56,15 +56,12 @@ object JdbcConformance {
     }
   }
 
-  /** The checks the Scala Native driver (`scala-native-jdbc-sqlite` 0.0.6) fails, measured 2026-10-21: it builds an
-    * `SQLException` for a failed `Statement.executeUpdate` and a failed bind, and does not throw it. A failed prepare
-    * is not thrown either, but surfaces as an error at the first `next()`, so that check passes.
+  /** The checks the Scala Native driver (`scala-native-jdbc-sqlite` 0.0.7) fails, measured 2026-10-22. 0.0.6 also
+    * failed three error checks — a failed plain `executeUpdate` and a failed bind were built as an `SQLException` and
+    * not thrown — which 0.0.7 fixes (lolgab/scala-native-jdbc#17).
     */
   val knownNativeFailures: Set[String] = Set(
-    "invalid SQL in a plain executeUpdate throws",
-    "a constraint violated by a plain executeUpdate throws",
-    "binding a parameter index that does not exist throws",
-    // Not implemented (`???`) in 0.0.6; Magnum's insertAll, updateAll, deleteAll and iterator use them.
+    // Not implemented (`???`) in 0.0.7; Magnum's insertAll, updateAll, deleteAll and iterator use them.
     "a batch runs each set of parameters (addBatch, executeBatch)",
     "setFetchSize is accepted as a hint"
   )

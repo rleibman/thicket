@@ -5,7 +5,7 @@ adds no query layer (`docs/16-device-services.md` §16.5).
 
 | Platform | Driver |
 |---|---|
-| GTK (and Apple, #98) | `NativeSqlite.driver`, over `com.github.lolgab::scala-native-jdbc-sqlite` 0.0.6 |
+| GTK (and Apple, #98) | `NativeSqlite.driver`, over `com.github.lolgab::scala-native-jdbc-sqlite` 0.0.7 |
 | Android | `AndroidSqlite.driver`, in `thicket-sqlite-android`: Thicket's JDBC driver over `android.database.sqlite` |
 | JVM tests | `SqliteDriver.fromJdbc(new org.sqlite.JDBC())`, xerial's `sqlite-jdbc` |
 
@@ -21,13 +21,10 @@ p.setString(1, "hello"); p.executeUpdate(); p.close()
   by index and label, `wasNull`, generated keys, transactions, batches and `setFetchSize`.
   Scala Native's `java.sql` has no `getObject` and no metadata; the Android driver has
   `getObject` and `setObject`.
-- **Known gaps on Native,** upstream in 0.0.6:
-  - errors from a plain `Statement.executeUpdate`, and from a bind to a parameter index that
-    does not exist, are not thrown;
-  - batches and `setFetchSize` are unimplemented.
-
-  `JdbcConformance.knownNativeFailures` lists the five checks it fails, and
-  `NativeConformanceSpec` fails if that set changes. Until then, prefer prepared statements.
+- **Known gaps on Native,** upstream in 0.0.7: batches and `setFetchSize` are unimplemented.
+  `JdbcConformance.knownNativeFailures` lists the two checks it fails, and
+  `NativeConformanceSpec` fails if that set changes. (0.0.6 also swallowed errors from a plain
+  `executeUpdate` and a bad bind; 0.0.7 throws them, lolgab/scala-native-jdbc#17.)
 - **A typed layer without a framework DSL: Magnum,** given `Sqlite.dataSource(dirs, name)`.
   - **On Native:** `com.github.lolgab::magnum` 1.3.1 works. Five of seven checks pass; the
     two failures are the driver's missing batches and `setFetchSize`.
