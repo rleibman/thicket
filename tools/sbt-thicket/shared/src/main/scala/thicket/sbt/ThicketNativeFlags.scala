@@ -92,6 +92,28 @@ object ThicketNativeFlags {
       )
   }
 
+  /** `thicket-http-apple`'s Swift library on macOS (#90): `libthickethttp.a`, Foundation, and Swift's runtime. Applied
+    * on top of [[apple]] for an app that also renders, or alone for one that does not; the repeated flags are harmless.
+    * Not needed on iOS, where the host's own link takes the archive.
+    *
+    * @param libDir
+    *   the directory holding `libthickethttp.a`
+    */
+  def appleHttp(libDir: File)(c: NativeConfig): NativeConfig =
+    c.withLinkingOptions(
+      c.linkingOptions ++ Seq(
+        "-L" + libDir.getAbsolutePath,
+        "-lthickethttp",
+        "-framework",
+        "Foundation",
+        "-L/usr/lib/swift",
+        "-Xlinker",
+        "-rpath",
+        "-Xlinker",
+        "/usr/lib/swift"
+      )
+    )
+
   /** The iOS simulator variant. Three differences from the macOS one, each forced:
     *
     *   - `libraryStatic`, because the host owns `@main` (iOS 27 requires UIScene adoption, and a scene delegate cannot

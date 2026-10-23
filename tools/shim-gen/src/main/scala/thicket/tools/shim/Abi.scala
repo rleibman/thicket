@@ -116,18 +116,26 @@ object Abi {
     name: String,
     tpe:  CType
   )
+
+  /** One function at the boundary.
+    *
+    * `blocking` marks a call that can park its thread in native code for a long time (`thk_http_wait`). Its Scala
+    * extern is emitted with Scala Native's `@blocking`, which marks the thread Unmanaged for the call's duration, so a
+    * collection started by another thread does not wait for it to come back.
+    */
   final case class Fn(
-    name:   String,
-    ret:    CType,
-    params: List[Param],
-    doc:    String = ""
+    name:     String,
+    ret:      CType,
+    params:   List[Param],
+    doc:      String = "",
+    blocking: Boolean = false
   ) {
 
     def arity: Int = params.length
 
   }
 
-  private def p(
+  private[shim] def p(
     n: String,
     t: CType
   ) = Param(n, t)

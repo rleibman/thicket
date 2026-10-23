@@ -21,14 +21,14 @@ import java.nio.file.{Files, Path, Paths}
 /** Writes the generated artefacts into the repository, or checks that they are current.
   *
   * {{{
-  * sbt shimGen/run                          # regenerate thicket_apple.h and Shim.scala in place
-  * sbt "shimGen/run --check"                # exit 1 if either differs from what Abi generates
+  * sbt shimGen/run                          # regenerate thicket_apple.h, Shim.scala, thicket_http.h, HttpShim.scala
+  * sbt "shimGen/run --check"                # exit 1 if any differs from what Abi or HttpAbi generates
   * sbt "shimGen/run --scaffold <dir>"       # Swift @_cdecl signatures for a new shim, into <dir>
   * }}}
   *
-  * The header and the Scala externs are generated artefacts, checked in so that a build of `rendererApple` needs
-  * nothing but the repository. `GenerateSpec` fails `sbt test` when either one differs from what [[Abi]] generates,
-  * which is what catches a hand edit.
+  * The headers and the Scala externs are generated artefacts, checked in so that a build of `rendererApple` needs
+  * nothing but the repository. `GenerateSpec` fails `sbt test` when any one differs from what [[Abi]] or [[HttpAbi]]
+  * generates, which is what catches a hand edit.
   *
   * The Swift shims are not written here: only their signatures are mechanical, and the bodies are hand-written per
   * toolkit (see [[Emit]]). `--scaffold` writes signatures with `fatalError` bodies for someone starting a shim, and
@@ -39,7 +39,9 @@ object Main {
   /** The generated files, as paths relative to the repository root. */
   val generated: List[(String, () => String)] = List(
     "modules/renderer-apple/shim/include/thicket_apple.h"                     -> (() => Emit.cHeader()),
-    "modules/renderer-apple/src/main/scala/thicket/renderer/apple/Shim.scala" -> (() => Emit.scalaExterns())
+    "modules/renderer-apple/src/main/scala/thicket/renderer/apple/Shim.scala" -> (() => Emit.scalaExterns()),
+    "modules/http-apple/shim/include/thicket_http.h"                          -> (() => Emit.httpHeader()),
+    "modules/http-apple/src/main/scala/thicket/http/apple/HttpShim.scala"     -> (() => Emit.httpScalaExterns())
   )
 
   private def root: Path = Paths.get(sys.props.getOrElse("thicket.root", ".")).toAbsolutePath.normalize
@@ -63,7 +65,7 @@ object Main {
               println(s"wrote     $rel")
             }
         }
-        println(s"${Abi.all.size} functions, ${Abi.kinds.size} kind codes.")
+        println(s"${Abi.all.size} sui functions, ${Abi.kinds.size} kind codes, ${HttpAbi.all.size} thk_http functions.")
 
       case "--check" :: Nil =>
         val stale = generated.collect { case (rel, text) if !current(root.resolve(rel)).contains(text()) => rel }

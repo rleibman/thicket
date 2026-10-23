@@ -68,6 +68,35 @@ object ThicketAppleShim {
 
 }
 
+/** `thicket-http-apple`'s Swift library, unpacked from its jar when an app depends on it (#90).
+  *
+  * Optional, unlike the renderer's shim: an app that does not use HTTP does not depend on `thicket-http-apple`, and
+  * then nothing is unpacked and nothing is linked. The jar carries `thicket-http-apple/` with `macos/`, `ios-sim/` and
+  * `include/`, put there at package time like the renderer's.
+  */
+object ThicketHttpApple {
+
+  /** `thicket-http-apple/` under `into`, or `None` when the module is not on the classpath. */
+  def unpack(
+    classpath: Seq[File],
+    into:      File
+  ): Option[File] =
+    classpath.find(_.getName.startsWith("thicket-http-apple")).map { jar =>
+      IO.unzip(jar, into, new SimpleFilter(_.startsWith("thicket-http-apple/")))
+      val dir = into / "thicket-http-apple"
+      if !(dir / "include" / "thicket_http.h").exists then
+        sys.error(s"$jar has no Swift library in it. Was it published from a machine without Xcode?")
+      dir
+    }
+
+  val unpackTask: Def.Initialize[Task[Option[File]]] = Def.task {
+    val conv = fileConverter.value
+    val jars = (Compile / dependencyClasspath).value.map(a => conv.toPath(a.data).toFile)
+    unpack(jars, target.value)
+  }
+
+}
+
 /** A macOS (AppKit) app: `enablePlugins(ThicketMacPlugin)`. A plain binary, like a GTK one — AppKit apps own `main`.
   *
   * Adds `thicket-core` and `thicket-renderer-apple` at this plugin's version, unpacks the Swift shim from the
@@ -89,14 +118,23 @@ object ThicketMacPlugin extends AutoPlugin {
     @transient
     lazy val thicketAppleShim = taskKey[File]("the Swift shim, unpacked from thicket-renderer-apple")
 
+    /** `thicket-http-apple`'s Swift library, unpacked from its jar, or `None` when the app does not depend on it. On
+      * iOS the host's link takes `ios-sim/libthickethttp.a` from here.
+      */
+    @transient
+    lazy val thicketHttpApple = taskKey[Option[File]]("thicket-http-apple's Swift library, if the app depends on it")
+
     lazy val thicketMacSettings: Seq[Setting[?]] = Seq(
       thicketVersion := BuildInfo.version,
       libraryDependencies ++= ThicketAppleShim.dependencies(thicketVersion.value),
       thicketAppleShim := ThicketAppleShim.unpackTask.value,
+      thicketHttpApple := ThicketHttpApple.unpackTask.value,
       // Uncached: it depends on files unpacked into `target/`, and a NativeConfig has no JSON form for sbt 2's cache.
       nativeConfig := Def.uncached {
         val shim = thicketAppleShim.value
-        ThicketNativeFlags.apple(shimLibDir = shim / "macos", shimIncludeDir = shim / "include")(nativeConfig.value)
+        val app =
+          ThicketNativeFlags.apple(shimLibDir = shim / "macos", shimIncludeDir = shim / "include")(nativeConfig.value)
+        thicketHttpApple.value.fold(app)(http => ThicketNativeFlags.appleHttp(http / "macos")(app))
       }
     )
 
@@ -127,6 +165,7 @@ object ThicketIosPlugin extends AutoPlugin {
       thicketVersion := BuildInfo.version,
       libraryDependencies ++= ThicketAppleShim.dependencies(thicketVersion.value),
       ThicketMacPlugin.autoImport.thicketAppleShim := ThicketAppleShim.unpackTask.value,
+      ThicketMacPlugin.autoImport.thicketHttpApple := ThicketHttpApple.unpackTask.value,
       nativeConfig ~= ThicketNativeFlags.ios()
     )
 

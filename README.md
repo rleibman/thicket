@@ -313,11 +313,13 @@ modules/
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)
+  http-apple/        an sttp backend over URLSession, for iOS (no libcurl) and macOS
 examples/
   shared/            TodoApp — the platform-free demo every host mounts
   counter-gtk/       the todo app on GTK (the name predates it)
   todo-android/  todo-apple/
   gallery/           every component on one screen, for every platform, with self-tests
+  http-apple/        URLSessionBackend and caliban-client against a local server (macOS, iOS)
 tools/               shim-gen (the Apple ABI), sbt-thicket (the published plugin)
 bin/                 checks: GTK self-tests, getting-started, coverage, the Mac's verify-apple
 docs/                the plan, the findings, the living status, phase reviews
