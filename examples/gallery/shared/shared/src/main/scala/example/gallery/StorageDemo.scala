@@ -25,7 +25,7 @@ import java.sql.Connection
 import java.util.concurrent.{Executors, ThreadFactory}
 
 /** The device services a host provides to the gallery: storage and SQLite so far (`docs/16-device-services.md`). A host
-  * that has none yet — the Apple ones, until their half is built — passes `None`, and the section says so.
+  * that has none passes `None`, and the section says so; every host has them today.
   */
 final case class Services(
   storage: Storage,

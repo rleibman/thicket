@@ -311,6 +311,11 @@ int32_t sui_send_mouse(sui_handle h, int32_t kind, double x, double y);
 void sui_record_opened_urls(int32_t on);
 int32_t sui_opened_url_count(void);
 const char *sui_opened_url(int32_t index);
+/* Test only: what Foundation reports, for a self-test to hold thicket-storage-apple's own
+   paths against. 0 `FileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)`,
+   1 the same for `.cachesDirectory`, 2 `NSTemporaryDirectory()`, 3 `Bundle.main.bundleIdentifier`
+   (null when the executable has no bundle). Null for any other code. */
+const char *sui_foundation_directory(int32_t which);
 /* How many pages the platform's own stack holds. */
 int32_t sui_pages_depth(void);
 /* The title the platform shows for page `index`, bottom first: the navigation item's

@@ -17,6 +17,8 @@
 package example.gallery
 
 import thicket.renderer.apple.AppleApp
+import thicket.sqlite.NativeSqlite
+import thicket.storage.apple.AppleStorage
 
 /** The gallery on macOS (AppKit).
   *
@@ -28,11 +30,16 @@ import thicket.renderer.apple.AppleApp
   */
 object GalleryMac {
 
+  /** Not read from the bundle: this executable is run outside an `.app`, so it has none. */
+  val bundleId: String = "dev.thicket.gallery"
+
   def main(args: Array[String]): Unit =
     AppleApp.run("Thicket gallery", 520, 760) {
       // Same switch as the GTK host, so one command shape checks any platform.
-      if sys.env.contains("THICKET_GALLERY_SELFTEST") then AppleApp.postToUi(() => GallerySelfTest.run())
-      Gallery.app()
+      val storage = AppleStorage(bundleId)
+      if sys.env.contains("THICKET_GALLERY_SELFTEST") then
+        AppleApp.postToUi(() => GallerySelfTest.run(Some(storage), bundleId))
+      Gallery.app(services = Some(Services(storage, NativeSqlite.driver)))
     }
 
 }

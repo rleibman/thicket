@@ -139,6 +139,7 @@ object Shim {
   def sui_record_opened_urls(on: CInt): Unit = extern
   def sui_opened_url_count(): CInt = extern
   def sui_opened_url(index: CInt): CString = extern
+  def sui_foundation_directory(which: CInt): CString = extern
   def sui_pages_depth(): CInt = extern
   def sui_page_title(index: CInt): CString = extern
   def sui_pages_shown(): CInt = extern

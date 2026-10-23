@@ -310,7 +310,7 @@ modules/
   renderer-api/      the renderer contract — one small, versioned interface
   core/              element tree, reconciler, navigation, theming
   effect-zio/        the ZIO bridge
-  storage/           app directories and preferences; storage-gtk/, storage-android/
+  storage/           app directories and preferences; storage-gtk/, storage-android/, storage-apple/
   sqlite/            SQLite through plain JDBC; sqlite-android/ (a JDBC driver), Native via a library
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
@@ -344,7 +344,7 @@ SELFTEST=1 examples/todo-android/build.sh
 
 `checkLinux` is what CI runs (`.github/workflows/ci.yml`), with the GTK self-tests under
 xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 2026-10-21:
-signals 30, core 170, effect-zio 25, storage 14 and sqlite 2 per backend, storage-gtk 3,
+signals 30, core 170, effect-zio 25, storage 14 and sqlite 2 per backend, storage-gtk 3, storage-apple 4,
 shim-gen 15, sbt-thicket 9; GTK 119 + 69 self-test checks, Android 29 + 84.
 
 Coverage over the JVM-tested modules:

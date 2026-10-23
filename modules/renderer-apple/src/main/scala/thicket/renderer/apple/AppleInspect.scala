@@ -317,4 +317,15 @@ object AppleInspect {
 
   def stopRecordingUrls(): Unit = Shim.sui_record_opened_urls(0)
 
+  /** What Foundation reports for the app's directories, to check `thicket-storage-apple`'s paths against:
+    * `FileManager.urls(for:in:)`'s Application Support and Caches, `NSTemporaryDirectory()`, and the bundle id (`None`
+    * for an executable with no bundle).
+    */
+  def foundationDirectories: (Option[String], Option[String], Option[String], Option[String]) = (
+    str(Shim.sui_foundation_directory(0)),
+    str(Shim.sui_foundation_directory(1)),
+    str(Shim.sui_foundation_directory(2)),
+    str(Shim.sui_foundation_directory(3))
+  )
+
 }
