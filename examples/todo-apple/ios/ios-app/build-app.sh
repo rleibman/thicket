@@ -63,7 +63,9 @@ xcrun simctl install "$DEVICE" "$APP"
 LOG=build/run.log
 SIMCTL_CHILD_THICKET_SELFTEST=1 xcrun simctl launch --console-pty "$DEVICE" "$BUNDLE_ID" >"$LOG" 2>&1 &
 LAUNCHER=$!
-for _ in $(seq 1 30); do
+# Up to 2 min (#78): the gallery now times 1 000 vs 2 000 children, and the lazy probe scrolls
+# all 10 000 rows. The verdict line ends the wait, so a passing run is no slower for it.
+for _ in $(seq 1 120); do
   grep -q "ALL CHECKS PASSED\|CHECK(S) FAILED" "$LOG" 2>/dev/null && break
   sleep 1
 done

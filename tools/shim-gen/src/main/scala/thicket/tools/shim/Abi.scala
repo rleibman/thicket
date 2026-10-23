@@ -158,22 +158,31 @@ object Abi {
       List(p("width", I32), p("height", I32), p("title", Str), p("ready", VoidCb), p("ctx", I64))
     ),
     Fn("sui_root_view", Handle, Nil),
-    Fn("sui_window_set_title", Void, List(p("title", Str)))
+    Fn("sui_window_set_title", Void, List(p("title", Str))),
+    Fn(
+      "sui_resource_path",
+      Str,
+      List(p("path", Str)),
+      doc = "Where a relative path of the app's own is: as given when it exists from the working\n" +
+        "   directory, otherwise inside the app bundle's resources — the lookup ImageSource.FromFile\n" +
+        "   makes. An iOS app's working directory is `/`, so its files are only in the bundle (#73)."
+    )
   )
 
   /** One `sui_create` kind code, and the view each toolkit builds for it.
     *
     * This is where per-platform widget *choice* is expressed, not only per-platform naming: kind 5 is a checkbox on the
-    * Mac and a switch on iOS, because UIKit has no checkbox. The strings are the Swift construction each shim's `case`
-    * must contain — `NSButton( checkboxWithTitle:` and `UISwitch(` — and ConsistencySpec reads both `sui_create` bodies
-    * to check it does. So a shim that quietly builds a different widget, or handles a code this table does not know,
-    * fails on any machine.
+    * Mac and a captioned switch on iOS, because UIKit has no checkbox. The strings are the Swift construction each
+    * shim's `case` must contain — `NSButton( checkboxWithTitle:` and `CheckboxView(` — and ConsistencySpec reads both
+    * `sui_create` bodies to check it does. So a shim that quietly builds a different widget, or handles a code this
+    * table does not know, fails on any machine.
     *
     * `None` is a code that is reserved and not built by that shim (write it as `Kind(code, name, None, None, why)`).
-    * **What happens to one today:** nothing stops it — `AppleRenderer` hands it to the shim, whose `default:` branch
-    * builds a plain view, so a "TabView" stacks its tabs' children with no error (review 2026-10-20, P1-15). This
-    * comment used to say Scala refused it. The decided behaviour, a visible placeholder and a throw under self-test
-    * (D9), is #74; codes 23–25 are reserved for #66 and #69.
+    * **What happens to one (D9, #74):** the generated `ShimKind.unbuilt` lists it, and `AppleRenderer` never sends it
+    * to the shim. It builds a Column labelled "<Kind> is not built on Apple yet" instead, holding the kind's children,
+    * and under a self-test it throws, so CI fails by name. Before #74 the shim's `default:` branch built a plain view:
+    * a "TabView" stacked its tabs' children silently on UIKit, and on AppKit the run died with "uncaught foreign
+    * exception" and no reason (#72).
     */
   final case class Kind(
     code:    Int,
@@ -192,13 +201,25 @@ object Abi {
   ) = Kind(code, name, Some(appKit), Some(uiKit), comment)
 
   val kinds: List[Kind] = List(
-    built(0, "Column", "TapView(", "UIStackView("),
-    built(1, "Row", "TapView(", "UIStackView("),
-    built(2, "Label", "NSTextField(labelWithString:", "UILabel(", "AppKit has no label class"),
+    built(0, "Column", "TapView(", "StackView("),
+    built(1, "Row", "TapView(", "StackView("),
+    built(
+      2,
+      "Label",
+      "LabelField(labelWithString:",
+      "TextLabel(",
+      "an NSTextField / UILabel that keeps its Alignment"
+    ),
     built(3, "Button", "NSButton(title:", "UIButton(type:"),
     built(4, "TextField", "NSTextField(string:", "UITextField("),
-    built(5, "Checkbox", "NSButton(checkboxWithTitle:", "UISwitch(", "UIKit has no checkbox"),
-    built(6, "Scroll", "NSScrollView(", "UIScrollView(", "vertical"),
+    built(
+      5,
+      "Checkbox",
+      "NSButton(checkboxWithTitle:",
+      "CheckboxView(",
+      "UIKit has no checkbox: a UISwitch captioned by a UILabel"
+    ),
+    built(6, "Scroll", "ScrollView(", "ScrollView(", "vertical"),
     built(7, "Divider", "NSBox(", "UIView(", "the shims' default: branch"),
     built(8, "Image", "ImageView(", "UIImageView("),
     built(9, "Toggle", "NSSwitch(", "UISwitch(", "no label: the caption is a sibling"),
@@ -207,7 +228,7 @@ object Abi {
     built(12, "ActivityIndicator", "NSProgressIndicator(", "UIActivityIndicatorView(", "spins while mounted"),
     built(13, "Slider", "NSSlider(", "UISlider("),
     built(14, "SecureField", "NSSecureTextField(", "UITextField(", "isSecureTextEntry on UIKit"),
-    built(15, "ScrollHorizontal", "NSScrollView(", "UIScrollView(", "the axis is read at create"),
+    built(15, "ScrollHorizontal", "ScrollView(", "ScrollView(", "the axis is read at create"),
     built(16, "Alert", "AlertView(", "AlertView(", "a placeholder; NSAlert / UIAlertController at present"),
     built(17, "Sheet", "SheetView(", "SheetView(", "a container; a sheet window / a presented controller"),
     built(
@@ -245,9 +266,27 @@ object Abi {
       "GridView(",
       "an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row"
     ),
-    Kind(23, "IconButton", None, None, "reserved for the Mac (#66): NSButton / UIButton with an SF Symbol"),
-    Kind(24, "TabView", None, None, "reserved for the Mac (#69): UITabBarController / NSTabViewController"),
-    Kind(25, "Tab", None, None, "reserved for the Mac (#69): one tab of a TabView")
+    built(
+      23,
+      "IconButton",
+      "NSButton(",
+      "UIButton(",
+      "image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit"
+    ),
+    built(
+      24,
+      "TabView",
+      "TabHostView(",
+      "TabHostView(",
+      "an NSTabViewController, segmented control on top / a UITabBarController, a child controller"
+    ),
+    built(
+      25,
+      "Tab",
+      "TabPage(",
+      "TabPage(",
+      "one tab: holds its one child; the title and symbol go on the item"
+    )
   )
 
   /** The `sui_create` comment in the header, generated from [[kinds]] so the header cannot describe a different set of
@@ -281,6 +320,12 @@ object Abi {
     setter("sui_set_padding", "dp" -> I32),
     setter("sui_set_grid_columns", "count" -> I32).copy(
       doc = "How many columns a Grid's cells flow into: cell i at row i / count, column i % count."
+    ),
+    setter("sui_set_symbol", "name" -> Str).copy(
+      doc = "An SF Symbol by name. One the SDK lacks leaves no image, which sui_get_symbol reports."
+    ),
+    setter("sui_set_accessible_label", "text" -> Str).copy(
+      doc = "What VoiceOver announces, and the tooltip: toolTip on AppKit, a UIToolTipInteraction on UIKit."
     ),
     setter("sui_set_text_role", "role" -> I32).copy(doc = "role: 0 Title, 1 Body, 2 Caption"),
     setter("sui_set_text_emphasis", "emphasis" -> I32)
@@ -369,7 +414,8 @@ object Abi {
       Handle,
       List(p("cb", RowCb), p("ctx", I64)),
       doc = "An NSTableView / UITableView inside its scroller. `cb` is called for each row" + "\n" +
-        "   that becomes visible, with a recycled view or NULL."
+        "   that becomes visible, with a recycled view or NULL. It is called with index -1 and a" + "\n" +
+        "   row view when the table has let go of that view for good: RowSource.discard. NULL back."
     ),
     Fn(
       "sui_table_reload",
@@ -381,8 +427,31 @@ object Abi {
       "sui_table_materialised",
       I32,
       List(p("h", Handle)),
-      doc = "How many row views the table has actually created. The measurement that says" + "\n" +
-        "   virtualisation is working, so it is part of the ABI rather than the self-test."
+      doc = "How many row views the table has been handed that it did not already hold: every row" + "\n" +
+        "   built, ever. The measurement that says virtualisation is working, so it is part of" + "\n" +
+        "   the ABI rather than the self-test."
+    ),
+    Fn(
+      "sui_table_discarded",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many of those row views the table has handed back through `cb` with index -1." + "\n" +
+        "   Built minus discarded is what the table still holds, and must stay bounded."
+    ),
+    Fn(
+      "sui_table_scroll_to",
+      Void,
+      List(p("h", Handle), p("row", I32)),
+      doc = "Scrolls row `row` into view at once, without animation, and lays the table out, so the" + "\n" +
+        "   rows it needs are bound before this returns. For the self-test's long scroll."
+    ),
+    Fn(
+      "sui_post_memory_warning",
+      I32,
+      Nil,
+      doc = "Tells the app memory is short, as the system would: UIKit's memory-warning notification," + "\n" +
+        "   which has a table free the cells in its reuse queue. 0 where the platform has no such" + "\n" +
+        "   notice (AppKit). For the self-test that shows a freed row is discarded."
     ),
     Fn(
       "sui_table_live",
@@ -390,6 +459,13 @@ object Abi {
       Nil,
       doc = "How many table sources the shim still owns. Falls back to zero once every" + "\n" +
         "   virtual list is destroyed; the measurement that says destroying one frees it."
+    ),
+    Fn(
+      "sui_table_row_view",
+      Handle,
+      List(p("h", Handle), p("row", I32)),
+      doc = "The view the table is showing for `row` now, or NULL when that row is not on screen." + "\n" +
+        "   The platform's answer, so a table that kept a stale row after its data changed shows it."
     )
   )
 
@@ -424,10 +500,13 @@ object Abi {
   val picker: List[Fn] = List(
     setter("sui_picker_clear_options"),
     setter("sui_picker_add_option", "label" -> Str),
-    setter("sui_set_selected", "index" -> I32).copy(doc = "-1 for no selection."),
+    setter("sui_set_selected", "index" -> I32)
+      .copy(doc = "-1 for no selection. On a TabView, -1 or an index past the end leaves the tab shown."),
     Fn("sui_get_selected", I32, List(p("h", Handle))),
     setter("sui_on_select", "cb" -> IntCb, "ctx" -> I64)
-      .copy(doc = "The index the user chose.")
+      .copy(doc =
+        "The index the user chose. Never fired for the app's own selection, nor a TabView's insert or remove."
+      )
   )
 
   /** A `ZStack`'s placement of its children, on both axes. `0` start, `1` centre, `2` end — the order of the contract's
@@ -533,6 +612,20 @@ object Abi {
         "   an image view. The difference between a picture and an empty frame of the right size."
     ),
     Fn(
+      "sui_get_content_fit",
+      I32,
+      List(p("h", Handle)),
+      doc = "The fit an image view draws with, as sui_set_content_fit takes it: 0 contain, 1 cover,\n" +
+        "   2 fill. -1 when `h` is not an image view."
+    ),
+    Fn(
+      "sui_get_align",
+      I32,
+      List(p("h", Handle)),
+      doc = "A text view's horizontal text alignment, as sui_set_align takes it: 0 leading, 1 centre,\n" +
+        "   2 trailing. -1 when `h` carries no text alignment."
+    ),
+    Fn(
       "sui_scroll_offset",
       F64,
       List(p("h", Handle)),
@@ -564,15 +657,38 @@ object Abi {
       "sui_option_count",
       I32,
       List(p("h", Handle)),
-      doc = "How many options a Picker or SegmentedControl holds, as the platform's control has them."
+      doc = "How many options a Picker or SegmentedControl holds, as the platform's control has them;\n" +
+        "   for a TabView, the items in its tab bar."
     ),
     Fn("sui_option_label", Str, List(p("h", Handle), p("index", I32))),
+    Fn(
+      "sui_shown_option",
+      Str,
+      List(p("h", Handle)),
+      doc = "The option a Picker or SegmentedControl *shows* as chosen, read from what the control\n" +
+        "   draws (the pop-up's title, the selected segment); \"\" when it shows none (D13, #77)."
+    ),
     Fn(
       "sui_choose",
       I32,
       List(p("h", Handle), p("index", I32)),
       doc = "Chooses option `index` through the control's own action, as a user would. 0 where the\n" +
-        "   platform offers no way to do that from code (UIKit's menu-backed Picker)."
+        "   platform offers no way to do that from code (UIKit's menu-backed Picker). A TabView's\n" +
+        "   item is chosen through its tab bar."
+    ),
+    Fn(
+      "sui_option_symbol",
+      Str,
+      List(p("h", Handle), p("index", I32)),
+      doc = "The SF Symbol a TabView's bar shows for item `index`, or NULL when it shows none that\n" +
+        "   resolved."
+    ),
+    Fn(
+      "sui_tab_shown",
+      Handle,
+      List(p("h", Handle)),
+      doc = "The Tab a TabView's controller has on screen: its selected item's view, and only while\n" +
+        "   that view is in the window. NULL when none is."
     ),
     Fn(
       "sui_choose_date",
@@ -586,12 +702,67 @@ object Abi {
       List(p("h", Handle), p("outX", OutF64), p("outY", OutF64), p("outW", OutF64), p("outH", OutF64)),
       doc = "A view's alignment rect — what Auto Layout positions — in its window, top-left origin."
     ),
+    Fn("sui_symbol_exists", I32, List(p("name", Str)), doc = "1 when the SDK has an SF Symbol of this name."),
+    Fn(
+      "sui_get_symbol",
+      Str,
+      List(p("h", Handle)),
+      doc = "The SF Symbol a view shows, or NULL when its name did not resolve or it holds no image."
+    ),
+    Fn(
+      "sui_get_accessible_label",
+      Str,
+      List(p("h", Handle)),
+      doc = "The label VoiceOver reads, from the view."
+    ),
+    Fn("sui_get_tooltip", Str, List(p("h", Handle)), doc = "The tooltip the platform shows, from the view."),
+    Fn(
+      "sui_painted_fraction",
+      F64,
+      List(p("h", Handle)),
+      doc = "The share of a view's pixels that are painted when the platform draws it into a bitmap;\n" +
+        "   -1 when it has no size. An icon button whose symbol drew nothing reads 0."
+    ),
     Fn(
       "sui_grid_cell",
       I32,
       List(p("h", Handle), p("child", Handle), p("outRow", OutF64), p("outColumn", OutF64)),
       doc = "Where a Grid has placed a child: the NSGridView's own row and column on AppKit, the\n" +
         "   construction's on UIKit. 0 when the child is not one of its cells."
+    ),
+    Fn(
+      "sui_height_constraint_count",
+      I32,
+      List(p("h", Handle)),
+      doc = "How many active constraints, the renderer's own, are on a view's height — held by the\n" +
+        "   view or any ancestor. A horizontal Scroll has exactly one (#76)."
+    ),
+    Fn(
+      "sui_get_insets",
+      Void,
+      List(p("h", Handle), p("outTop", OutF64), p("outLeft", OutF64), p("outBottom", OutF64), p("outRight", OutF64)),
+      doc = "The insets the platform holds for a container: a stack's edge insets or layout margins,\n" +
+        "   a Grid's, a Scroll's content insets. Padding plus any safe area. Zeros for anything else."
+    ),
+    Fn(
+      "sui_get_safe_area",
+      Void,
+      List(p("h", Handle), p("outTop", OutF64), p("outLeft", OutF64), p("outBottom", OutF64), p("outRight", OutF64)),
+      doc = "A view's `safeAreaInsets`, as the platform reports them now."
+    ),
+    Fn(
+      "sui_set_extra_safe_area",
+      Void,
+      List(p("top", F64), p("left", F64), p("bottom", F64), p("right", F64)),
+      doc = "Test only: adds safe area to the root — `additionalSafeAreaInsets` on the root view\n" +
+        "   (AppKit) or its view controller (UIKit) — so a self-test can watch the insets arrive."
+    ),
+    Fn(
+      "sui_send_mouse",
+      I32,
+      List(p("h", Handle), p("kind", I32), p("x", F64), p("y", F64)),
+      doc = "AppKit: sends a left-button event through the window at (x, y) in `h`, top-left origin:\n" +
+        "   kind 0 down, 1 dragged, 2 up. UIKit: 0, there is no public way to synthesise a touch."
     ),
     Fn(
       "sui_record_opened_urls",
@@ -657,7 +828,38 @@ object Abi {
       "sui_perform_click",
       I32,
       List(p("h", Handle)),
-      doc = "Clicks a button the way a user would, through the control's own action. 0 if not a button."
+      doc = "Clicks a button the way a user would, through the control's own action. 0 if not a button.\n" +
+        "   A UIKit Checkbox is flipped through its switch's value-changed event."
+    ),
+    Fn(
+      "sui_perform_tap",
+      I32,
+      List(p("h", Handle)),
+      doc = "Taps any view at its centre, after scrolling it into sight and checking a touch there\n" +
+        "   would reach it: AppKit sends a mouse-down and mouse-up through the window; UIKit, which\n" +
+        "   cannot synthesise a touch, runs the view's tap recogniser once it agrees to begin.\n" +
+        "   0 when the view could not be tapped."
+    ),
+    Fn(
+      "sui_set_layout_direction",
+      Void,
+      List(p("h", Handle), p("rtl", I32)),
+      doc = "Forces a view's layout direction, as a right-to-left locale sets it for the whole app,\n" +
+        "   so a test can measure what it does under it. 1 right-to-left, 0 back to inherited."
+    ),
+    Fn(
+      "sui_pin_width",
+      Void,
+      List(p("h", Handle), p("width", F64)),
+      doc = "Pins a view's width for a measurement — an AppKit Column hugs its children, so a short\n" +
+        "   label has no room to show its alignment. Negative takes the pin off."
+    ),
+    Fn(
+      "sui_ink_span",
+      I32,
+      List(p("h", Handle), p("outLeft", OutF64), p("outRight", OutF64)),
+      doc = "Where a drawn view's painted pixels sit across it: the first and last painted column\n" +
+        "   as fractions of its width. 0 when nothing is painted."
     ),
     Fn(
       "sui_alert_choose",

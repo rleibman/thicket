@@ -25,19 +25,23 @@ void sui_app_start(int32_t width, int32_t height, const char *title,
                    sui_void_cb ready, int64_t ctx);
 sui_handle sui_root_view(void);
 void sui_window_set_title(const char *title);
+/* Where a relative path of the app's own is: as given when it exists from the working
+   directory, otherwise inside the app bundle's resources — the lookup ImageSource.FromFile
+   makes. An iOS app's working directory is `/`, so its files are only in the bundle (#73). */
+const char *sui_resource_path(const char *path);
 
 /* --- widget construction ----------------------------------------------------- */
 /* kind: the view each toolkit builds. A different *widget* per platform is chosen here,
    not only a different name. Generated from Abi.kinds; ConsistencySpec checks both
    shims' sui_create build what this says.
 
-      0 Column             TapView()                      UIStackView()
-      1 Row                TapView()                      UIStackView()
-      2 Label              NSTextField(labelWithString:)  UILabel()         AppKit has no label class
+      0 Column             TapView()                      StackView()
+      1 Row                TapView()                      StackView()
+      2 Label              LabelField(labelWithString:)   TextLabel()       an NSTextField / UILabel that keeps its Alignment
       3 Button             NSButton(title:)               UIButton(type:)
       4 TextField          NSTextField(string:)           UITextField()
-      5 Checkbox           NSButton(checkboxWithTitle:)   UISwitch()        UIKit has no checkbox
-      6 Scroll             NSScrollView()                 UIScrollView()    vertical
+      5 Checkbox           NSButton(checkboxWithTitle:)   CheckboxView()    UIKit has no checkbox: a UISwitch captioned by a UILabel
+      6 Scroll             ScrollView()                   ScrollView()      vertical
       7 Divider            NSBox()                        UIView()          the shims' default: branch
       8 Image              ImageView()                    UIImageView()
       9 Toggle             NSSwitch()                     UISwitch()        no label: the caption is a sibling
@@ -46,7 +50,7 @@ void sui_window_set_title(const char *title);
      12 ActivityIndicator  NSProgressIndicator()          UIActivityIndicatorView()  spins while mounted
      13 Slider             NSSlider()                     UISlider()
      14 SecureField        NSSecureTextField()            UITextField()     isSecureTextEntry on UIKit
-     15 ScrollHorizontal   NSScrollView()                 UIScrollView()    the axis is read at create
+     15 ScrollHorizontal   ScrollView()                   ScrollView()      the axis is read at create
      16 Alert              AlertView()                    AlertView()       a placeholder; NSAlert / UIAlertController at present
      17 Sheet              SheetView()                    SheetView()       a container; a sheet window / a presented controller
      18 Picker             NSPopUpButton()                UIButton()        UIKit: a menu-backed button, not UIPickerView — that is a wheel, wrong for a short list
@@ -54,9 +58,9 @@ void sui_window_set_title(const char *title);
      20 SegmentedControl   NSSegmentedControl()           UISegmentedControl()  the picker's options/selection functions drive it; native on both Apple platforms
      21 DatePicker         NSDatePicker()                 UIDatePicker()    compact on both: a text field with a calendar / .compact; the date is an epoch day at UTC
      22 Grid               GridView()                     GridView()        an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row
-     23 IconButton         -                              -                 reserved for the Mac (#66): NSButton / UIButton with an SF Symbol
-     24 TabView            -                              -                 reserved for the Mac (#69): UITabBarController / NSTabViewController
-     25 Tab                -                              -                 reserved for the Mac (#69): one tab of a TabView */
+     23 IconButton         NSButton()                     UIButton()        image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit
+     24 TabView            TabHostView()                  TabHostView()     an NSTabViewController, segmented control on top / a UITabBarController, a child controller
+     25 Tab                TabPage()                      TabPage()         one tab: holds its one child; the title and symbol go on the item */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -70,6 +74,10 @@ void sui_set_spacing(sui_handle h, int32_t dp);
 void sui_set_padding(sui_handle h, int32_t dp);
 /* How many columns a Grid's cells flow into: cell i at row i / count, column i % count. */
 void sui_set_grid_columns(sui_handle h, int32_t count);
+/* An SF Symbol by name. One the SDK lacks leaves no image, which sui_get_symbol reports. */
+void sui_set_symbol(sui_handle h, const char *name);
+/* What VoiceOver announces, and the tooltip: toolTip on AppKit, a UIToolTipInteraction on UIKit. */
+void sui_set_accessible_label(sui_handle h, const char *text);
 /* role: 0 Title, 1 Body, 2 Caption */
 void sui_set_text_role(sui_handle h, int32_t role);
 /* emphasis: 0 Normal, 1 Secondary */
@@ -126,16 +134,31 @@ void sui_run_on_main_after(int32_t delay_ms, sui_void_cb cb, int64_t ctx);
 /* The one place control is inverted: everywhere else Scala builds a tree and the shim
    obeys, but a table asks for the row it is about to show and recycles the ones it is not. */
 /* An NSTableView / UITableView inside its scroller. `cb` is called for each row
-   that becomes visible, with a recycled view or NULL. */
+   that becomes visible, with a recycled view or NULL. It is called with index -1 and a
+   row view when the table has let go of that view for good: RowSource.discard. NULL back. */
 sui_handle sui_create_table(sui_row_cb cb, int64_t ctx);
 /* The new row count, from RowSource.onInvalidate. */
 void sui_table_reload(sui_handle h, int32_t count);
-/* How many row views the table has actually created. The measurement that says
-   virtualisation is working, so it is part of the ABI rather than the self-test. */
+/* How many row views the table has been handed that it did not already hold: every row
+   built, ever. The measurement that says virtualisation is working, so it is part of
+   the ABI rather than the self-test. */
 int32_t sui_table_materialised(sui_handle h);
+/* How many of those row views the table has handed back through `cb` with index -1.
+   Built minus discarded is what the table still holds, and must stay bounded. */
+int32_t sui_table_discarded(sui_handle h);
+/* Scrolls row `row` into view at once, without animation, and lays the table out, so the
+   rows it needs are bound before this returns. For the self-test's long scroll. */
+void sui_table_scroll_to(sui_handle h, int32_t row);
+/* Tells the app memory is short, as the system would: UIKit's memory-warning notification,
+   which has a table free the cells in its reuse queue. 0 where the platform has no such
+   notice (AppKit). For the self-test that shows a freed row is discarded. */
+int32_t sui_post_memory_warning(void);
 /* How many table sources the shim still owns. Falls back to zero once every
    virtual list is destroyed; the measurement that says destroying one frees it. */
 int32_t sui_table_live(void);
+/* The view the table is showing for `row` now, or NULL when that row is not on screen.
+   The platform's answer, so a table that kept a stale row after its data changed shows it. */
+sui_handle sui_table_row_view(sui_handle h, int32_t row);
 
 /* --- presentation ------------------------------------------------------------ */
 /* Shows an Alert or a Sheet over the app. Called after its children are mounted. */
@@ -163,10 +186,10 @@ void sui_menu_add_item(sui_handle h, const char *label, int32_t enabled,
 /* --- picker ------------------------------------------------------------------ */
 void sui_picker_clear_options(sui_handle h);
 void sui_picker_add_option(sui_handle h, const char *label);
-/* -1 for no selection. */
+/* -1 for no selection. On a TabView, -1 or an index past the end leaves the tab shown. */
 void sui_set_selected(sui_handle h, int32_t index);
 int32_t sui_get_selected(sui_handle h);
-/* The index the user chose. */
+/* The index the user chose. Never fired for the app's own selection, nor a TabView's insert or remove. */
 void sui_on_select(sui_handle h, sui_int_cb cb, int64_t ctx);
 
 /* --- zstack ------------------------------------------------------------------ */
@@ -213,6 +236,12 @@ int32_t sui_is_secure(sui_handle h);
 /* 1 when an image view holds a decoded image, 0 when it shows nothing, -1 when `h` is not
    an image view. The difference between a picture and an empty frame of the right size. */
 int32_t sui_has_image(sui_handle h);
+/* The fit an image view draws with, as sui_set_content_fit takes it: 0 contain, 1 cover,
+   2 fill. -1 when `h` is not an image view. */
+int32_t sui_get_content_fit(sui_handle h);
+/* A text view's horizontal text alignment, as sui_set_align takes it: 0 leading, 1 centre,
+   2 trailing. -1 when `h` carries no text alignment. */
+int32_t sui_get_align(sui_handle h);
 /* How far a vertical scroller's visible area is from the top of its content, in points:
    0 when it shows the top. -1 when `h` is not a scroller. */
 double sui_scroll_offset(sui_handle h);
@@ -226,19 +255,57 @@ const char *sui_presented_message(sui_handle h);
 /* How many items the platform's menu for this view holds; 0 when it has none. */
 int32_t sui_menu_item_count(sui_handle h);
 const char *sui_menu_item_label(sui_handle h, int32_t index);
-/* How many options a Picker or SegmentedControl holds, as the platform's control has them. */
+/* How many options a Picker or SegmentedControl holds, as the platform's control has them;
+   for a TabView, the items in its tab bar. */
 int32_t sui_option_count(sui_handle h);
 const char *sui_option_label(sui_handle h, int32_t index);
+/* The option a Picker or SegmentedControl *shows* as chosen, read from what the control
+   draws (the pop-up's title, the selected segment); "" when it shows none (D13, #77). */
+const char *sui_shown_option(sui_handle h);
 /* Chooses option `index` through the control's own action, as a user would. 0 where the
-   platform offers no way to do that from code (UIKit's menu-backed Picker). */
+   platform offers no way to do that from code (UIKit's menu-backed Picker). A TabView's
+   item is chosen through its tab bar. */
 int32_t sui_choose(sui_handle h, int32_t index);
+/* The SF Symbol a TabView's bar shows for item `index`, or NULL when it shows none that
+   resolved. */
+const char *sui_option_symbol(sui_handle h, int32_t index);
+/* The Tab a TabView's controller has on screen: its selected item's view, and only while
+   that view is in the window. NULL when none is. */
+sui_handle sui_tab_shown(sui_handle h);
 /* Sets a DatePicker's day through the control's own action, as a user's choice would. */
 int32_t sui_choose_date(sui_handle h, int32_t epochDay);
 /* A view's alignment rect — what Auto Layout positions — in its window, top-left origin. */
 void sui_get_frame(sui_handle h, double *outX, double *outY, double *outW, double *outH);
+/* 1 when the SDK has an SF Symbol of this name. */
+int32_t sui_symbol_exists(const char *name);
+/* The SF Symbol a view shows, or NULL when its name did not resolve or it holds no image. */
+const char *sui_get_symbol(sui_handle h);
+/* The label VoiceOver reads, from the view. */
+const char *sui_get_accessible_label(sui_handle h);
+/* The tooltip the platform shows, from the view. */
+const char *sui_get_tooltip(sui_handle h);
+/* The share of a view's pixels that are painted when the platform draws it into a bitmap;
+   -1 when it has no size. An icon button whose symbol drew nothing reads 0. */
+double sui_painted_fraction(sui_handle h);
 /* Where a Grid has placed a child: the NSGridView's own row and column on AppKit, the
    construction's on UIKit. 0 when the child is not one of its cells. */
 int32_t sui_grid_cell(sui_handle h, sui_handle child, double *outRow, double *outColumn);
+/* How many active constraints, the renderer's own, are on a view's height — held by the
+   view or any ancestor. A horizontal Scroll has exactly one (#76). */
+int32_t sui_height_constraint_count(sui_handle h);
+/* The insets the platform holds for a container: a stack's edge insets or layout margins,
+   a Grid's, a Scroll's content insets. Padding plus any safe area. Zeros for anything else. */
+void sui_get_insets(sui_handle h, double *outTop, double *outLeft,
+                    double *outBottom, double *outRight);
+/* A view's `safeAreaInsets`, as the platform reports them now. */
+void sui_get_safe_area(sui_handle h, double *outTop, double *outLeft,
+                       double *outBottom, double *outRight);
+/* Test only: adds safe area to the root — `additionalSafeAreaInsets` on the root view
+   (AppKit) or its view controller (UIKit) — so a self-test can watch the insets arrive. */
+void sui_set_extra_safe_area(double top, double left, double bottom, double right);
+/* AppKit: sends a left-button event through the window at (x, y) in `h`, top-left origin:
+   kind 0 down, 1 dragged, 2 up. UIKit: 0, there is no public way to synthesise a touch. */
+int32_t sui_send_mouse(sui_handle h, int32_t kind, double x, double y);
 /* 1: a Link records the URL it would open instead of opening it, so a test can check it
    without launching a browser. 0: open for real again. */
 void sui_record_opened_urls(int32_t on);
@@ -269,8 +336,23 @@ int32_t sui_presented_count(void);
 int32_t sui_alert_action_count(sui_handle h);
 /* In the order the platform holds them, which need not be the order declared. */
 const char *sui_alert_action_label(sui_handle h, int32_t index);
-/* Clicks a button the way a user would, through the control's own action. 0 if not a button. */
+/* Clicks a button the way a user would, through the control's own action. 0 if not a button.
+   A UIKit Checkbox is flipped through its switch's value-changed event. */
 int32_t sui_perform_click(sui_handle h);
+/* Taps any view at its centre, after scrolling it into sight and checking a touch there
+   would reach it: AppKit sends a mouse-down and mouse-up through the window; UIKit, which
+   cannot synthesise a touch, runs the view's tap recogniser once it agrees to begin.
+   0 when the view could not be tapped. */
+int32_t sui_perform_tap(sui_handle h);
+/* Forces a view's layout direction, as a right-to-left locale sets it for the whole app,
+   so a test can measure what it does under it. 1 right-to-left, 0 back to inherited. */
+void sui_set_layout_direction(sui_handle h, int32_t rtl);
+/* Pins a view's width for a measurement — an AppKit Column hugs its children, so a short
+   label has no room to show its alignment. Negative takes the pin off. */
+void sui_pin_width(sui_handle h, double width);
+/* Where a drawn view's painted pixels sit across it: the first and last painted column
+   as fractions of its width. 0 when nothing is painted. */
+int32_t sui_ink_span(sui_handle h, double *outLeft, double *outRight);
 /* Chooses action `index` through the platform's own response path. 0 where the platform
    offers no way to do that from code (UIKit), rather than a simulation that would pass. */
 int32_t sui_alert_choose(sui_handle h, int32_t index);

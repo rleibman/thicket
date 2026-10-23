@@ -41,7 +41,11 @@ object GalleryIos {
       // anyway so the two Apple hosts differ in nothing but their entry shape.
       AppleApp.run("Thicket gallery", 520, 760) {
         if sys.env.contains("THICKET_GALLERY_SELFTEST") then AppleApp.postToUi(() => GallerySelfTest.run())
-        Gallery.app()
+        // The app's working directory is `/`, so `Gallery.logoBytes` — a repo-relative read —
+        // finds nothing here, and the bytes-backed Image showed nothing (#73). The logo is in
+        // the bundle, where `FromFile` finds it too; this host reads it from there, as the
+        // Android host reads it from the APK's assets.
+        Gallery.app(logo = Gallery.logoBytes(AppleApp.resourcePath(Gallery.logo)))
       }
     }
 
