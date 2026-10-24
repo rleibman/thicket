@@ -124,6 +124,33 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   outside the repository has run that path yet. Not done: a physical device; multipart and
   streaming bodies; an HTTP step in `bin/verify-apple.sh` (`selftest.sh` is separate).
   `bin/verify-apple.sh "iPhone 18 Pro"` on this change: all 13 steps pass.
+- 2026-10-22 — **macOS shows the SVG logo where NSImage decodes it, the PNG otherwise** (#85,
+  the Apple half of #84). *Measured* on macOS 27.0.1 (26A434) with a standalone Swift script:
+  `NSImage(contentsOfFile:)` and `NSImage(data:)` both load `docs/assets/thicket-logo.svg` as
+  one `_NSSVGImageRep` at the SVG's own 472.658x599.168 points, and drawn into a 200x254
+  bitmap it paints 30.6% of the pixels (its background is transparent); the PNG loads at
+  353.684x448.421 points (560x710 pixels at its DPI) and paints 100% (opaque background).
+  *Choice:* the macOS host asks the decoder, not the OS version — new
+  `AppleApp.decodesImage(bytes)` over a new ABI function `sui_image_decodes` — and passes
+  `Gallery.app(Gallery.logoSvg, svgBytes)` when it says yes, `Gallery.app()` (the PNG)
+  otherwise. Not a shim fallback, because the `Fill` picture is bytes, with no sibling file to
+  fall back to; not an OS-version test, because what matters is what the image view would do
+  with the same bytes. *macOS 13* (the shims' minimum) is not measured — no machine; it is not
+  reported to take SVG, and on it the host gets "no" and shows the PNG. Simulated by making
+  `sui_image_decodes` refuse an `_NSSVGImageRep`: the host fell back to the PNG and the gallery
+  passed 171/171. *Read-back:* new `sui_image_size` (`AppleInspect.imageSize`), both shims.
+  The gallery self-test (Apple, shared) gains: every Image reports the chosen file's size (the
+  SVG's 472.658x599.168, or the PNG's shape and not the SVG's size — iOS reads 560x710);
+  macOS only, the bytes-backed Fill picture paints 28.9% (SVG; >0.9 would be the PNG), and the
+  host chose the SVG exactly when the platform decodes it. macOS gallery 171/171 (was 168),
+  iOS 163/163 (was 162), `bin/verify-apple.sh "iPhone Air"` 13/13 (getting-started failed once
+  under load on a version read and passed re-run alone). *Controls:* host back on the PNG →
+  "the host shows the SVG … where the platform decodes it" fails; SVG file with PNG bytes →
+  the size check and the Fill paint check fail. *Found:* on UIKit the Fill picture is laid out
+  0x710 — the `.fill` Row squeezes the third of three 560-point pictures to nothing — so iOS
+  shows two of the three fits; the paint check is macOS-only for that reason. iOS stays on
+  the PNG (UIImage takes SVG only from asset catalogs).
+
 - 2026-10-21 — **Apple: UIKit discards the rows of freed cells; appends to stacks and grids
   are O(1), grid removals are batched** (#78, review 2026-10-20 P2-8 and P2-14, Apple parts).
   *Discard:* the row callback carries it, index -1 with the row view, so a table still

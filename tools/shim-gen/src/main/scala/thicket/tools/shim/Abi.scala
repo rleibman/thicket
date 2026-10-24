@@ -174,6 +174,13 @@ object Abi {
       doc = "Where a relative path of the app's own is: as given when it exists from the working\n" +
         "   directory, otherwise inside the app bundle's resources — the lookup ImageSource.FromFile\n" +
         "   makes. An iOS app's working directory is `/`, so its files are only in the bundle (#73)."
+    ),
+    Fn(
+      "sui_image_decodes",
+      I32,
+      List(p("data", Bytes), p("length", I32)),
+      doc = "1 when the platform's image class decodes these bytes (NSImage(data:), UIImage(data:)),\n" +
+        "   else 0. For a host choosing a format: NSImage takes SVG on macOS 14+ but not 13 (#85)."
     )
   )
 
@@ -618,6 +625,14 @@ object Abi {
       List(p("h", Handle)),
       doc = "1 when an image view holds a decoded image, 0 when it shows nothing, -1 when `h` is not\n" +
         "   an image view. The difference between a picture and an empty frame of the right size."
+    ),
+    Fn(
+      "sui_image_size",
+      I32,
+      List(p("h", Handle), p("outWidth", OutF64), p("outHeight", OutF64)),
+      doc = "The size, in points, of the image an image view holds: NSImage.size, UIImage.size. 1 and\n" +
+        "   the size when it holds one, 0 when it holds none or `h` is not an image view. Tells\n" +
+        "   which of two files of one picture is drawn: the logo's SVG and PNG differ in size (#85)."
     ),
     Fn(
       "sui_get_content_fit",

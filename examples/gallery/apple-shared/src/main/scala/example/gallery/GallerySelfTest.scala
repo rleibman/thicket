@@ -63,9 +63,18 @@ object GallerySelfTest {
     loop()
   }
 
-  /** Waits for the Effects section's ZIO result first, as the GTK host does, so the synchronous checks see it. */
-  def run(): Unit =
+  /** Set by [[run]]: the host shows the SVG logo wherever the platform decodes it (#85). */
+  private var svgWhereDecoded = false
+
+  /** Waits for the Effects section's ZIO result first, as the GTK host does, so the synchronous checks see it.
+    *
+    * `svgWhereDecoded`: the host promises the SVG logo wherever the platform's image class decodes it - the macOS host
+    * (#85). The iOS host stays on the PNG, whatever `UIImage` does.
+    */
+  def run(svgWhereDecoded: Boolean = false): Unit = {
+    this.svgWhereDecoded = svgWhereDecoded
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
+  }
 
   private def finish(): Unit =
     if failures == 0 then println("[gallery] ALL CHECKS PASSED")
@@ -168,6 +177,7 @@ object GallerySelfTest {
       List(ContentFit.Contain, ContentFit.Cover, ContentFit.Fill).forall(f => fits.contains(Some(f) -> true)),
       fits.toString
     )
+    logoFormat(imageWidgets)
 
     check(
       "a ZIO effect's result reached the screen through UiThread",
@@ -205,6 +215,57 @@ object GallerySelfTest {
     all:   List[Shim.Handle],
     label: String
   ): Option[Shim.Handle] = all.find(h => kind(h, WidgetKind.Button) && AppleInspect.text(h).contains(label))
+
+  /** Which file of the logo is drawn (#85): the SVG and the PNG made from it are one picture, so "holds an image"
+    * cannot tell them apart. Their sizes can - the SVG reports its own 472.658x599.168 points, the PNG its pixels at
+    * its DPI - and so can their pixels: the SVG's background is transparent and the PNG's opaque, so the Fill picture,
+    * which covers its whole view, is partly painted from the SVG and wholly from the PNG. The Fill picture is the
+    * bytes-backed one, so both the file and the bytes are read.
+    */
+  private def logoFormat(imageWidgets: Seq[Shim.Handle]): Unit = {
+    val svgFile = Gallery.currentLogoFile.endsWith(".svg")
+    val (sw, sh) = Gallery.logoSvgSize
+    def isSvg(s:    (Double, Double)) = math.abs(s._1 - sw) < 0.01 && math.abs(s._2 - sh) < 0.01
+    def pngShape(s: (Double, Double)) = s._2 > 0 && math.abs(s._1 / s._2 - 560.0 / 710.0) < 0.01
+    def show(s:     (Double, Double)) = f"${s._1}%.3fx${s._2}%.3f"
+    val sizes = imageWidgets.map(h => AppleInspect.contentFit(h) -> AppleInspect.imageSize(h))
+    val shown = sizes.map { case (f, s) => s"${f.getOrElse("?")} ${s.map(show).getOrElse("none")}" }.mkString(", ")
+    check(
+      if svgFile then s"every Image draws the SVG logo, at its own ${show(Gallery.logoSvgSize)}"
+      else "every Image draws the PNG logo, in its shape and not at the SVG's size",
+      sizes.nonEmpty && sizes.forall {
+        case (_, Some(s)) => if svgFile then isSvg(s) else !isSvg(s) && pngShape(s)
+        case _            => false
+      },
+      s"(#85) ${Gallery.currentLogoFile}: $shown"
+    )
+    val fill = imageWidgets.find(h => AppleInspect.contentFit(h).contains(ContentFit.Fill))
+    val painted = fill.map(AppleInspect.paintedFraction).getOrElse(-1.0)
+    val fillFrame =
+      fill.map(AppleInspect.frame).map(r => f"${r._3}%.0fx${r._4}%.0f at (${r._1}%.0f,${r._2}%.0f)").getOrElse("none")
+    println(
+      f"[gallery]   logo: ${Gallery.currentLogoFile}; $shown; Fill $fillFrame, painted ${painted * 100}%.1f%%"
+    )
+    // Asked of the macOS host, where the Fill picture has a size. On UIKit it has none: the
+    // .fill Row squeezes the third of three 560-point-wide pictures to nothing, so there is no
+    // pixel to count (the frame is printed above).
+    if svgWhereDecoded then
+      check(
+        if svgFile then "the bytes-backed Fill picture paints the SVG, its transparent background left clear"
+        else "the bytes-backed Fill picture paints the opaque PNG",
+        if svgFile then painted > 0.05 && painted < 0.9 else painted > 0.9,
+        f"(#85) painted ${painted * 100}%.1f%% of the view, $fillFrame"
+      )
+    if svgWhereDecoded then {
+      val decodes = AppleApp.decodesImage(Gallery.logoBytes(Gallery.logoSvg))
+      check(
+        "the host shows the SVG logo exactly where the platform decodes it",
+        decodes == svgFile,
+        s"(#85) the platform ${if decodes then "decodes" else "does not decode"} the SVG; the host chose " +
+          Gallery.currentLogoFile
+      )
+    }
+  }
 
   /** The Layout section and the padded Scroll (review 2026-10-20, P1-4, P2-26), from the frames the platform laid out
     * and the alignment its text views hold. Within a point, as the ZStack's checks are.
