@@ -57,6 +57,14 @@ lazy val app = project.in(file(".")).enablePlugins(ThicketIosPlugin)   // iOS: a
 - **`thicketAppleShim`** unpacks the shim and returns where it went. In sbt 2 a project's
   `target` is below `target/out/`, so ask (`sbt 'print thicketAppleShim'`) rather than assume.
 
+- **`thicketHttpApple`** (#90): when the app depends on `thicket-http-apple`, both plugins
+  unpack its Swift library (`macos/` and `ios-sim/libthickethttp.a`, `include/`) from that
+  jar and return the directory; `ThicketMacPlugin` also links it, through
+  `ThicketNativeFlags.appleHttp`. An app without the dependency gets `None` and links
+  nothing. On iOS the host's link takes `ios-sim/libthickethttp.a`. Not yet run by a
+  template outside the repository: the in-repo self-test (`examples/http-apple`) links the
+  library by path with the same `appleHttp` flags.
+
 Both were first run by `bin/verify-getting-started-apple.sh`, which publishes locally, copies
 the two templates outside the repository and builds and runs them: the macOS app owns a window
 titled "Hello Thicket" after 10 s, and the iOS app is still running in the simulator after 10 s.

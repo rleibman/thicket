@@ -1,9 +1,9 @@
 # 16 — Device services: a plan for review
 
-**Status (2026-10-21): decided; storage and SQLite built on GTK and Android.** The owner's
-answers are in §16.9. Built: app directories, preferences and SQLite through JDBC (§16.5,
-§16.6), measured on GTK and on the Android emulator; Apple is #98. The iOS HTTP transport is
-#90 (Mac). Covers location, motion, camera, files, storage and the rest:
+**Status (2026-10-22): decided; storage and SQLite built on GTK and Android, and the iOS HTTP
+transport built (#90, §16.4).** The owner's answers are in §16.9. Built: app directories,
+preferences and SQLite through JDBC (§16.5, §16.6), measured on GTK and on the Android emulator;
+Apple storage is #98. Covers location, motion, camera, files, storage and the rest:
 what a real app is likely to need, what existing libraries already cover, and what Thicket
 itself has to provide.
 
@@ -55,7 +55,7 @@ most of them, which is why they come first.
 
 | Service | Shape (proposal) | Android | iOS | macOS | GTK |
 |---|---|---|---|---|---|
-| **HTTP transport** | an sttp `Backend` per platform; the app keeps sttp/caliban | `HttpURLConnectionBackend` + `INTERNET` permission | **new**: an sttp backend over `URLSession`, through the shim | `CurlBackend` (libcurl believed to be in the SDK; to confirm on the Mac) | `CurlBackend` |
+| **HTTP transport** | an sttp `Backend` per platform; the app keeps sttp/caliban | `HttpURLConnectionBackend` + `INTERNET` permission | **built** (#90): `URLSessionBackend` in `thicket-http-apple` | `CurlBackend` (libcurl is in the SDK, measured; sttp also needs libidn2, §16.4) or `URLSessionBackend` | `CurlBackend` |
 | **App directories** | `Storage.dirs: AppDirs(data, cache, temp)` as `java.nio.file.Path` | `getFilesDir`, `getCacheDir` | Application Support, Caches | same, under the bundle id | `$XDG_DATA_HOME/<app>`, `$XDG_CACHE_HOME/<app>` |
 | **Preferences** (small key–value) | `Preferences`: get/set strings, numbers, booleans | `SharedPreferences` | `UserDefaults` | `UserDefaults` | a file under the data dir (GSettings needs an installed schema) |
 | **Secure storage** (tokens) | `Secrets`: get/set/delete a string | Android Keystore-wrapped value | Keychain | Keychain | libsecret (Secret Service), optional dependency |
@@ -96,6 +96,34 @@ phase 6 requires. Two ways out:
    build, update for CVEs, and keep in the app size budget (N-03).
 
 **Decided: URLSession if iOS has no libcurl, #90.** The Mac measures first.
+
+**Measured (2026-10-22, Xcode 27.0, SDKs 27.0) and built (#90).**
+
+| SDK | libcurl | How |
+|---|---|---|
+| iOS simulator | **no**: no `libcurl*.tbd` in `usr/lib`, no `curl/` headers, nothing named `*curl*` anywhere in the SDK, nor in the iOS 27.0 simulator runtime | `find -L <sdk> -iname '*curl*'`; `clang -lcurl` → `library 'curl' not found` |
+| iOS device | **no**, the same | the same |
+| macOS | **yes**: `libcurl.tbd` (→ `/usr/lib/libcurl.4.dylib`, curl 8.7.1, SecureTransport) and headers | a C program linked with `-lcurl` printed `libcurl/8.7.1`; sttp's `CurlBackend` did a GET and a POST against a local server (both 200) |
+
+So option 1 was built: **`modules/http-apple` (`thicket-http-apple`)**, an sttp `SyncBackend`
+(`URLSessionBackend()`, the same type as `CurlBackend()`) over a small Swift library of its
+own, carried in its jar and kept out of `renderer-apple`. Its C ABI (`thk_http_*`) is
+described in `tools/shim-gen` and pull-only: Scala blocks in a `@blocking` wait and reads the
+result, and nothing calls into Scala from `URLSession`'s queue. On the iOS simulator it passes
+13 checks against a local server — GET, POST, 404, repeated headers, redirect, a timeout, a
+cancellation, connect refused, the GC not waiting for a parked request, one caliban-client
+query — each check seen to fail with its feature broken. Rules and differences from
+`CurlBackend` are in `modules/http-apple/README.md`; the numbers are in the decision log.
+
+Two findings on the way:
+- **sttp-model needs libidn2 on Scala Native.** Every host that is not an IPv6 literal goes
+  through `idn2_to_ascii_8z` (`@link("idn2")`), and neither Apple SDK has libidn2. The iOS
+  link failed on it; `thicket-http-apple` now supplies the three functions. On macOS the link
+  picks up whatever libidn2 it finds (Homebrew's here), so **`CurlBackend` on macOS also
+  needs libidn2 installed**, which a stock Mac does not have.
+- **App Transport Security:** plain `http://` to anything but loopback needs an
+  `NSAppTransportSecurity` exception in the app's `Info.plist`. The self-test reached
+  `127.0.0.1` and `localhost` without one.
 
 Android needs no new code, only `HttpURLConnectionBackend` (sttp's default JVM backend is
 `java.net.http`, which Android does not have) and the `INTERNET` permission. That is

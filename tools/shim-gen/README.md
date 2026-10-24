@@ -88,6 +88,18 @@ Scala-side comparison runs at `Abi.Repr` (i32 / i64 / f64 / pointer / function p
 rather than at the named type. Demanding a distinction the language does not have would be
 a false positive forever; what survives is every difference that costs a wrong register.
 
+## A second surface: `thk_http_*` (#90)
+
+`thicket-http-apple` has its own Swift library and so its own ABI, described in `HttpAbi.scala`
+with the same vocabulary and the same rules (no struct, and here no callback at all: the
+surface is pull-only, because `URLSession` completes on a thread the GC does not know). From it
+`sbt shimGen/run` also writes `modules/http-apple/shim/include/thicket_http.h` and
+`modules/http-apple/src/main/scala/thicket/http/apple/HttpShim.scala`, which `GenerateSpec`
+compares byte for byte like the renderer's. `HttpConsistencySpec` checks the header, the
+externs and `shim/Sources/HttpShim.swift` against each other and against `HttpAbi`, and that
+every `Fn(blocking = true)` — `thk_http_wait` — carries Scala Native's `@blocking` in the
+externs. The parsers take the prefix (`sui` or `thk_http`) as a parameter.
+
 ## Adopting the generated files
 
 Done 2026-09-29 (GitHub #3). `modules/renderer-apple/shim/include/thicket_apple.h` and

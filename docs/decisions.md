@@ -72,6 +72,58 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-22 — **iOS HTTP: `thicket-http-apple`, an sttp `SyncBackend` over `URLSession`.
+  iOS has no libcurl, macOS does, and sttp needs libidn2 on both** (#90; docs/16 §16.4).
+  *Measured* (Xcode 27.0, SDKs 27.0): the iOS simulator and device SDKs have no libcurl — no
+  `libcurl*.tbd`, no `curl/` headers, nothing matching `*curl*` in either SDK nor in the iOS
+  27.0 simulator runtime, and `clang -lcurl` says `library 'curl' not found`. macOS has
+  `libcurl.tbd` → `/usr/lib/libcurl.4.dylib`, curl 8.7.1 (SecureTransport): a C program linked
+  with `-lcurl` ran, and sttp's `CurlBackend` did a GET and a POST against a local server, both
+  200. *Built*, as the issue laid out: a module of its own (`modules/http-apple`, never in
+  `renderer-apple`) with its own Swift library (`libthickethttp.a`, 98 KB macOS / 96 KB
+  ios-sim) carried in its jar under `thicket-http-apple/`; a pull-only C ABI of 12
+  `thk_http_*` functions described in `tools/shim-gen` (`HttpAbi`; header and externs
+  generated, `HttpConsistencySpec` checks the Swift), requests as `int64_t` ids, not pointers;
+  `URLSessionBackend()`, the same type as `CurlBackend()`. Scala blocks in `thk_http_wait`,
+  which is `@blocking`, in 50 ms slices, and between slices `Thread.interrupted()` cancels the
+  task (`InterruptedException`, so `ZIO.attemptBlockingInterrupt` stops it) and `readTimeout`
+  bounds the whole exchange (`TimeoutException`), as curl's does. Failures are sttp's
+  `ConnectException` / `TimeoutException` / `ReadException`. A call from the main thread throws
+  under a self-test and warns once otherwise. Foundation joins a repeated response header with
+  ", "; `Set-Cookie` is split back (a comma starts a cookie only before `token=`). Redirects
+  come back to sttp's `FollowRedirectsBackend`; the session is ephemeral, with no cookie jar and
+  no cache. **libidn2:** sttp-model's Native build sends every host that is not an IPv6 literal
+  through `idn2_to_ascii_8z` (`@link("idn2")`), and neither SDK has libidn2: the iOS link
+  failed on `idn2_free`, `idn2_strerror`, `idn2_to_ascii_8z`. The Swift library now defines
+  them (ASCII labels unchanged, others NFC + lower case + Punycode). On macOS the link takes
+  whatever libidn2 it finds — Homebrew's, here — so `CurlBackend` on a stock Mac needs
+  libidn2 installed too. *Measured*, `examples/http-apple/selftest.sh ios "iPhone 18 Pro"`
+  against `server.py` on 127.0.0.1, 13/13 (and 13/13 on macOS): GET 47 ms; `bücher.example`
+  → `xn--bcher-kva.example`; POST of 1 500 characters and of 256 bytes echoed intact; 404 with
+  its body; `Set-Cookie` ×2 with the `Expires` comma kept, `X-Multi` "one, two"; a 302
+  followed (history 1); `readTimeout` 500 ms → `TimeoutException` after 503 ms against a
+  3 000 ms response; port 1 → `ConnectException`; interrupted at 300 ms → back at 312 ms and
+  the server saw 1 hang-up (it would have answered at 4 000); `System.gc()` 2 ms while a
+  request was parked in one 5 s native wait; caliban-client `greeting(name:"thicket")` →
+  `Right("hello, thicket")`; 0 requests left. **Controls**, all on the simulator, each check
+  seen to fail with its feature broken. Batch 1, eight breaks, exactly the eight targeted
+  checks failed: `Set-Cookie` left joined (×1); URLSession following the redirect itself
+  (history empty); IDN labels passed through (`b%C3%BCcher`); no deadline (200 after
+  3 014 ms); interrupt ignored (200 after 4 039 ms, 0 hang-ups); refused mapped to
+  `IOException` (`ReadException`); the main thread not refused (200); ids never freed (36
+  live). Batch 2: body not sent (POST 0 characters, caliban "unsupported query"); status not
+  read (404 seen as 200, and the 302 not followed); `@blocking` removed (`System.gc()`
+  **1 711 ms**). Batch 3: body not copied out (7 checks fail). ABI: `waitMs` as `Int64` in
+  the Swift and `@blocking` deleted from the externs → 3 shim-gen tests fail and
+  `shimGen/run --check` exits 1. *Not linked by an app that does not depend on it:* the todo
+  iOS app is 5 792 088 bytes stripped on `main` and on this branch, with 0 `thk_http`, idn2 or
+  `URLSessionBackend` symbols. ATS: loopback worked with no `Info.plist` exception; a
+  non-loopback `http://` refusal is Apple's documented rule, not measured here (it needs a
+  host off the machine). `sbt-thicket`'s Apple plugins unpack the library when the module is a
+  dependency and the macOS one links it (`ThicketNativeFlags.appleHttp`), but no template
+  outside the repository has run that path yet. Not done: a physical device; multipart and
+  streaming bodies; an HTTP step in `bin/verify-apple.sh` (`selftest.sh` is separate).
+  `bin/verify-apple.sh "iPhone 18 Pro"` on this change: all 13 steps pass.
 - 2026-10-22 — **macOS shows the SVG logo where NSImage decodes it, the PNG otherwise** (#85,
   the Apple half of #84). *Measured* on macOS 27.0.1 (26A434) with a standalone Swift script:
   `NSImage(contentsOfFile:)` and `NSImage(data:)` both load `docs/assets/thicket-logo.svg` as
