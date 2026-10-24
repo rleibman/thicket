@@ -29,6 +29,9 @@ void sui_window_set_title(const char *title);
    directory, otherwise inside the app bundle's resources — the lookup ImageSource.FromFile
    makes. An iOS app's working directory is `/`, so its files are only in the bundle (#73). */
 const char *sui_resource_path(const char *path);
+/* 1 when the platform's image class decodes these bytes (NSImage(data:), UIImage(data:)),
+   else 0. For a host choosing a format: NSImage takes SVG on macOS 14+ but not 13 (#85). */
+int32_t sui_image_decodes(const uint8_t *data, int32_t length);
 
 /* --- widget construction ----------------------------------------------------- */
 /* kind: the view each toolkit builds. A different *widget* per platform is chosen here,
@@ -236,6 +239,10 @@ int32_t sui_is_secure(sui_handle h);
 /* 1 when an image view holds a decoded image, 0 when it shows nothing, -1 when `h` is not
    an image view. The difference between a picture and an empty frame of the right size. */
 int32_t sui_has_image(sui_handle h);
+/* The size, in points, of the image an image view holds: NSImage.size, UIImage.size. 1 and
+   the size when it holds one, 0 when it holds none or `h` is not an image view. Tells
+   which of two files of one picture is drawn: the logo's SVG and PNG differ in size (#85). */
+int32_t sui_image_size(sui_handle h, double *outWidth, double *outHeight);
 /* The fit an image view draws with, as sui_set_content_fit takes it: 0 contain, 1 cover,
    2 fill. -1 when `h` is not an image view. */
 int32_t sui_get_content_fit(sui_handle h);

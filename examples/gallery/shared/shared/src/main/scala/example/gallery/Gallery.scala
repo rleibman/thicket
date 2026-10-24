@@ -126,11 +126,20 @@ object Gallery {
   /** The logo, as a file and as the bytes of that file. A host with no filesystem path to it — an APK — passes the
     * bytes to [[app]] itself; `FromFile` then finds it in the APK's assets at the same relative path.
     *
-    * [[logoSvg]] where the platform's image decoder draws SVG (GTK, through gdk-pixbuf); [[logo]], the PNG made from it
-    * by `bin/logo-assets.sh`, where it takes raster only (Android's `BitmapFactory`).
+    * [[logoSvg]] where the platform's image decoder draws SVG (GTK, through gdk-pixbuf; AppKit on macOS 14+, through
+    * `NSImage`, #85); [[logo]], the PNG made from it by `bin/logo-assets.sh`, where it takes raster only (Android's
+    * `BitmapFactory`, UIKit's `UIImage`, AppKit on macOS 13).
     */
-  val logo:                           String = "docs/assets/thicket-logo.png"
-  val logoSvg:                        String = "docs/assets/thicket-logo.svg"
+  val logo:    String = "docs/assets/thicket-logo.png"
+  val logoSvg: String = "docs/assets/thicket-logo.svg"
+
+  /** The SVG's own size, from its `width` and `height`: what a decoder that reads the SVG reports for it (#85). */
+  val logoSvgSize: (Double, Double) = (472.658, 599.168)
+
+  /** The logo file the running app was given. Set by [[app]], for a host's self-test to know which picture it expects.
+    */
+  var currentLogoFile: String = logo
+
   def logoBytes(path: String = logo): Array[Byte] =
     scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path))).getOrElse(Array.emptyByteArray)
 
@@ -162,7 +171,8 @@ object Gallery {
     model:    Model,
     loaded:   Signal[RemoteData[Nothing, String]],
     logoFile: String,
-    logo:     Array[Byte]
+    logo:     Array[Byte],
+    storage:  Option[StorageDemo] = None
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -426,6 +436,20 @@ object Gallery {
               case RemoteData.Failed(_)    => Label("Failed")
             }
           ),
+          // Device services (docs/16): preferences and SQLite in the app's own directories,
+          // the database on a worker thread. Apple passes no services until its half is built.
+          section("Storage — preferences and SQLite, in the app's own directories")(
+            storage match {
+              case None =>
+                Label("No storage on this platform yet", emphasis = Emphasis.Secondary)
+              case Some(demo) =>
+                Column(spacing = 8)(
+                  Label(s"Opened ${demo.opens} times"),
+                  Label(demo.notes.map(_.fold(identity, StorageDemo.notesLabel))),
+                  Button("Add a note")(demo.addNote())
+                )
+            }
+          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -487,23 +511,30 @@ object Gallery {
   /** The running app's navigation, for a host's self-test to drive. Set by [[app]]. */
   var currentNav: Option[Nav[Route]] = None
 
-  /** The whole app, for a host to mount. Hosts differ only in how they start, and in which logo file their platform can
-    * draw.
+  /** The running app's storage demo, for a host's self-test. Set by [[app]] when the host provides services. */
+  var currentStorage: Option[StorageDemo] = None
+
+  /** The whole app, for a host to mount. Hosts differ only in how they start, in which logo file their platform can
+    * draw, and in the device services they have.
     */
   def app(
     logoFile: String = logo,
-    logo:     Array[Byte] = Array.emptyByteArray
+    logo:     Array[Byte] = Array.emptyByteArray,
+    services: Option[Services] = None
   )(using Owner
   ): AppRoot = {
     val bytes = if logo.nonEmpty then logo else logoBytes(logoFile)
+    currentLogoFile = logoFile
     val model = Model()
+    val storage = services.map(StorageDemo(_))
+    currentStorage = storage
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logoFile, bytes)
+        val s = screen(model, loaded, logoFile, bytes, storage)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

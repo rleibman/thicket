@@ -59,7 +59,7 @@ Legend: **done** · **partial** (works, with a stated gap) · *blank* = not star
 | `Checkbox` | `WidgetKind.Checkbox` | done | done | done | done | UIKit has no checkbox: a `UILabel` caption beside a `UISwitch`, which a tap on the caption flips (#75) |
 | `Scroll` | `WidgetKind.Scroll` | done | done | done | done | Vertical and horizontal (`Prop.Axis`) on all four. The axis is read at `create`; Apple folds it into the kind code |
 | `Divider` | `WidgetKind.Divider` | done | done | done | done | Platform's own weight and colour, never a drawn line |
-| `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. GTK decodes SVG too (gdk-pixbuf, `librsvg2-common`), so the GTK apps show `docs/assets/thicket-logo.svg`; Android and Apple are given the PNG made from it (`bin/logo-assets.sh`). All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png`. On UIKit the pictures in a Row shrink together, in proportion, and a squeezed Image is no taller than its width allows (#104) |
+| `Image` | `WidgetKind.Image` | done | done | done | done | Decoding is on the UI thread everywhere. GTK decodes SVG too (gdk-pixbuf, `librsvg2-common`), so the GTK apps show `docs/assets/thicket-logo.svg`; so does the macOS gallery where `NSImage` decodes SVG (macOS 14+, measured on 27; the host asks `AppleApp.decodesImage` and falls back to the PNG, #85). Android and iOS are given the PNG made from it (`bin/logo-assets.sh`). All three `ContentFit` modes measured on both Apple toolkits — `docs/screenshots/content-fit-appkit.png`. On UIKit the pictures in a Row shrink together, in proportion, and a squeezed Image is no taller than its width allows (#104; before it, the Cover and Fill pictures were laid out 0 points wide) |
 | `ZStack` | `WidgetKind.ZStack` | done | done | done | done | `GtkOverlay` with every child an overlay that `measure`s / `FrameLayout` / a plain view and constraints. Last child on top; each child at its **natural size**, placed by one `Prop.StackAlignment` on the stack. Not called `Stack`: that is what `NSStackView`, `UIStackView` and `GtkStack` already mean, and none of them overlaps anything |
 
 ### Added in phase 3 — done on all four (#18 for Apple)
@@ -240,8 +240,11 @@ every remaining entry before it is built, not after.
 | Navigation | `Nav`, `NavHost`, `AppRoot` | done — stack, title, Up and toolbar actions are native chrome, and every renderer now consumes `AppRoot.pages` so the stack stays alive: `AdwNavigationView` on GTK (#32), `UINavigationController` on iOS and a sidebar on macOS (#29), a `FrameLayout` plus `android.transition.Slide` on Android. Android deliberately avoids Fragments — `android.app.Fragment` is deprecated and the AndroidX one would be a new dependency |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, **per-subtree `Provide`**; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
+| App directories and preferences | `modules/storage`, `storage-gtk`, `storage-android` | done on GTK (XDG directories, `FilePreferences`) and Android (internal storage, `SharedPreferences`); a value reads back as the type it was written as on both. Apple is #98. `docs/16` §16.6 |
+| SQLite, through plain JDBC | `modules/sqlite`, `sqlite-android` | done on GTK (`scala-native-jdbc-sqlite` 0.0.7) and Android (Thicket's driver over `android.database.sqlite`). Every driver runs the same 17 `JdbcConformance` checks: xerial on the JVM and the Android driver pass all of them. The Native driver fails exactly 2, both upstream: batches and `setFetchSize` are unimplemented. (0.0.6 failed 3 more, swallowed errors, fixed upstream in 0.0.7.) Magnum works on Native; on Android it needs a one-line upstream fix (`docs/16` §16.5). Apple is #98. `docs/16` §16.5 |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
-| Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine |
+| Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine. Since #90 also `thicket-http-apple`'s 12 `thk_http_*` functions (`HttpAbi`): `thicket_http.h` and `HttpShim.scala` generated, `HttpShim.swift` checked |
+| HTTP on Apple | `modules/http-apple` | done on iOS and macOS (#90) — `URLSessionBackend`, an sttp `SyncBackend` over `URLSession`, because the iOS SDK has no libcurl. Its own module and Swift library, not linked by an app that does not depend on it. 13 self-test checks against a local server pass on the iOS simulator and on macOS, among them one caliban-client query; each is seen to fail with its feature broken (`examples/http-apple`). Not a widget, so not in the gallery. Android (`HttpURLConnectionBackend`) and GTK (`CurlBackend`) need no Thicket code and are not yet verified (docs/16 §16.10) |
 
 ## 12.4 Props
 
@@ -337,13 +340,17 @@ someone who did not write the framework, running on all three targets.
 | `signalsJS` | 28 — no `ThreadGuardSpec`, JS has no threads |
 | `coreJVM` / `coreJS` / `coreNative` | 170 |
 | `effectZioJVM` / `effectZioNative` | 25 — Native ran none until 2026-10-20: the specs were JVM-only |
+| `storageJVM` / `storageNative` | 14 |
+| `storageGtk` | 3 |
+| `sqliteJVM` / `sqliteNative` | 2 — one runs all 17 conformance checks against the driver: every one on the JVM, all but the 2 known upstream gaps on Native |
 | `shimGen` | 15 |
 | `sbtThicket` | 9 |
 
-Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run. On top of
-these, the self-tests drive the real toolkits: GTK gallery **114** and todo **69**
-(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **24** and
-todo **84** on the `s2test` emulator.
+Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run; the
+storage and sqlite rows 2026-10-21. On top of these, the self-tests drive the real toolkits:
+GTK gallery **119** and todo **69** (`bin/gtk-selftests.sh`, which also fails on any
+`Gtk-CRITICAL`), Android gallery **29** and todo **84** on the `s2test` emulator (2026-10-21,
+the storage section's five checks each included).
 
 Four rules the migration established:
 
@@ -399,8 +406,8 @@ exits non-zero when any of it fails.
 ### What the number does *not* cover
 
 **The three renderers.** GTK, Android and Apple are Scala Native and ART code, exercised by
-self-tests that drive the real toolkit in a real process — 114 + 69 checks on GTK and 24 + 84
-on Android (2026-10-20), 87 and 82 on macOS and iOS. scoverage instruments none of that, so those modules contribute
+self-tests that drive the real toolkit in a real process — 119 + 69 checks on GTK and 29 + 84
+on Android (2026-10-21), 87 and 82 on macOS and iOS. scoverage instruments none of that, so those modules contribute
 nothing to the figure above and **their absence is not a gap in testing**. The number is
 coverage of the effect-free core, and quoting it as "the project's coverage" would be
 wrong in both directions at once.

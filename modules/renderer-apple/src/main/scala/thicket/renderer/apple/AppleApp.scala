@@ -61,6 +61,22 @@ object AppleApp {
       if p == null then path else fromCString(p)
     }
 
+  /** Whether the platform's image class — `NSImage`, `UIImage` — decodes `bytes`. For a host choosing between two files
+    * of one picture: AppKit draws SVG on macOS 14 and later but not on 13, the shim's minimum, and UIKit does not draw
+    * it from a file or bytes at all (#85). Asks the decoder itself rather than the OS version, so the answer is what
+    * the image view would do with the same bytes.
+    */
+  def decodesImage(bytes: Array[Byte]): Boolean =
+    bytes.nonEmpty && Zone {
+      val buf = alloc[Byte](bytes.length)
+      var i = 0
+      while i < bytes.length do {
+        buf(i) = bytes(i)
+        i += 1
+      }
+      Shim.sui_image_decodes(buf, bytes.length) == 1
+    }
+
   /** Fired by the shim from `applicationDidFinishLaunching`, so the window and its root view exist by the time the tree
     * is mounted.
     */

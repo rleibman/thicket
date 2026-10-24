@@ -1,7 +1,9 @@
 # 16 — Device services: a plan for review
 
-**Status (2026-10-21): decided, nothing built.** The owner's answers are in §16.9; the iOS
-HTTP transport is #90 (Mac). Covers location, motion, camera, files, storage and the rest:
+**Status (2026-10-22): decided; storage and SQLite built on GTK and Android, and the iOS HTTP
+transport built (#90, §16.4).** The owner's answers are in §16.9. Built: app directories,
+preferences and SQLite through JDBC (§16.5, §16.6), measured on GTK and on the Android emulator;
+Apple storage is #98. Covers location, motion, camera, files, storage and the rest:
 what a real app is likely to need, what existing libraries already cover, and what Thicket
 itself has to provide.
 
@@ -43,7 +45,7 @@ Resolved with `cs complete-dep` on 2026-10-21; versions are the newest published
 | GraphQL | caliban-client | 3.2.0 | 3.2.0 | Phase 6's meal-planner client; rides on sttp |
 | JSON | zio-json / upickle | 1.1.1 / 4.4.3 | same | |
 | HTTP, ZIO | zio-http | yes | **no Native artefact** | Not usable as the client on GTK/Apple |
-| SQLite, through JDBC | `java.sql` | in the platform; **no maintained driver** | `scala-native-jdbc(-sqlite)` 0.0.6 | See §16.5. (`sqlite4s` stops at SN 0.4) |
+| SQLite, through JDBC | `java.sql` | in the platform; **no maintained driver** | `scala-native-jdbc(-sqlite)` 0.0.7 | See §16.5. (`sqlite4s` stops at SN 0.4) |
 | Time | `java.time` | yes | scala-java-time 2.8.0 | |
 
 ## 16.3 The likely list, tiered
@@ -53,7 +55,7 @@ most of them, which is why they come first.
 
 | Service | Shape (proposal) | Android | iOS | macOS | GTK |
 |---|---|---|---|---|---|
-| **HTTP transport** | an sttp `Backend` per platform; the app keeps sttp/caliban | `HttpURLConnectionBackend` + `INTERNET` permission | **new**: an sttp backend over `URLSession`, through the shim | `CurlBackend` (libcurl believed to be in the SDK; to confirm on the Mac) | `CurlBackend` |
+| **HTTP transport** | an sttp `Backend` per platform; the app keeps sttp/caliban | `HttpURLConnectionBackend` + `INTERNET` permission | **built** (#90): `URLSessionBackend` in `thicket-http-apple` | `CurlBackend` (libcurl is in the SDK, measured; sttp also needs libidn2, §16.4) or `URLSessionBackend` | `CurlBackend` |
 | **App directories** | `Storage.dirs: AppDirs(data, cache, temp)` as `java.nio.file.Path` | `getFilesDir`, `getCacheDir` | Application Support, Caches | same, under the bundle id | `$XDG_DATA_HOME/<app>`, `$XDG_CACHE_HOME/<app>` |
 | **Preferences** (small key–value) | `Preferences`: get/set strings, numbers, booleans | `SharedPreferences` | `UserDefaults` | `UserDefaults` | a file under the data dir (GSettings needs an installed schema) |
 | **Secure storage** (tokens) | `Secrets`: get/set/delete a string | Android Keystore-wrapped value | Keychain | Keychain | libsecret (Secret Service), optional dependency |
@@ -95,6 +97,34 @@ phase 6 requires. Two ways out:
 
 **Decided: URLSession if iOS has no libcurl, #90.** The Mac measures first.
 
+**Measured (2026-10-22, Xcode 27.0, SDKs 27.0) and built (#90).**
+
+| SDK | libcurl | How |
+|---|---|---|
+| iOS simulator | **no**: no `libcurl*.tbd` in `usr/lib`, no `curl/` headers, nothing named `*curl*` anywhere in the SDK, nor in the iOS 27.0 simulator runtime | `find -L <sdk> -iname '*curl*'`; `clang -lcurl` → `library 'curl' not found` |
+| iOS device | **no**, the same | the same |
+| macOS | **yes**: `libcurl.tbd` (→ `/usr/lib/libcurl.4.dylib`, curl 8.7.1, SecureTransport) and headers | a C program linked with `-lcurl` printed `libcurl/8.7.1`; sttp's `CurlBackend` did a GET and a POST against a local server (both 200) |
+
+So option 1 was built: **`modules/http-apple` (`thicket-http-apple`)**, an sttp `SyncBackend`
+(`URLSessionBackend()`, the same type as `CurlBackend()`) over a small Swift library of its
+own, carried in its jar and kept out of `renderer-apple`. Its C ABI (`thk_http_*`) is
+described in `tools/shim-gen` and pull-only: Scala blocks in a `@blocking` wait and reads the
+result, and nothing calls into Scala from `URLSession`'s queue. On the iOS simulator it passes
+13 checks against a local server — GET, POST, 404, repeated headers, redirect, a timeout, a
+cancellation, connect refused, the GC not waiting for a parked request, one caliban-client
+query — each check seen to fail with its feature broken. Rules and differences from
+`CurlBackend` are in `modules/http-apple/README.md`; the numbers are in the decision log.
+
+Two findings on the way:
+- **sttp-model needs libidn2 on Scala Native.** Every host that is not an IPv6 literal goes
+  through `idn2_to_ascii_8z` (`@link("idn2")`), and neither Apple SDK has libidn2. The iOS
+  link failed on it; `thicket-http-apple` now supplies the three functions. On macOS the link
+  picks up whatever libidn2 it finds (Homebrew's here), so **`CurlBackend` on macOS also
+  needs libidn2 installed**, which a stock Mac does not have.
+- **App Transport Security:** plain `http://` to anything but loopback needs an
+  `NSAppTransportSecurity` exception in the app's `Info.plist`. The self-test reached
+  `127.0.0.1` and `localhost` without one.
+
 Android needs no new code, only `HttpURLConnectionBackend` (sttp's default JVM backend is
 `java.net.http`, which Android does not have) and the `INTERNET` permission. That is
 unverified on a device until someone runs it.
@@ -108,7 +138,7 @@ same on every platform, and Thicket supplies drivers where none exist.
 |---|---|---|
 | JVM (unit tests on Linux) | yes | `org.xerial:sqlite-jdbc` 3.53.4.0 |
 | Android | **yes, in the platform** (`java.sql.Connection`, `ResultSetMetaData` and the rest are in `android.jar`) | **none maintained**: xerial's jar has no Android native libraries (it ships FreeBSD, Linux, Mac and Windows only), and SQLDroid's last release is 1.1.0-rc1 from 2018. **Thicket writes one: `thicket-sqlite-android`, a JDBC driver over `android.database.sqlite`** |
-| Scala Native (GTK, macOS, iOS) | from `com.github.lolgab::scala-native-jdbc` 0.0.6 (2026-06) | `com.github.lolgab::scala-native-jdbc-sqlite` 0.0.6, which bundles the SQLite 3.53.2 amalgamation |
+| Scala Native (GTK, macOS, iOS) | from `com.github.lolgab::scala-native-jdbc` 0.0.7 (2026-10) | `com.github.lolgab::scala-native-jdbc-sqlite` 0.0.7, which bundles the SQLite 3.54.0 amalgamation (0.0.6: 3.53.2) |
 
 **Measured on Scala Native, 2026-10-21** (Scala 3.9.0, Scala Native 0.5.12, scala-cli on this
 Linux box; a spike, not in the repo):
@@ -121,7 +151,8 @@ Linux box; a spike, not in the repo):
 - **Defect: a plain `Statement` swallows errors.** `executeUpdate` on invalid SQL, a syntax
   error or a constraint violation returns 0 (once 1) instead of throwing, and `executeQuery`
   on invalid SQL returns a result set. Prepared statements are fine. This needs fixing
-  upstream before apps rely on it; until then, prepared statements only.
+  upstream before apps rely on it; until then, prepared statements only. *Fixed upstream in
+  0.0.7 (lolgab/scala-native-jdbc#17), 2026-10-22: see "Built" below.*
 - **Subset:** no `ResultSetMetaData` or `DatabaseMetaData`, so libraries that introspect
   columns will not work on Native.
 - **Size:** the spike binary is 5.26 MB against 3.79 MB for a file-I/O-only program, so the
@@ -141,9 +172,66 @@ What Thicket provides, then, is small, and none of it is a query language:
   swallowed errors, and it decides when "the same JDBC code runs everywhere" is true.
 - **Tests need no fakes:** `jdbc:sqlite::memory:` works on every driver.
 
-Query libraries are the app's choice. Magnum and Quill are JDBC-based but JVM-only, so they
-run on Android and not on GTK or Apple, which breaks the one-codebase promise; the docs will
-say so rather than recommend them.
+**Built, 2026-10-21** (`modules/sqlite`, `modules/sqlite-android`):
+- `JdbcConformance` has 17 checks. xerial passes all 17 on the JVM. Thicket's Android driver
+  passes all 17 on the `s2test` emulator. The Native driver fails exactly 5:
+  - Three are one upstream bug. Errors from a plain `executeUpdate` (invalid SQL, a violated
+    constraint) and from a bind to a parameter index that does not exist are not reported:
+    `SQLiteOps` builds the `SQLException` and does not `throw` it. A failed prepare is not
+    thrown either, but surfaces at the first `next()`, so that check passes.
+  - Two are unimplemented (`???`): JDBC batches (`addBatch` / `executeBatch`) and
+    `setFetchSize`.
+- **0.0.7, 2026-10-22:** the fix for the three (lolgab/scala-native-jdbc#17, from this
+  project) is released. The Native driver now fails exactly the 2 unimplemented checks;
+  `sbt --error "sqliteNative/testOnly *"` with the known set still at 5 fails on precisely
+  the three, now passing.
+- **The Android driver** implements the subset, plus batches, `getObject` and `setObject`; the
+  rest of `java.sql` throws
+  `SQLFeatureNotSupportedException`, generated from the JDK's signatures by
+  `modules/sqlite-android/gen-unsupported.py`. Query parameters keep their types through a
+  `CursorFactory`, since `rawQuery` binds strings only. Its jar is 101 KB.
+- **Falsified:** with the Android driver made to swallow `executeUpdate` errors as the Native
+  one does, the gallery's conformance check fails on "a constraint violated by a plain
+  executeUpdate throws".
+
+**Query libraries are the app's choice, and one exists on both runtimes.** The author of
+the Native driver also publishes Scala Native builds of Magnum
+(`com.github.lolgab::magnum` 1.3.1, the same version as the official
+`com.augustnagro::magnum` 1.3.1 on the JVM) and of ScalaSql (`com.github.lolgab::scalasql`
+0.1.15, well behind the official 0.3.x). Quill has none.
+
+**Measured, 2026-10-21:** a scala-cli spike on Scala 3.9.0 and Scala Native 0.5.12, with
+`scala-native-jdbc-sqlite` 0.0.6. These work:
+- `sql"…"` with bound parameters;
+- a `derives DbCodec` case class read back with `query[Meal]`;
+- `transact`;
+- `Repo.count` and `findById`.
+
+It logs every query at TRACE by default; pass `SqlLogger.NoOp` (or your own) to a `Transactor`.
+`Sqlite.dataSource(dirs, name)` gives Magnum the `javax.sql.DataSource` it takes, on every
+platform.
+
+**On the GTK gallery** (`MagnumChecks`, 7 checks; 2026-10-21): the Scala Native build passes
+five. The two that fail are the Native driver's gaps above: `Repo.insertAll` (a JDBC batch)
+and `query.iterator` (`setFetchSize`).
+
+**On Android, the official Magnum 1.3.1 does not run** (measured on the `s2test` emulator,
+2026-10-21).
+- **The cause:** it creates a `System.Logger` in a top-level `private val` in `util.scala`,
+  the file that also holds `connect` and `transact`, and Android has no `System.getLogger`
+  (absent from `api-versions.xml`; ART's `core-oj.jar` has no such method).
+- **The build:** R8 refuses the APK with "Missing class java.lang.System$Logger".
+- **At run time:** with that warning suppressed, the first call fails with
+  `NoSuchMethodError: No static method getLogger`, and every later one with
+  `NoClassDefFoundError`.
+- **The fix is one line.** Built from the v1.3.1 tag with that `val` made a `lazy val`, as the
+  Native build already has it, and run with `SqlLogger.NoOp` so the logger is never created,
+  all seven `MagnumChecks` pass on Android over Thicket's driver, batches and the iterator
+  included.
+
+So Magnum is a typed layer with the same API everywhere, once that line is changed upstream.
+Until then the gallery runs `MagnumChecks` on Native only, and the Android build does not
+depend on Magnum.
 
 ## 16.6 The shape of the API
 
@@ -248,7 +336,8 @@ Every service gets a gallery section and self-test checks on every host where it
    Unblocks phase 6.
 2. **Storage:** app directories, preferences, secrets; SQLite as the Android JDBC driver,
    `Sqlite.open`, the conformance suite, and the upstream fix for the Native driver's
-   swallowed errors.
+   swallowed errors. *Done on GTK and Android, 2026-10-21, except secrets; the upstream fix
+   is in `scala-native-jdbc-sqlite` 0.0.7, 2026-10-22. Apple is #98.*
 3. **Lifecycle and permissions:** the host plumbing every later service sits on.
 4. **Location,** then **motion**, each with emulator-injected self-tests.
 5. **Pickers, camera capture, share, clipboard, haptics.**
