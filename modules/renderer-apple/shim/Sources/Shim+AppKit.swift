@@ -2447,7 +2447,6 @@ public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
   return iv.image != nil ? 1 : 0
 }
 
-/// Read from what draws: ImageView's own cover flag, else NSImageView's scaling.
 /// The held image's size in points, as NSImage.size reports it: the SVG logo reads its own
 /// 472.658x599.168, the PNG made from it something else, which is how the gallery tells them
 /// apart (#85).
@@ -2462,6 +2461,7 @@ public func sui_image_size(
   return 1
 }
 
+/// Read from what draws: ImageView's own cover flag, else NSImageView's scaling.
 @_cdecl("sui_get_content_fit")
 public func sui_get_content_fit(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let iv = view(h) as? NSImageView else { return -1 }
