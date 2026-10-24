@@ -236,7 +236,7 @@ object Abi {
     ),
     built(6, "Scroll", "ScrollView(", "ScrollView(", "vertical"),
     built(7, "Divider", "NSBox(", "UIView(", "the shims' default: branch"),
-    built(8, "Image", "ImageView(", "UIImageView("),
+    built(8, "Image", "ImageView(", "ImageView("),
     built(9, "Toggle", "NSSwitch(", "UISwitch(", "no label: the caption is a sibling"),
     built(10, "Spacer", "NSView(", "UIView(", "grows through Prop.Grow"),
     built(11, "ProgressBar", "NSProgressIndicator(", "UIProgressView("),

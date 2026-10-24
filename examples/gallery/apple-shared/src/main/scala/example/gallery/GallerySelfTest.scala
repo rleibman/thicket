@@ -177,6 +177,7 @@ object GallerySelfTest {
       List(ContentFit.Contain, ContentFit.Cover, ContentFit.Fill).forall(f => fits.contains(Some(f) -> true)),
       fits.toString
     )
+    contentFitRow(imageWidgets)
     logoFormat(imageWidgets)
 
     check(
@@ -216,6 +217,44 @@ object GallerySelfTest {
     label: String
   ): Option[Shim.Handle] = all.find(h => kind(h, WidgetKind.Button) && AppleInspect.text(h).contains(label))
 
+  /** The Image section's Row of three pictures, one per fit (#104), from the frames and pixels the platform drew.
+    * "Holds an image" is true of a view squeezed to 0 pt: on UIKit the Row kept the first at 342 pt and gave the Cover
+    * and Fill pictures 0 x 710. Asked of both toolkits: the three are side by side in their Row without overlapping,
+    * each at least a point in both directions and in its picture's shape (the same picture, so the same width), and
+    * each paints. The three are the Images on the Fill picture's line; the ZStack's Image is elsewhere.
+    */
+  private def contentFitRow(imageWidgets: Seq[Shim.Handle]): Unit = {
+    val fill = imageWidgets.find(h => AppleInspect.contentFit(h).contains(ContentFit.Fill))
+    val row = fill.toList.flatMap { f =>
+      val y = AppleInspect.frame(f)._2
+      imageWidgets.filter(h => math.abs(AppleInspect.frame(h)._2 - y) < 1).sortBy(h => AppleInspect.frame(h)._1)
+    }
+    val frames = row.map(AppleInspect.frame)
+    val painted = row.map(AppleInspect.paintedFraction)
+    val detail = row
+      .zip(frames)
+      .zip(painted)
+      .map { case ((h, (x, y, w, hh)), p) =>
+        f"${AppleInspect.contentFit(h).getOrElse("?")} ($x%.0f,$y%.0f $w%.0fx$hh%.0f) painted ${p * 100}%.1f%%"
+      }
+      .mkString(", ")
+    println(s"[gallery]   content-fit row: $detail")
+    val ratio = 710.0 / 560.0 // the logo's shape, PNG and SVG alike
+    check(
+      "the three content-fit pictures are side by side, each visible, in its picture's shape",
+      frames.size == 3 &&
+        frames.forall { case (_, _, w, h) => w >= 1 && h >= 1 && math.abs(h / w - ratio) < 0.02 } &&
+        frames.map(_._3).max - frames.map(_._3).min < 1 &&
+        frames.sliding(2).forall { case Seq(a, b) => a._1 + a._3 <= b._1 + 0.5; case _ => true },
+      s"(#104) $detail"
+    )
+    check(
+      "each content-fit picture paints its pixels, the bytes-backed Fill one included",
+      painted.size == 3 && painted.forall(_ > 0.05),
+      s"(#104) $detail"
+    )
+  }
+
   /** Which file of the logo is drawn (#85): the SVG and the PNG made from it are one picture, so "holds an image"
     * cannot tell them apart. Their sizes can - the SVG reports its own 472.658x599.168 points, the PNG its pixels at
     * its DPI - and so can their pixels: the SVG's background is transparent and the PNG's opaque, so the Fill picture,
@@ -246,16 +285,14 @@ object GallerySelfTest {
     println(
       f"[gallery]   logo: ${Gallery.currentLogoFile}; $shown; Fill $fillFrame, painted ${painted * 100}%.1f%%"
     )
-    // Asked of the macOS host, where the Fill picture has a size. On UIKit it has none: the
-    // .fill Row squeezes the third of three 560-point-wide pictures to nothing, so there is no
-    // pixel to count (the frame is printed above).
-    if svgWhereDecoded then
-      check(
-        if svgFile then "the bytes-backed Fill picture paints the SVG, its transparent background left clear"
-        else "the bytes-backed Fill picture paints the opaque PNG",
-        if svgFile then painted > 0.05 && painted < 0.9 else painted > 0.9,
-        f"(#85) painted ${painted * 100}%.1f%% of the view, $fillFrame"
-      )
+    // On both toolkits since #104: before it, UIKit's .fill Row squeezed the Fill picture to
+    // 0 points wide, so this was asked of the macOS host only.
+    check(
+      if svgFile then "the bytes-backed Fill picture paints the SVG, its transparent background left clear"
+      else "the bytes-backed Fill picture paints the opaque PNG",
+      if svgFile then painted > 0.05 && painted < 0.9 else painted > 0.9,
+      f"(#85) painted ${painted * 100}%.1f%% of the view, $fillFrame"
+    )
     if svgWhereDecoded then {
       val decodes = AppleApp.decodesImage(Gallery.logoBytes(Gallery.logoSvg))
       check(

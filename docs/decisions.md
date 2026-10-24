@@ -72,6 +72,46 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-23 — **UIKit: the pictures in a Row shrink together, and an Image is no taller than
+  its width allows** (#104). On the iPhone 17e simulator the gallery's "three content fits"
+  Row (three 560×710-pt `UIImageView`s in a 358-pt `.fill` Row) was Contain 342×710, Cover
+  0×710, Fill 0×710. Each image view wished to keep its full width at 750, so the Row's
+  overflow was a tie, and a `.fill` `UIStackView` breaks a tie by squeezing the later views
+  first. *Fix:* kind 8 is now `ImageView`, a `UIImageView` subclass. (1) **In a Row**, its
+  width is at least its picture's width times the Row's one picture scale. The scale is a
+  `UILayoutGuide` the `StackView` makes on its first picture, 0 to 1000 pt wide, wishing
+  for 1000 at 749. It is re-tied when the picture changes and untied on removal, all in
+  O(1). (2) Its height is at most `width × h/w` at 751, so a squeezed picture loses height
+  as well as width. Its hugging keeps it from growing past the picture's height. (3) Its
+  compression resistance is 748 across and 747 down, below text and controls (750). With 750
+  down, the cap made height a reason to widen the view: the badge ZStack's Image went from
+  252 to 342 pt and the spinner's ZStack shrank to 0 pt. That was measured in a first build
+  and is why the priorities are split. Columns do not tie: they scroll their main axis, and
+  a picture there takes the Column's width. **Compared:** GTK gives each GtkPicture (minimum
+  0) an equal share up to its natural size (`gtk_distribute_natural_allocation`, from reading,
+  not run here), and its height follows its width. Android's `LinearLayout` without weights
+  measures children in order with the width left over, so it should squeeze the second and
+  third pictures the same way; the Android self-test only checks that each has a drawable.
+  That was not run, so it is not filed as measured. AppKit's 354×449-pt pictures fit its
+  window. For identical pictures the scale gives GTK's result. For pictures of different
+  sizes it shrinks them in proportion, where GTK gives them equal shares. Equal shares capped
+  at each picture's own size is a max-min allocation, and one linear wish cannot express it.
+  **Measured** (`THICKET_FRAME_DUMP=1`, iOS): the three pictures 342/0/0 × 710 → **114×145
+  each** at x 16, 138, 260, all painting 100 %. The badge Image 252×710 → 252×319. Their Rows
+  and sections, the screen Column (4608 → 3652 pt) and the scroll indicator changed height
+  with them, and **nothing else in the 428 frames changed**, x or size. macOS: 417 frames
+  identical. The new checks run on both platforms: three pictures side by side, each at
+  least 1 pt and in its picture's shape, with equal widths, and each painting more than 5 %.
+  Results: gallery 165/165 on iOS (was 163) and 170/170 on macOS (was 168), plus
+  `bin/verify-apple.sh "iPhone 17e"`: all 13 steps pass (todo 88/88 and 83/83, lazy 8/8 and 11/11, getting-started first time). Mounting 1 000 / 2 000 children in a Column, iOS: 34.3 / 87.0 ms (2.54). **Controls:** with this branch's base
+  shim and the new checks, iOS fails both — `Contain (16,3135 342x710) painted 61.1%, Cover
+  (366,3135 0x710) painted -100.0%, Fill (374,3135 0x710)`. With the tie disabled and the cap
+  and priorities kept, the gallery still passes at 114 pt each. So the tie is not what the
+  gallery's identical pictures need. With the bytes-backed picture temporarily loaded at
+  scale 2 (280×355 pt), the untied Row still gave it 114 pt, equal to the others, by
+  whatever the solver does with the remaining tie (not understood). The tied Row gave it 68×87
+  (scale 0.244), proportional by construction. The tie is kept because it is the
+  deterministic one.
 - 2026-10-22 — **UIKit: a Row or Column with nothing grown leaves its slack after its
   children** (#96). A `.fill` `UIStackView` must fill its length, so one child took a Row's room
   to spare: on the iPhone 17e simulator (iOS 27) "Accent" was 232 pt of a 358 pt Row, "Select

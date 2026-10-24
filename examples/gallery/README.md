@@ -101,6 +101,12 @@ toolkits (it was AppKit's only): the "Accent" button is under half its section a
 last button ends at least 50 pt before the section does. On the iOS simulator "Accent" went
 from 232 pt to its own 48 pt.
 
+**#104** checks the Image section's Row on both toolkits, from frames and pixels. The three
+pictures sit side by side without overlapping. Each is at least 1 pt and in its picture's
+shape, all three are the same width, and each paints more than 5 % of its view. Before this
+"holds an image" was true of a view squeezed to 0 pt. On the iOS simulator the Row went from
+342/0/0 × 710 pt to 114×145 pt each.
+
 **#78** added the Android gallery's linear-mount check to both Apple hosts, for a Column, a
 Row and a Grid: 2 000 children must mount in under three times 1 000 (off screen, fastest of
 three; unmounting is timed and printed, not checked). Grid on iOS went from 3.9 s / 16.6 s
