@@ -234,8 +234,13 @@ private final class TextLabel: UILabel {
 
 private let proxy = Proxy()
 
-/// Kinds 0 and 1, a `Column` or `Row`: a stack that hears about its safe area (#76), and lets
-/// a grown label go past half a row (#87).
+/// Kinds 0 and 1, a `Column` or `Row`: a stack that hears about its safe area (#76), lets a
+/// grown label go past half a row (#87), and leaves its slack after its children (#96).
+///
+/// A `.fill` UIStackView must fill its length, so with nothing grown one child took the room a
+/// Row has to spare beside its siblings (the gallery's "Accent" button, 232 pt in a 358 pt
+/// Row). GTK and AppKit leave it after the children. So every stack ends in a `SlackView`, which
+/// is not a child: `children` leaves it out, and nothing is ever inserted after it.
 ///
 /// A horizontal UIStackView holding two or more multi-line labels caps each at half its width,
 /// at priority 951 (`UISV-text-width-disambiguation`), which outranks any hugging. So a grown
@@ -243,14 +248,81 @@ private let proxy = Proxy()
 /// and 181 pt on a 370 pt row. A grown label is already disambiguated by its lower hugging, so
 /// its cap is let go each time the stack rebuilds its constraints; a plain label keeps its own.
 private final class StackView: UIStackView {
+  private let slack = SlackView()
+  /// The children, without the slack. Counted, so that neither an insert nor a removal reads
+  /// the arranged subviews back.
+  private var childCount = 0
+  /// What `refreshInsets` asks for: the padding plus the safe area it chose (#76). The margins
+  /// the stack lays out in are these less the gap before the slack (`applyMargins`).
+  var insets: UIEdgeInsets = .zero {
+    didSet { if insets != oldValue { applyMargins() } }
+  }
+
   override init(frame: CGRect) {
     super.init(frame: frame)
     // Its margins are the padding plus the edges `SafeArea` chose, and nothing else: left on,
     // UIKit would add the whole safe area to them as well, chosen or not.
     insetsLayoutMarginsFromSafeArea = false
+    isLayoutMarginsRelativeArrangement = true
+    addArrangedSubview(slack)
+    applyMargins()
   }
 
   required init(coder: NSCoder) { fatalError("not used") }
+
+  override var axis: NSLayoutConstraint.Axis {
+    didSet { applyMargins() }
+  }
+
+  override var spacing: CGFloat {
+    didSet { applyMargins() }
+  }
+
+  /// The arranged subviews without the slack, which is always the last.
+  var children: ArraySlice<UIView> { arrangedSubviews.dropLast() }
+
+  /// Every child arrives here (`sui_insert_after`), never after the slack: `index` is clamped
+  /// to `count`, the number of children, and an index there is an append. Nothing is read back
+  /// from the stack, so a mount stays linear (#78).
+  func insertChild(_ c: UIView, at index: Int, count: Int) {
+    insertArrangedSubview(c, at: max(0, min(index, count)))
+    childCount += 1
+    if childCount == 1 { applyMargins() }
+  }
+
+  override func removeArrangedSubview(_ view: UIView) {
+    if view === slack { return }
+    let was = view.superview === self
+    super.removeArrangedSubview(view)
+    if was {
+      childCount = max(0, childCount - 1)
+      if childCount == 0 { applyMargins() }
+    }
+  }
+
+  /// The slack is the stack's last arranged view, so the stack puts its spacing before it as
+  /// before any other. That gap is taken back from the margin at the slack's end: with no room
+  /// to spare the slack is zero long and runs one gap past the margin, and the children end
+  /// exactly where they did without a slack. With no children there is no gap.
+  ///
+  /// Not `setCustomSpacing(0, after:)` on the last child, which the issue suggested and which
+  /// was built first: with it, a replaced Row of twelve multi-line labels (the gallery's
+  /// horizontal Scroll after "Taller columns" and back) was laid out with two labels that had
+  /// no width from their text — "col 5" 0 pt wide, "col 1" stretched to 45 pt — in 11 of 13
+  /// runs, and not in the one run with the custom spacing taken out. Nor a slack of minus the
+  /// gap: UIKit lays a view out no shorter than zero.
+  private func applyMargins() {
+    let gap = childCount > 0 ? spacing : 0
+    let e = insets
+    let rtl = effectiveUserInterfaceLayoutDirection == .rightToLeft
+    let horizontal = axis == .horizontal
+    directionalLayoutMargins = NSDirectionalEdgeInsets(
+      top: e.top,
+      leading: rtl ? e.right : e.left,
+      bottom: e.bottom - (horizontal ? 0 : gap),
+      trailing: (rtl ? e.left : e.right) - (horizontal ? gap : 0)
+    )
+  }
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
@@ -272,6 +344,27 @@ private final class StackView: UIStackView {
     }
   }
 }
+
+/// What ends every `StackView` (#96): nothing to draw, 0×0, wishing to stay so at 249, so it
+/// takes a stack's slack only when no child grows into it, and never from a plain child (250).
+/// A Spacer or another view with no size of its own has no wish at all, so it still takes the
+/// slack first. Taps go through it to the stack.
+private final class SlackView: UIView {
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false
+    setContentHuggingPriority(slackHugging, for: .horizontal)
+    setContentHuggingPriority(slackHugging, for: .vertical)
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  override var intrinsicContentSize: CGSize { .zero }
+}
+
+/// The main-axis order of who takes a stack's slack (#87, #96): a grown child (248) first, then
+/// the slack after the children, and a plain child (250) never. As AppKit's stack hugging.
+private let slackHugging = UILayoutPriority(249)
 
 /// Kinds 6 and 15, a `Scroll`. Its own class for the safe-area hooks and for the constraints
 /// that depend on its insets — the content's cross-axis tie, and a horizontal scroller's one
@@ -357,6 +450,7 @@ private func refreshInsets(_ v: UIView) {
   switch v {
   case let g as GridView: g.insets = e
   case let s as ScrollView: s.setInsets(e)
+  case let s as StackView: s.insets = e
   case let s as UIStackView:
     s.isLayoutMarginsRelativeArrangement = true
     s.layoutMargins = e
@@ -414,8 +508,11 @@ private final class ZStackView: UIView {
     super.init(frame: .zero)
     let w = widthAnchor.constraint(equalToConstant: 0)
     let h = heightAnchor.constraint(equalToConstant: 0)
-    w.priority = .fittingSizeLevel
-    h.priority = .fittingSizeLevel
+    // Just above a stack's slack (249, #96), as on AppKit (#87): at the weakest priority, 50, a
+    // ZStack in a Row took the Row's room to spare from the slack after the children. Still
+    // below anything a child asks for.
+    w.priority = UILayoutPriority(251)
+    h.priority = UILayoutPriority(251)
     NSLayoutConstraint.activate([w, h])
   }
 
@@ -1750,18 +1847,27 @@ public func sui_insert_after(
 
   // Appending after the last child, which is every child of a mount, is answered without a
   // search. The search below is linear, and doing it for every child made mounting n
-  // children O(n²) (#78, review 2026-10-20 P2-14).
+  // children O(n²) (#78, review 2026-10-20 P2-14). A Row or Column's children are its
+  // arranged subviews less the slack that ends it (#96), counted off rather than sliced: a
+  // slice of the bridged array is a copy, retaining every child, and per insert that was
+  // measured at +40 % on a mount of 1 000.
   let arranged = stack.arrangedSubviews
+  let mine = stack as? StackView
+  let count = arranged.count - (mine == nil ? 0 : 1)
   let index: Int
   if let a = after {
     let target = view(a)
-    index = arranged.last === target
-      ? arranged.count
-      : (arranged.firstIndex(of: target).map { $0 + 1 }) ?? arranged.count
+    index = count > 0 && arranged[count - 1] === target
+      ? count
+      : (arranged.firstIndex(of: target).map { $0 + 1 }) ?? count
   } else {
     index = 0
   }
-  stack.insertArrangedSubview(c, at: min(index, arranged.count))
+  if let s = mine {
+    s.insertChild(c, at: index, count: count)
+  } else {
+    stack.insertArrangedSubview(c, at: min(index, count))
+  }
 
   // #87: a Column or Row inside a Row is as tall as the Row, as GTK's boxes fill their cross
   // axis. The Row is .center aligned, so a control beside a taller one sits in the middle
@@ -2015,6 +2121,8 @@ public func sui_run_on_main_after(_ delayMs: Int32, _ cb: @escaping sui_void_cb,
 // MARK: - inspection
 
 private func arranged(_ v: UIView) -> [UIView] {
+  // Not the slack that ends a Row or Column (#96): it is not one of the app's children.
+  if let s = v as? StackView { return Array(s.children) }
   if let s = v as? UIStackView { return s.arrangedSubviews }
   if let g = v as? GridView { return g.cells }
   // Every tab, in the controller's order, whether or not its view is in the window now.
@@ -2829,6 +2937,8 @@ public func sui_get_insets(
   switch v {
   case let g as GridView: e = g.insets
   case let s as UIScrollView: e = s.adjustedContentInset
+  // A Row or Column's margins are short by the gap before its slack (#96); its insets are not.
+  case let s as StackView: e = s.insets
   case let s as UIStackView: e = s.isLayoutMarginsRelativeArrangement ? s.layoutMargins : .zero
   default: e = .zero
   }

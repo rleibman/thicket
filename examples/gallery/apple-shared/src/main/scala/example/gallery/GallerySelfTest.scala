@@ -711,19 +711,23 @@ object GallerySelfTest {
     val leap = all.find(h => kind(h, WidgetKind.Button) && AppleInspect.text(h).contains("Back to the leap day"))
     val leapW = leap.map(AppleInspect.frame(_)._3).getOrElse(0.0)
     val leapDetail = s"button ${leap.map(b => fr(AppleInspect.frame(b)))}, section ${fr((bx, 0, bw, 0))}"
-    if leap.exists(b => AppleInspect.className(b) == "NSButton") then {
+    if leap.exists(b => AppleInspect.className(b) == "NSButton") then
       check("an AppKit push Button in a Column keeps its own width", leapW > 20 && leapW < bw / 2, s"(#87) $leapDetail")
-      // A Row now spans its Column, so it is wider than its children; with nothing grown the
-      // slack goes after them, as on GTK. UIKit's .fill Row gives it to one of them (a
-      // pre-existing difference, not checked there).
-      val accent = all.find(h => kind(h, WidgetKind.Button) && AppleInspect.text(h).contains("Accent"))
-      val accentW = accent.map(AppleInspect.frame(_)._3).getOrElse(0.0)
-      check(
-        "a Row with nothing grown leaves its slack after its children",
-        accentW > 20 && accentW < bw / 2,
-        s"(#87) Accent ${accent.map(b => fr(AppleInspect.frame(b)))}, section ${fr((bx, 0, bw, 0))}"
-      )
-    } else println(s"[gallery]   (a Button in a Column fills it here: $leapDetail)")
+    else println(s"[gallery]   (a Button in a Column fills it here: $leapDetail)")
+
+    // A Row spans its Column, so it is wider than its children; with nothing grown the slack
+    // goes after them, as on GTK — on AppKit by the stack's hugging (#87), on UIKit by the
+    // slack view that ends every stack (#96). Before #96 UIKit's .fill Row gave it to one of
+    // them: "Accent" was 232 pt of a 358 pt Row on the iOS 27 simulator.
+    val accent = all.find(h => kind(h, WidgetKind.Button) && AppleInspect.text(h).contains("Accent"))
+    val accentW = accent.map(AppleInspect.frame(_)._3).getOrElse(0.0)
+    val lastButton = accent.flatMap(parentOf.get).flatMap(r => AppleInspect.children(r).lastOption)
+    val lastRight = lastButton.map(b => AppleInspect.frame(b)._1 + AppleInspect.frame(b)._3).getOrElse(0.0)
+    check(
+      "a Row with nothing grown leaves its slack after its children",
+      accentW > 20 && accentW < bw / 2 && lastRight < bodyRight - 50,
+      s"(#87, #96) Accent ${accent.map(b => fr(AppleInspect.frame(b)))}, last button ends at $lastRight, section ${fr((bx, 0, bw, 0))}"
+    )
 
     // A ZStack is as big as its largest child, in a Row with room to spare too.
     val spinnerStack =
