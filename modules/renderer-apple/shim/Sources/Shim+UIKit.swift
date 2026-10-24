@@ -3087,6 +3087,24 @@ public func sui_opened_url(_ index: Int32) -> UnsafePointer<CChar>? {
   return scratch(log[Int(index)])
 }
 
+/// What Foundation says the app's directories are, so the gallery's self-test can hold
+/// thicket-storage-apple — which works them out without Foundation — to the same answer.
+@_cdecl("sui_foundation_directory")
+public func sui_foundation_directory(_ which: Int32) -> UnsafePointer<CChar>? {
+  func user(_ d: FileManager.SearchPathDirectory) -> String? {
+    FileManager.default.urls(for: d, in: .userDomainMask).first?.path
+  }
+  let value: String?
+  switch which {
+  case 0: value = user(.applicationSupportDirectory)
+  case 1: value = user(.cachesDirectory)
+  case 2: value = NSTemporaryDirectory()
+  case 3: value = Bundle.main.bundleIdentifier
+  default: value = nil
+  }
+  return value.flatMap(scratch)
+}
+
 /// Where the construction placed a cell. UIKit has no grid to ask, so the self-test also
 /// measures the frames, which are the platform's.
 @_cdecl("sui_grid_cell")

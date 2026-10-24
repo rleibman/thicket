@@ -55,6 +55,8 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-sqlite_3` / `_native0.5_3`, `thicket-sqlite-android_3` | SQLite through JDBC; on Native the driver comes with it, on Android add `thicket-sqlite-android` |
 | `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
 | `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
+| `net.leibman:thicket-storage-apple_native0.5_3` | app directories and preferences on macOS and iOS (`thicket-storage` comes with it); no Swift |
+| `net.leibman:thicket-http-apple_native0.5_3` | an sttp `SyncBackend` over `URLSession`, for iOS (no libcurl there), with its own Swift library inside the jar |
 
 `thicket-signals` and `thicket-renderer-api` come in transitively; naming them is only
 necessary to write a renderer.

@@ -24,6 +24,11 @@ import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim}
 import thicket.signals.{ErrorSink, Owner}
+import thicket.sqlite.{NativeSqlite, Sqlite}
+import thicket.sqlite.testing.JdbcConformance
+import thicket.storage.{FilePreferences, Storage}
+
+import java.nio.file.{Files, Paths}
 
 /** The gallery's conformance check on AppKit and UIKit — the same questions the GTK host asks, through `AppleInspect`
   * instead of `GtkInspect`.
@@ -63,6 +68,10 @@ object GallerySelfTest {
     loop()
   }
 
+  /** The storage the host gave the gallery, and the bundle id it named it by. */
+  private var storage:  Option[Storage] = None
+  private var bundleId: String = ""
+
   /** Set by [[run]]: the host shows the SVG logo wherever the platform decodes it (#85). */
   private var svgWhereDecoded = false
 
@@ -71,7 +80,13 @@ object GallerySelfTest {
     * `svgWhereDecoded`: the host promises the SVG logo wherever the platform's image class decodes it - the macOS host
     * (#85). The iOS host stays on the PNG, whatever `UIImage` does.
     */
-  def run(svgWhereDecoded: Boolean = false): Unit = {
+  def run(
+    storage:         Option[Storage],
+    bundleId:        String,
+    svgWhereDecoded: Boolean = false
+  ): Unit = {
+    this.storage = storage
+    this.bundleId = bundleId
     this.svgWhereDecoded = svgWhereDecoded
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
   }
@@ -204,8 +219,77 @@ object GallerySelfTest {
       s"${AppleInspect.presentedCount} presented"
     )
 
-    sheet(all)(() => bigList(() => finish()))
+    storageChecks(() => sheet(all)(() => bigList(() => finish())))
   }
+
+  /** Device services (docs/16 §16.5–16.6), the GTK host's checks asked of Apple: preferences in Application Support,
+    * the directories where Foundation says they are, SQLite through the Scala Native driver, and "Add a note" writing a
+    * row on the worker thread.
+    */
+  private def storageChecks(next: () => Unit): Unit =
+    (Gallery.currentStorage, storage) match {
+      case (Some(demo), Some(store)) =>
+        val root = AppleApp.rootHandle
+        val dirs = store.dirs
+        val texts = AppleInspect.allTexts(root)
+        check(
+          "the launch counter is on screen and stored in preferences",
+          texts.contains(s"Opened ${demo.opens} times") &&
+            store.preferences.getLong(StorageDemo.opensKey).contains(demo.opens),
+          texts.filter(_.startsWith("Opened")).toString
+        )
+        // What Foundation says, through the shim: thicket-storage-apple works its paths out without it.
+        val (support, caches, tmp, foundationId) = AppleInspect.foundationDirectories
+        def under(base: Option[String]) = base.map(b => Paths.get(b).resolve(bundleId))
+        println(s"[gallery] storage: data ${dirs.data}, cache ${dirs.cache}, temp ${dirs.temp}")
+        println(s"[gallery] Foundation: support $support, caches $caches, temp $tmp, bundle id $foundationId")
+        check(
+          "the directories are Foundation's Application Support, Caches and NSTemporaryDirectory, under the bundle id",
+          under(support).contains(dirs.data) && under(caches).contains(dirs.cache) && under(tmp).contains(dirs.temp) &&
+            // An executable outside an .app (the macOS gallery) has no bundle id; an app's must be the one named.
+            foundationId.forall(_ == bundleId) && Seq(dirs.data, dirs.cache, dirs.temp).forall(Files.isDirectory(_)),
+          s"ours $dirs; Foundation's support $support, caches $caches, temp $tmp, bundle id $foundationId"
+        )
+        check(
+          "preferences are in a file under Application Support, and a new instance reads them back",
+          FilePreferences(dirs.data.resolve("preferences.properties"))
+            .getLong(StorageDemo.opensKey).contains(demo.opens),
+          dirs.data.toString
+        )
+        val results = JdbcConformance.run(NativeSqlite.driver, dirs.temp.resolve("conformance"))
+        val failed = results.filterNot(_.passed).map(_.name).toSet
+        println(s"[gallery] JDBC conformance: ${results.size} checks, ${failed.size} failed: ${failed.toList.sorted}")
+        check(
+          s"JDBC conformance on the Scala Native driver: ${results.size} checks, only the known upstream defects fail",
+          results.size >= 17 && failed == JdbcConformance.knownNativeFailures,
+          results.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
+        )
+        val magnum = MagnumChecks.run(Sqlite.dataSource(dirs, "magnum-checks.db")(using NativeSqlite.driver))
+        check(
+          s"Magnum (Scala Native build) over the Native driver: ${magnum.size} checks, only the known driver gaps fail",
+          magnum.size == 7 && magnum.filterNot(_.passed).map(_.name).toSet == MagnumChecks.knownNativeFailures,
+          magnum.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
+        )
+        def count = demo.notes.now.toOption
+        eventually(5000)(count.isDefined) { _ =>
+          val before = count.getOrElse(-1)
+          val clicked = buttonIn(AppleInspect.all(root), "Add a note").exists(AppleInspect.click)
+          eventually(5000)(count.contains(before + 1)) { _ =>
+            check(
+              "\"Add a note\" writes a row on the worker and the count reaches the screen",
+              clicked && before >= 0 &&
+                AppleInspect.allTexts(AppleApp.rootHandle).contains(StorageDemo.notesLabel(before + 1)) &&
+                Files.exists(dirs.data.resolve("gallery.db")),
+              s"clicked $clicked, before $before, now ${demo.notes.now}, " +
+                AppleInspect.allTexts(AppleApp.rootHandle).filter(_.contains("SQLite"))
+            )
+            next()
+          }
+        }
+      case (demo, store) =>
+        check("the host provides storage", false, s"Gallery.currentStorage $demo, the host's $store")
+        next()
+    }
 
   private def kind(
     h: Shim.Handle,

@@ -19,6 +19,8 @@ package example.gallery
 import scala.scalanative.unsafe.exported
 import thicket.core.GcState
 import thicket.renderer.apple.AppleApp
+import thicket.sqlite.NativeSqlite
+import thicket.storage.apple.AppleStorage
 
 /** The gallery on iOS (UIKit) — the same tree, the same renderer, a different entry shape.
   *
@@ -28,6 +30,9 @@ import thicket.renderer.apple.AppleApp
   * enter Scala (S1).
   */
 object GalleryIos {
+
+  /** The bundle's own, `CFBundleIdentifier` in `ios-app/Info.plist`; the self-test checks that they agree. */
+  val bundleId: String = "dev.thicket.galleryios"
 
   /** Called by the Swift host. `guarded` because this is a host -> Scala entry and the main thread is Unmanaged while
     * the run loop owns it (S3).
@@ -40,12 +45,17 @@ object GalleryIos {
       // Width and height are ignored on iOS - the window is the screen - but are passed
       // anyway so the two Apple hosts differ in nothing but their entry shape.
       AppleApp.run("Thicket gallery", 520, 760) {
-        if sys.env.contains("THICKET_GALLERY_SELFTEST") then AppleApp.postToUi(() => GallerySelfTest.run())
+        val storage = AppleStorage(bundleId)
+        if sys.env.contains("THICKET_GALLERY_SELFTEST") then
+          AppleApp.postToUi(() => GallerySelfTest.run(Some(storage), bundleId))
         // The app's working directory is `/`, so `Gallery.logoBytes` — a repo-relative read —
         // finds nothing here, and the bytes-backed Image showed nothing (#73). The logo is in
         // the bundle, where `FromFile` finds it too; this host reads it from there, as the
         // Android host reads it from the APK's assets.
-        Gallery.app(logo = Gallery.logoBytes(AppleApp.resourcePath(Gallery.logo)))
+        Gallery.app(
+          logo = Gallery.logoBytes(AppleApp.resourcePath(Gallery.logo)),
+          services = Some(Services(storage, NativeSqlite.driver))
+        )
       }
     }
 

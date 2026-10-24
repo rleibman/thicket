@@ -313,6 +313,16 @@ lazy val appleSharedExampleSources = Seq(
     (ThisBuild / baseDirectory).value / "examples" / "todo-apple" / "shared" / "src" / "main" / "scala"
 )
 
+/** SQLite on macOS and iOS is the system's `libsqlite3`, not the amalgamation `scala-native-jdbc-sqlite` bundles: on the
+  * iOS gallery in `releaseFast` + `LTO.full` the amalgamation costs 1.09 MiB stripped against N-03's 6 MB, the system
+  * library nothing (`docs/decisions.md`, 2026-10-22). The macOS link takes `-lsqlite3` here; an iOS app is a static
+  * archive, so its host's final link (`build-app.sh`) passes it.
+  */
+lazy val appleSystemSqlite = Seq(
+  excludeDependencies += ExclusionRule("com.github.lolgab", "scala-native-sqlite-amalgamation"),
+  nativeConfig ~= (c => if c.buildTarget == scala.scalanative.build.BuildTarget.libraryStatic then c else c.withLinkingOptions(c.linkingOptions :+ "-lsqlite3"))
+)
+
 /** The gallery's Apple-only sources, shared by the macOS and iOS hosts.
   *
   * The self-test lives here rather than in `galleryShared` because it imports `AppleInspect` — and `galleryShared` must
@@ -465,6 +475,16 @@ lazy val storageGtk = project
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
   .dependsOn(storage.native)
   .settings(commonSettings, zioTestFramework, name := "thicket-storage-gtk", libraryDependencies ++= zioTestNative)
+
+/** Storage on macOS and iOS: Application Support, Caches and the per-user temporary directory, each under the bundle
+  * id, and preferences in a file. Plain Scala Native, no Swift: it links nothing from the renderer, so an Apple app that
+  * stores nothing does not carry it, and its tests run in `testFull` on any machine.
+  */
+lazy val storageApple = project
+  .in(file("modules/storage-apple"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(storage.native)
+  .settings(commonSettings, zioTestFramework, name := "thicket-storage-apple", libraryDependencies ++= zioTestNative)
 
 /** Storage on Android: the app's internal directories and `SharedPreferences`. `android.jar` comes through the
   * renderer (`modules/renderer-android/setup.sh`).
@@ -652,10 +672,11 @@ lazy val galleryMacos = project
   .in(file("examples/gallery/macos"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.macos.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native)
+  .dependsOn(rendererApple, galleryShared.native, storageApple)
   .settings(commonSettings)
   .settings(appleNativeSettings)
   .settings(galleryAppleSharedSources)
+  .settings(appleSystemSqlite)
   .settings(
     name                := "gallery-macos",
     publish / skip      := true,
@@ -666,10 +687,11 @@ lazy val galleryIos = project
   .in(file("examples/gallery/ios"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.ios.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native)
+  .dependsOn(rendererApple, galleryShared.native, storageApple)
   .settings(commonSettings)
   .settings(iosNativeSettings)
   .settings(galleryAppleSharedSources)
+  .settings(appleSystemSqlite)
   .settings(
     name           := "gallery-ios",
     publish / skip := true
@@ -832,6 +854,7 @@ lazy val root = project
     storage.jvm,
     storage.native,
     storageGtk,
+    storageApple,
     sqlite.jvm,
     sqlite.native,
     shimGen,
