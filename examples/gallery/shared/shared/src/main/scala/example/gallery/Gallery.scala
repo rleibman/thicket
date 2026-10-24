@@ -126,11 +126,20 @@ object Gallery {
   /** The logo, as a file and as the bytes of that file. A host with no filesystem path to it — an APK — passes the
     * bytes to [[app]] itself; `FromFile` then finds it in the APK's assets at the same relative path.
     *
-    * [[logoSvg]] where the platform's image decoder draws SVG (GTK, through gdk-pixbuf); [[logo]], the PNG made from it
-    * by `bin/logo-assets.sh`, where it takes raster only (Android's `BitmapFactory`).
+    * [[logoSvg]] where the platform's image decoder draws SVG (GTK, through gdk-pixbuf; AppKit on macOS 14+, through
+    * `NSImage`, #85); [[logo]], the PNG made from it by `bin/logo-assets.sh`, where it takes raster only (Android's
+    * `BitmapFactory`, UIKit's `UIImage`, AppKit on macOS 13).
     */
-  val logo:                           String = "docs/assets/thicket-logo.png"
-  val logoSvg:                        String = "docs/assets/thicket-logo.svg"
+  val logo:    String = "docs/assets/thicket-logo.png"
+  val logoSvg: String = "docs/assets/thicket-logo.svg"
+
+  /** The SVG's own size, from its `width` and `height`: what a decoder that reads the SVG reports for it (#85). */
+  val logoSvgSize: (Double, Double) = (472.658, 599.168)
+
+  /** The logo file the running app was given. Set by [[app]], for a host's self-test to know which picture it expects.
+    */
+  var currentLogoFile: String = logo
+
   def logoBytes(path: String = logo): Array[Byte] =
     scala.util.Try(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path))).getOrElse(Array.emptyByteArray)
 
@@ -515,6 +524,7 @@ object Gallery {
   )(using Owner
   ): AppRoot = {
     val bytes = if logo.nonEmpty then logo else logoBytes(logoFile)
+    currentLogoFile = logoFile
     val model = Model()
     val storage = services.map(StorageDemo(_))
     currentStorage = storage
