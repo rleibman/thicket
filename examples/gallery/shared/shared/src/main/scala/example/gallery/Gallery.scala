@@ -437,7 +437,7 @@ object Gallery {
             }
           ),
           // Device services (docs/16): preferences and SQLite in the app's own directories,
-          // the database on a worker thread. Apple passes no services until its half is built.
+          // the database on a worker thread. Every host passes its own (Apple since #98).
           section("Storage — preferences and SQLite, in the app's own directories")(
             storage match {
               case None =>

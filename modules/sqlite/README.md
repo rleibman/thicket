@@ -5,7 +5,7 @@ adds no query layer (`docs/16-device-services.md` §16.5).
 
 | Platform | Driver |
 |---|---|
-| GTK (and Apple, #98) | `NativeSqlite.driver`, over `com.github.lolgab::scala-native-jdbc-sqlite` 0.0.7 |
+| GTK, macOS, iOS | `NativeSqlite.driver`, over `com.github.lolgab::scala-native-jdbc-sqlite` 0.0.7. On GTK it carries its own SQLite (the amalgamation); on Apple, link the system `libsqlite3` instead (below) |
 | Android | `AndroidSqlite.driver`, in `thicket-sqlite-android`: Thicket's JDBC driver over `android.database.sqlite` |
 | JVM tests | `SqliteDriver.fromJdbc(new org.sqlite.JDBC())`, xerial's `sqlite-jdbc` |
 
@@ -31,6 +31,14 @@ p.setString(1, "hello"); p.executeUpdate(); p.close()
   - **On Android:** the official `com.augustnagro::magnum` 1.3.1 does not run, because it
     calls `System.getLogger`, which Android lacks. With that one line made lazy, it passes
     all seven (`docs/16` §16.5).
+- **Apple links the system SQLite.** The amalgamation costs 1.09 MiB of an iOS app in
+  `releaseFast` + `LTO.full` (measured on the gallery, 2026-10-22: 8 576 040 B stripped with
+  it, 7 433 528 B with `libsqlite3`), and iOS and macOS ship the library. In the app's build:
+  `excludeDependencies += ExclusionRule("com.github.lolgab", "scala-native-sqlite-amalgamation")`,
+  then `-lsqlite3` at the final link: in `nativeConfig`'s linking options on macOS, and on
+  the Swift host's link on iOS, whose Scala Native output is a static archive. `build.sbt`'s
+  `appleSystemSqlite` does this for the gallery. The conformance results are the same with
+  either library.
 - **Threads:** keep database work off the UI thread, and use a connection from one thread at
   a time. Android ties a transaction to the thread that began it.
 - **Android driver stubs:** regenerate them with

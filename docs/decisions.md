@@ -231,6 +231,41 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   shows two of the three fits; the paint check is macOS-only for that reason. iOS stays on
   the PNG (UIImage takes SVG only from asset catalogs).
 
+- 2026-10-22 — **Apple storage: `thicket-storage-apple` works the directories out without
+  Foundation, preferences are a file, and SQLite is the system `libsqlite3`** (#98; built on
+  #99). **Directories:** `AppleStorage(bundleId)` gives `$HOME/Library/Application Support/<id>`,
+  `$HOME/Library/Caches/<id>` and `confstr(_CS_DARWIN_USER_TEMP_DIR)/<id>` (then `$TMPDIR`).
+  `$HOME`, not `user.home`: on the iOS simulator the password database names the Mac user's
+  home, while `$HOME` is the container. Measured against `FileManager.urls(for:in:)` and
+  `NSTemporaryDirectory()`, read through a new test-only shim call
+  `sui_foundation_directory`: equal on macOS 27 (`~/Library/…`, `/var/folders/…/T/`) and on
+  the "iPhone Air" iOS 27 simulator (the container's `Library/…` and `tmp/`), whose bundle id
+  Foundation reports as `dev.thicket.galleryios`, the one the host passes. The bundle id is a
+  parameter, as GTK's app id is, because the macOS gallery is a bare executable with no
+  bundle. So the module is plain Scala Native with no Swift library — §16.6 expected one per
+  Apple module — and no dependency on `renderer-apple`; an app that stores nothing does not
+  link it, and its 4 tests run in `testFull` anywhere. **Preferences:** `FilePreferences` in
+  the data directory, not `UserDefaults` as §16.3 proposed: the same file, format and
+  typed tags on GTK, macOS and iOS, written atomically, and no Swift to link into every iOS
+  host. Given up: Settings bundles, `defaults` on the command line, and app-group sharing,
+  none of which Thicket offers. **SQLite:** the iOS gallery in `releaseFast` + `LTO.full`,
+  stripped: 6 985 272 B with no SQLite reachable, 7 433 528 B over `libsqlite3`, 8 576 040 B
+  over the amalgamation, so the amalgamation is 1 142 512 B (1.09 MiB, 19 % of N-03's 6 MB)
+  for a library the OS ships. Apple apps exclude `scala-native-sqlite-amalgamation` and link
+  `-lsqlite3` (`appleSystemSqlite` in `build.sbt`; the iOS host's `build-app.sh` link); GTK
+  keeps the amalgamation. Conformance: `sqliteNative/testOnly *` on macOS 3/3 with the
+  amalgamation and with `libsqlite3` (406.0.0), failing exactly the 5 known checks; the iOS
+  gallery's `JdbcConformance` fails the same 5 of 17; Magnum 5 of 7 on both. (Measured on
+  0.0.6. Re-measured on 0.0.7, which `main` had moved to by the merge: 2 of 17 fail on macOS
+  and iOS, the batch and `setFetchSize` gaps, matching `knownNativeFailures`; Magnum still 5 of
+  7; gallery 179/179 and 173/173 with #85 and #104 in.) **Gallery:**
+  macOS **174/174** and iOS simulator **168/168**, each with six storage checks (the counter,
+  the directories against Foundation, preferences read back, conformance, Magnum, "Add a
+  note"); the counter read 2 on the second macOS launch. **Controls**, each reverted: Caches
+  misnamed fails the directory check (macOS and iOS); no click on "Add a note" fails that
+  check (both); preferences in the cache directory fail the read-back (1); the counter not
+  stored fails the counter and the read-back (2). Not falsified here: the conformance check
+  (falsified on Android in #99).
 - 2026-10-21 — **Apple: UIKit discards the rows of freed cells; appends to stacks and grids
   are O(1), grid removals are batched** (#78, review 2026-10-20 P2-8 and P2-14, Apple parts).
   *Discard:* the row callback carries it, index -1 with the row view, so a table still

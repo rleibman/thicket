@@ -8,10 +8,10 @@ Where an app keeps its files, and its preferences. The plan and the decisions ar
 | `thicket-storage` | JVM, Native | the API: `AppDirs`, `Preferences`, `Storage`; `FilePreferences`; `testing.MemoryStorage` | |
 | `thicket-storage-gtk` | Scala Native | XDG: `$XDG_DATA_HOME/<appId>`, `$XDG_CACHE_HOME/<appId>`, and `tmp` inside that cache directory | `FilePreferences` in the data directory |
 | `thicket-storage-android` | Android | `getFilesDir`, `getCacheDir`, `getCacheDir/tmp` | `SharedPreferences` |
-| Apple | | not yet: #98 | |
+| `thicket-storage-apple` | Scala Native (macOS, iOS) | `~/Library/Application Support/<bundleId>`, `~/Library/Caches/<bundleId>`, Darwin's per-user temporary directory`/<bundleId>`; on iOS `~` is the container. Checked against `FileManager.urls(for:in:)` and `NSTemporaryDirectory()` | `FilePreferences` in the data directory |
 
 ```scala
-val storage: Storage = GtkStorage("dev.example.app")     // or AndroidStorage(activity)
+val storage: Storage = GtkStorage("dev.example.app")     // or AndroidStorage(activity), AppleStorage(bundleId)
 val prefs = storage.preferences
 prefs.putLong("opens", prefs.getLong("opens").getOrElse(0L) + 1)
 java.nio.file.Files.writeString(storage.dirs.data.resolve("notes.txt"), "…")

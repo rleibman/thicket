@@ -17,6 +17,8 @@
 package example.gallery
 
 import thicket.renderer.apple.AppleApp
+import thicket.sqlite.NativeSqlite
+import thicket.storage.apple.AppleStorage
 
 /** The gallery on macOS (AppKit).
   *
@@ -28,17 +30,23 @@ import thicket.renderer.apple.AppleApp
   */
 object GalleryMac {
 
+  /** Not read from the bundle: this executable is run outside an `.app`, so it has none. */
+  val bundleId: String = "dev.thicket.gallery"
+
   def main(args: Array[String]): Unit =
     AppleApp.run("Thicket gallery", 520, 760) {
       // Same switch as the GTK host, so one command shape checks any platform.
+      val storage = AppleStorage(bundleId)
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then
-        AppleApp.postToUi(() => GallerySelfTest.run(svgWhereDecoded = true))
+        AppleApp.postToUi(() => GallerySelfTest.run(Some(storage), bundleId, svgWhereDecoded = true))
+      val services = Some(Services(storage, NativeSqlite.driver))
       // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise
       // (#85). Asked of the decoder, not the OS version: on macOS 13, the shim's minimum, NSImage
       // is not reported to take SVG, and an image view given bytes it cannot decode is an empty
       // frame, with nothing beside it to fall back to.
       val svg = Gallery.logoBytes(Gallery.logoSvg)
-      if AppleApp.decodesImage(svg) then Gallery.app(Gallery.logoSvg, svg) else Gallery.app()
+      if AppleApp.decodesImage(svg) then Gallery.app(Gallery.logoSvg, svg, services)
+      else Gallery.app(services = services)
     }
 
 }

@@ -1,9 +1,10 @@
 # 16 — Device services: a plan for review
 
-**Status (2026-10-22): decided; storage and SQLite built on GTK and Android, and the iOS HTTP
-transport built (#90, §16.4).** The owner's answers are in §16.9. Built: app directories,
-preferences and SQLite through JDBC (§16.5, §16.6), measured on GTK and on the Android emulator;
-Apple storage is #98. Covers location, motion, camera, files, storage and the rest:
+**Status (2026-10-22): decided; storage and SQLite built on GTK, Android, macOS and iOS, and the
+iOS HTTP transport built (#90, §16.4).** The owner's answers are in §16.9. Built: app
+directories, preferences and SQLite through JDBC (§16.5, §16.6), measured on GTK, the Android
+emulator, macOS and the iOS simulator (Apple: #98). Covers location, motion, camera, files,
+storage and the rest:
 what a real app is likely to need, what existing libraries already cover, and what Thicket
 itself has to provide.
 
@@ -56,8 +57,8 @@ most of them, which is why they come first.
 | Service | Shape (proposal) | Android | iOS | macOS | GTK |
 |---|---|---|---|---|---|
 | **HTTP transport** | an sttp `Backend` per platform; the app keeps sttp/caliban | `HttpURLConnectionBackend` + `INTERNET` permission | **built** (#90): `URLSessionBackend` in `thicket-http-apple` | `CurlBackend` (libcurl is in the SDK, measured; sttp also needs libidn2, §16.4) or `URLSessionBackend` | `CurlBackend` |
-| **App directories** | `Storage.dirs: AppDirs(data, cache, temp)` as `java.nio.file.Path` | `getFilesDir`, `getCacheDir` | Application Support, Caches | same, under the bundle id | `$XDG_DATA_HOME/<app>`, `$XDG_CACHE_HOME/<app>` |
-| **Preferences** (small key–value) | `Preferences`: get/set strings, numbers, booleans | `SharedPreferences` | `UserDefaults` | `UserDefaults` | a file under the data dir (GSettings needs an installed schema) |
+| **App directories** | `Storage.dirs: AppDirs(data, cache, temp)` as `java.nio.file.Path` | `getFilesDir`, `getCacheDir` | Application Support, Caches, the temporary directory, each under the bundle id (built, #98) | same (built, #98) | `$XDG_DATA_HOME/<app>`, `$XDG_CACHE_HOME/<app>` |
+| **Preferences** (small key–value) | `Preferences`: get/set strings, numbers, booleans | `SharedPreferences` | ~~`UserDefaults`~~ a file under the data dir, as on GTK (built, #98; `docs/decisions.md` 2026-10-22) | ~~`UserDefaults`~~ the same | a file under the data dir (GSettings needs an installed schema) |
 | **Secure storage** (tokens) | `Secrets`: get/set/delete a string | Android Keystore-wrapped value | Keychain | Keychain | libsecret (Secret Service), optional dependency |
 | **SQLite** | plain JDBC; `Sqlite.open(name): java.sql.Connection` | Thicket's JDBC driver over `android.database.sqlite` | `scala-native-jdbc-sqlite` | same | same |
 | **Lifecycle** | `AppLifecycle.state: Signal[Foreground \| Background]` and an `onTerminate` hook | `Activity` callbacks (already in `ThicketActivity`) | scene notifications | `NSApplication` notifications | window `is-active`, `GApplication` shutdown |
@@ -159,7 +160,7 @@ Linux box; a spike, not in the repo):
   bundled SQLite adds about **1.47 MB** (default build mode, not `releaseFast` + LTO). The
   iOS hello-world is 5.75 MB against a 6 MB budget (N-03), so on Apple the driver should link
   the system `libsqlite3`, which iOS and macOS ship, instead of the amalgamation. To measure
-  on the Mac.
+  on the Mac. *Measured 2026-10-22 (#98), below: Apple links the system library.*
 
 What Thicket provides, then, is small, and none of it is a query language:
 - **`thicket-sqlite-android`**: the JDBC driver over `android.database.sqlite`, implementing
@@ -193,6 +194,22 @@ What Thicket provides, then, is small, and none of it is a query language:
 - **Falsified:** with the Android driver made to swallow `executeUpdate` errors as the Native
   one does, the gallery's conformance check fails on "a constraint violated by a plain
   executeUpdate throws".
+
+**On macOS and iOS (#98, 2026-10-22):** the same driver, over the system `libsqlite3`.
+- **Size,** the iOS gallery in `releaseFast` + `LTO.full`, stripped, simulator arm64:
+  6 985 272 B with no SQLite code reachable, **7 433 528 B** with the driver, conformance and
+  Magnum checks over `libsqlite3`, **8 576 040 B** with the same over the amalgamation. The
+  amalgamation alone is **1 142 512 B (1.09 MiB)**, 19 % of N-03's 6 MB, against nothing for
+  a library the OS already has. So Apple apps exclude
+  `scala-native-sqlite-amalgamation` and link `-lsqlite3` (`build.sbt`'s `appleSystemSqlite`;
+  `modules/sqlite/README.md`). GTK keeps the amalgamation: a Linux distribution's SQLite is
+  not guaranteed, and size is not budgeted there.
+- **Conformance:** `sqliteNative/testOnly *` on macOS passes with either library (the 5 known
+  failures, exactly); on the iOS simulator the gallery's self-test runs `JdbcConformance` and
+  fails the same 5; Magnum passes 5 of 7 on both, as on GTK.
+- **The gallery itself is over 6 MB** even with no SQLite (6.99 MB): it is the conformance
+  surface, every widget and every check, not a shipping app. The budget question is the
+  delta, and the hello-world figure above.
 
 **Query libraries are the app's choice, and one exists on both runtimes.** The author of
 the Native driver also publishes Scala Native builds of Magnum
@@ -336,8 +353,8 @@ Every service gets a gallery section and self-test checks on every host where it
    Unblocks phase 6.
 2. **Storage:** app directories, preferences, secrets; SQLite as the Android JDBC driver,
    `Sqlite.open`, the conformance suite, and the upstream fix for the Native driver's
-   swallowed errors. *Done on GTK and Android, 2026-10-21, except secrets; the upstream fix
-   is in `scala-native-jdbc-sqlite` 0.0.7, 2026-10-22. Apple is #98.*
+   swallowed errors. *Done on GTK and Android, 2026-10-21, and on macOS and iOS, 2026-10-22
+   (#98), except secrets; the upstream fix is in `scala-native-jdbc-sqlite` 0.0.7, 2026-10-22.*
 3. **Lifecycle and permissions:** the host plumbing every later service sits on.
 4. **Location,** then **motion**, each with emulator-injected self-tests.
 5. **Pickers, camera capture, share, clipboard, haptics.**

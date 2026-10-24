@@ -796,6 +796,15 @@ object Abi {
     ),
     Fn("sui_opened_url_count", I32, Nil),
     Fn("sui_opened_url", Str, List(p("index", I32))),
+    Fn(
+      "sui_foundation_directory",
+      Str,
+      List(p("which", I32)),
+      doc = "Test only: what Foundation reports, for a self-test to hold thicket-storage-apple's own\n" +
+        "   paths against. 0 `FileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)`,\n" +
+        "   1 the same for `.cachesDirectory`, 2 `NSTemporaryDirectory()`, 3 `Bundle.main.bundleIdentifier`\n" +
+        "   (null when the executable has no bundle). Null for any other code."
+    ),
     Fn("sui_pages_depth", I32, Nil, doc = "How many pages the platform's own stack holds."),
     Fn(
       "sui_page_title",

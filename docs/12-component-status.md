@@ -240,8 +240,8 @@ every remaining entry before it is built, not after.
 | Navigation | `Nav`, `NavHost`, `AppRoot` | done — stack, title, Up and toolbar actions are native chrome, and every renderer now consumes `AppRoot.pages` so the stack stays alive: `AdwNavigationView` on GTK (#32), `UINavigationController` on iOS and a sidebar on macOS (#29), a `FrameLayout` plus `android.transition.Slide` on Android. Android deliberately avoids Fragments — `android.app.Fragment` is deprecated and the AndroidX one would be a new dependency |
 | Theming | `Theme`, `ColorRole` | partial — role → platform token, **per-subtree `Provide`**; **`Accent` reaches buttons but not `ProgressBar`**, so two accent-coloured controls render in different colours (visible in `docs/screenshots/android-catalogue.png`) |
 | ZIO bridge | `modules/effect-zio` | done — `asSignal`, `launch`, `RemoteData`, `ErrorPresenter`; runs on iOS |
-| App directories and preferences | `modules/storage`, `storage-gtk`, `storage-android` | done on GTK (XDG directories, `FilePreferences`) and Android (internal storage, `SharedPreferences`); a value reads back as the type it was written as on both. Apple is #98. `docs/16` §16.6 |
-| SQLite, through plain JDBC | `modules/sqlite`, `sqlite-android` | done on GTK (`scala-native-jdbc-sqlite` 0.0.7) and Android (Thicket's driver over `android.database.sqlite`). Every driver runs the same 17 `JdbcConformance` checks: xerial on the JVM and the Android driver pass all of them. The Native driver fails exactly 2, both upstream: batches and `setFetchSize` are unimplemented. (0.0.6 failed 3 more, swallowed errors, fixed upstream in 0.0.7.) Magnum works on Native; on Android it needs a one-line upstream fix (`docs/16` §16.5). Apple is #98. `docs/16` §16.5 |
+| App directories and preferences | `modules/storage`, `storage-gtk`, `storage-android`, `storage-apple` | done on GTK (XDG directories, `FilePreferences`), Android (internal storage, `SharedPreferences`), and macOS and iOS (Application Support, Caches and the per-user temporary directory under the bundle id, matching Foundation's on both; `FilePreferences`, 2026-10-22, #98); a value reads back as the type it was written as on all of them. `docs/16` §16.6 |
+| SQLite, through plain JDBC | `modules/sqlite`, `sqlite-android` | done on GTK (`scala-native-jdbc-sqlite` 0.0.7) and Android (Thicket's driver over `android.database.sqlite`). Every driver runs the same 17 `JdbcConformance` checks: xerial on the JVM and the Android driver pass all of them. The Native driver fails exactly 5, all upstream: errors from a plain `executeUpdate` and from a bad bind are not thrown, and batches and `setFetchSize` are unimplemented. Magnum works on Native; on Android it needs a one-line upstream fix (`docs/16` §16.5). macOS and iOS (#98, 2026-10-22): the same driver over the system `libsqlite3`, failing the same 5 on macOS (`sqliteNative`) and on the iOS simulator (gallery self-test); the bundled amalgamation would cost 1.09 MiB of the iOS app. `docs/16` §16.5 |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
 | Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine. Since #90 also `thicket-http-apple`'s 12 `thk_http_*` functions (`HttpAbi`): `thicket_http.h` and `HttpShim.scala` generated, `HttpShim.swift` checked |
 | HTTP on Apple | `modules/http-apple` | done on iOS and macOS (#90) — `URLSessionBackend`, an sttp `SyncBackend` over `URLSession`, because the iOS SDK has no libcurl. Its own module and Swift library, not linked by an app that does not depend on it. 13 self-test checks against a local server pass on the iOS simulator and on macOS, among them one caliban-client query; each is seen to fail with its feature broken (`examples/http-apple`). Not a widget, so not in the gallery. Android (`HttpURLConnectionBackend`) and GTK (`CurlBackend`) need no Thicket code and are not yet verified (docs/16 §16.10) |
@@ -342,6 +342,7 @@ someone who did not write the framework, running on all three targets.
 | `effectZioJVM` / `effectZioNative` | 25 — Native ran none until 2026-10-20: the specs were JVM-only |
 | `storageJVM` / `storageNative` | 14 |
 | `storageGtk` | 3 |
+| `storageApple` | 4 (2026-10-22) |
 | `sqliteJVM` / `sqliteNative` | 2 — one runs all 17 conformance checks against the driver: every one on the JVM, all but the 2 known upstream gaps on Native |
 | `shimGen` | 15 |
 | `sbtThicket` | 9 |
@@ -350,7 +351,8 @@ Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI r
 storage and sqlite rows 2026-10-21. On top of these, the self-tests drive the real toolkits:
 GTK gallery **119** and todo **69** (`bin/gtk-selftests.sh`, which also fails on any
 `Gtk-CRITICAL`), Android gallery **29** and todo **84** on the `s2test` emulator (2026-10-21,
-the storage section's five checks each included).
+the storage section's five checks each included). Apple gallery (2026-10-22, #98): macOS
+**174**, iOS simulator **168**, each with six storage checks.
 
 Four rules the migration established:
 
@@ -407,7 +409,7 @@ exits non-zero when any of it fails.
 
 **The three renderers.** GTK, Android and Apple are Scala Native and ART code, exercised by
 self-tests that drive the real toolkit in a real process — 119 + 69 checks on GTK and 29 + 84
-on Android (2026-10-21), 87 and 82 on macOS and iOS. scoverage instruments none of that, so those modules contribute
+on Android (2026-10-21), 179 and 173 on macOS and iOS (2026-10-23, with the storage checks). scoverage instruments none of that, so those modules contribute
 nothing to the figure above and **their absence is not a gap in testing**. The number is
 coverage of the effect-free core, and quoting it as "the project's coverage" would be
 wrong in both directions at once.

@@ -10,7 +10,8 @@
 #
 # One swiftc invocation compiles the host and resolves both directions: the shim's @_cdecl
 # functions satisfy the archive's undefined sui_* symbols, and the archive's @exported
-# symbols satisfy the host's calls.
+# symbols satisfy the host's calls. -lsqlite3: the gallery's SQLite is the system library,
+# not the bundled amalgamation (build.sbt, appleSystemSqlite).
 set -euo pipefail
 
 DEVICE="${1:-iPhone 17}"
@@ -42,6 +43,7 @@ swiftc \
   -Xcc -I"$REPO/modules/renderer-apple/shim/include" \
   Sources/Host.swift \
   "$SHIM" "$A" \
+  -lsqlite3 \
   -o "$APP/GalleryIos"
 
 cp Info.plist "$APP/Info.plist"
