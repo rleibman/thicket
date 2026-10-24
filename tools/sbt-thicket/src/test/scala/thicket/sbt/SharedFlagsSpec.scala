@@ -89,6 +89,21 @@ object SharedFlagsSpec extends ZIOSpecDefault {
           assert(c.linkingOptions)(contains("-lmine"))
         }
       ),
+      suite("appleHttp (thicket-http-apple, #90)")(
+        test("the Swift library is linked by path and name, with Foundation and Swift's runtime") {
+          val c = ThicketNativeFlags.appleHttp(new java.io.File("/http/lib"))(NativeConfig.empty)
+          val pairs = c.linkingOptions.sliding(2).collect { case Seq("-framework", f) => f }.toSet
+          assert(c.linkingOptions)(contains("-L/http/lib")) &&
+          assert(c.linkingOptions)(contains("-lthickethttp")) &&
+          assert(pairs)(contains("Foundation")) &&
+          assert(c.linkingOptions.mkString(" "))(containsString("-Xlinker -rpath -Xlinker /usr/lib/swift"))
+        },
+        test("it adds to the renderer's flags instead of replacing them") {
+          val apple = ThicketNativeFlags.apple(new java.io.File("/l"), new java.io.File("/i"))(NativeConfig.empty)
+          val c = ThicketNativeFlags.appleHttp(new java.io.File("/h"))(apple)
+          assert(c.linkingOptions)(contains("-lthicketapple")) && assert(c.linkingOptions)(contains("-lthickethttp"))
+        }
+      ),
       test("a missing package says which one and how to install it") {
         val e = scala.util.Try(ThicketNativeFlags.pkgConfig("--libs", Seq("thicket-no-such-package"))).failed.get
         assert(e.getMessage)(containsString("thicket-no-such-package")) &&

@@ -37,7 +37,8 @@ object HostEntrySpec extends ZIOSpecDefault {
   /** Each iOS example: where its Scala host, bridging header and Swift host live. */
   private val examples = List(
     "todo"    -> root.resolve("examples/todo-apple/ios"),
-    "gallery" -> root.resolve("examples/gallery/ios")
+    "gallery" -> root.resolve("examples/gallery/ios"),
+    "http"    -> root.resolve("examples/http-apple/ios")
   )
 
   private def read(p: Path): String = {

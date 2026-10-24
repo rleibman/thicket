@@ -46,6 +46,12 @@ found the iOS app showing neither: its working directory is `/`, so the repo-rel
 in the app bundle when it does not exist from the working directory, and the iOS
 `build-app.sh` copies the logo into the bundle under the same path.
 
+**#85:** the macOS host shows the SVG logo when `AppleApp.decodesImage` says NSImage takes
+it (macOS 14+; measured on 27.0.1), the PNG otherwise. The image check now reads each
+picture's size back (`sui_image_size`): the SVG's own 472.658x599.168 on macOS, 560x710 for
+the PNG on iOS; on macOS the bytes-backed Fill picture paints 28.9% of its view (the SVG's
+transparent background; the opaque PNG paints 100%). **171/171** on macOS, **163/163** on iOS.
+
 **#45 / #46** added Picker, DatePicker, SegmentedControl, ZStack and Link checks that ask the
 platform what GTK asks — options, selection, date, a choice through the control's own action,
 links with the opener recording, ZStack placement by alignment rect: **48/48** on macOS and
@@ -154,4 +160,7 @@ tappable `Row`, the screen's `Scroll` with both padding and `.safeArea()`, a pad
 `Scroll` inside it whose child can be replaced by a taller one, keyed `ForEach`, virtualised `LazyColumn` whose first row
 can be deleted and renamed, a per-row `ContextMenu`, subtree theming with `Provide`, a
 handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet`), toolbar
-`Action`s, a navigation push, and a `TabView` with a tab inserted in the middle.
+`Action`s, a navigation push, a `TabView` with a tab inserted in the middle, and storage: a
+launch counter in preferences and notes in SQLite, written on a worker thread, with the JDBC
+conformance checks run against the platform's driver (GTK and Android; Apple is #98), and
+Magnum's checks on GTK.

@@ -34,6 +34,7 @@ object Shim {
   def sui_root_view(): Handle = extern
   def sui_window_set_title(title: CString): Unit = extern
   def sui_resource_path(path: CString): CString = extern
+  def sui_image_decodes(data: Ptr[Byte], length: CInt): CInt = extern
   def sui_create(kind: CInt): Handle = extern
   def sui_destroy(h: Handle): Unit = extern
   def sui_set_text(h: Handle, text: CString): Unit = extern
@@ -109,6 +110,7 @@ object Shim {
   def sui_get_value(h: Handle): CDouble = extern
   def sui_is_secure(h: Handle): CInt = extern
   def sui_has_image(h: Handle): CInt = extern
+  def sui_image_size(h: Handle, outWidth: Ptr[CDouble], outHeight: Ptr[CDouble]): CInt = extern
   def sui_get_content_fit(h: Handle): CInt = extern
   def sui_get_align(h: Handle): CInt = extern
   def sui_scroll_offset(h: Handle): CDouble = extern

@@ -161,6 +161,15 @@ object AppleInspect {
       case _ => None
     }
 
+  /** The size, in points, of the image an image view holds (`NSImage.size`, `UIImage.size`); `None` when it holds none
+    * or `h` is not an image view.
+    */
+  def imageSize(h: Shim.Handle): Option[(Double, Double)] =
+    Zone {
+      val out = alloc[Double](2)
+      if Shim.sui_image_size(h, out, out + 1) != 0 then Some((out(0), out(1))) else None
+    }
+
   /** The fit an image view draws with, read from it: `Some(ContentFit)`, or `None` when `h` is not an image view. */
   def contentFit(h: Shim.Handle): Option[thicket.renderer.ContentFit] =
     Shim.sui_get_content_fit(h) match {

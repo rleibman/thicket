@@ -81,15 +81,20 @@ object Parse {
     }
   }
 
-  private val cFn = """^\s*(.+?)\s*\**\s*\b(sui_\w+)\s*\((.*)\)\s*;\s*$""".r
+  /** `prefix` is the surface's: `sui` for the renderer's ABI, `thk_http` for `thicket-http-apple`'s. */
+  private def cFn(prefix: String) = ("""^\s*(.+?)\s*\**\s*\b(""" + prefix + """_\w+)\s*\((.*)\)\s*;\s*$""").r
 
-  def cHeader(source: String): Result = {
+  def cHeader(
+    source: String,
+    prefix: String = "sui"
+  ): Result = {
     val joined = joinWrapped(source, ";", _ => true)
     val decls = List.newBuilder[Decl]
     val unparsed = List.newBuilder[String]
+    val fnDecl = cFn(prefix)
     joined.foreach { line =>
       line match {
-        case cFn(retRaw, name, argsRaw) =>
+        case fnDecl(retRaw, name, argsRaw) =>
           val ret = cTypes.get(
             if line.contains(s"*$name") || line.contains(s"* $name") then s"${retRaw.trim} *"
             else retRaw.trim
@@ -97,8 +102,8 @@ object Parse {
           val args = splitArgs(argsRaw).map(cParamType)
           if ret.isDefined && args.forall(_.isDefined) then decls += Decl(name, ret.get, args.flatten)
           else unparsed += line
-        case l if l.contains("sui_") && l.contains("(") && l.endsWith(";") => unparsed += l
-        case _                                                             => ()
+        case l if l.contains(s"${prefix}_") && l.contains("(") && l.endsWith(";") => unparsed += l
+        case _                                                                    => ()
       }
     }
     Result(decls.result(), unparsed.result())
@@ -189,14 +194,19 @@ object Parse {
     "IntCb"        -> CType.IntCb
   )
 
-  private val scFn = """^\s*def\s+(sui_\w+)\s*\((.*)\)\s*:\s*(\S+?)\s*=\s*extern\s*$""".r
+  private def scFn(prefix: String) =
+    ("""^\s*def\s+(""" + prefix + """_\w+)\s*\((.*)\)\s*:\s*(\S+?)\s*=\s*extern\s*$""").r
 
-  def scalaExterns(source: String): Result = {
+  def scalaExterns(
+    source: String,
+    prefix: String = "sui"
+  ): Result = {
     val joined = joinWrapped(source, "= extern", _.startsWith("def "))
     val decls = List.newBuilder[Decl]
     val unparsed = List.newBuilder[String]
+    val fnDecl = scFn(prefix)
     joined.foreach {
-      case l @ scFn(name, argsRaw, retRaw) =>
+      case l @ fnDecl(name, argsRaw, retRaw) =>
         val ret = scalaTypes.get(retRaw.trim)
         val args = splitArgs(argsRaw).map { a =>
           val t = a.split(":", 2)
@@ -204,8 +214,8 @@ object Parse {
         }
         if ret.isDefined && args.forall(_.isDefined) then decls += Decl(name, ret.get, args.flatten)
         else unparsed += l
-      case l if l.contains("= extern") && l.contains("sui_") => unparsed += l
-      case _                                                 => ()
+      case l if l.contains("= extern") && l.contains(s"${prefix}_") => unparsed += l
+      case _                                                        => ()
     }
     Result(decls.result(), unparsed.result())
   }

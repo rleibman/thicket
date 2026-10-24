@@ -894,6 +894,15 @@ public func sui_resource_path(_ path: UnsafePointer<CChar>) -> UnsafePointer<CCh
   scratch(resolveImagePath(String(cString: path)))
 }
 
+/// Whether NSImage(data:) decodes these bytes. A host asks before handing over a format the
+/// platform may not take: on AppKit, SVG decodes on macOS 14+ (`_NSSVGImageRep`) and, by every
+/// report, not on 13, the shim's minimum (#85).
+@_cdecl("sui_image_decodes")
+public func sui_image_decodes(_ data: UnsafePointer<UInt8>, _ length: Int32) -> Int32 {
+  guard length > 0 else { return 0 }
+  return NSImage(data: Data(bytes: data, count: Int(length))) != nil ? 1 : 0
+}
+
 // MARK: - construction
 
 @_cdecl("sui_create")
@@ -2436,6 +2445,20 @@ public func sui_pages_back() -> Int32 {
 public func sui_has_image(_ h: UnsafeMutableRawPointer) -> Int32 {
   guard let iv = view(h) as? NSImageView else { return -1 }
   return iv.image != nil ? 1 : 0
+}
+
+/// The held image's size in points, as NSImage.size reports it: the SVG logo reads its own
+/// 472.658x599.168, the PNG made from it something else, which is how the gallery tells them
+/// apart (#85).
+@_cdecl("sui_image_size")
+public func sui_image_size(
+  _ h: UnsafeMutableRawPointer, _ outWidth: UnsafeMutablePointer<Double>,
+  _ outHeight: UnsafeMutablePointer<Double>
+) -> Int32 {
+  guard let image = (view(h) as? NSImageView)?.image else { return 0 }
+  outWidth.pointee = Double(image.size.width)
+  outHeight.pointee = Double(image.size.height)
+  return 1
 }
 
 /// Read from what draws: ImageView's own cover flag, else NSImageView's scaling.
