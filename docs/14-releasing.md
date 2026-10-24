@@ -51,6 +51,8 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-core_3` / `_native0.5_3` | the element tree, signals, navigation |
 | `net.leibman:thicket-renderer-gtk_native0.5_3` | the GTK4 renderer |
 | `net.leibman:thicket-effect-zio_3` / `_native0.5_3` | the ZIO bridge, if wanted |
+| `net.leibman:thicket-storage-gtk_native0.5_3` / `thicket-storage-android_3` | app directories and preferences (`thicket-storage` comes with them) |
+| `net.leibman:thicket-sqlite_3` / `_native0.5_3`, `thicket-sqlite-android_3` | SQLite through JDBC; on Native the driver comes with it, on Android add `thicket-sqlite-android` |
 | `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
 | `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
 

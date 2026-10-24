@@ -17,10 +17,12 @@
 package example.gallery.android
 
 import _root_.android.os.Bundle
-import example.gallery.Gallery
+import example.gallery.{Gallery, Services}
 import thicket.core.AppRoot
 import thicket.renderer.android.ThicketActivity
 import thicket.signals.Owner
+import thicket.sqlite.android.AndroidSqlite
+import thicket.storage.android.AndroidStorage
 
 /** The gallery on Android — the same screen the GTK, macOS and iOS hosts mount.
   *
@@ -32,7 +34,11 @@ import thicket.signals.Owner
   */
 class GalleryActivity extends ThicketActivity {
 
-  protected def createApp(saved: Option[Bundle])(using Owner): AppRoot = Gallery.app(logo = assetBytes(Gallery.logo))
+  protected def createApp(saved: Option[Bundle])(using Owner): AppRoot =
+    Gallery.app(
+      logo = assetBytes(Gallery.logo),
+      services = Some(Services(AndroidStorage(this), AndroidSqlite.driver))
+    )
 
   override protected def started(): Unit =
     if getIntent != null && getIntent.getBooleanExtra("selftest", false) then GallerySelfTest.run(this)

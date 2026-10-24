@@ -397,6 +397,61 @@ lazy val effectZio = crossProject(JVMPlatform, NativePlatform)
     )
   )
 
+/** Device services (`docs/16-device-services.md`): one API module per service, one implementation module per service
+  * and platform, so an app takes only what it uses (owner's decision, 2026-10-21).
+  */
+
+/** Where an app keeps its files, and its preferences: the API, the file-backed preferences, and test fakes. */
+lazy val storage = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/storage"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-storage")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** Storage on GTK: the XDG base directories. Plain Scala Native — it needs nothing from GTK itself, so it links no
+  * GTK and its tests run in `testFull`.
+  */
+lazy val storageGtk = project
+  .in(file("modules/storage-gtk"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(storage.native)
+  .settings(commonSettings, zioTestFramework, name := "thicket-storage-gtk", libraryDependencies ++= zioTestNative)
+
+/** Storage on Android: the app's internal directories and `SharedPreferences`. `android.jar` comes through the
+  * renderer (`modules/renderer-android/setup.sh`).
+  */
+lazy val storageAndroid = project
+  .in(file("modules/storage-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(storage.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-storage-android", scalacOptions ++= Seq("-release", "17"))
+
+/** SQLite through plain JDBC: `Sqlite.open`, the Scala Native driver, and the conformance checks every driver is held
+  * to. The JVM side has no driver of its own (Android's is `sqliteAndroid`); its tests use xerial's.
+  */
+lazy val sqlite = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/sqlite"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(storage)
+  .settings(commonSettings, zioTestFramework, name := "thicket-sqlite")
+  .jvmSettings(
+    scalacOptions ++= Seq("-release", "17"),
+    libraryDependencies ++= zioTestJvm :+ ("org.xerial" % "sqlite-jdbc" % "3.53.4.0" % Test)
+  )
+  .nativeSettings(
+    libraryDependencies ++= zioTestNative :+ ("com.github.lolgab" % "scala-native-jdbc-sqlite_native0.5_3" % "0.0.7")
+  )
+
+/** SQLite on Android: a JDBC driver over `android.database.sqlite`, since none is maintained (`docs/16` §16.5). */
+lazy val sqliteAndroid = project
+  .in(file("modules/sqlite-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(sqlite.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-sqlite-android", scalacOptions ++= Seq("-release", "17"))
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot put a `File` on a classpath —
@@ -503,18 +558,22 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
-  .dependsOn(core, effectZio)
+  // storage and sqlite: the device services' section; each host supplies its platform's implementation.
+  .dependsOn(core, effectZio, storage, sqlite)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
   .jvmSettings(scalacOptions ++= Seq("-release", "17"))
+  // Magnum, the typed layer over JDBC the docs point apps to (docs/16 §16.5), checked against the Native driver. Native
+  // only: the official build does not run on Android (see MagnumChecks).
+  .nativeSettings(libraryDependencies += "com.github.lolgab" % "magnum_native0.5_3" % "1.3.1")
 
 
 lazy val galleryGtk = project
   .in(file("examples/gallery/gtk"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.gtk.buildinfo"))
-  .dependsOn(rendererGtk, galleryShared.native)
+  .dependsOn(rendererGtk, galleryShared.native, storageGtk)
   .settings(commonSettings)
   .settings(gtkNativeSettings)
   .settings(
@@ -528,7 +587,7 @@ lazy val galleryGtk = project
   */
 lazy val galleryAndroid = project
   .in(file("examples/gallery/android/scala"))
-  .dependsOn(rendererAndroid, galleryShared.jvm)
+  .dependsOn(rendererAndroid, galleryShared.jvm, storageAndroid, sqliteAndroid)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.android.buildinfo"))
   .settings(commonSettings)
@@ -646,6 +705,8 @@ lazy val platforms = project
     rendererGtk,
     rendererAndroid,
     rendererApple,
+    storageAndroid,
+    sqliteAndroid,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,
@@ -682,6 +743,11 @@ lazy val root = project
     core.native,
     effectZio.jvm,
     effectZio.native,
+    storage.jvm,
+    storage.native,
+    storageGtk,
+    sqlite.jvm,
+    sqlite.native,
     shimGen,
     sbtThicket
   )
