@@ -72,6 +72,31 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-25 — **The Apple shims share their non-toolkit half, read long text, and name their
+  toolkit** (#79; review 2026-10-20 P2-27, P3-2, P3-7, P3-9, P3-13, P3-21, P3-26).
+  `Shim+Common.swift` holds what the two shims duplicated (callbacks, handles, the scratch
+  buffer, string helpers) and is compiled with whichever toolkit file `build-shim.sh` picks,
+  as one module; the renderer jar carries it, and `getting-started` builds it from the jar.
+  **`textScratch` was undefined behaviour** (a pointer kept past `withUnsafeBufferPointer`)
+  and returned NULL for text of 4 096 bytes or more, which `sui_get_text` reads as "no text":
+  the scratch buffer is now owned memory that grows by doubling. **`sui_platform`** answers
+  `appkit` or `uikit`, and `AppleRenderer.platform` uses it rather than saying `appkit` on
+  iOS; the unbuilt-kind sets are per toolkit. Apple `Handles` has one register-and-replace
+  path, as GTK's `Handles.connect`. The three iOS example hosts share
+  `examples/ios-host/run-ios-app.sh` and `Info.plist.in`, each `build-app.sh` now a thin
+  wrapper; `Sources/` stays per app (the entry symbol is per app, and `HostEntrySpec` checks
+  each), and the template keeps a complete script of its own, being copied out of the repo.
+  The stale "Kind 9" comments say kind 15. `build-shim.sh` is **arm64 only**, now documented:
+  no Intel Mac or x86_64 simulator to test a second slice on. Net −273 lines (+421 −694).
+  **Measured:** `bin/verify-apple.sh "iPhone 17e"` 13/13, gallery 183/183 macOS and 177/177
+  iOS (four new checks: an 8 400-byte text round-trips on a Label, a TextField and a Button,
+  and the renderer names its toolkit), todo 88/88 and 83/83, the HTTP self-test on both,
+  shim-gen 23/23. **Controls:** the old 4 096-byte limit fails the three long-text checks on
+  both toolkits; `sui_platform` answering `appkit` on UIKit fails the toolkit check on iOS.
+  Finished by hand after the agent's stream stalled four times; a first verification run took
+  28 minutes in its link step with the Mac swapping, and 54 s after the finished agents'
+  worktrees (about 8 GB under `.claude/worktrees`) were removed.
+
 - 2026-10-23 — **UIKit: the pictures in a Row shrink together, and an Image is no taller than
   its width allows** (#104). On the iPhone 17e simulator the gallery's "three content fits"
   Row (three 560×710-pt `UIImageView`s in a 358-pt `.fill` Row) was Contain 342×710, Cover

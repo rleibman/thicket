@@ -32,6 +32,7 @@ object Shim {
 
   def sui_app_start(width: CInt, height: CInt, title: CString, ready: VoidCb, ctx: Long): Unit = extern
   def sui_root_view(): Handle = extern
+  def sui_platform(): CString = extern
   def sui_window_set_title(title: CString): Unit = extern
   def sui_resource_path(path: CString): CString = extern
   def sui_image_decodes(data: Ptr[Byte], length: CInt): CInt = extern
@@ -191,8 +192,9 @@ object ShimKind {
   inline val TabView = 24
   inline val Tab = 25
 
-  /** Codes reserved and not built on AppKit or on UIKit (D9). `AppleRenderer` shows a labelled placeholder for one, and
-    * throws under a self-test. One set for both toolkits: the renderer cannot yet tell which it runs on (#79).
+  /** Codes reserved and not built by the AppKit shim, and by the UIKit one (D9). `AppleRenderer` asks `sui_platform`
+    * which it runs on (#79), shows a labelled placeholder for a code in that toolkit's set, and throws under a self-test.
     */
-  val unbuilt: Set[Int] = Set()
+  val unbuiltAppKit: Set[Int] = Set()
+  val unbuiltUIKit: Set[Int] = Set()
 }

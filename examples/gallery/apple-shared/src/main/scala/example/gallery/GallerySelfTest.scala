@@ -22,7 +22,7 @@ import scala.scalanative.unsafe.{Zone, toCString}
 import thicket.core.{Element, GcState, Reconciler}
 import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
-import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim}
+import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim, ShimKind}
 import thicket.signals.{ErrorSink, Owner}
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
@@ -210,6 +210,7 @@ object GallerySelfTest {
     layout(AppleInspect.all(root))
     crossAxis(AppleInspect.all(root))
     mountScaling()
+    shimStrings()
     robustness(AppleInspect.all(root))
 
     // Presented widgets must not be in the tree until asked for.
@@ -879,6 +880,49 @@ object GallerySelfTest {
     * machine is shared, and the slow runs are other work, not this. The check is the Android one: 2 000 under three
     * times 1 000.
     */
+  /** Strings out of the shim, and which shim it is (#79).
+    *
+    * Every string the shim hands back is copied into one scratch buffer. It was a fixed 4096-byte Swift array, so text
+    * of 4096 bytes or more came back as NULL — read as "this view carries no text" — and the pointer it returned had
+    * escaped `withUnsafeBufferPointer`. The text here is over 6 000 bytes and multi-byte, set on each text-bearing kind
+    * and read back through `sui_get_text`; a short one after it shows the grown buffer still ends where it should.
+    *
+    * `platform` came from a constant, "appkit", on UIKit too. It is checked against a class only the toolkit can name:
+    * kind 9, a Toggle, is an `NSSwitch` on AppKit and a `UISwitch` on UIKit.
+    */
+  private def shimStrings(): Unit = {
+    val long = "long text — ü → 文字 " * 300
+    val longBytes = long.getBytes("UTF-8").length
+    List(ShimKind.Label -> "Label", ShimKind.TextField -> "TextField", ShimKind.Button -> "Button").foreach {
+      (
+        code,
+        name
+      ) =>
+        val h = Shim.sui_create(code)
+        Zone(Shim.sui_set_text(h, toCString(long)))
+        val back = AppleInspect.text(h)
+        Zone(Shim.sui_set_text(h, toCString("short")))
+        val short = AppleInspect.text(h)
+        Shim.sui_destroy(h)
+        check(
+          s"a $longBytes-byte text round-trips through the shim on a $name, and a short one after it",
+          back.contains(long) && short.contains("short"),
+          s"read back ${back.map(_.getBytes("UTF-8").length)} bytes, then $short"
+        )
+    }
+
+    val toggle = Shim.sui_create(ShimKind.Toggle)
+    val switchClass = AppleInspect.className(toggle)
+    Shim.sui_destroy(toggle)
+    val expected = switchClass match {
+      case "NSSwitch" => "appkit"
+      case "UISwitch" => "uikit"
+      case other      => s"(unknown: $other)"
+    }
+    val platform = AppleApp.renderer.platform
+    check(s"the renderer names its toolkit: $platform", platform == expected, s"a Toggle is a $switchClass")
+  }
+
   private def mountScaling(): Unit = {
     val renderer = AppleApp.renderer
     def once(

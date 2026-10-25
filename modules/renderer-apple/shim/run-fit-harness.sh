@@ -27,7 +27,7 @@ echo "=== AppKit ==="
 xcrun swiftc -O \
   -target arm64-apple-macosx13.0 -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
   -module-name FitHarness -import-objc-header include/thicket_apple_types.h \
-  Sources/Shim+AppKit.swift Tests/FitHarness+AppKit.swift -o "$OUT/fitharness-macos"
+  Sources/Shim+Common.swift Sources/Shim+AppKit.swift Tests/FitHarness+AppKit.swift -o "$OUT/fitharness-macos"
 "$OUT/fitharness-macos" "$OUT"
 
 echo
@@ -38,7 +38,7 @@ echo "=== UIKit (simulator, headless) ==="
 xcrun swiftc -O \
   -target arm64-apple-ios17.0-simulator -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
   -module-name FitHarness -import-objc-header include/thicket_apple_types.h \
-  Sources/Shim+UIKit.swift Tests/FitHarness+UIKit.swift -o "$OUT/fitharness-ios" \
+  Sources/Shim+Common.swift Sources/Shim+UIKit.swift Tests/FitHarness+UIKit.swift -o "$OUT/fitharness-ios" \
   2> >(grep -v "Wincompatible-sysroot" >&2 || true)
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null 2>&1 || true

@@ -24,6 +24,9 @@
 void sui_app_start(int32_t width, int32_t height, const char *title,
                    sui_void_cb ready, int64_t ctx);
 sui_handle sui_root_view(void);
+/* Which toolkit this shim was built for: "appkit" or "uikit". A string that lives as
+   long as the process, not the scratch buffer. The renderer's `platform` (#79). */
+const char *sui_platform(void);
 void sui_window_set_title(const char *title);
 /* Where a relative path of the app's own is: as given when it exists from the working
    directory, otherwise inside the app bundle's resources — the lookup ImageSource.FromFile

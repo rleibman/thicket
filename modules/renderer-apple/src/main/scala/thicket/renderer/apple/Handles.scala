@@ -30,96 +30,88 @@ import thicket.core.GcState
   */
 object Handles {
 
-  private val taps = new ConcurrentHashMap[java.lang.Long, () => Unit]()
-  private val texts = new ConcurrentHashMap[java.lang.Long, String => Unit]()
-  private val bools = new ConcurrentHashMap[java.lang.Long, Boolean => Unit]()
-  private val values = new ConcurrentHashMap[java.lang.Long, Double => Unit]()
-  private val ints = new ConcurrentHashMap[java.lang.Long, Int => Unit]()
-  private val rows = new ConcurrentHashMap[java.lang.Long, (Int, Option[Shim.Handle]) => Shim.Handle]()
   private val nextId = new AtomicLong(1L)
 
-  def register(f: () => Unit): Long = {
-    val id = nextId.getAndIncrement()
-    taps.put(id, f)
-    id
-  }
-
-  def registerText(f: String => Unit): Long = {
-    val id = nextId.getAndIncrement()
-    texts.put(id, f)
-    id
-  }
-
-  def registerBool(f: Boolean => Unit): Long = {
-    val id = nextId.getAndIncrement()
-    bools.put(id, f)
-    id
-  }
-
-  def registerValue(f: Double => Unit): Long = {
-    val id = nextId.getAndIncrement()
-    values.put(id, f)
-    id
-  }
-
-  def registerInt(f: Int => Unit): Long = {
-    val id = nextId.getAndIncrement()
-    ints.put(id, f)
-    id
-  }
-
-  def registerRow(f: (Int, Option[Shim.Handle]) => Shim.Handle): Long = {
-    val id = nextId.getAndIncrement()
-    rows.put(id, f)
-    id
-  }
-
-  /** Swapping the closure behind an existing id, rather than registering a second handler, is what stops repeated
-    * property updates stacking handlers.
+  /** The closures of one callback shape, by the id the shim hands back. Every id comes from the one `nextId`, so an id
+    * names one closure in one table, and [[release]] can drop it without knowing which.
     */
-  def replace(
-    id: Long,
-    f:  () => Unit
-  ): Unit = taps.put(id, f)
-  def replaceText(
-    id: Long,
-    f:  String => Unit
-  ): Unit = texts.put(id, f)
-  def replaceBool(
-    id: Long,
-    f:  Boolean => Unit
-  ): Unit = bools.put(id, f)
-  def replaceValue(
-    id: Long,
-    f:  Double => Unit
-  ): Unit = values.put(id, f)
+  final class Table[F] private[Handles] () {
 
-  /** The `Int` counterpart, for a `Picker`'s selection. `registerInt` and `intTrampoline` already existed for the
-    * virtual-row callbacks; only the replace half was missing, which is what lets a re-render swap the handler without
-    * leaking a table entry per update.
+    private val byId = new ConcurrentHashMap[java.lang.Long, F]()
+
+    def register(f: F): Long = {
+      val id = nextId.getAndIncrement()
+      val _ = byId.put(id, f)
+      id
+    }
+
+    /** Swapping the closure behind an existing id, rather than registering a second handler, is what stops repeated
+      * property updates stacking handlers.
+      */
+    def replace(
+      id: Long,
+      f:  F
+    ): Unit = { val _ = byId.put(id, f) }
+
+    /** The closure, or `null` once released — what the trampolines check. */
+    private[Handles] def get(id:    Long): F = byId.get(id)
+    private[Handles] def remove(id: Long): Unit = { val _ = byId.remove(id) }
+    def size:                              Int = byId.size
+
+  }
+
+  val taps = Table[() => Unit]()
+  val texts = Table[String => Unit]()
+  val bools = Table[Boolean => Unit]()
+  val values = Table[Double => Unit]()
+  val ints = Table[Int => Unit]()
+  val rows = Table[(Int, Option[Shim.Handle]) => Shim.Handle]()
+
+  /** The one register-or-replace path for a handler property (#79; GTK's `Handles.connect`, WP-16, is the model).
+    *
+    * The first time `handle` gets this kind of handler, `f` is registered, its id kept in `ids`, and `attach` hands the
+    * id to the shim (`sui_on_tap(handle, tapTrampoline, id)` and the like). Every later time the closure behind that id
+    * is swapped and the shim is not called again. `AppleRenderer` had this written out once per handler, seven times.
     */
-  def replaceInt(
-    id: Long,
-    f:  Int => Unit
-  ): Unit = ints.put(id, f)
+  def connect[F](
+    table:  Table[F],
+    ids:    scala.collection.mutable.Map[Shim.Handle, Long],
+    handle: Shim.Handle,
+    f:      F
+  )(
+    attach: Long => Unit
+  ): Unit =
+    ids.get(handle) match {
+      case Some(id) => table.replace(id, f)
+      case None     =>
+        val id = table.register(f)
+        ids(handle) = id
+        attach(id)
+    }
+
+  /** For the handlers that are not a property kept per handle: alert and menu actions, the pages' pop callback. */
+  def register(f:    () => Unit):                                Long = taps.register(f)
+  def registerInt(f: Int => Unit):                               Long = ints.register(f)
+  def registerRow(f: (Int, Option[Shim.Handle]) => Shim.Handle): Long = rows.register(f)
 
   def release(id: Long): Unit = {
-    val _ = taps.remove(id)
-    val _ = texts.remove(id)
-    val _ = bools.remove(id)
-    val _ = values.remove(id)
-    val _ = ints.remove(id)
-    val _ = rows.remove(id)
+    taps.remove(id)
+    texts.remove(id)
+    bools.remove(id)
+    values.remove(id)
+    ints.remove(id)
+    rows.remove(id)
   }
 
   /** One-shot, for `runOnUiThread`: at frame rate a table that never sheds entries is a leak with a clock on it (S8).
     */
   def registerOneShot(f: () => Unit): Long = {
+    // The closure needs its own id, so the id is taken first and the closure put behind it.
     val id = nextId.getAndIncrement()
-    taps.put(
+    taps.replace(
       id,
       () => {
-        val _ = taps.remove(id)
+        taps.remove(id)
         f()
       }
     )

@@ -20,33 +20,11 @@ private func view(_ h: UnsafeMutableRawPointer) -> UIView {
   Unmanaged<UIView>.fromOpaque(h).takeUnretainedValue()
 }
 
-/// A C string from Scala as a Swift one, `""` for null. #49's picker called this without it
-/// ever being defined, which nothing on Linux can notice: the Swift is only compiled on a Mac.
-private func str(_ p: UnsafePointer<CChar>?) -> String {
-  p.map { String(cString: $0) } ?? ""
-}
-
 private func retained(_ v: UIView) -> UnsafeMutableRawPointer {
   Unmanaged.passRetained(v).toOpaque()
 }
 
 // MARK: - callback plumbing
-
-private struct Tap { let cb: sui_void_cb; let ctx: Int64 }
-private struct TextEdit { let cb: sui_text_cb; let ctx: Int64 }
-private struct Toggle { let cb: sui_bool_cb; let ctx: Int64 }
-private struct ValueChange { let cb: sui_value_cb; let ctx: Int64 }
-private struct Selection { let cb: sui_int_cb; let ctx: Int64 }
-
-private var taps: [ObjectIdentifier: Tap] = [:]
-
-/// URLs that views open when activated (`Prop.OpenUrl`). Beside `taps`, not instead of a tap:
-/// every tap path goes through `fireTap`, which runs both, so `.link(url)` on a tappable row
-/// cannot displace the row's own handler — the same rule GTK and Android keep.
-private var links: [ObjectIdentifier: URL] = [:]
-/// The SF Symbol each view shows, kept only when UIKit resolved the name: a `UIImage` has no
-/// public way to say which symbol it is, so this is what `sui_get_symbol` reads back.
-private var symbols: [ObjectIdentifier: String] = [:]
 
 private func fireTap(_ id: ObjectIdentifier) {
   if let t = taps[id] { t.cb(t.ctx) }
@@ -61,21 +39,6 @@ private func fireTap(_ id: ObjectIdentifier) {
   }
 }
 
-/// Non-nil while a test is recording what links would open (`sui_record_opened_urls`).
-private var openedUrls: [String]?
-private var edits: [ObjectIdentifier: TextEdit] = [:]
-private var toggles: [ObjectIdentifier: Toggle] = [:]
-private var valueChanges: [ObjectIdentifier: ValueChange] = [:]
-private var selections: [ObjectIdentifier: Selection] = [:]
-private var dateChanges: [ObjectIdentifier: Selection] = [:]
-
-/// A `DatePicker`'s value crosses the boundary as an epoch day. It is read at midnight UTC,
-/// and every picker here is set to UTC, so it is a whole day — the same day — whatever zone
-/// the device is in. The picker keeps the user's own *calendar*, so a locale that shows a
-/// Buddhist or Japanese year still shows the right day.
-private func epochDay(_ d: Date) -> Int32 { Int32((d.timeIntervalSince1970 / 86400).rounded(.down)) }
-private func dateOf(_ day: Int32) -> Date { Date(timeIntervalSince1970: Double(day) * 86400) }
-
 /// A picker's options and selection, kept here rather than read back off the control.
 ///
 /// UIKit has no `indexOfSelectedItem`: the state lives in the `UIMenu`'s elements, and the
@@ -89,11 +52,6 @@ private var pickerSelected: [ObjectIdentifier: Int] = [:]
 /// UIKit equivalent of an animating bar — so the state is recorded here, where
 /// `sui_get_progress` can report it, and the bar is drawn empty.
 private var indeterminate: Set<ObjectIdentifier> = []
-
-/// True while the renderer is writing a value in, so a control's own change event can tell
-/// an app-driven update from a user edit and stay silent for the former. Without it,
-/// binding a signal to a text field is an infinite loop.
-private var suppressed: Set<ObjectIdentifier> = []
 
 /// UIControl needs an ObjC target, and a Swift closure cannot be one — the same constraint
 /// Scala hits with CFuncPtr, met again on this side of the boundary.
@@ -1077,7 +1035,6 @@ private final class TabHostView: UIView, UITabBarControllerDelegate {
   }
 }
 
-
 // MARK: - application lifecycle
 
 // Unlike AppKit, the shim does not start the application here. On iOS the *host* bundle
@@ -1095,25 +1052,6 @@ private var rootView: UIView?
 private var windowTitle = ""
 
 /// Called by the host, not by Scala, before `ScalaNativeInit`.
-/// #72: an Objective-C exception that unwinds into Scala Native frames ends in `std::terminate`
-/// as "uncaught foreign exception", and its name and reason are lost. So every exception is
-/// written to stderr as it is thrown, before any unwinding. One the toolkit throws and catches
-/// itself is logged too; that is rare, and a line too many beats a crash with no reason.
-private var previousPreprocessor: objc_exception_preprocessor?
-private var exceptionLogInstalled = false
-
-private func logObjCExceptions() {
-  guard !exceptionLogInstalled else { return }
-  exceptionLogInstalled = true
-  previousPreprocessor = objc_setExceptionPreprocessor { e in
-    if let ex = e as? NSException {
-      let line = "thicket: Objective-C exception \(ex.name.rawValue): \(ex.reason ?? "(no reason)")\n"
-      FileHandle.standardError.write(line.data(using: .utf8)!)
-    }
-    return previousPreprocessor?(e) ?? e
-  }
-}
-
 @_cdecl("sui_set_root_view")
 public func sui_set_root_view(_ h: UnsafeMutableRawPointer) {
   // The host calls this before any Scala runs, so every later exception is logged.
@@ -1151,6 +1089,12 @@ public func sui_app_start(
 public func sui_root_view() -> UnsafeMutableRawPointer? {
   guard let r = rootView else { return nil }
   return Unmanaged.passUnretained(r).toOpaque()
+}
+
+/// "uikit": this file is the UIKit half. Before #79 the renderer said "appkit" here too.
+@_cdecl("sui_platform")
+public func sui_platform() -> UnsafePointer<CChar>? {
+  staticCString("uikit")
 }
 
 private func applyTitle() {
@@ -1596,20 +1540,6 @@ public func sui_set_fill(_ h: UnsafeMutableRawPointer, _ has: Int32, _ r: Int32,
   view(h).backgroundColor = c
 }
 
-/// Where `ImageSource.FromFile` actually is. An absolute path, or a relative one that exists
-/// from the working directory, is used as given — a binary run from the repo, as the macOS
-/// examples are. Otherwise a relative path is looked up in the app bundle's resources: an iOS
-/// app's working directory is `/`, and the bundle is the only place its own files live. The
-/// gallery on the simulator loaded neither of its two images before this (#31).
-private func resolveImagePath(_ path: String) -> String {
-  if path.hasPrefix("/") || FileManager.default.fileExists(atPath: path) { return path }
-  if let base = Bundle.main.resourcePath {
-    let inBundle = (base as NSString).appendingPathComponent(path)
-    if FileManager.default.fileExists(atPath: inBundle) { return inBundle }
-  }
-  return path
-}
-
 @_cdecl("sui_set_image_file")
 public func sui_set_image_file(_ h: UnsafeMutableRawPointer, _ path: UnsafePointer<CChar>) {
   (view(h) as? UIImageView)?.image = UIImage(contentsOfFile: resolveImagePath(String(cString: path)))
@@ -1978,8 +1908,8 @@ public func sui_insert_after(
 /// Identifies a Row's stretch constraint on a nested stack (#87), so a moved child does not get two.
 private let rowFillId = "thicket.row-fill"
 
-/// Kind 9 rather than kind 6. The axis is not stored anywhere on the Scala side of the
-/// boundary, so it is read back off the scroller's own configuration.
+/// Kind 15 (`ScrollHorizontal`) rather than kind 6. The shim keeps no note of the axis it
+/// was created with, so it is read back off the scroller's own configuration.
 private func isHorizontalScroller(_ s: UIScrollView) -> Bool {
   s.alwaysBounceHorizontal && !s.alwaysBounceVertical
 }
@@ -2231,9 +2161,6 @@ public func sui_child_at(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Unsafe
   return Unmanaged.passUnretained(kids[Int(index)]).toOpaque()
 }
 
-/// Owned by the shim and valid only until the next call, so Scala copies immediately.
-private var textScratch = [CChar](repeating: 0, count: 4096)
-
 @_cdecl("sui_get_text")
 public func sui_get_text(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? {
   let s: String?
@@ -2244,24 +2171,13 @@ public func sui_get_text(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CChar>? 
   case let b as UIButton: s = b.title(for: .normal)
   default: s = nil
   }
-  guard let value = s else { return nil }
-  let bytes = Array(value.utf8CString)
-  guard bytes.count <= textScratch.count else { return nil }
-  textScratch.replaceSubrange(0..<bytes.count, with: bytes)
-  return textScratch.withUnsafeBufferPointer { UnsafePointer($0.baseAddress!) }
+  return s.flatMap(scratch)
 }
 
 @_cdecl("sui_is_text_bearing")
 public func sui_is_text_bearing(_ h: UnsafeMutableRawPointer) -> Int32 {
   let v = view(h)
   return (v is UILabel || v is UITextField || v is UIButton || v is CheckboxView) ? 1 : 0
-}
-
-private func scratch(_ value: String) -> UnsafePointer<CChar>? {
-  let bytes = Array(value.utf8CString)
-  guard bytes.count <= textScratch.count else { return nil }
-  textScratch.replaceSubrange(0..<bytes.count, with: bytes)
-  return textScratch.withUnsafeBufferPointer { UnsafePointer($0.baseAddress!) }
 }
 
 @_cdecl("sui_class_name")
@@ -3171,52 +3087,6 @@ private func drawnImage(_ v: UIView) -> CGImage? {
     v.layer.render(in: ctx.cgContext)
   }
   return image.cgImage
-}
-
-/// Drawn into an RGBA buffer of our own, so the pixel format is known whatever the source's.
-private func paintedFraction(_ image: CGImage) -> Double {
-  let w = image.width, h = image.height
-  guard w > 0, h > 0 else { return -1 }
-  var pixels = [UInt8](repeating: 0, count: w * h * 4)
-  let drawn: Bool = pixels.withUnsafeMutableBytes { buf in
-    guard let ctx = CGContext(
-      data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else { return false }
-    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-    return true
-  }
-  guard drawn else { return -1 }
-  var painted = 0
-  for i in stride(from: 3, to: pixels.count, by: 4) where pixels[i] > 25 { painted += 1 }
-  return Double(painted) / Double(w * h)
-}
-
-/// Where the painted pixels of a drawn view sit across it: the first and last column holding
-/// any, as fractions of its width (0 = the left edge, 1 = the right). Measures where text
-/// actually lands, which `textAlignment` alone cannot say for `.natural`.
-private func inkSpan(_ image: CGImage) -> (Double, Double)? {
-  let w = image.width, h = image.height
-  guard w > 0, h > 0 else { return nil }
-  var pixels = [UInt8](repeating: 0, count: w * h * 4)
-  let drawn: Bool = pixels.withUnsafeMutableBytes { buf in
-    guard let ctx = CGContext(
-      data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else { return false }
-    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-    return true
-  }
-  guard drawn else { return nil }
-  var lo = Int.max, hi = -1
-  for y in 0..<h {
-    for x in 0..<w where pixels[(y * w + x) * 4 + 3] > 25 {
-      lo = min(lo, x)
-      hi = max(hi, x)
-    }
-  }
-  guard hi >= 0 else { return nil }
-  return (Double(lo) / Double(w), Double(hi + 1) / Double(w))
 }
 
 @_cdecl("sui_ink_span")

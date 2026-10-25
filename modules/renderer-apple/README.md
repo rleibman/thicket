@@ -3,9 +3,9 @@
 The Apple renderer: **one Scala renderer, two Swift shims** — macOS and iOS (issue #3).
 `examples/todo-apple` runs the same `TodoApp` as the GTK and Android hosts, from the same
 shared element tree, and passes the same self-test on both — 23 checks when this was written;
-**87/87 on macOS and 82/82 on the iOS simulator** as of docs/12 (2026-10-20). The transcripts
-below are from the first run and keep their original counts. Open Apple work: #73,
-#75–#79.
+**183/183 on macOS and 177/177 on the iOS simulator** for the gallery as of 2026-10-25 (#79). The
+transcripts below are from the first run and keep their original counts. The review's Apple
+work, #73 and #75–#79, is done.
 
 ```
 $ modules/renderer-apple/shim/build-shim.sh macos
