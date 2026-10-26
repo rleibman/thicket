@@ -166,6 +166,13 @@ object Abi {
       List(p("width", I32), p("height", I32), p("title", Str), p("ready", VoidCb), p("ctx", I64))
     ),
     Fn("sui_root_view", Handle, Nil),
+    Fn(
+      "sui_platform",
+      Str,
+      Nil,
+      doc = "Which toolkit this shim was built for: \"appkit\" or \"uikit\". A string that lives as\n" +
+        "   long as the process, not the scratch buffer. The renderer's `platform` (#79)."
+    ),
     Fn("sui_window_set_title", Void, List(p("title", Str))),
     Fn(
       "sui_resource_path",
@@ -194,10 +201,10 @@ object Abi {
     *
     * `None` is a code that is reserved and not built by that shim (write it as `Kind(code, name, None, None, why)`).
     * **What happens to one (D9, #74):** the generated `ShimKind.unbuilt` lists it, and `AppleRenderer` never sends it
-    * to the shim. It builds a Column labelled "<Kind> is not built on Apple yet" instead, holding the kind's children,
-    * and under a self-test it throws, so CI fails by name. Before #74 the shim's `default:` branch built a plain view:
-    * a "TabView" stacked its tabs' children silently on UIKit, and on AppKit the run died with "uncaught foreign
-    * exception" and no reason (#72).
+    * to the shim. It builds a Column labelled "<Kind> is not built on AppKit yet" (or UIKit) instead, holding the
+    * kind's children, and under a self-test it throws, so CI fails by name. Before #74 the shim's `default:` branch
+    * built a plain view: a "TabView" stacked its tabs' children silently on UIKit, and on AppKit the run died with
+    * "uncaught foreign exception" and no reason (#72).
     */
   final case class Kind(
     code:    Int,

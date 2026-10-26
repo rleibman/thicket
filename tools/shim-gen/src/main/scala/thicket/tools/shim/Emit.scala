@@ -219,13 +219,15 @@ object ShimKind {
     kinds.foreach { k =>
       sb.append(s"  inline val ${k.name} = ${k.code}\n")
     }
-    val unbuilt = kinds.filter(k => k.appKit.isEmpty || k.uiKit.isEmpty).map(_.code)
+    val unbuiltAppKit = kinds.filter(_.appKit.isEmpty).map(_.code)
+    val unbuiltUIKit = kinds.filter(_.uiKit.isEmpty).map(_.code)
     sb.append("""
-  /** Codes reserved and not built on AppKit or on UIKit (D9). `AppleRenderer` shows a labelled placeholder for one, and
-    * throws under a self-test. One set for both toolkits: the renderer cannot yet tell which it runs on (#79).
+  /** Codes reserved and not built by the AppKit shim, and by the UIKit one (D9). `AppleRenderer` asks `sui_platform`
+    * which it runs on (#79), shows a labelled placeholder for a code in that toolkit's set, and throws under a self-test.
     */
 """)
-    sb.append(s"  val unbuilt: Set[Int] = Set(${unbuilt.mkString(", ")})\n")
+    sb.append(s"  val unbuiltAppKit: Set[Int] = Set(${unbuiltAppKit.mkString(", ")})\n")
+    sb.append(s"  val unbuiltUIKit: Set[Int] = Set(${unbuiltUIKit.mkString(", ")})\n")
     sb.append("}\n")
     sb.toString
   }

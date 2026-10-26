@@ -96,7 +96,16 @@ final class AppleRenderer extends Renderer {
   /** The handles standing in for unbuilt kinds, for a self-test to name them. */
   def placeholderHandles: Set[Handle] = placeholders.keySet.toSet
 
-  def platform: String = "appkit"
+  /** "appkit" or "uikit", as the linked shim reports it (`sui_platform`). One Scala renderer serves both toolkits, so
+    * only the Swift half knows which it is; before #79 this said "appkit" on UIKit too.
+    */
+  lazy val platform: String = fromCString(Shim.sui_platform())
+
+  /** The toolkit's name as a person reads it, for the D9 placeholder. */
+  private def toolkitName: String = if platform == "uikit" then "UIKit" else "AppKit"
+
+  /** The kind codes this toolkit's shim does not build (D9), from `Abi.kinds` via `ShimKind`. */
+  private def unbuilt: Set[Int] = if platform == "uikit" then ShimKind.unbuiltUIKit else ShimKind.unbuiltAppKit
 
   /** Every container in the v0 vocabulary is an `NSStackView` or an `NSScrollView`, both of which lay out their own
     * children. Nothing here is FrameBased yet, for the same reason nothing is in GTK.
@@ -170,7 +179,7 @@ final class AppleRenderer extends Renderer {
     props: Seq[Prop]
   ): Handle = {
     val code = kindCode(kind, props)
-    if ShimKind.unbuilt(code) then return placeholder(kind)
+    if unbuilt(code) then return placeholder(kind)
     val h = Shim.sui_create(code)
     kinds(h) = kind
     if kind == WidgetKind.Scroll && isHorizontal(props) then horizontalScrolls += h
@@ -181,7 +190,7 @@ final class AppleRenderer extends Renderer {
   }
 
   private def placeholder(kind: WidgetKind): Handle = {
-    val message = s"$kind is not built on Apple yet"
+    val message = s"$kind is not built on $toolkitName yet"
     if strictUnbuilt then
       throw IllegalStateException(
         s"$message (D9, #74): a self-test does not pass over an unbuilt kind. " +
@@ -296,31 +305,15 @@ final class AppleRenderer extends Renderer {
       // Re-applying a handler swaps the closure behind the existing id rather than
       // registering a second one, so repeated updates cannot stack handlers.
       case Prop.OnTap(f) =>
-        tapIds.get(handle) match {
-          case Some(id) => Handles.replace(id, f)
-          case None     =>
-            val id = Handles.register(f)
-            tapIds(handle) = id
-            Shim.sui_on_tap(handle, Handles.tapTrampoline, id)
-        }
+        Handles.connect(Handles.taps, tapIds, handle, f)(Shim.sui_on_tap(handle, Handles.tapTrampoline, _))
 
       case Prop.OnTextChange(f) =>
-        editIds.get(handle) match {
-          case Some(id) => Handles.replaceText(id, f)
-          case None     =>
-            val id = Handles.registerText(f)
-            editIds(handle) = id
-            Shim.sui_on_text_change(handle, Handles.textTrampoline, id)
-        }
+        Handles.connect(Handles.texts, editIds, handle, f)(Shim.sui_on_text_change(handle, Handles.textTrampoline, _))
 
       case Prop.OnCheckedChange(f) =>
-        boolIds.get(handle) match {
-          case Some(id) => Handles.replaceBool(id, f)
-          case None     =>
-            val id = Handles.registerBool(f)
-            boolIds(handle) = id
-            Shim.sui_on_checked_change(handle, Handles.boolTrampoline, id)
-        }
+        Handles.connect(Handles.bools, boolIds, handle, f)(
+          Shim.sui_on_checked_change(handle, Handles.boolTrampoline, _)
+        )
 
       // Create-only: the contract says a renderer may ignore a later axis change, and
       // re-policying a live scroller mid-scroll is worse than ignoring it. Honoured at
@@ -394,33 +387,17 @@ final class AppleRenderer extends Renderer {
 
       case Prop.OnDateChange(f) =>
         val g: Int => Unit = day => f(CalendarDate.fromEpochDay(day))
-        dateIds.get(handle) match {
-          case Some(id) => Handles.replaceInt(id, g)
-          case None     =>
-            val id = Handles.registerInt(g)
-            dateIds(handle) = id
-            Shim.sui_on_date_change(handle, Handles.intTrampoline, id)
-        }
+        Handles.connect(Handles.ints, dateIds, handle, g)(Shim.sui_on_date_change(handle, Handles.intTrampoline, _))
 
       case Prop.OnSelect(f) =>
         // A TabView also reports an index that moved under the user; the shim reports only clicks.
         if tabs.isTabView(handle) then tabs.onSelect(handle, f)
-        selectIds.get(handle) match {
-          case Some(id) => Handles.replaceInt(id, f)
-          case None     =>
-            val id = Handles.registerInt(f)
-            selectIds(handle) = id
-            Shim.sui_on_select(handle, Handles.intTrampoline, id)
-        }
+        Handles.connect(Handles.ints, selectIds, handle, f)(Shim.sui_on_select(handle, Handles.intTrampoline, _))
 
       case Prop.OnValueChange(f) =>
-        valueIds.get(handle) match {
-          case Some(id) => Handles.replaceValue(id, f)
-          case None     =>
-            val id = Handles.registerValue(f)
-            valueIds(handle) = id
-            Shim.sui_on_value_change(handle, Handles.valueTrampoline, id)
-        }
+        Handles.connect(Handles.values, valueIds, handle, f)(
+          Shim.sui_on_value_change(handle, Handles.valueTrampoline, _)
+        )
 
       // The title is Prop.Text, routed by the shim for *both* presented kinds — GTK and
       // Android both shipped with it reaching Alert only, and a Sheet's title went nowhere.
@@ -441,13 +418,7 @@ final class AppleRenderer extends Renderer {
 
       // The platform closing it without a choice. Never fired for the app's own dismiss.
       case Prop.OnDismiss(f) =>
-        dismissIds.get(handle) match {
-          case Some(id) => Handles.replace(id, f)
-          case None     =>
-            val id = Handles.register(f)
-            dismissIds(handle) = id
-            Shim.sui_on_dismiss(handle, Handles.tapTrampoline, id)
-        }
+        Handles.connect(Handles.taps, dismissIds, handle, f)(Shim.sui_on_dismiss(handle, Handles.tapTrampoline, _))
 
       // A property of the view, not a widget: `NSView.menu` on AppKit, a
       // `UIContextMenuInteraction` on UIKit, and nothing added to the tree on either. The

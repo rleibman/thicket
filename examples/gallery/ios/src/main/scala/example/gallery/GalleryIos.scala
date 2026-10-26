@@ -31,7 +31,9 @@ import thicket.storage.apple.AppleStorage
   */
 object GalleryIos {
 
-  /** The bundle's own, `CFBundleIdentifier` in `ios-app/Info.plist`; the self-test checks that they agree. */
+  /** The bundle's own, `BUNDLE_ID` in `ios-app/build-app.sh`, which fills in `examples/ios-host/Info.plist.in`; the
+    * self-test checks that they agree.
+    */
   val bundleId: String = "dev.thicket.galleryios"
 
   /** Called by the Swift host. `guarded` because this is a host -> Scala entry and the main thread is Unmanaged while

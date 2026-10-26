@@ -287,7 +287,7 @@ raised as an issue rather than attempted here. Horizontal `Scroll`, **#1** (virt
 rows), **#2** (`ContentFit.Cover`), **#3** (shim generation), **#4** (the phase 2
 widgets), **#18** (`Alert`, `Sheet`), **#19** (context menus) and **#25** (`AppRoot.pages`)
 are done, and so is #69 (TabView: `NSTabViewController` with its segmented control on top,
-`UITabBarController` as a child controller). Open for the Mac: the review's #79 (#75–#78, #87 and #96 are fixed).
+`UITabBarController` as a child controller). Open for the Mac: nothing from the review (#75–#79, #87 and #96 are fixed).
 An unbuilt kind is a labelled placeholder, and a named failure under self-test (#74); since
 #69 no kind is unbuilt on Apple. Everything else is built and measured on the
 Linux box.
