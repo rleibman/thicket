@@ -18,6 +18,8 @@ package example.gallery
 
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
+import thicket.secrets.gtk.GtkSecrets
+import thicket.secrets.testing.SecretsConformance
 import thicket.storage.gtk.GtkStorage
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
@@ -564,12 +566,46 @@ object GalleryGtk {
                 java.nio.file.Files.exists(dirs.data.resolve("gallery.db")),
               s"before $before, now ${demo.notes.now}, " + GtkInspect.allTexts(root).filter(_.contains("SQLite"))
             )
-            next
+            // Up to 30 s: past D-Bus's 25 s timeout, so a keyring that never answers is reported as such.
+            when(1500)(demo.secret.now != StorageDemo.secretPending) {
+              secretChecks(root, demo)
+              next
+            }
           }
         }
     }
 
   lazy private val storage = GtkStorage("dev.thicket.gallery")
+
+  /** Secrets on GTK: the Secret Service of the session the self-test runs in, which this machine and CI both provide
+    * (CI starts a keyring). Required, not skipped when absent: a gallery that silently had no secrets would pass.
+    */
+  private def secretChecks(
+    root: Ptr[GtkWidget],
+    demo: StorageDemo
+  ): Unit = {
+    val texts = GtkInspect.allTexts(root)
+    GtkSecrets.open("dev.thicket.gallery") match {
+      case Left(reason) =>
+        check("the session has a Secret Service for the gallery's secrets", false, reason)
+      case Right(secrets) =>
+        val token = secrets.get(StorageDemo.secretKey)
+        println(s"[gallery]      this run: ${demo.secret.now}") // kept or stored: a restart should turn stored into kept
+        check(
+          "the gallery's secret is on screen as kept or stored, and reads back from the Secret Service",
+          Set(StorageDemo.secretKept, StorageDemo.secretStored).contains(demo.secret.now) &&
+            texts.contains(demo.secret.now) && token.exists(_.startsWith(StorageDemo.secretPrefix)),
+          texts
+            .filter(_.contains("ecret")).toString + s"; read back ${token.map(_.take(StorageDemo.secretPrefix.length))}"
+        )
+        val results = SecretsConformance.run(() => GtkSecrets.open("dev.thicket.gallery").toOption.get, "selftest.")
+        check(
+          s"secrets conformance on the Secret Service: all ${results.size} checks pass",
+          results.size == 11 && results.forall(_.passed),
+          results.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
+        )
+    }
+  }
 
   /** The verdict, and the exit status: 0, or the failure count (capped below 124, which `timeout` uses). */
   private def finish(): Unit = {
@@ -826,7 +862,10 @@ object GalleryGtk {
   def main(args: Array[String]): Unit = {
     val status = GtkApp.run("dev.thicket.gallery", width = 520, height = 760) {
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => afterEffect(200)(selfTest()))
-      Gallery.app(Gallery.logoSvg, services = Some(Services(storage, NativeSqlite.driver)))
+      Gallery.app(
+        Gallery.logoSvg,
+        services = Some(Services(storage, NativeSqlite.driver, () => GtkSecrets.open("dev.thicket.gallery")))
+      )
     }
     sys.exit(status)
   }

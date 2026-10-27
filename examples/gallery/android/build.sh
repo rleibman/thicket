@@ -17,6 +17,7 @@ echo "== sbt: building the Scala JARs =="
 (cd "$root" && sbt --error \
   "signalsJVM/package" "rendererApiJVM/package" "coreJVM/package" "effectZioJVM/package" \
   "storageJVM/package" "sqliteJVM/package" "storageAndroid/package" "sqliteAndroid/package" \
+  "secretsJVM/package" "secretsAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
 # The version and the Scala version, asked rather than assumed: both are in the jar paths.
@@ -30,6 +31,7 @@ mkdir -p "$here/app/libs"
 rm -f "$here"/app/libs/*.jar
 for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-zio \
               thicket-storage thicket-sqlite thicket-storage-android thicket-sqlite-android \
+              thicket-secrets thicket-secrets-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
   src=$(readlink -f "$root/target/out/jvm/scala-$sv/$module/${module}_3-$ver.jar")

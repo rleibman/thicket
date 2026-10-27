@@ -22,6 +22,7 @@ import thicket.core.AppRoot
 import thicket.renderer.android.ThicketActivity
 import thicket.signals.Owner
 import thicket.sqlite.android.AndroidSqlite
+import thicket.secrets.android.AndroidSecrets
 import thicket.storage.android.AndroidStorage
 
 /** The gallery on Android — the same screen the GTK, macOS and iOS hosts mount.
@@ -37,7 +38,7 @@ class GalleryActivity extends ThicketActivity {
   protected def createApp(saved: Option[Bundle])(using Owner): AppRoot =
     Gallery.app(
       logo = assetBytes(Gallery.logo),
-      services = Some(Services(AndroidStorage(this), AndroidSqlite.driver))
+      services = Some(Services(AndroidStorage(this), AndroidSqlite.driver, () => Right(AndroidSecrets(this))))
     )
 
   override protected def started(): Unit =

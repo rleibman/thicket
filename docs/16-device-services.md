@@ -354,7 +354,17 @@ Every service gets a gallery section and self-test checks on every host where it
 2. **Storage:** app directories, preferences, secrets; SQLite as the Android JDBC driver,
    `Sqlite.open`, the conformance suite, and the upstream fix for the Native driver's
    swallowed errors. *Done on GTK and Android, 2026-10-21, and on macOS and iOS, 2026-10-22
-   (#98), except secrets; the upstream fix is in `scala-native-jdbc-sqlite` 0.0.7, 2026-10-22.*
+   (#98); the upstream fix is in `scala-native-jdbc-sqlite` 0.0.7, 2026-10-22.* *Secrets done
+   on GTK and Android, 2026-10-23 (`modules/secrets/README.md`):*
+   - GTK uses the Secret Service through libsecret, loaded with `dlopen`, so it is the
+     optional dependency the table in §16.3 asks for: without it, `open` returns why.
+   - Android uses AES-256-GCM under an Android Keystore key, with each ciphertext bound to
+     its key.
+   - Both pass the same 11 `SecretsConformance` checks. In the galleries, a secret stored on
+     one run is read back on the next.
+   - CI starts a keyring of its own (`bin/with-keyring.sh`), so the Secret Service is tested
+     there, not skipped.
+   - The Keychain half is for the Mac.
 3. **Lifecycle and permissions:** the host plumbing every later service sits on.
 4. **Location,** then **motion**, each with emulator-injected self-tests.
 5. **Pickers, camera capture, share, clipboard, haptics.**

@@ -50,8 +50,10 @@ object AppleDirsSpec extends ZIOSpecDefault {
         )
       },
       test("on this machine, if it is a Mac: a home, and a per-user temporary directory from confstr") {
+        // A branch, not `!mac || …` inside assertTrue: its macro evaluates both sides, so `userTemp()` threw on Linux.
         val mac = System.getProperty("os.name", "").toLowerCase.contains("mac")
-        assertTrue(!mac || (AppleDirs.home().startsWith("/") && AppleDirs.userTemp().startsWith("/")))
+        if !mac then assertCompletes
+        else assertTrue(AppleDirs.home().startsWith("/"), AppleDirs.userTemp().startsWith("/"))
       }
     )
 
