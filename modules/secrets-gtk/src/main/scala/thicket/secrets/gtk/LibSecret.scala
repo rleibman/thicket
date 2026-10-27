@@ -29,7 +29,7 @@ private object GcThreadState {
 }
 
 /** libsecret's password functions, found at run time with `dlopen`, so an app that uses `thicket-secrets-gtk` still
-  * starts on a system without libsecret — its secrets are `Unavailable` there — and building it needs no `-dev`
+  * starts on a system without libsecret — `GtkSecrets.open` returns `Left(reason)` there — and building it needs no `-dev`
   * package.
   *
   * Only the non-variadic forms (`secret_password_storev_sync` and the rest), since a variadic C function cannot be
