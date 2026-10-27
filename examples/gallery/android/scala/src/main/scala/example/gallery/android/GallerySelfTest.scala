@@ -24,6 +24,8 @@ import example.gallery.{Gallery, StorageDemo}
 import scala.collection.mutable
 import thicket.core.Reconciler
 import thicket.core.dsl.*
+import thicket.secrets.android.AndroidSecrets
+import thicket.secrets.testing.SecretsConformance
 import thicket.signals.{ErrorSink, Owner}
 import thicket.sqlite.Sqlite
 import thicket.sqlite.android.AndroidSqlite
@@ -182,6 +184,46 @@ object GallerySelfTest {
             notesBefore >= 0 && texts.contains(StorageDemo.notesLabel(notesBefore + 1)) &&
               java.nio.file.Files.exists(activity.getFilesDir.toPath.resolve("gallery.db")),
             s"before $notesBefore; " + texts.filter(_.contains("SQLite")).toString
+          )
+          // Secrets: the Keystore-backed store, the same conformance checks as every other store, and the gallery's
+          // token kept between runs — encrypted on disk, so the preferences file never holds it.
+          val secrets = AndroidSecrets(activity)
+          Gallery.currentStorage.foreach(d => Log.i(Tag, s"[gallery]      this run: ${d.secret.now}"))
+          val token = secrets.get(StorageDemo.secretKey)
+          val onDisk = activity
+            .getSharedPreferences("thicket.secrets", android.content.Context.MODE_PRIVATE)
+            .getString(StorageDemo.secretKey, "")
+          check(
+            "the gallery's secret is on screen as kept or stored, and reads back from the Keystore store",
+            (texts.contains(StorageDemo.secretKept) || texts.contains(StorageDemo.secretStored)) &&
+              token.exists(_.startsWith(StorageDemo.secretPrefix)),
+            texts
+              .filter(
+                _.contains("ecret")
+              ).toString + s"; read back ${token.map(_.take(StorageDemo.secretPrefix.length))}"
+          )
+          check(
+            "the stored secret is ciphertext: the preferences file does not contain it",
+            onDisk.nonEmpty && token.exists(t => !onDisk.contains(t)),
+            s"${onDisk.length} characters on disk"
+          )
+          // Each ciphertext is bound to its key (GCM's associated data): copied under another key, it must not
+          // decrypt as that key's secret.
+          val moved = {
+            val raw = activity.getSharedPreferences("thicket.secrets", android.content.Context.MODE_PRIVATE)
+            raw.edit().putString("selftest.moved", onDisk).commit()
+            try {
+              val got = secrets.get("selftest.moved")
+              s"read back ${got.map(_.take(StorageDemo.secretPrefix.length))}"
+            } catch { case _: thicket.secrets.SecretsException => "refused" }
+            finally secrets.delete("selftest.moved")
+          }
+          check("a stored secret copied under another key does not decrypt", moved == "refused", moved)
+          val secretResults = SecretsConformance.run(() => AndroidSecrets(activity), "selftest.")
+          check(
+            s"secrets conformance on the Android Keystore store: all ${secretResults.size} checks pass",
+            secretResults.size == 11 && secretResults.forall(_.passed),
+            secretResults.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
           )
         },
         () => {

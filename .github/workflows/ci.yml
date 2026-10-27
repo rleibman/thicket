@@ -46,7 +46,8 @@ jobs:
       - name: Native toolchain, GTK 4 and libadwaita
         run: |
           sudo apt-get update -q
-          sudo apt-get install -yq clang libunwind-dev zlib1g-dev libgtk-4-dev libadwaita-1-dev librsvg2-common xvfb
+          sudo apt-get install -yq clang libunwind-dev zlib1g-dev libgtk-4-dev libadwaita-1-dev librsvg2-common xvfb \
+            dbus gnome-keyring libsecret-1-0
 
       - name: android.jar for renderer-android
         run: |
@@ -55,13 +56,17 @@ jobs:
           modules/renderer-android/setup.sh
 
       # testFull, scalafmtCheckAll, headerCheckAll and platforms/Test/compile — see build.sbt.
+      # Secrets need a Secret Service, so this and the self-tests run in bin/with-keyring.sh,
+      # and the secrets-gtk tests are told to require one rather than accept its absence.
       - name: sbt checkLinux
-        run: sbt --error checkLinux
+        env:
+          THICKET_REQUIRE_SECRET_SERVICE: "1"
+        run: bin/with-keyring.sh sbt --error checkLinux
 
       - name: GTK self-tests
         env:
           GDK_BACKEND: x11
-        run: xvfb-run -a bin/gtk-selftests.sh
+        run: bin/with-keyring.sh xvfb-run -a bin/gtk-selftests.sh
 
       - name: Keep the self-test logs
         if: always()

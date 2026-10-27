@@ -436,9 +436,10 @@ object Gallery {
               case RemoteData.Failed(_)    => Label("Failed")
             }
           ),
-          // Device services (docs/16): preferences and SQLite in the app's own directories,
-          // the database on a worker thread. Every host passes its own (Apple since #98).
-          section("Storage — preferences and SQLite, in the app's own directories")(
+          // Device services (docs/16): preferences, SQLite and the platform's secure store, the
+          // database and the secrets off the UI thread. Every host passes its own (Apple since #98;
+          // Apple's secrets are not built yet, so its section says so).
+          section("Storage — preferences, SQLite and secrets, in the app's own places")(
             storage match {
               case None =>
                 Label("No storage on this platform yet", emphasis = Emphasis.Secondary)
@@ -446,7 +447,8 @@ object Gallery {
                 Column(spacing = 8)(
                   Label(s"Opened ${demo.opens} times"),
                   Label(demo.notes.map(_.fold(identity, StorageDemo.notesLabel))),
-                  Button("Add a note")(demo.addNote())
+                  Button("Add a note")(demo.addNote()),
+                  Label(demo.secret)
                 )
             }
           ),

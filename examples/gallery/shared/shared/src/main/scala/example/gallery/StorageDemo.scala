@@ -17,6 +17,7 @@
 package example.gallery
 
 import thicket.core.UiThread
+import thicket.secrets.Secrets
 import thicket.signals.Var
 import thicket.sqlite.{Sqlite, SqliteDriver}
 import thicket.storage.Storage
@@ -24,12 +25,17 @@ import thicket.storage.Storage
 import java.sql.Connection
 import java.util.concurrent.{Executors, ThreadFactory}
 
-/** The device services a host provides to the gallery: storage and SQLite so far (`docs/16-device-services.md`). A host
-  * that has none passes `None`, and the section says so; every host has them today.
+/** The device services a host provides to the gallery (`docs/16-device-services.md`). A host that has none passes
+  * `None`, and the section says so; every host has storage and SQLite today.
+  *
+  * @param secrets
+  *   opens the platform's secure store, or says why there is none (no Secret Service on this desktop, or not built
+  *   yet). A function, because opening may block: the gallery calls it on a thread of its own.
   */
 final case class Services(
   storage: Storage,
-  sqlite:  SqliteDriver
+  sqlite:  SqliteDriver,
+  secrets: () => Either[String, Secrets] = () => Left("not on this platform yet")
 )
 
 /** The Storage section's state: a launch counter in preferences, and a table of notes in SQLite.
@@ -86,6 +92,35 @@ final class StorageDemo(services: Services) {
 
   onWorker(count())
 
+  /** What became of the gallery's secret this run, once its own thread has asked the store: [[StorageDemo.secretKept]],
+    * [[StorageDemo.secretStored]], or why there is no store or it failed. The secret itself is never shown.
+    */
+  val secret: Var[String] = Var(StorageDemo.secretPending)
+
+  // A thread of its own, not the database worker: a keyring that is slow to answer — D-Bus
+  // gives up on an absent one after 25 s — must not hold up the notes.
+  private val secretThread = new Thread(
+    () => {
+      val result =
+        services.secrets() match {
+          case Left(reason) => s"Secrets unavailable: $reason"
+          case Right(s)     =>
+            try
+              s.get(StorageDemo.secretKey) match {
+                case Some(_) => StorageDemo.secretKept
+                case None    =>
+                  s.set(StorageDemo.secretKey, s"${StorageDemo.secretPrefix}${System.currentTimeMillis()}")
+                  StorageDemo.secretStored
+              }
+            catch { case e: Exception => s"Secrets failed: ${e.getMessage}" }
+        }
+      UiThread.run(() => secret.set(result))
+    },
+    "gallery-secrets"
+  )
+  secretThread.setDaemon(true)
+  secretThread.start()
+
   /** Adds a note on the worker; the count updates when it is done. */
   def addNote(): Unit =
     onWorker {
@@ -102,6 +137,17 @@ final class StorageDemo(services: Services) {
 object StorageDemo {
 
   val opensKey: String = "gallery.opens"
+
+  /** The gallery's one secret, made on the first run and read back on every later one. A labelled timestamp, not a
+    * token: a demo has nothing to protect, and Scala Native has no `SecureRandom` to make a real one with.
+    */
+  val secretKey: String = "gallery.secret"
+
+  val secretPrefix: String = "gallery secret, stored at "
+
+  val secretPending: String = "Asking the secure store…"
+  val secretKept:    String = "A secret kept from an earlier run"
+  val secretStored:  String = "A secret stored, for the next run to find"
 
   /** The label the notes count is shown in, so a self-test can wait for a given count. */
   def notesLabel(n: Int): String = s"$n notes in SQLite"

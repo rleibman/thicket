@@ -519,6 +519,33 @@ lazy val sqliteAndroid = project
   .dependsOn(sqlite.jvm, rendererAndroid)
   .settings(commonSettings, name := "thicket-sqlite-android", scalacOptions ++= Seq("-release", "17"))
 
+/** Secrets: small strings kept by the platform's secure store (`docs/16` §16.3). The API, a memory implementation and
+  * the conformance checks every store is held to.
+  */
+lazy val secrets = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/secrets"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-secrets")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** Secrets on GTK: the Secret Service through libsecret, loaded with `dlopen` so that it is optional at run time and
+  * needs no `-dev` package to build. Links no GTK, so its tests run in `testFull`.
+  */
+lazy val secretsGtk = project
+  .in(file("modules/secrets-gtk"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(secrets.native)
+  .settings(commonSettings, zioTestFramework, name := "thicket-secrets-gtk", libraryDependencies ++= zioTestNative)
+
+/** Secrets on Android: each value encrypted with an AES key that never leaves the Android Keystore. */
+lazy val secretsAndroid = project
+  .in(file("modules/secrets-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(secrets.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-secrets-android", scalacOptions ++= Seq("-release", "17"))
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot put a `File` on a classpath —
@@ -626,7 +653,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   // storage and sqlite: the device services' section; each host supplies its platform's implementation.
-  .dependsOn(core, effectZio, storage, sqlite)
+  .dependsOn(core, effectZio, storage, sqlite, secrets)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
@@ -640,7 +667,7 @@ lazy val galleryGtk = project
   .in(file("examples/gallery/gtk"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.gtk.buildinfo"))
-  .dependsOn(rendererGtk, galleryShared.native, storageGtk)
+  .dependsOn(rendererGtk, galleryShared.native, storageGtk, secretsGtk)
   .settings(commonSettings)
   .settings(gtkNativeSettings)
   .settings(
@@ -654,7 +681,7 @@ lazy val galleryGtk = project
   */
 lazy val galleryAndroid = project
   .in(file("examples/gallery/android/scala"))
-  .dependsOn(rendererAndroid, galleryShared.jvm, storageAndroid, sqliteAndroid)
+  .dependsOn(rendererAndroid, galleryShared.jvm, storageAndroid, sqliteAndroid, secretsAndroid)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.android.buildinfo"))
   .settings(commonSettings)
@@ -815,6 +842,7 @@ lazy val platforms = project
     httpIos,
     storageAndroid,
     sqliteAndroid,
+    secretsAndroid,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,
@@ -857,6 +885,9 @@ lazy val root = project
     storageApple,
     sqlite.jvm,
     sqlite.native,
+    secrets.jvm,
+    secrets.native,
+    secretsGtk,
     shimGen,
     sbtThicket
   )
