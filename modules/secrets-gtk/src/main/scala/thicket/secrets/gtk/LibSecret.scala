@@ -112,7 +112,7 @@ final private[gtk] class LibSecret private (
   ): A = {
     val table = hashNew(strHash, strEqual)
     try {
-      hashPut(table, c"app".asInstanceOf[Ptr[Byte]], toCString(app).asInstanceOf[Ptr[Byte]])
+      hashPut(table, c"app".asInstanceOf[Ptr[Byte]], toCString(app, java.nio.charset.StandardCharsets.UTF_8).asInstanceOf[Ptr[Byte]])
       hashPut(
         table,
         c"key".asInstanceOf[Ptr[Byte]],
