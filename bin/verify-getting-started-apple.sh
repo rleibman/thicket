@@ -53,10 +53,6 @@ echo "== binary: $(stat -f%z "$bin") bytes =="
 crashes_before=$(ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -c '^hello-thicket' || true)
 "$bin" >"$work/mac-run.log" 2>&1 &
 pid=$!
-sleep 10
-if ! kill -0 "$pid" 2>/dev/null; then
-  echo "FAIL: the macOS app exited within 10s" >&2; cat "$work/mac-run.log" >&2; exit 1
-fi
 
 # A window owned by the process. Owner PIDs are visible to anyone; titles only with
 # screen-recording permission, so they are reported when available rather than required.
@@ -80,7 +76,19 @@ let mine = all.filter {
 }
 print("windows=\(mine.count) sizes=\(mine.map { size($0) }) titles=\(mine.compactMap { $0[kCGWindowName as String] as? String })")
 SWIFT
-windows=$(swift "$work/windows.swift" "$pid" 2>/dev/null || echo "windows=?")
+# Polled, not read once after a fixed wait: under load the window took longer than the 10 s
+# this used to sleep, and a CI run on main read windows=0 for an app that was coming up
+# (run 40593045032, #112). Compiled once, because `swift script.swift` compiles on every call,
+# seconds under load. Up to 60 s; the first poll that finds the window ends the wait.
+xcrun swiftc -O "$work/windows.swift" -o "$work/windows" 2>/dev/null || true
+windows="windows=?"
+for _ in $(seq 1 30); do
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "FAIL: the macOS app exited before showing its window" >&2; cat "$work/mac-run.log" >&2; exit 1
+  fi
+  windows=$("$work/windows" "$pid" 2>/dev/null || echo "windows=?")
+  case "$windows" in windows=0*|windows=\?*) sleep 2 ;; *) break ;; esac
+done
 kill "$pid" 2>/dev/null || true
 echo "== macOS: $windows =="
 case "$windows" in
