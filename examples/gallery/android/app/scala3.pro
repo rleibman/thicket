@@ -9,3 +9,7 @@
 -keepclassmembers class ** {
     *** *$lzy*;
 }
+
+# sttp client4: SttpClientExceptionExtensions, which every backend's errors pass through, matches on
+# java.net.http.HttpTimeoutException. Android has no java.net.http.
+-dontwarn java.net.http.HttpTimeoutException

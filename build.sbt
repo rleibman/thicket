@@ -388,6 +388,34 @@ lazy val rendererApple = project
 val sttpV = "4.1.0"
 val calibanV = "3.2.0"
 
+/** HTTP for GTK: an sttp `SyncBackend` over libcurl, in place of sttp's own `CurlBackend` (docs/16 §16.4). libcurl is
+  * loaded with `dlopen`, so neither building nor starting an app needs its `-dev` package; `thicket_curl.c` (in the
+  * jar's `scala-native/`) makes the two variadic calls.
+  */
+lazy val httpGtk = project
+  .in(file("modules/http-gtk"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .settings(
+    commonSettings,
+    zioTestFramework,
+    name := "thicket-http-gtk",
+    libraryDependencies ++= zioTestNative :+ ("com.softwaremill.sttp.client4" % "core_native0.5_3" % sttpV)
+  )
+
+/** HTTP for Android: sttp's `HttpURLConnectionBackend`, with repeated headers and cancellation by interrupt (docs/16
+  * §16.4). Plain JVM — it uses no Android API — so its tests run on the desktop JDK, in `root`.
+  */
+lazy val httpAndroid = project
+  .in(file("modules/http-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(
+    commonSettings,
+    zioTestFramework,
+    name := "thicket-http-android",
+    scalacOptions ++= Seq("-release", "17"),
+    libraryDependencies ++= zioTestJvm :+ ("com.softwaremill.sttp.client4" % "core_3" % sttpV)
+  )
+
 /** HTTP for Apple: an sttp `SyncBackend` over `URLSession` (#90, docs/16 §16.4). iOS has no libcurl, so sttp's own
   * native backend cannot link there.
   *
@@ -681,7 +709,8 @@ lazy val galleryGtk = project
   */
 lazy val galleryAndroid = project
   .in(file("examples/gallery/android/scala"))
-  .dependsOn(rendererAndroid, galleryShared.jvm, storageAndroid, sqliteAndroid, secretsAndroid)
+  // httpChecks: the gallery's self-test runs the HTTP checks over HttpURLConnectionBackend.
+  .dependsOn(rendererAndroid, galleryShared.jvm, storageAndroid, sqliteAndroid, secretsAndroid, httpChecks.jvm, httpAndroid)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.android.buildinfo"))
   .settings(commonSettings)
@@ -724,26 +753,60 @@ lazy val galleryIos = project
     publish / skip := true
   )
 
-/** The HTTP self-test (#90): `URLSessionBackend` and caliban-client against a local server, on macOS and on the iOS
-  * simulator. `examples/http-apple/selftest.sh` starts the server and runs either. Not aggregated: Apple only.
+/** The HTTP self-test: the same sttp checks against a local server for every platform's backend — `URLSessionBackend`
+  * on macOS and the iOS simulator (#90), `CurlBackend` on Linux, `HttpURLConnectionBackend` on Android (in the gallery's
+  * self-test). `examples/http/selftest.sh` starts the server and runs the Apple and Linux hosts.
   */
+lazy val httpChecks = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("examples/http/checks"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, name := "http-checks", publish / skip := true)
+  // caliban-client 3.2.0 was built against sttp 4.0.27; its JSON modules follow core to 4.1.0.
+  .jvmSettings(
+    scalacOptions ++= Seq("-release", "17"),
+    libraryDependencies ++= Seq(
+      "com.github.ghostdogpr"         % "caliban-client_3" % calibanV,
+      "com.softwaremill.sttp.client4" % "core_3"           % sttpV,
+      "com.softwaremill.sttp.client4" % "jsoniter_3"       % sttpV,
+      "com.softwaremill.sttp.client4" % "json-common_3"    % sttpV
+    )
+  )
+  .nativeSettings(
+    libraryDependencies ++= Seq(
+      "com.github.ghostdogpr"         % "caliban-client_native0.5_3" % calibanV,
+      "com.softwaremill.sttp.client4" % "core_native0.5_3"           % sttpV,
+      "com.softwaremill.sttp.client4" % "jsoniter_native0.5_3"       % sttpV,
+      "com.softwaremill.sttp.client4" % "json-common_native0.5_3"    % sttpV
+    )
+  )
+
+/** The Apple hosts' own checks (main-thread refusal, requests left in the Swift side), on top of [[httpChecks]]. */
 lazy val httpExampleSettings = Seq(
   Compile / unmanagedSourceDirectories +=
-    (ThisBuild / baseDirectory).value / "examples" / "http-apple" / "shared" / "src" / "main" / "scala",
-  publish / skip := true,
-  libraryDependencies ++= Seq(
-    "com.github.ghostdogpr" % "caliban-client_native0.5_3" % calibanV,
-    // caliban-client 3.2.0 was built against sttp 4.0.27; its JSON modules follow core to 4.1.0.
-    "com.softwaremill.sttp.client4" % "jsoniter_native0.5_3"    % sttpV,
-    "com.softwaremill.sttp.client4" % "json-common_native0.5_3" % sttpV
-  )
+    (ThisBuild / baseDirectory).value / "examples" / "http" / "apple" / "src" / "main" / "scala",
+  publish / skip := true
 )
 
+/** Linux: `thicket-http-gtk`'s `LibcurlBackend`. Linking needs libidn2's development package (`libidn2-dev`), for
+  * sttp-model's host names; libcurl itself is loaded at run time.
+  */
+lazy val httpLinux = project
+  .in(file("examples/http/linux"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(httpChecks.native, httpGtk)
+  .settings(commonSettings)
+  .settings(
+    name                := "http-linux",
+    publish / skip      := true,
+    Compile / mainClass := Some("example.http.HttpLinux")
+  )
+
 lazy val httpMacos = project
-  .in(file("examples/http-apple/macos"))
+  .in(file("examples/http/macos"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.http.macos.buildinfo"))
-  .dependsOn(httpApple, core.native)
+  .dependsOn(httpApple, httpChecks.native, core.native)
   .settings(commonSettings, httpExampleSettings)
   .settings(
     name                := "http-macos",
@@ -752,10 +815,10 @@ lazy val httpMacos = project
   )
 
 lazy val httpIos = project
-  .in(file("examples/http-apple/ios"))
+  .in(file("examples/http/ios"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.http.ios.buildinfo"))
-  .dependsOn(httpApple, core.native)
+  .dependsOn(httpApple, httpChecks.native, core.native)
   .settings(commonSettings, httpExampleSettings)
   .settings(iosNativeSettings)
   .settings(name := "http-ios")
@@ -840,6 +903,9 @@ lazy val platforms = project
     httpApple,
     httpMacos,
     httpIos,
+    httpChecks.jvm,
+    httpChecks.native,
+    httpLinux,
     storageAndroid,
     sqliteAndroid,
     secretsAndroid,
@@ -888,6 +954,8 @@ lazy val root = project
     secrets.jvm,
     secrets.native,
     secretsGtk,
+    httpGtk,
+    httpAndroid,
     shimGen,
     sbtThicket
   )

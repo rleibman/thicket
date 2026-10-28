@@ -72,6 +72,35 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-27 — **HTTP on GTK and Android: Thicket's own `LibcurlBackend`, and a wrapper over
+  sttp's `HttpURLConnectionBackend`** (docs/16 §16.4, §16.10 item 1). The Apple self-test's
+  checks became `examples/http`, shared by every platform, with a new connection-reset check.
+  sttp 4.1.0's `CurlBackend` passed **6 of 12** on Linux: a binary body times out (its source
+  passes the bytes through `new String(bytes)` and a C string; the path from there to the
+  timeout is not traced), errors are plain `RuntimeException`s, an
+  interrupt does nothing, and a `System.gc()` waited **1712 ms** for another thread's request
+  (`curl_easy_perform` is not `@blocking`). `HttpURLConnectionBackend` passed **10 of 12** on
+  the `s2test` emulator: a repeated request header is sent once (`setRequestProperty`), and an
+  interrupt does nothing. The owner chose a backend of Thicket's own on Linux and a wrapper on
+  Android, with upstream reports drafted for sttp. **`thicket-http-gtk`**: libcurl's multi
+  interface through `dlopen` (`libcurl.so.4`, so no `-dev` package to build or run), bodies
+  copied by curl, responses into `open_memstream` buffers so no Scala runs inside curl and the
+  waits are Unmanaged, 50 ms poll slices that check for an interrupt, sttp's exception types;
+  the two variadic calls through `thicket_curl.c`, the repo's first C file. **12 of 12**, the
+  collection 1 ms. **`thicket-http-android`**: plain JVM; re-adds repeated headers with
+  `addRequestProperty`, runs the exchange on a worker so that an interrupted caller returns at
+  once and disconnects (the server saw the hang-up), and refuses the main thread itself with
+  Android's `NetworkOnMainThreadException`. **12 of 12** in the gallery's self-test (47
+  checks); its unit tests run on the JDK, whose `disconnect` waits for a read in progress, so
+  there only the caller's side is checked. The gallery needs a network security config for
+  cleartext to loopback, and R8 `-dontwarn java.net.http.HttpTimeoutException`. The gallery's
+  "deleting row 0 re-binds" check now waits up to 3 s for the list: with sttp in the APK it
+  failed 4 runs of 5 at one 150 ms turn, and the delete had landed by the next step each time.
+  **Controls:** Linux without the Unmanaged wait (GC 1710 ms), without the body size, without
+  the interrupt check; Android without the re-added header, without the disconnect (no
+  hang-up), without the main-thread refusal — each fails its check. The Apple hosts run the
+  shared checks too, now under `examples/http`; that is for the Mac to re-run.
+
 - 2026-10-25 — **The Apple shims share their non-toolkit half, read long text, and name their
   toolkit** (#79; review 2026-10-20 P2-27, P3-2, P3-7, P3-9, P3-13, P3-21, P3-26).
   `Shim+Common.swift` holds what the two shims duplicated (callbacks, handles, the scratch

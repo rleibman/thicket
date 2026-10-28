@@ -58,6 +58,8 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
 | `net.leibman:thicket-storage-apple_native0.5_3` | app directories and preferences on macOS and iOS (`thicket-storage` comes with it); no Swift |
 | `net.leibman:thicket-http-apple_native0.5_3` | an sttp `SyncBackend` over `URLSession`, for iOS (no libcurl there), with its own Swift library inside the jar |
+| `net.leibman:thicket-http-gtk_native0.5_3` | an sttp `SyncBackend` over libcurl, in place of sttp's `CurlBackend`; libcurl is loaded at run time, so no `-dev` package |
+| `net.leibman:thicket-http-android_3` | sttp's `HttpURLConnectionBackend` with repeated headers and cancellation by interrupt (plain JVM bytecode, `-release 17`) |
 
 `thicket-signals` and `thicket-renderer-api` come in transitively; naming them is only
 necessary to write a renderer.

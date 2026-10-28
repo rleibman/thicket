@@ -21,7 +21,10 @@ import _root_.android.util.Log
 import _root_.android.view.{View, ViewGroup}
 import _root_.android.widget.{Button, EditText, ImageView, Spinner, TextView}
 import example.gallery.{Gallery, StorageDemo}
+import example.http.HttpChecks
 import scala.collection.mutable
+import sttp.client4.*
+import thicket.http.android.AndroidHttpBackend
 import thicket.core.Reconciler
 import thicket.core.dsl.*
 import thicket.secrets.android.AndroidSecrets
@@ -75,10 +78,26 @@ object GallerySelfTest {
     }
   }
 
+  /** A step that waits, a main-loop turn at a time, until `cond` holds or `ms` have passed; the next step checks. */
+  final private class Await(
+    val ms:   Long,
+    val cond: () => Boolean
+  ) extends (() => Unit) {
+
+    def apply(): Unit = ()
+
+  }
+
   /** Runs the steps in order, one main-loop turn apart. */
   private def sequence(steps: List[() => Unit]): Unit =
     steps match {
-      case Nil          => ()
+      case Nil                => ()
+      case (a: Await) :: rest =>
+        val deadline = SystemClock.uptimeMillis() + a.ms
+        def poll(): Unit =
+          if a.cond() || SystemClock.uptimeMillis() >= deadline then sequence(rest)
+          else main.postDelayed(() => poll(), 50)
+        main.postDelayed(() => poll(), Delay)
       case step :: rest =>
         main.postDelayed(
           () => {
@@ -103,6 +122,49 @@ object GallerySelfTest {
     var entriesBefore = 0
     var notesBefore = -1
 
+    // HTTP: the checks every platform's sttp backend runs (examples/http), here over AndroidHttpBackend against
+    // build.sh's server, reached through `adb reverse`. On a worker after the other steps, so its load and its
+    // System.gc() cannot disturb their timing; the main thread polls for it rather than blocking.
+    val httpPort = activity.getIntent.getIntExtra("httptest", -1)
+    val http = HttpChecks(_ => ())
+    val httpWorker = new Thread(
+      () => {
+        val backend = AndroidHttpBackend()
+        http.run(httpPort, backend, parked = backend)
+      },
+      "http-selftest"
+    )
+    if httpPort > 0 then {
+      // Android refuses network on the main thread (StrictMode's NetworkOnMainThreadException), as URLSessionBackend
+      // refuses it on Apple: an app that tries finds out at once, not when the network is slow.
+      val refused =
+        try {
+          basicRequest.get(uri"http://127.0.0.1:$httpPort/hello").send(AndroidHttpBackend())
+          "sent"
+        } catch {
+          case e: Throwable =>
+            Iterator
+              .iterate[Throwable](e)(_.getCause).takeWhile(_ != null).map(_.getClass.getSimpleName).mkString(" < ")
+        }
+      check(
+        "http: a request from the main thread is refused",
+        refused.contains("NetworkOnMainThreadException"),
+        refused
+      )
+    }
+    def finish(): Unit =
+      Log.i(Tag, if failures == 0 then "[gallery] ALL CHECKS PASSED" else s"[gallery] $failures CHECK(S) FAILED")
+    def awaitHttp(deadline: Long): Unit =
+      if httpWorker.isAlive && SystemClock.uptimeMillis() < deadline then
+        main.postDelayed(() => awaitHttp(deadline), 200)
+      else {
+        check("http: the checks finished within 30 s", !httpWorker.isAlive)
+        http.all.foreach { r =>
+          check(s"http: ${r.name}", r.passed, r.detail)
+          if r.passed then Log.i(Tag, s"[gallery]      ${r.detail}")
+        }
+        finish()
+      }
     Log.i(Tag, "[gallery] reading the catalogue back out of Android")
     sequence(
       List(
@@ -329,6 +391,8 @@ object GallerySelfTest {
           )
           click("Delete the first row")
         },
+        // The list re-binds on a later layout pass, which on a slow emulator can be more than one turn away.
+        Await(3000, () => texts.find(t => t.startsWith("Row ") || t.startsWith("Renamed ")).contains("Row 1")),
         () => {
           val rows = texts.filter(t => t.startsWith("Row ") || t.startsWith("Renamed "))
           check(
@@ -354,7 +418,13 @@ object GallerySelfTest {
             activity.renderer0.tableEntries == entriesBefore,
             s"$entriesBefore before the push, ${activity.renderer0.tableEntries} after the pop"
           )
-          Log.i(Tag, if failures == 0 then "[gallery] ALL CHECKS PASSED" else s"[gallery] $failures CHECK(S) FAILED")
+          if httpPort > 0 then {
+            httpWorker.start()
+            awaitHttp(SystemClock.uptimeMillis() + 30000)
+          } else {
+            check("http: build.sh passed the test server's port (--ei httptest)", false)
+            finish()
+          }
         }
       )
     )

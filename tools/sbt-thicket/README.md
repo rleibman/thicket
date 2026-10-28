@@ -62,7 +62,7 @@ lazy val app = project.in(file(".")).enablePlugins(ThicketIosPlugin)   // iOS: a
   jar and return the directory; `ThicketMacPlugin` also links it, through
   `ThicketNativeFlags.appleHttp`. An app without the dependency gets `None` and links
   nothing. On iOS the host's link takes `ios-sim/libthickethttp.a`. Not yet run by a
-  template outside the repository: the in-repo self-test (`examples/http-apple`) links the
+  template outside the repository: the in-repo self-test (`examples/http`) links the
   library by path with the same `appleHttp` flags.
 
 Both were first run by `bin/verify-getting-started-apple.sh`, which publishes locally, copies

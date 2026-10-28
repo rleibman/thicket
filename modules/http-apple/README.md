@@ -101,8 +101,10 @@ and `HttpShim.scala` are generated from it (`sbt shimGen/run`) and checked byte 
 
 ## Tests
 
-`examples/http-apple/selftest.sh macos` and `examples/http-apple/selftest.sh ios "<device>"`
-run 13 checks against a local server on `127.0.0.1` (`examples/http-apple/server.py`):
-main-thread refusal, GET, IDN host names, POST (text and binary), 404, repeated headers,
-redirect, timeout, connect refused, cancellation by interrupt, the GC check above, one
-caliban-client query, and no request left behind. Numbers in the decision log, 2026-10-22.
+`examples/http/selftest.sh macos` and `examples/http/selftest.sh ios "<device>"` run the
+checks every platform's backend runs (`examples/http`) against a local server on `127.0.0.1`
+(`examples/http/server.py`), and two of Apple's own: main-thread refusal, GET, IDN host names,
+POST (text and binary), 404, repeated headers, redirect, timeout, connect refused, a reset
+connection, cancellation by interrupt, the GC check above, one caliban-client query, and no
+request left behind — 14. Numbers in the decision log, 2026-10-22, when they were 13: the
+reset check (2026-10-27) has not yet run on Apple.
