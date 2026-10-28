@@ -40,6 +40,24 @@ rm -rf build && mkdir -p "$APP"
 echo "=== linking host + $(basename "$SWIFT_LIB") + $(basename "$ARCHIVE") ==="
 flags=()
 [ -n "${SWIFT_INCLUDE:-}" ] && flags+=(-Xcc "-I$SWIFT_INCLUDE")
+# The simulator reads an app's entitlements from a __TEXT,__entitlements section, as Xcode's
+# "Sign to Run Locally" writes it; entitlements in an ad-hoc code signature get the app killed at
+# launch instead. The Keychain needs them: without, every call is errSecMissingEntitlement and
+# thicket-secrets-apple's open returns Left (#108, both measured on the iOS 27 simulator). The
+# app's own keychain group, named by its bundle id.
+cat >build/entitlements.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>application-identifier</key>
+  <string>$BUNDLE_ID</string>
+  <key>keychain-access-groups</key>
+  <array><string>$BUNDLE_ID</string></array>
+</dict>
+</plist>
+EOF
+flags+=(-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker build/entitlements.plist)
 swiftc \
   -target arm64-apple-ios17.0-simulator \
   -sdk "$SDK" \
@@ -60,6 +78,11 @@ echo "RESULT app_unstripped_bytes=$(stat -f%z "$APP/$APP_NAME")"
 if [ "${KEEP_UNSTRIPPED:-0}" = 1 ]; then cp "$APP/$APP_NAME" "build/$APP_NAME.unstripped"; fi
 strip -x "$APP/$APP_NAME" 2>/dev/null || true
 echo "RESULT app_stripped_bytes=$(stat -f%z "$APP/$APP_NAME")"
+
+# Signed ad hoc, after stripping (which would break the signature): an unsigned app on the
+# simulator gets errSecMissingEntitlement from every Keychain call, so thicket-secrets-apple's
+# open returns Left (#108, measured on the iOS 27 simulator).
+codesign --force --sign - "$APP"
 
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null 2>&1 || true
