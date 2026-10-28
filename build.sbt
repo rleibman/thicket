@@ -539,6 +539,19 @@ lazy val secretsGtk = project
   .dependsOn(secrets.native)
   .settings(commonSettings, zioTestFramework, name := "thicket-secrets-gtk", libraryDependencies ++= zioTestNative)
 
+/** Secrets on macOS and iOS: the Keychain (#108). Plain Scala Native over a small C helper that Scala Native's own clang
+  * compiles (`resources/scala-native/thicket_keychain.c`); the helper names the Security and CoreFoundation frameworks
+  * in its object file, so an app links them with no flags. No Swift, and no dependency on `rendererApple`.
+  *
+  * In `platforms`, not `root`: its tests ask the real Keychain, so they run on a Mac (`secretsApple/testFull`), and
+  * Linux only compiles it (`platforms/Test/compile`).
+  */
+lazy val secretsApple = project
+  .in(file("modules/secrets-apple"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(secrets.native)
+  .settings(commonSettings, zioTestFramework, name := "thicket-secrets-apple", libraryDependencies ++= zioTestNative)
+
 /** Secrets on Android: each value encrypted with an AES key that never leaves the Android Keystore. */
 lazy val secretsAndroid = project
   .in(file("modules/secrets-android"))
@@ -699,7 +712,7 @@ lazy val galleryMacos = project
   .in(file("examples/gallery/macos"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.macos.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native, storageApple)
+  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple)
   .settings(commonSettings)
   .settings(appleNativeSettings)
   .settings(galleryAppleSharedSources)
@@ -714,7 +727,7 @@ lazy val galleryIos = project
   .in(file("examples/gallery/ios"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.ios.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native, storageApple)
+  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple)
   .settings(commonSettings)
   .settings(iosNativeSettings)
   .settings(galleryAppleSharedSources)
@@ -843,6 +856,7 @@ lazy val platforms = project
     storageAndroid,
     sqliteAndroid,
     secretsAndroid,
+    secretsApple,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,

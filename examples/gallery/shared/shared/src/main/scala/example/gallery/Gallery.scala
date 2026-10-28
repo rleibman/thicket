@@ -437,8 +437,8 @@ object Gallery {
             }
           ),
           // Device services (docs/16): preferences, SQLite and the platform's secure store, the
-          // database and the secrets off the UI thread. Every host passes its own (Apple since #98;
-          // Apple's secrets are not built yet, so its section says so).
+          // database and the secrets off the UI thread. Every host passes its own (Apple's storage since #98,
+          // its Keychain since #108).
           section("Storage — preferences, SQLite and secrets, in the app's own places")(
             storage match {
               case None =>

@@ -29,8 +29,8 @@ private object GcThreadState {
 }
 
 /** libsecret's password functions, found at run time with `dlopen`, so an app that uses `thicket-secrets-gtk` still
-  * starts on a system without libsecret — `GtkSecrets.open` returns `Left(reason)` there — and building it needs no `-dev`
-  * package.
+  * starts on a system without libsecret — `GtkSecrets.open` returns `Left(reason)` there — and building it needs no
+  * `-dev` package.
   *
   * Only the non-variadic forms (`secret_password_storev_sync` and the rest), since a variadic C function cannot be
   * called through a function pointer. Each call blocks on D-Bus, so the thread is marked Unmanaged for its length, as
@@ -112,7 +112,11 @@ final private[gtk] class LibSecret private (
   ): A = {
     val table = hashNew(strHash, strEqual)
     try {
-      hashPut(table, c"app".asInstanceOf[Ptr[Byte]], toCString(app, java.nio.charset.StandardCharsets.UTF_8).asInstanceOf[Ptr[Byte]])
+      hashPut(
+        table,
+        c"app".asInstanceOf[Ptr[Byte]],
+        toCString(app, java.nio.charset.StandardCharsets.UTF_8).asInstanceOf[Ptr[Byte]]
+      )
       hashPut(
         table,
         c"key".asInstanceOf[Ptr[Byte]],

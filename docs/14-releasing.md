@@ -57,6 +57,7 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
 | `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
 | `net.leibman:thicket-storage-apple_native0.5_3` | app directories and preferences on macOS and iOS (`thicket-storage` comes with it); no Swift |
+| `net.leibman:thicket-secrets-apple_native0.5_3` | tokens and passwords in the Keychain on macOS and iOS (`thicket-secrets` comes with it); no Swift, and it links Security itself. An iOS app needs keychain entitlements, on the simulator too (`modules/secrets/README.md`) |
 | `net.leibman:thicket-http-apple_native0.5_3` | an sttp `SyncBackend` over `URLSession`, for iOS (no libcurl there), with its own Swift library inside the jar |
 
 `thicket-signals` and `thicket-renderer-api` come in transitively; naming them is only
@@ -155,5 +156,7 @@ shim in it.
 4. Run `bin/verify-getting-started.sh` and `bin/verify-getting-started-apple.sh` against the
    released version (`THICKET_VERSION=0.2.0`) once Central shows it.
 
-The examples have `publish / skip := true`; the `platforms` aggregate publishes only the
-three renderers.
+The examples have `publish / skip := true`; the `platforms` aggregate publishes the three
+renderers and the platform modules that are not in `root`: `thicket-http-apple`,
+`thicket-storage-android`, `thicket-sqlite-android`, `thicket-secrets-android` and
+`thicket-secrets-apple`.
