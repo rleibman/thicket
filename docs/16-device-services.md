@@ -42,7 +42,7 @@ Resolved with `cs complete-dep` on 2026-10-21; versions are the newest published
 | File I/O, ZIO-shaped | `ZIO.attemptBlocking` over `java.nio.file` | yes | yes | **zio-nio is JVM-only** (2.0.2; no `native0.5` artefact), so it cannot be the cross-platform API |
 | File I/O, convenience | os-lib | 0.11.8 | 0.11.8 | Optional; nothing requires it |
 | Streams | zio-streams | 2.1.27 | 2.1.27 | The shape for sensor streams in the ZIO bridge |
-| HTTP | sttp client4 | 4.1.0, `HttpURLConnectionBackend` works on Android | 4.1.0, **only `CurlBackend`** (synchronous) | See §16.4: iOS has no libcurl |
+| HTTP | sttp client4 | 4.1.0, `HttpURLConnectionBackend` works on Android, with two gaps Thicket wraps | 4.1.0, **only `CurlBackend`** (synchronous), which Thicket replaces | See §16.4: iOS has no libcurl, and `CurlBackend` fails half the checks |
 | GraphQL | caliban-client | 3.2.0 | 3.2.0 | Phase 6's meal-planner client; rides on sttp |
 | JSON | zio-json / upickle | 1.1.1 / 4.4.3 | same | |
 | HTTP, ZIO | zio-http | yes | **no Native artefact** | Not usable as the client on GTK/Apple |
@@ -56,7 +56,7 @@ most of them, which is why they come first.
 
 | Service | Shape (proposal) | Android | iOS | macOS | GTK |
 |---|---|---|---|---|---|
-| **HTTP transport** | an sttp `Backend` per platform; the app keeps sttp/caliban | `HttpURLConnectionBackend` + `INTERNET` permission | **built** (#90): `URLSessionBackend` in `thicket-http-apple` | `CurlBackend` (libcurl is in the SDK, measured; sttp also needs libidn2, §16.4) or `URLSessionBackend` | `CurlBackend` |
+| **HTTP transport** | an sttp `Backend` per platform; the app keeps sttp/caliban | **built**: `AndroidHttpBackend` in `thicket-http-android`, over `HttpURLConnectionBackend`; `INTERNET` permission | **built** (#90): `URLSessionBackend` in `thicket-http-apple` | `URLSessionBackend` (sttp's `CurlBackend` links, but has the defects in §16.4) | **built**: `LibcurlBackend` in `thicket-http-gtk` |
 | **App directories** | `Storage.dirs: AppDirs(data, cache, temp)` as `java.nio.file.Path` | `getFilesDir`, `getCacheDir` | Application Support, Caches, the temporary directory, each under the bundle id (built, #98) | same (built, #98) | `$XDG_DATA_HOME/<app>`, `$XDG_CACHE_HOME/<app>` |
 | **Preferences** (small key–value) | `Preferences`: get/set strings, numbers, booleans | `SharedPreferences` | ~~`UserDefaults`~~ a file under the data dir, as on GTK (built, #98; `docs/decisions.md` 2026-10-22) | ~~`UserDefaults`~~ the same | a file under the data dir (GSettings needs an installed schema) |
 | **Secure storage** (tokens) | `Secrets`: get/set/delete a string | Android Keystore-wrapped value | Keychain, the app's own (built, #108; the host needs keychain entitlements, on the simulator too) | Keychain (built, #108): the data-protection keychain when entitled, else the login keychain, whose items an unsigned build cannot read after a rebuild | libsecret (Secret Service), optional dependency |
@@ -128,7 +128,45 @@ Two findings on the way:
 
 Android needs no new code, only `HttpURLConnectionBackend` (sttp's default JVM backend is
 `java.net.http`, which Android does not have) and the `INTERNET` permission. That is
-unverified on a device until someone runs it.
+unverified on a device until someone runs it. *Superseded below: it needed a little.*
+
+**Measured on Linux and Android (2026-10-27).** The Apple self-test's checks became
+`examples/http`'s, shared by every platform, plus one for a connection reset. Run against
+sttp 4.1.0's own backends:
+
+| Check | `CurlBackend`, Linux | `HttpURLConnectionBackend`, Android |
+|---|---|---|
+| a binary request body (256 bytes, NUL first) | **times out**. sttp's source passes the bytes through `new String(bytes)` and a C string, which mangles any byte that is not UTF-8 and ends at a NUL; how that becomes a timeout is not traced | ok |
+| a request header given twice | ok | **only the second is sent**: each header is set with `setRequestProperty`, which replaces |
+| timeout, refused, reset | **plain `RuntimeException("Command failed with status …")`**, not sttp's `TimeoutException`, `ConnectException`, `ReadException` | ok |
+| cancellation by `Thread.interrupt()` | **none**: the request runs its full 4 s | **none**, the same |
+| a `System.gc()` while another thread waits 2 s for a response | **1712 ms**: `curl_easy_perform` is not `@blocking`, so a collection waits for the request, and every other thread, the UI's included, waits for the collection (not measured in an app) | 20 ms |
+| GET, 404, redirect, idn2 host names, caliban-client | ok | ok |
+| total | 6 of 12 | 10 of 12, and a request from the main thread is refused (`NetworkOnMainThreadException`) |
+
+So, the owner decided (2026-10-27), Thicket has its own backend on Linux and wraps sttp's on
+Android:
+- **`thicket-http-gtk`: `LibcurlBackend`.** libcurl's multi interface, loaded with `dlopen`
+  (`libcurl.so.4`), so neither the build nor the app needs the `-dev` package. The body is
+  sized and copied by curl (binary-safe); curl writes the response into `open_memstream`
+  buffers, so no Scala runs inside curl and its waits run with the thread Unmanaged; it waits
+  in 50 ms slices, checking for an interrupt; errors are sttp's. `curl_easy_setopt`, variadic, goes
+  through a few lines of C in the jar. **12 of 12**; a collection meanwhile takes 1 ms.
+- **`thicket-http-android`: `AndroidHttpBackend`.** sttp's backend, with a repeated header
+  added back by `addRequestProperty` once sttp has set its own, and the exchange on a worker
+  so that an interrupted caller returns at once and disconnects the connection, which on
+  Android closes the socket (the server sees the hang-up). It refuses the main thread itself,
+  since the worker would otherwise hide Android's refusal. Plain JVM: its tests run on the
+  desktop JDK. **12 of 12**, and the main-thread refusal.
+- An Android app also needs, for plain `http://`, a network security config allowing cleartext
+  to that host (refused since API 28), and with R8,
+  `-dontwarn java.net.http.HttpTimeoutException`: sttp's exception mapping names the class,
+  which Android lacks. The mapping still works there — a reset is a `ReadException`.
+
+Each fix was broken and its check seen to fail: on Linux, no Unmanaged wait (the collection
+took 1710 ms), no body size, no interrupt check; on Android, no re-added header, no disconnect
+(the server saw no hang-up), no main-thread refusal. The upstream reports for sttp are drafted,
+for `CurlBackend` and for the repeated header.
 
 ## 16.5 SQLite: plain JDBC (decided)
 
@@ -276,7 +314,7 @@ this means many modules. Names follow the published ones:
 | Service | API (cross: JVM, JS, Native) | Implementations |
 |---|---|---|
 | shared plumbing: `Availability`, `Permissions`, lifecycle, fakes | `thicket-device` | `thicket-device-android`, `-apple`, `-gtk` |
-| HTTP | none: sttp is the API | `thicket-http-apple` (#90); Android and GTK use sttp's own backends |
+| HTTP | none: sttp is the API | `thicket-http-apple` (#90), `thicket-http-android`, `thicket-http-gtk` |
 | storage: directories, preferences | `thicket-storage` | `-android`, `-apple`, `-gtk` |
 | secrets | `thicket-secrets` | `-android` (Keystore), `-apple` (Keychain), `-gtk` (libsecret) |
 | SQLite | `thicket-sqlite` (`Sqlite.open`; `java.sql` is the API) | `thicket-sqlite-android` (a JDBC driver); Native uses `scala-native-jdbc-sqlite` |
@@ -351,7 +389,8 @@ Every service gets a gallery section and self-test checks on every host where it
 
 1. **HTTP transport:** Android `HttpURLConnectionBackend` verified on the emulator against a
    local server; the iOS `URLSession` backend (Mac issue); GTK/macOS `CurlBackend` verified.
-   Unblocks phase 6.
+   Unblocks phase 6. *Done on iOS and macOS (#90), and on GTK and Android, 2026-10-27, with
+   Thicket's own backends (§16.4): the same checks, `examples/http`, on every platform.*
 2. **Storage:** app directories, preferences, secrets; SQLite as the Android JDBC driver,
    `Sqlite.open`, the conformance suite, and the upstream fix for the Native driver's
    swallowed errors. *Done on GTK and Android, 2026-10-21, and on macOS and iOS, 2026-10-22

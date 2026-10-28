@@ -43,11 +43,13 @@ jobs:
 
       - uses: sbt/setup-sbt@ecad189dd245444b9ae0a0cd5922fd938b88906f # v1.5.12
 
+      # libidn2-dev: sttp-model links libidn2 for host names. libcurl itself is the runner's own libcurl.so.4,
+      # which thicket-http-gtk loads at run time.
       - name: Native toolchain, GTK 4 and libadwaita
         run: |
           sudo apt-get update -q
           sudo apt-get install -yq clang libunwind-dev zlib1g-dev libgtk-4-dev libadwaita-1-dev librsvg2-common xvfb \
-            dbus gnome-keyring libsecret-1-0
+            dbus gnome-keyring libsecret-1-0 libidn2-dev
 
       - name: android.jar for renderer-android
         run: |
@@ -68,10 +70,17 @@ jobs:
           GDK_BACKEND: x11
         run: bin/with-keyring.sh xvfb-run -a bin/gtk-selftests.sh
 
+      # The HTTP checks every platform's backend runs (examples/http), here over thicket-http-gtk's
+      # LibcurlBackend against a local server. Loopback only.
+      - name: HTTP self-test
+        run: sbt --error httpLinux/nativeLink && examples/http/selftest.sh linux
+
       - name: Keep the self-test logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gtk-selftests-${{ github.sha }}
-          path: target/gtk-selftests/
+          path: |
+            target/gtk-selftests/
+            examples/http/build/*.log
           if-no-files-found: ignore

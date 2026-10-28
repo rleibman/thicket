@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The HTTP checks in the self-test (sttp's HttpURLConnectionBackend). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application android:label="Thicket gallery" android:allowBackup="false"
+                 android:networkSecurityConfig="@xml/network_security_config"
                  android:enableOnBackInvokedCallback="true">
         <activity android:name="example.gallery.android.GalleryActivity" android:exported="true">
             <intent-filter>

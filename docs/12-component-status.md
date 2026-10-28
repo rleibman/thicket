@@ -245,7 +245,8 @@ every remaining entry before it is built, not after.
 | Secrets | `modules/secrets`, `secrets-gtk`, `secrets-android`, `secrets-apple` | done on GTK (the Secret Service through libsecret, loaded with `dlopen`, so it's optional at run time: absent, `open` says why) and Android (AES-GCM under an Android Keystore key). Both pass all 11 `SecretsConformance` checks, and a secret written on one run is read back on the next. Done on Apple too (#108): the Keychain, through a C helper Scala Native compiles. The iOS simulator uses the app's data-protection keychain, which needs the host's entitlements. An unsigned Mac binary gets the login keychain, and a rebuilt binary can't read what an earlier build stored. 11/11 conformance on macOS and the iOS simulator, stored then kept in both galleries. `modules/secrets/README.md` |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
 | Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine. Since #90 also `thicket-http-apple`'s 12 `thk_http_*` functions (`HttpAbi`): `thicket_http.h` and `HttpShim.scala` generated, `HttpShim.swift` checked |
-| HTTP on Apple | `modules/http-apple` | done on iOS and macOS (#90) — `URLSessionBackend`, an sttp `SyncBackend` over `URLSession`, because the iOS SDK has no libcurl. Its own module and Swift library, not linked by an app that does not depend on it. 13 self-test checks against a local server pass on the iOS simulator and on macOS, among them one caliban-client query; each is seen to fail with its feature broken (`examples/http-apple`). Not a widget, so not in the gallery. Android (`HttpURLConnectionBackend`) and GTK (`CurlBackend`) need no Thicket code and are not yet verified (docs/16 §16.10) |
+| HTTP on Apple | `modules/http-apple` | done on iOS and macOS (#90) — `URLSessionBackend`, an sttp `SyncBackend` over `URLSession`, because the iOS SDK has no libcurl. Its own module and Swift library, not linked by an app that does not depend on it. 13 self-test checks against a local server pass on the iOS simulator and on macOS, among them one caliban-client query; each is seen to fail with its feature broken (then `examples/http-apple`). Not a widget, so not in the gallery. The checks are now `examples/http`'s, shared by every platform (2026-10-27); the Mac has yet to re-run them there |
+| HTTP on GTK and Android | `modules/http-gtk`, `modules/http-android` | done (2026-10-27) — sttp's own backends failed the shared checks (`CurlBackend` 6 of 12, `HttpURLConnectionBackend` 10 of 12; docs/16 §16.4), so GTK has `LibcurlBackend`, over libcurl loaded with `dlopen`, and Android `AndroidHttpBackend`, a wrapper adding repeated headers and cancellation. 12 of 12 each: `examples/http/selftest.sh linux` (in CI) and the Android gallery's self-test |
 
 ## 12.4 Props
 
@@ -347,6 +348,8 @@ someone who did not write the framework, running on all three targets.
 | `sqliteJVM` / `sqliteNative` | 2 — one runs all 17 conformance checks against the driver: every one on the JVM, all but the 2 known upstream gaps on Native |
 | `secretsJVM` / `secretsNative` | 2 — `MemorySecrets` passes the 11 conformance checks, and they catch a store that loses secrets between instances |
 | `secretsGtk` | 2 — without libsecret, `open` says so; with the Secret Service, the 11 checks and app isolation (required on CI, which starts a keyring) |
+| `httpGtk` | 5 — curl's header block and error codes, and that libcurl loads; the exchanges are `examples/http`'s 12 checks, which CI runs too (2026-10-27) |
+| `httpAndroid` | 5 — on the desktop JDK: a repeated header sent twice, through a redirect too; an interrupt returns at once; errors still sttp's (2026-10-27) |
 | `secretsApple` | 4 (2026-10-27, a Mac only: `bin/verify-apple.sh`'s `secrets` step) — an unsigned binary gets the login keychain; the 11 checks; services are separate; a status in Security's words |
 | `shimGen` | 15 |
 | `sbtThicket` | 9 |
@@ -354,9 +357,10 @@ someone who did not write the framework, running on all three targets.
 Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run; the
 storage and sqlite rows 2026-10-21, the secrets rows and `storageGtk` 2026-10-26. On top of
 these, the self-tests drive the real toolkits: GTK gallery **121** and todo **69**
-(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **33** and
-todo **84** on the `s2test` emulator (2026-10-23, the storage section's checks each included,
-secrets among them). Apple gallery (2026-10-22, #98): macOS **174**, iOS simulator **168**,
+(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **47** and
+todo **84** on the `s2test` emulator (2026-10-27, the storage section's checks each included,
+secrets among them, and the 14 HTTP checks). HTTP on Linux: `examples/http/selftest.sh linux`,
+**12**. Apple gallery (2026-10-22, #98): macOS **174**, iOS simulator **168**,
 each with six storage checks; 2026-10-27 (#108): macOS **185**, iOS simulator **179**, the two
 secrets checks included.
 

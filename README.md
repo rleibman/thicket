@@ -73,6 +73,7 @@ sudo apt install clang libunwind-dev pkg-config libgtk-4-dev libadwaita-1-dev li
 | `pkg-config` | the build runs `pkg-config --cflags gtk4 libadwaita-1` and the matching `--libs` to get the compile and link flags, so a missing `pkg-config` fails the *build*, not just the link — and says which packages to install | 2.5.1 |
 | `libgtk-4-dev` | the GTK4 renderer | 4.22.4 |
 | `libadwaita-1-dev` | `AdwNavigationView`, for native navigation containers. GTK core has no equivalent — `GtkStack` gives transitions but no back-gesture semantics | 1.9.1 |
+| `libidn2-dev` | only for HTTP: sttp-model links libidn2 for host names (`thicket-http-gtk` loads libcurl itself at run time) | 2.3.8 |
 | `librsvg2-common` | gdk-pixbuf's SVG loader: GTK draws an `Image` from an SVG file or SVG bytes through it, as the gallery and todo apps do with the logo. Usually already present with a desktop | 2.61.3 |
 | `python3` | `bin/coverage.sh` reads the scoverage report with it | any 3.x |
 
@@ -317,12 +318,15 @@ modules/
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)
   http-apple/        an sttp backend over URLSession, for iOS (no libcurl) and macOS
+  http-gtk/          an sttp backend over libcurl, for GTK (in place of sttp's CurlBackend)
+  http-android/      sttp's HttpURLConnectionBackend, with repeated headers and cancellation
 examples/
   shared/            TodoApp — the platform-free demo every host mounts
   counter-gtk/       the todo app on GTK (the name predates it)
   todo-android/  todo-apple/
   gallery/           every component on one screen, for every platform, with self-tests
-  http-apple/        URLSessionBackend and caliban-client against a local server (macOS, iOS)
+  http/              the same HTTP checks against a local server for every platform's backend
+                     (Linux and Apple hosts here; Android's run in the gallery's self-test)
 tools/               shim-gen (the Apple ABI), sbt-thicket (the published plugin)
 bin/                 checks: GTK self-tests, getting-started, coverage, the Mac's verify-apple
 docs/                the plan, the findings, the living status, phase reviews
@@ -341,15 +345,17 @@ until it is handled, which is the point:
 ```bash
 sbt --error checkLinux      # every test on every backend, format, headers, every renderer and example compiled
 bin/gtk-selftests.sh        # both GTK self-tests; fails on a failed check or any Gtk-CRITICAL
-SELFTEST=1 examples/gallery/android/build.sh   # the gallery on an Android device or emulator
+SELFTEST=1 examples/gallery/android/build.sh   # the gallery on an Android device or emulator, HTTP checks included
+sbt --error httpLinux/nativeLink && examples/http/selftest.sh linux   # the HTTP checks over thicket-http-gtk
 SELFTEST=1 examples/todo-android/build.sh
 ```
 
 `checkLinux` is what CI runs (`.github/workflows/ci.yml`), with the GTK self-tests under
 xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 2026-10-21:
 signals 30, core 170, effect-zio 25, storage 14, sqlite 2 and secrets 2 per backend,
-storage-gtk 4, storage-apple 4, secrets-gtk 2, shim-gen 15, sbt-thicket 9; GTK 121 + 69
-self-test checks, Android 33 + 84 (2026-10-26).
+storage-gtk 4, storage-apple 4, secrets-gtk 2, http-gtk 5, http-android 5, shim-gen 15,
+sbt-thicket 9; GTK 121 + 69 self-test checks, Android 47 + 84 (2026-10-27, the gallery's
+with the HTTP checks), the HTTP checks on Linux 12.
 
 Coverage over the JVM-tested modules:
 

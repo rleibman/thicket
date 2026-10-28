@@ -46,4 +46,9 @@ dependencies {
   // The gallery runs one ZIO effect (its Effects section), so the bridge's runtime ships with it.
   implementation("dev.zio:zio_3:2.1.26")
   implementation("dev.zio:zio-streams_3:2.1.26")
+  // The HTTP checks: sttp and caliban-client, at build.sbt's sttpV and calibanV.
+  implementation("com.softwaremill.sttp.client4:core_3:4.1.0")
+  implementation("com.softwaremill.sttp.client4:jsoniter_3:4.1.0")
+  implementation("com.softwaremill.sttp.client4:json-common_3:4.1.0")
+  implementation("com.github.ghostdogpr:caliban-client_3:3.2.0")
 }

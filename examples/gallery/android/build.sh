@@ -17,7 +17,7 @@ echo "== sbt: building the Scala JARs =="
 (cd "$root" && sbt --error \
   "signalsJVM/package" "rendererApiJVM/package" "coreJVM/package" "effectZioJVM/package" \
   "storageJVM/package" "sqliteJVM/package" "storageAndroid/package" "sqliteAndroid/package" \
-  "secretsJVM/package" "secretsAndroid/package" \
+  "secretsJVM/package" "secretsAndroid/package" "httpChecksJVM/package" "httpAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
 # The version and the Scala version, asked rather than assumed: both are in the jar paths.
@@ -31,7 +31,7 @@ mkdir -p "$here/app/libs"
 rm -f "$here"/app/libs/*.jar
 for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-zio \
               thicket-storage thicket-sqlite thicket-storage-android thicket-sqlite-android \
-              thicket-secrets thicket-secrets-android \
+              thicket-secrets thicket-secrets-android http-checks thicket-http-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
   src=$(readlink -f "$root/target/out/jvm/scala-$sv/$module/${module}_3-$ver.jar")
@@ -57,8 +57,22 @@ fi
 adb install -r -g "$apk" >/dev/null
 adb shell am force-stop dev.thicket.gallery
 adb logcat -c
+# The self-test's HTTP checks talk to examples/http/server.py on this machine's loopback, which `adb reverse` makes
+# the emulator's 127.0.0.1 too. Nothing leaves the machine.
+httparg=()
+if [ -n "${SELFTEST:-}" ]; then
+  portfile=$(mktemp)
+  python3 "$root/examples/http/server.py" "$portfile" 2>"$here/app/build/http-server.log" &
+  server=$!
+  trap 'kill $server 2>/dev/null || true; adb reverse --remove-all >/dev/null 2>&1 || true; rm -f "$portfile"' EXIT
+  for _ in $(seq 1 50); do [ -s "$portfile" ] && break; sleep 0.1; done
+  [ -s "$portfile" ] || { echo "the HTTP test server did not start" >&2; exit 1; }
+  port=$(cat "$portfile")
+  adb reverse "tcp:$port" "tcp:$port" >/dev/null
+  httparg=(--ei httptest "$port")
+fi
 adb shell am start -W -n dev.thicket.gallery/example.gallery.android.GalleryActivity \
-  ${SELFTEST:+--ez selftest true} >/dev/null
+  ${SELFTEST:+--ez selftest true} "${httparg[@]}" >/dev/null
 echo "== installed and launched =="
 [ -n "${SELFTEST:-}" ] || exit 0
 
