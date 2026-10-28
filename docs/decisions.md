@@ -86,7 +86,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   interface through `dlopen` (`libcurl.so.4`, so no `-dev` package to build or run), bodies
   copied by curl, responses into `open_memstream` buffers so no Scala runs inside curl and the
   waits are Unmanaged, 50 ms poll slices that check for an interrupt, sttp's exception types;
-  the two variadic calls through `thicket_curl.c`, the repo's first C file. **12 of 12**, the
+  the variadic `curl_easy_setopt` through `thicket_curl.c`, the repo's first C file. **12 of 12**, the
   collection 1 ms. **`thicket-http-android`**: plain JVM; re-adds repeated headers with
   `addRequestProperty`, runs the exchange on a worker so that an interrupted caller returns at
   once and disconnects (the server saw the hang-up), and refuses the main thread itself with

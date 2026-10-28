@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-/* thicket-http-gtk: libcurl's two variadic functions, curl_easy_setopt and curl_easy_getinfo.
+/* thicket-http-gtk: libcurl's variadic curl_easy_setopt.
  *
  * libcurl is loaded with dlopen (Libcurl.scala), so these take the function pointer dlsym found. Scala Native
  * cannot call a variadic function through a pointer; the cast here makes the C compiler emit a proper variadic
  * call, which on x86-64 is not the same as an ordinary one. No curl header is needed, and nothing links -lcurl.
- * CURLcode and the option and info ids are C enums, so int; curl_off_t is 64 bits. */
+ * CURLcode and the option ids are C enums, so int; curl_off_t is 64 bits. */
 
 typedef int (*thk_curl_setopt_fn)(void *, int, ...);
-typedef int (*thk_curl_getinfo_fn)(void *, int, ...);
 
 int thk_curl_setopt_long(void *fn, void *curl, int option, long value) {
   return ((thk_curl_setopt_fn)fn)(curl, option, value);
@@ -34,8 +33,4 @@ int thk_curl_setopt_off(void *fn, void *curl, int option, long long value) {
 
 int thk_curl_setopt_ptr(void *fn, void *curl, int option, void *value) {
   return ((thk_curl_setopt_fn)fn)(curl, option, value);
-}
-
-int thk_curl_getinfo_ptr(void *fn, void *curl, int info, void *out) {
-  return ((thk_curl_getinfo_fn)fn)(curl, info, out);
 }

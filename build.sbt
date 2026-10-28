@@ -767,7 +767,7 @@ lazy val galleryIos = project
   )
 
 /** The HTTP self-test: the same sttp checks against a local server for every platform's backend — `URLSessionBackend`
-  * on macOS and the iOS simulator (#90), `CurlBackend` on Linux, `HttpURLConnectionBackend` on Android (in the gallery's
+  * on macOS and the iOS simulator (#90), `LibcurlBackend` on Linux, `AndroidHttpBackend` on Android (in the gallery's
   * self-test). `examples/http/selftest.sh` starts the server and runs the Apple and Linux hosts.
   */
 lazy val httpChecks = crossProject(JVMPlatform, NativePlatform)

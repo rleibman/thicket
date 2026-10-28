@@ -11,8 +11,8 @@ basicRequest.get(uri"https://example.com").send(backend)
 ```
 
 - **No `-dev` package.** libcurl is loaded with `dlopen` (`libcurl.so.4`). Without it,
-  `LibcurlBackend()` throws `IllegalStateException` saying so. `curl_easy_setopt` and
-  `curl_easy_getinfo` are variadic, so they are called through `thicket_curl.c`, which the jar
+  `LibcurlBackend()` throws `IllegalStateException` saying so. `curl_easy_setopt` is
+  variadic, so it is called through `thicket_curl.c`, which the jar
   carries and Scala Native compiles; it needs no curl header. sttp-model still links libidn2
   for host names, so building an app needs `libidn2-dev`.
 - **The GC does not wait for the network.** curl writes the response into `open_memstream`

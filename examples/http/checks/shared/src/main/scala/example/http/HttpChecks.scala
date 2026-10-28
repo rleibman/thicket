@@ -25,8 +25,9 @@ import sttp.client4.*
 import sttp.model.{StatusCode, Uri}
 
 /** An sttp `SyncBackend` against the local server in `examples/http/server.py`: the same checks for every platform's
-  * backend — `URLSessionBackend` on macOS and iOS (#90), `CurlBackend` on Linux, `HttpURLConnectionBackend` on Android.
-  * The host starts the server, passes its port, and adds the checks only its platform has.
+  * backend — `URLSessionBackend` on macOS and iOS (#90), `LibcurlBackend` (thicket-http-gtk) on Linux,
+  * `AndroidHttpBackend` (thicket-http-android) on Android. The host starts the server, passes its port, and adds the
+  * checks only its platform has.
   *
   * Every check reports to `report` as it finishes; [[summary]] is the closing lines the scripts wait for.
   */

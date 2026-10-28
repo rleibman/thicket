@@ -150,7 +150,7 @@ Android:
   (`libcurl.so.4`), so neither the build nor the app needs the `-dev` package. The body is
   sized and copied by curl (binary-safe); curl writes the response into `open_memstream`
   buffers, so no Scala runs inside curl and its waits run with the thread Unmanaged; it waits
-  in 50 ms slices, checking for an interrupt; errors are sttp's. The two variadic calls go
+  in 50 ms slices, checking for an interrupt; errors are sttp's. `curl_easy_setopt`, variadic, goes
   through a few lines of C in the jar. **12 of 12**; a collection meanwhile takes 1 ms.
 - **`thicket-http-android`: `AndroidHttpBackend`.** sttp's backend, with a repeated header
   added back by `addRequestProperty` once sttp has set its own, and the exchange on a worker

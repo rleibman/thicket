@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The HTTP self-test: an sttp backend and caliban-client against a local server.
 #
-#   examples/http/selftest.sh linux            # after: sbt httpLinux/nativeLink (CurlBackend)
+#   examples/http/selftest.sh linux            # after: sbt httpLinux/nativeLink (LibcurlBackend)
 #   examples/http/selftest.sh macos            # after: sbt httpMacos/nativeLink (URLSessionBackend, #90)
 #   examples/http/selftest.sh ios [device]     # after: sbt httpIos/nativeLink
 #

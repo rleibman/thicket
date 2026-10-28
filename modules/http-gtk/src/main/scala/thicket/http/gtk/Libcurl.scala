@@ -27,7 +27,7 @@ private object GcThreadState {
 
 }
 
-/** `thicket_curl.c`: libcurl's variadic functions, called through the pointer `dlsym` found. */
+/** `thicket_curl.c`: libcurl's variadic `curl_easy_setopt`, called through the pointer `dlsym` found. */
 @extern
 private object CurlVariadic {
 
@@ -50,13 +50,6 @@ private object CurlVariadic {
     curl:   Ptr[Byte],
     option: CInt,
     value:  Ptr[Byte]
-  ): CInt = extern
-
-  def thk_curl_getinfo_ptr(
-    fn:   Ptr[Byte],
-    curl: Ptr[Byte],
-    info: CInt,
-    out:  Ptr[Byte]
   ): CInt = extern
 
 }
@@ -82,7 +75,6 @@ private object MemStream {
   */
 final private[gtk] class Libcurl private (
   setoptFn:      Ptr[Byte],
-  getinfoFn:     Ptr[Byte],
   easyInit:      CFuncPtr0[Ptr[Byte]],
   easyCleanup:   CFuncPtr1[Ptr[Byte], Unit],
   easyStrerror:  CFuncPtr1[CInt, CString],
@@ -120,18 +112,6 @@ final private[gtk] class Libcurl private (
     option: CInt,
     value:  Ptr[Byte]
   ): Unit = ok(CurlVariadic.thk_curl_setopt_ptr(setoptFn, easy, option, value), option)
-
-  /** A `long` that `curl_easy_getinfo` reports. */
-  def infoLong(
-    easy: Ptr[Byte],
-    info: CInt
-  ): Long = {
-    val out = stackalloc[CLong]()
-    !out = 0.toSize
-    val code = CurlVariadic.thk_curl_getinfo_ptr(getinfoFn, easy, info, out.asInstanceOf[Ptr[Byte]])
-    if code != 0 then throw new java.io.IOException(s"curl_easy_getinfo($info): ${strerror(code)}")
-    (!out).toLong
-  }
 
   def strerror(code: Int): String = fromCString(easyStrerror(code))
 
@@ -240,7 +220,6 @@ private[gtk] object Libcurl {
           val names = List(
             "curl_global_init",
             "curl_easy_setopt",
-            "curl_easy_getinfo",
             "curl_easy_init",
             "curl_easy_cleanup",
             "curl_easy_strerror",
@@ -267,7 +246,6 @@ private[gtk] object Libcurl {
               Right(
                 new Libcurl(
                   found("curl_easy_setopt"),
-                  found("curl_easy_getinfo"),
                   CFuncPtr.fromPtr(found("curl_easy_init")),
                   CFuncPtr.fromPtr(found("curl_easy_cleanup")),
                   CFuncPtr.fromPtr(found("curl_easy_strerror")),
@@ -287,7 +265,7 @@ private[gtk] object Libcurl {
         }
       }
 
-  // The options and infos used, from curl.h. The type is in the id: LONG + 0, OBJECTPOINT + 10000, OFF_T + 30000.
+  // The options used, from curl.h. The type is in the id: LONG + 0, OBJECTPOINT + 10000, OFF_T + 30000.
   val WriteData = 10001
   val Url = 10002
   val PostFieldsSize = 30120 // CURLOPT_POSTFIELDSIZE_LARGE
@@ -300,6 +278,5 @@ private[gtk] object Libcurl {
   val NoSignal = 99
   val ConnectTimeoutMs = 156
   val AcceptEncoding = 10102
-  val ResponseCode = 0x200000 + 2 // CURLINFO_LONG + 2
 
 }
