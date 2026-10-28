@@ -100,6 +100,76 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   the interrupt check; Android without the re-added header, without the disconnect (no
   hang-up), without the main-thread refusal — each fails its check. The Apple hosts run the
   shared checks too, now under `examples/http`; that is for the Mac to re-run.
+- 2026-10-27 — **Apple secrets: `thicket-secrets-apple`, the Keychain through a C helper. The
+  iOS simulator needs entitlements, and an unsigned Mac binary gets the login keychain, bound
+  to its build** (#108; docs/16 §16.3).
+  - **Built.** A module of its own (`modules/secrets-apple`, in `platforms`, not `renderer-apple`).
+    It is Scala Native over `thicket_keychain.c`, about 150 lines in `resources/scala-native/`
+    that Scala Native's own clang compiles. No Swift and no build step.
+  - **Why C, not externs from Scala.** A query is a CFDictionary. Building one needs the
+    addresses of `kCFTypeDictionaryKeyCallBacks`/`ValueCallBacks`, which are struct globals:
+    one line in C. Null callbacks would compare keys by pointer, which Security doesn't
+    promise to do.
+  - **Linking.** The object names Security and CoreFoundation itself (`.linker_option`, which
+    becomes `LC_LINKER_OPTION`, as Swift autolinks). Measured: the macOS gallery and the iOS
+    host's `swiftc` link both resolved with no new flags, and so did the module's test binary.
+  - **Calls.** Generic passwords: service = the bundle id, account = the key. `SecItemAdd`, then
+    `SecItemUpdate` on `errSecDuplicateItem`, `SecItemCopyMatching` and `SecItemDelete`.
+    `errSecItemNotFound` on delete is not an error. The externs are `@blocking`. The gallery and
+    its self-test call them on threads of their own.
+  - **Accessibility:** `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. It is readable in the
+    background after the first unlock, never synced, and never restored to another device,
+    which matches the Android Keystore key.
+  - **`AppleSecrets.open(service): Either[String, AppleSecrets]`.** It probes with a *delete* of a
+    reserved key, not a read. Measured: without the entitlement, a data-protection read answers
+    `errSecItemNotFound` like any other, and only writes and deletes say
+    `errSecMissingEntitlement` (-34018). The first version probed with a read: `open` said
+    "data protection", and 9 of the 11 conformance checks failed with -34018.
+  - **macOS, measured on macOS 27.0.1 with a C probe and the module.**
+    - An unsigned or ad hoc binary gets -34018 from the data-protection keychain. Entitlements in
+      an ad hoc signature got it SIGKILLed at launch. This Mac has no signing identity, so the
+      entitled path is untested.
+    - The legacy login keychain works, but each item is bound to the build that made it.
+    - A second build's `SecItemCopyMatching` blocked on the "allow access" dialog (killed after
+      20 s). With `SecKeychainSetUserInteractionAllowed(false)` it fails at once: read
+      `errSecAuthFailed` (-25293), delete `errSecInvalidOwnerEdit` (-25244). The update returned
+      0 and really changed the data (the first build read the new value back).
+    - `kSecUseAuthenticationUIFail` did not stop the dialog. Neither did an access list made with
+      `SecACLSetContents(…, NULL, …)` ("any application").
+    - `security delete-generic-password` removes such an item without a prompt.
+    - So the macOS path uses the login keychain with dialogs off for the process. On the old
+      build's item, `get` throws a `SecretsException` that names that command.
+    - `bin/verify-apple.sh` removes the gallery's item, then runs the macOS gallery twice: stored,
+      then kept. A relinked gallery is a new build: a rebuild of unchanged sources changed the
+      binary's MD5. Measured without the removal: the secret check fails with the
+      "another build" message, and the other 184 checks pass.
+  - **iOS simulator (iPhone 17e, iOS 27).** The unsigned host got -34018 (`open` → `Left`, the
+    check failed), and so did an ad hoc `codesign`. Entitlements in the code signature: the
+    app would not launch. Entitlements linked into `__TEXT,__entitlements`, as Xcode does for
+    the simulator, worked: `application-identifier` and `keychain-access-groups`, both the
+    bundle id, which `run-ios-app.sh` now writes for every example host. The app also gets an
+    ad hoc signature after stripping.
+  - **Measured.**
+    - `secretsApple/testFull` 4/4: the login keychain on an unsigned binary, the 11 checks,
+      services kept apart, a status in Security's words. It is a new `secrets` step in
+      `bin/verify-apple.sh`, which now has 14 steps.
+    - macOS gallery **185/185** (183 + 2) and iOS simulator **179/179** (177 + 2). The two
+      checks: the gallery's secret is on screen as kept or stored and reads back, and
+      `SecretsConformance` passes 11/11.
+    - The "this run:" line went from stored to kept on the second run of the same macOS build,
+      and on iOS across a relink and reinstall.
+    - Afterwards, no `dev.thicket.secrets-test` item was left in the login keychain.
+    - `bin/verify-apple.sh "iPhone 17e"`: **14/14** steps. Gallery 185/185 twice on macOS
+      (stored, then kept), 179/179 on iOS (kept), todo 88/88 and 83/83, getting-started
+      passed.
+  - **Controls**, each reverted:
+    - `get` asking the wrong service: 7 conformance checks fail, and so does isolation.
+    - `set` that skips the update: "setting a key again replaces its secret" fails.
+    - Delete of a missing key throwing: "deleting a key that has no secret is not an error"
+      fails, and so does isolation.
+    - The unsigned iOS host fails "the Keychain is open to the gallery".
+    - A relinked macOS gallery with the old item fails the read-back check.
+  - **Not done:** a signed Mac app with keychain entitlements, and a physical iPhone.
 
 - 2026-10-25 — **The Apple shims share their non-toolkit half, read long text, and name their
   toolkit** (#79; review 2026-10-20 P2-27, P3-2, P3-7, P3-9, P3-13, P3-21, P3-26).

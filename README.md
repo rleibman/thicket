@@ -313,7 +313,7 @@ modules/
   effect-zio/        the ZIO bridge
   storage/           app directories and preferences; storage-gtk/, storage-android/, storage-apple/
   sqlite/            SQLite through plain JDBC; sqlite-android/ (a JDBC driver), Native via a library
-  secrets/           tokens and passwords in the platform's secure store; secrets-gtk/, secrets-android/
+  secrets/           tokens and passwords in the platform's secure store; secrets-gtk/, secrets-android/, secrets-apple/
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)

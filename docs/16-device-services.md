@@ -59,7 +59,7 @@ most of them, which is why they come first.
 | **HTTP transport** | an sttp `Backend` per platform; the app keeps sttp/caliban | **built**: `AndroidHttpBackend` in `thicket-http-android`, over `HttpURLConnectionBackend`; `INTERNET` permission | **built** (#90): `URLSessionBackend` in `thicket-http-apple` | `URLSessionBackend` (sttp's `CurlBackend` links, but has the defects in §16.4) | **built**: `LibcurlBackend` in `thicket-http-gtk` |
 | **App directories** | `Storage.dirs: AppDirs(data, cache, temp)` as `java.nio.file.Path` | `getFilesDir`, `getCacheDir` | Application Support, Caches, the temporary directory, each under the bundle id (built, #98) | same (built, #98) | `$XDG_DATA_HOME/<app>`, `$XDG_CACHE_HOME/<app>` |
 | **Preferences** (small key–value) | `Preferences`: get/set strings, numbers, booleans | `SharedPreferences` | ~~`UserDefaults`~~ a file under the data dir, as on GTK (built, #98; `docs/decisions.md` 2026-10-22) | ~~`UserDefaults`~~ the same | a file under the data dir (GSettings needs an installed schema) |
-| **Secure storage** (tokens) | `Secrets`: get/set/delete a string | Android Keystore-wrapped value | Keychain | Keychain | libsecret (Secret Service), optional dependency |
+| **Secure storage** (tokens) | `Secrets`: get/set/delete a string | Android Keystore-wrapped value | Keychain, the app's own (built, #108; the host needs keychain entitlements, on the simulator too) | Keychain (built, #108): the data-protection keychain when entitled, else the login keychain, whose items an unsigned build cannot read after a rebuild | libsecret (Secret Service), optional dependency |
 | **SQLite** | plain JDBC; `Sqlite.open(name): java.sql.Connection` | Thicket's JDBC driver over `android.database.sqlite` | `scala-native-jdbc-sqlite` | same | same |
 | **Lifecycle** | `AppLifecycle.state: Signal[Foreground \| Background]` and an `onTerminate` hook | `Activity` callbacks (already in `ThicketActivity`) | scene notifications | `NSApplication` notifications | window `is-active`, `GApplication` shutdown |
 | **Permissions** | `Permissions.request(Permission.Location)` → `Granted \| Denied \| Restricted` | `requestPermissions` + manifest | usage strings in `Info.plist` | entitlements (sandboxed apps) | mostly n/a; xdg-desktop-portal asks for location and camera |
@@ -325,7 +325,8 @@ this means many modules. Names follow the published ones:
 The implementations need the host (`ThicketActivity`, `GtkApp`, a Swift library), so each
 platform module depends on its renderer. Each Apple module carries its own small Swift
 library, like `renderer-apple` does since #41, so nothing links into an app that did not ask
-for it.
+for it. (As built, storage and secrets need none: `thicket-storage-apple` is plain Scala Native,
+and `thicket-secrets-apple` is Scala Native over a C helper compiled by Scala Native's clang.)
 
 ## 16.7 What it costs on each host
 
@@ -403,7 +404,11 @@ Every service gets a gallery section and self-test checks on every host where it
      one run is read back on the next.
    - CI starts a keyring of its own (`bin/with-keyring.sh`), so the Secret Service is tested
      there, not skipped.
-   - The Keychain half is for the Mac.
+   - The Keychain half is done too, 2026-10-27 (#108, `thicket-secrets-apple`): a C helper
+     that Scala Native compiles, no Swift. The iOS simulator uses the app's data-protection
+     keychain. An unsigned Mac binary uses the login keychain, bound to the build that made
+     each item. Conformance passes 11/11 on both, and the gallery's secret goes from stored
+     to kept.
 3. **Lifecycle and permissions:** the host plumbing every later service sits on.
 4. **Location,** then **motion**, each with emulator-injected self-tests.
 5. **Pickers, camera capture, share, clipboard, haptics.**

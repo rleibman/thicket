@@ -17,8 +17,9 @@
 #   shim-macos     compile Shim+AppKit.swift (build-shim.sh macos)
 #   shim-ios       compile Shim+UIKit.swift  (build-shim.sh ios-sim)
 #   abi            shim-gen's consistency checks: ABI, C header, Scala externs, both shims
+#   secrets        thicket-secrets-apple's tests against the real Keychain (#108): conformance, isolation
 #   link           sbt nativeLink for the four Apple apps, after deleting their old outputs
-#   macos-gallery  THICKET_GALLERY_SELFTEST=1 gallery-macos
+#   macos-gallery  THICKET_GALLERY_SELFTEST=1 gallery-macos, twice: its secret stored, then kept
 #   macos-todo     THICKET_SELFTEST=1 todo-macos
 #   macos-lazy     THICKET_LAZYTEST=1 todo-macos: 10 000 rows, virtualised and freed
 #   ios-gallery    the gallery on the simulator (examples/gallery/ios/ios-app/build-app.sh)
@@ -90,6 +91,22 @@ macos_selftest() {
   return $passed
 }
 
+# The macOS gallery, twice. Its secret is in the login keychain, where an unsigned binary's items
+# are bound to the build that made them (#108): the one an earlier build left cannot be read,
+# deleted or replaced by this one, so it is removed first with `security`, which can. The first run
+# then stores the secret and the second must find it — "stored", then "kept".
+macos_gallery() {
+  local bin=$1 log
+  security delete-generic-password -s dev.thicket.gallery -a gallery.secret >/dev/null 2>&1 || true
+  log=$(mktemp)
+  macos_selftest "$bin" THICKET_GALLERY_SELFTEST | tee "$log" || { rm -f "$log"; return 1; }
+  grep -q "this run: A secret stored" "$log" || { echo "first run: the secret was not stored"; rm -f "$log"; return 1; }
+  echo "-- the same build again: its secret should be kept"
+  macos_selftest "$bin" THICKET_GALLERY_SELFTEST | tee "$log" || { rm -f "$log"; return 1; }
+  grep -q "this run: A secret kept" "$log" || { echo "second run: the secret was not kept"; rm -f "$log"; return 1; }
+  rm -f "$log"
+}
+
 native() { find "$root/target/out" -type f -perm -u+x -name "$1" 2>/dev/null | head -1; }
 
 # The four apps' outputs are deleted before linking, so a self-test can only ever run what
@@ -127,8 +144,9 @@ run toolchain sh -c 'sw_vers; xcodebuild -version; xcrun swiftc --version'
 run shim-macos modules/renderer-apple/shim/build-shim.sh macos
 run shim-ios modules/renderer-apple/shim/build-shim.sh ios-sim
 run abi sbt --error shimGen/testFull
+run secrets sbt --error secretsApple/testFull
 run link link_all
-run macos-gallery macos_selftest "$(native gallery-macos)" THICKET_GALLERY_SELFTEST
+run macos-gallery macos_gallery "$(native gallery-macos)"
 run macos-todo macos_selftest "$(native todo-macos)" THICKET_SELFTEST
 run macos-lazy macos_selftest "$(native todo-macos)" THICKET_LAZYTEST
 run ios-gallery on_fresh_simulator examples/gallery/ios/ios-app/build-app.sh "$device"

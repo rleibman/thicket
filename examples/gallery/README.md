@@ -170,7 +170,7 @@ handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet
 launch counter in preferences and notes in SQLite, written on a worker thread, with the JDBC
 conformance checks run against the platform's driver (GTK, Android, macOS and iOS),
 Magnum's checks on GTK, macOS and iOS, and a secret in the platform's secure store, kept from
-one run to the next and held to the secrets conformance checks (GTK and Android). On Apple the
+one run to the next and held to the secrets conformance checks (GTK, Android, macOS and iOS). On Apple the
 self-test also holds the storage directories to what Foundation reports. On Android the
 self-test also runs `examples/http`'s HTTP checks over `thicket-http-android`, after the
 others: `build.sh` starts `examples/http/server.py` on this machine and `adb reverse`s its

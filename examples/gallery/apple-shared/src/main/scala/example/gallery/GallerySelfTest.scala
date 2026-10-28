@@ -23,6 +23,8 @@ import thicket.core.{Element, GcState, Reconciler}
 import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim, ShimKind}
+import thicket.secrets.apple.AppleSecrets
+import thicket.secrets.testing.SecretsConformance
 import thicket.signals.{ErrorSink, Owner}
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
@@ -284,13 +286,61 @@ object GallerySelfTest {
               s"clicked $clicked, before $before, now ${demo.notes.now}, " +
                 AppleInspect.allTexts(AppleApp.rootHandle).filter(_.contains("SQLite"))
             )
-            next()
+            // The gallery asks the store on a thread of its own; wait for its answer first.
+            eventually(10000)(demo.secret.now != StorageDemo.secretPending)(_ => secretChecks(demo)(next))
           }
         }
       case (demo, store) =>
         check("the host provides storage", false, s"Gallery.currentStorage $demo, the host's $store")
         next()
     }
+
+  /** Secrets in the Keychain (#108), the GTK host's `secretChecks` asked of Apple: the gallery's secret is on screen as
+    * kept or stored and reads back from the Keychain, and every conformance check passes. Required, not skipped: a
+    * gallery that silently had no secrets would pass. The Keychain blocks, so it is asked on a thread of this check's
+    * own, and the verdicts are posted back to the main thread.
+    */
+  private def secretChecks(demo: StorageDemo)(next: () => Unit): Unit = {
+    val shown = demo.secret.now
+    val texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    // Kept or stored: a second run of the same build should turn stored into kept.
+    println(s"[gallery]      this run: $shown")
+    val worker = new Thread(
+      () => {
+        val outcome = AppleSecrets.open(bundleId).map { s =>
+          val token =
+            try Right(s.get(StorageDemo.secretKey))
+            catch { case e: Exception => Left(e.getMessage) }
+          val results = SecretsConformance.run(() => AppleSecrets.open(bundleId).toOption.get, "selftest.")
+          (s.keychain, token, results)
+        }
+        AppleApp.postToUi { () =>
+          outcome match {
+            case Left(reason) =>
+              check("the Keychain is open to the gallery", false, reason)
+            case Right((keychain, token, results)) =>
+              println(s"[gallery] secrets: the $keychain keychain, service $bundleId")
+              check(
+                "the gallery's secret is on screen as kept or stored, and reads back from the Keychain",
+                Set(StorageDemo.secretKept, StorageDemo.secretStored).contains(shown) && texts.contains(shown) &&
+                  token.exists(_.exists(_.startsWith(StorageDemo.secretPrefix))),
+                texts.filter(_.contains("ecret")).toString +
+                  s"; read back ${token.map(_.map(_.take(StorageDemo.secretPrefix.length)))}"
+              )
+              check(
+                s"secrets conformance on the Keychain: all ${results.size} checks pass",
+                results.size == 11 && results.forall(_.passed),
+                results.filterNot(_.passed).map(r => s"${r.name}: ${r.detail}").mkString("; ")
+              )
+          }
+          next()
+        }
+      },
+      "gallery-secrets-check"
+    )
+    worker.setDaemon(true)
+    worker.start()
+  }
 
   private def kind(
     h: Shim.Handle,
