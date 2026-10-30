@@ -105,7 +105,7 @@ object Parse {
           if ret.isDefined && args.forall(_.isDefined) then decls += Decl(name, ret.get, args.flatten)
           else unparsed += line
         // The callback types a header defines for itself (thicket_device.h), not functions.
-        case l if l.trim.startsWith("typedef") => ()
+        case l if l.trim.startsWith("typedef")                                    => ()
         case l if l.contains(s"${prefix}_") && l.contains("(") && l.endsWith(";") => unparsed += l
         case _                                                                    => ()
       }

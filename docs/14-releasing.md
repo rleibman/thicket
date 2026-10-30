@@ -55,6 +55,7 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-sqlite_3` / `_native0.5_3`, `thicket-sqlite-android_3` | SQLite through JDBC; on Native the driver comes with it, on Android add `thicket-sqlite-android` |
 | `net.leibman:thicket-secrets-gtk_native0.5_3` / `thicket-secrets-android_3` | tokens and passwords in the platform's secure store (`thicket-secrets` comes with them); libsecret is optional at run time on GTK |
 | `net.leibman:thicket-device-gtk_native0.5_3` / `thicket-device-android_3` | the app's lifecycle and permissions (`thicket-device` comes with them) |
+| `net.leibman:thicket-device-apple_native0.5_3` | the app's lifecycle and permissions on macOS and iOS (`thicket-device` comes with it), with its own Swift library inside the jar; an iOS app adds the usage strings for what it asks |
 | `net.leibman:thicket-location_3` / `_native0.5_3`, `thicket-location-android_3` | the device's position; on GTK, `Location.unavailable` from `thicket-location` |
 | `net.leibman:thicket-motion_3` / `_native0.5_3`, `thicket-motion-android_3` | acceleration, rotation rate and attitude; on GTK, `Motion.unavailable` from `thicket-motion` |
 | `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
@@ -164,5 +165,5 @@ shim in it.
 The examples have `publish / skip := true`; the `platforms` aggregate publishes the three
 renderers and the platform modules that are not in `root`: `thicket-http-apple`,
 `thicket-storage-android`, `thicket-sqlite-android`, `thicket-secrets-android`,
-`thicket-secrets-apple`, `thicket-device-gtk`, `thicket-device-android` and
+`thicket-secrets-apple`, `thicket-device-gtk`, `thicket-device-android`, `thicket-device-apple` and
 `thicket-location-android` and `thicket-motion-android`.

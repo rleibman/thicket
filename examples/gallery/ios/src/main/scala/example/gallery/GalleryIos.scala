@@ -58,7 +58,9 @@ object GalleryIos {
         // Android host reads it from the APK's assets.
         Gallery.app(
           logo = Gallery.logoBytes(AppleApp.resourcePath(Gallery.logo)),
-          services = Some(Services(storage, NativeSqlite.driver, () => AppleSecrets.open(bundleId), device = Some(AppleDevice())))
+          services = Some(
+            Services(storage, NativeSqlite.driver, () => AppleSecrets.open(bundleId), device = Some(AppleDevice()))
+          )
         )
       }
     }

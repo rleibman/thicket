@@ -43,14 +43,19 @@ object AppleLifecycle extends AppLifecycle {
 
   // A CFuncPtr cannot close over state, so the two callbacks reach these through the object.
   private val changed: DeviceShim.IntCb =
-    CFuncPtr2.fromScalaFunction((_: Long, onScreen: CInt) => GcState.guarded(current.set(toState(onScreen))))
+    CFuncPtr2.fromScalaFunction(
+      (
+        _:        Long,
+        onScreen: CInt
+      ) => GcState.guarded(current.set(toState(onScreen)))
+    )
 
   private val terminating: DeviceShim.VoidCb =
     CFuncPtr1.fromScalaFunction((_: Long) => GcState.guarded(hooks.run()))
 
   private def toState(onScreen: Int): AppState = if onScreen != 0 then AppState.Foreground else AppState.Background
 
-  private lazy val current: Var[AppState] = Var(toState(DeviceShim.thk_dev_lifecycle_start(changed, 0L)))
+  lazy private val current: Var[AppState] = Var(toState(DeviceShim.thk_dev_lifecycle_start(changed, 0L)))
 
   def state: Signal[AppState] = current
 
@@ -86,7 +91,10 @@ object ApplePermissions extends Permissions {
       )
   }
 
-  private def status(code: Int, p: Permission): PermissionStatus =
+  private def status(
+    code: Int,
+    p:    Permission
+  ): PermissionStatus =
     code match {
       case 0     => PermissionStatus.Granted
       case 2     => PermissionStatus.Restricted
@@ -107,16 +115,21 @@ object ApplePermissions extends Permissions {
     queue.request(p, onResult)
   }
 
-  private val queue: PermissionQueue = PermissionQueue(p => DeviceShim.thk_dev_permission_request(p.ordinal, answered, 0L))
+  private val queue: PermissionQueue =
+    PermissionQueue(p => DeviceShim.thk_dev_permission_request(p.ordinal, answered, 0L))
 
   private val answered: DeviceShim.IntCb =
-    CFuncPtr2.fromScalaFunction((_: Long, code: CInt) =>
-      GcState.guarded {
-        val p = queue.pending
-        queue.answer(
-          scala.util.Try(status(code, p.getOrElse(Permission.Notifications))).getOrElse(PermissionStatus.Denied)
-        )
-      }
+    CFuncPtr2.fromScalaFunction(
+      (
+        _:    Long,
+        code: CInt
+      ) =>
+        GcState.guarded {
+          val p = queue.pending
+          queue.answer(
+            scala.util.Try(status(code, p.getOrElse(Permission.Notifications))).getOrElse(PermissionStatus.Denied)
+          )
+        }
     )
 
 }
@@ -140,8 +153,8 @@ object AppleDevice {
 
     def terminate(): Unit = DeviceShim.thk_dev_test_terminate()
 
-    /** macOS: whether the screen is locked, which occludes every window: the app is in the background then, whatever
-      * it does. Always false on iOS.
+    /** macOS: whether the screen is locked, which occludes every window: the app is in the background then, whatever it
+      * does. Always false on iOS.
       */
     def screenLocked: Boolean = DeviceShim.thk_dev_test_screen_locked() != 0
 

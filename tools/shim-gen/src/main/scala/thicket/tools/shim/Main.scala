@@ -38,11 +38,11 @@ object Main {
 
   /** The generated files, as paths relative to the repository root. */
   val generated: List[(String, () => String)] = List(
-    "modules/renderer-apple/shim/include/thicket_apple.h"                     -> (() => Emit.cHeader()),
-    "modules/renderer-apple/src/main/scala/thicket/renderer/apple/Shim.scala" -> (() => Emit.scalaExterns()),
-    "modules/http-apple/shim/include/thicket_http.h"                          -> (() => Emit.httpHeader()),
-    "modules/http-apple/src/main/scala/thicket/http/apple/HttpShim.scala"     -> (() => Emit.httpScalaExterns()),
-    "modules/device-apple/shim/include/thicket_device.h"                      -> (() => Emit.deviceHeader()),
+    "modules/renderer-apple/shim/include/thicket_apple.h"                       -> (() => Emit.cHeader()),
+    "modules/renderer-apple/src/main/scala/thicket/renderer/apple/Shim.scala"   -> (() => Emit.scalaExterns()),
+    "modules/http-apple/shim/include/thicket_http.h"                            -> (() => Emit.httpHeader()),
+    "modules/http-apple/src/main/scala/thicket/http/apple/HttpShim.scala"       -> (() => Emit.httpScalaExterns()),
+    "modules/device-apple/shim/include/thicket_device.h"                        -> (() => Emit.deviceHeader()),
     "modules/device-apple/src/main/scala/thicket/device/apple/DeviceShim.scala" -> (() => Emit.deviceScalaExterns())
   )
 

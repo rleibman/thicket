@@ -61,8 +61,8 @@ most of them, which is why they come first.
 | **Preferences** (small key–value) | `Preferences`: get/set strings, numbers, booleans | `SharedPreferences` | ~~`UserDefaults`~~ a file under the data dir, as on GTK (built, #98; `docs/decisions.md` 2026-10-22) | ~~`UserDefaults`~~ the same | a file under the data dir (GSettings needs an installed schema) |
 | **Secure storage** (tokens) | `Secrets`: get/set/delete a string | Android Keystore-wrapped value | Keychain, the app's own (built, #108; the host needs keychain entitlements, on the simulator too) | Keychain (built, #108): the data-protection keychain when entitled, else the login keychain, whose items an unsigned build cannot read after a rebuild | libsecret (Secret Service), optional dependency |
 | **SQLite** | plain JDBC; `Sqlite.open(name): java.sql.Connection` | Thicket's JDBC driver over `android.database.sqlite` | `scala-native-jdbc-sqlite` | same | same |
-| **Lifecycle** | `AppLifecycle.state: Signal[Foreground \| Background]` and an `onTerminate` hook | **built**: `ThicketActivity`'s `onStart`/`onStop`, a rotation not counted; terminate when the last one finishes | scene notifications | `NSApplication` notifications | **built**: the window shown — mapped, not minimised or suspended — not ~~`is-active`~~, which is focus; `GApplication` shutdown |
-| **Permissions** | `Permissions.request(Permission.Location)` → `Granted \| Denied \| Restricted` | **built**: `requestPermissions` + manifest; an undeclared one throws | usage strings in `Info.plist` | entitlements (sandboxed apps) | **built**: always `Granted`; xdg-desktop-portal asks for location and camera when they are used |
+| **Lifecycle** | `AppLifecycle.state: Signal[Foreground \| Background]` and an `onTerminate` hook | **built**: `ThicketActivity`'s `onStart`/`onStop`, a rotation not counted; terminate when the last one finishes | **built** (#114): a scene's `willEnterForeground` to the last `didEnterBackground`; `willTerminateNotification`, which iOS rarely sends | **built** (#114): `NSApp.occlusionState` (hidden, minimised, covered, locked are background); `willTerminateNotification` | **built**: the window shown — mapped, not minimised or suspended — not ~~`is-active`~~, which is focus; `GApplication` shutdown |
+| **Permissions** | `Permissions.request(Permission.Location)` → `Granted \| Denied \| Restricted` | **built**: `requestPermissions` + manifest; an undeclared one throws | **built** (#114): `AVCaptureDevice`, `UNUserNotificationCenter`; a missing usage string throws; location with #118 | **built** (#114): the same; notifications need an app bundle | **built**: always `Granted`; xdg-desktop-portal asks for location and camera when they are used |
 | **Open URL, share, clipboard** | `Link` exists; add `Share.text/file`, `Clipboard.get/set` | `ACTION_SEND`, `ClipboardManager` | `UIActivityViewController`, `UIPasteboard` | `NSSharingServicePicker`, `NSPasteboard` | `GdkClipboard`; share is n/a |
 
 **Tier 2: the hardware.**
@@ -313,7 +313,7 @@ this means many modules. Names follow the published ones:
 
 | Service | API (cross: JVM, JS, Native) | Implementations |
 |---|---|---|
-| shared plumbing: `Availability`, `Permissions`, lifecycle, fakes | `thicket-device` (JVM, Native; `Availability` added with location) | `thicket-device-android`, `-gtk` (built); `-apple` (Mac issue) |
+| shared plumbing: `Availability`, `Permissions`, lifecycle, fakes | `thicket-device` (JVM, Native; `Availability` added with location) | `thicket-device-android`, `-gtk`, `-apple` (built) |
 | HTTP | none: sttp is the API | `thicket-http-apple` (#90), `thicket-http-android`, `thicket-http-gtk` |
 | storage: directories, preferences | `thicket-storage` | `-android`, `-apple`, `-gtk` |
 | secrets | `thicket-secrets` | `-android` (Keystore), `-apple` (Keychain), `-gtk` (libsecret) |
@@ -410,7 +410,7 @@ Every service gets a gallery section and self-test checks on every host where it
      each item. Conformance passes 11/11 on both, and the gallery's secret goes from stored
      to kept.
 3. **Lifecycle and permissions:** the host plumbing every later service sits on. *Done on GTK
-   and Android, 2026-10-28 (`modules/device/README.md`); Apple is a Mac issue.*
+   and Android, 2026-10-28 (`modules/device/README.md`); on Apple 2026-10-30 (#114).*
    - `ThicketActivity` and `GtkApp` tell listeners what they hear (start, stop, destruction
      and permission results; shown or hidden, and shutdown). `thicket-device-android` and
      `-gtk` turn that into `AppLifecycle` and `Permissions`, so an app forwards nothing.

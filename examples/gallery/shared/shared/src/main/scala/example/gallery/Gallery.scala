@@ -456,7 +456,7 @@ object Gallery {
             }
           ),
           // The app's lifecycle and a permission (docs/16 §16.10 item 3): the plumbing every later device service sits
-          // on. GTK and Android so far; Apple's is a Mac issue.
+          // on. Every host: GTK, Android, and Apple since #114.
           section("Device — the app's lifecycle, and asking for a permission")(
             device match {
               case None =>

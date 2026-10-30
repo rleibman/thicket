@@ -134,3 +134,21 @@ and calls `onResult` on the UI thread. Call both from the UI thread.
   - **GTK:** hiding and showing the window, and the terminate hook at shutdown.
   - **Android:** Home and back, both answers in the system's dialog (`build.sh` taps them),
     the undeclared `CAMERA`, and the terminate hook on Back.
+  - **iOS simulator** (12 checks, gallery 191 on "iPhone 17e"): Settings opened over the
+    gallery and the gallery launched again (`[gallery] DRIVE home` / `front`, acted on by
+    `examples/ios-host/run-ios-app.sh`); the notifications alert answered "Don't Allow" by an
+    XCUITest (`examples/ios-host/tapper`, ~8 s a tap; nothing else can tap a simulator, and
+    `simctl privacy` has no notifications service), then asked again and answered `Denied` at
+    once; the microphone granted by `simctl privacy` and answered `Granted`; the camera's
+    missing usage string; and the terminate hook, on a posted `willTerminateNotification`.
+  - **macOS** (gallery 191 with the screen locked; the unlocked run's hide and minimise checks
+    were not yet run on this Mac, which stayed locked): hiding and unhiding the app,
+    minimising and restoring its window, all through AppKit; notifications throwing outside an
+    app bundle; the camera's missing usage string; and the terminate hook from a real
+    `NSApp.terminate`, which prints the run's verdict, so a hook that does not run leaves no
+    verdict. A locked screen occludes every window, so there the lifecycle checks are skipped,
+    saying so, and the app checked to be in the background.
+  - **Controls** (each fix removed, then restored), iOS: no `didEnterBackground` observer, the
+    app is suspended unseen and the run ends with no verdict; no `willEnterForeground`, 2 fail;
+    answers not delivered, 3 fail; no will-terminate observer, 1 fails (5 s); no usage-string
+    check, 1 fails (`Success(Denied)`). macOS: no will-terminate observer, no verdict.

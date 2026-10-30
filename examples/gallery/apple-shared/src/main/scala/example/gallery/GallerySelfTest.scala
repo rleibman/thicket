@@ -99,8 +99,8 @@ object GallerySelfTest {
 
   /** The verdict comes from the terminate hook (#114): the last check is that the hook runs, so the run ends through
     * the platform's terminate path — `NSApp.terminate` on macOS, which ends the process, and the will-terminate
-    * notification on iOS. A hook that never runs leaves no verdict on macOS, which fails the run, and a FAIL after 5 s on
-    * iOS.
+    * notification on iOS. A hook that never runs leaves no verdict on macOS, which fails the run, and a FAIL after 5 s
+    * on iOS.
     */
   private def finish(): Unit =
     GalleryDeviceChecks.terminate(checker, () => verdict())
@@ -237,7 +237,11 @@ object GallerySelfTest {
     * the directories where Foundation says they are, SQLite through the Scala Native driver, and "Add a note" writing a
     * row on the worker thread.
     */
-  private val checker: (String, Boolean, String) => Unit = (n, ok, d) => check(n, ok, d)
+  private val checker: (String, Boolean, String) => Unit = (
+    n,
+    ok,
+    d
+  ) => check(n, ok, d)
 
   /** Lifecycle and permissions (#114), in [[GalleryDeviceChecks]]. */
   private def deviceChecks(next: () => Unit): Unit =

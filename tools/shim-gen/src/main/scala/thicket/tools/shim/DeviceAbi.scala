@@ -25,10 +25,10 @@ import thicket.tools.shim.Abi.CType.*
   * Its own surface, header, externs and Swift library, like [[HttpAbi]]: an app that does not depend on
   * `thicket-device-apple` links none of it, nor the UserNotifications and AVFoundation frameworks it names.
   *
-  * **Push, on the main thread only.** Unlike HTTP, this surface calls into Scala: the lifecycle observers are registered
-  * on the main queue, and every permission answer — which the platform delivers on a queue of its own — is moved to the
-  * main queue before the callback is called. The main thread is the only non-Scala thread allowed to enter Scala (S1),
-  * and the Scala side wraps each callback in `GcState.guarded`, since the run loop holds it Unmanaged (S3).
+  * **Push, on the main thread only.** Unlike HTTP, this surface calls into Scala: the lifecycle observers are
+  * registered on the main queue, and every permission answer — which the platform delivers on a queue of its own — is
+  * moved to the main queue before the callback is called. The main thread is the only non-Scala thread allowed to enter
+  * Scala (S1), and the Scala side wraps each callback in `GcState.guarded`, since the run loop holds it Unmanaged (S3).
   *
   * Permissions are numbered as `thicket.device.Permission`'s ordinals: 0 Location, 1 Camera, 2 Microphone, 3
   * Notifications. A status is 0 granted, 1 denied, 2 restricted, 3 not yet asked, -1 not supported by this build.

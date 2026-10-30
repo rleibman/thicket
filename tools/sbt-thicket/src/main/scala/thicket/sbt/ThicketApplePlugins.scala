@@ -150,8 +150,8 @@ object ThicketMacPlugin extends AutoPlugin {
     @transient
     lazy val thicketHttpApple = taskKey[Option[File]]("thicket-http-apple's Swift library, if the app depends on it")
 
-    /** `thicket-device-apple`'s Swift library, unpacked from its jar, or `None` when the app does not depend on it (#114).
-      * On iOS the host's link takes `ios-sim/libthicketdevice.a` from here.
+    /** `thicket-device-apple`'s Swift library, unpacked from its jar, or `None` when the app does not depend on it
+      * (#114). On iOS the host's link takes `ios-sim/libthicketdevice.a` from here.
       */
     @transient
     lazy val thicketDeviceApple =
@@ -160,8 +160,8 @@ object ThicketMacPlugin extends AutoPlugin {
     lazy val thicketMacSettings: Seq[Setting[?]] = Seq(
       thicketVersion := BuildInfo.version,
       libraryDependencies ++= ThicketAppleShim.dependencies(thicketVersion.value),
-      thicketAppleShim := ThicketAppleShim.unpackTask.value,
-      thicketHttpApple := ThicketHttpApple.unpackTask.value,
+      thicketAppleShim   := ThicketAppleShim.unpackTask.value,
+      thicketHttpApple   := ThicketHttpApple.unpackTask.value,
       thicketDeviceApple := ThicketDeviceApple.unpackTask.value,
       // Uncached: it depends on files unpacked into `target/`, and a NativeConfig has no JSON form for sbt 2's cache.
       nativeConfig := Def.uncached {
@@ -199,8 +199,8 @@ object ThicketIosPlugin extends AutoPlugin {
     lazy val thicketIosSettings: Seq[Setting[?]] = Seq(
       thicketVersion := BuildInfo.version,
       libraryDependencies ++= ThicketAppleShim.dependencies(thicketVersion.value),
-      ThicketMacPlugin.autoImport.thicketAppleShim := ThicketAppleShim.unpackTask.value,
-      ThicketMacPlugin.autoImport.thicketHttpApple := ThicketHttpApple.unpackTask.value,
+      ThicketMacPlugin.autoImport.thicketAppleShim   := ThicketAppleShim.unpackTask.value,
+      ThicketMacPlugin.autoImport.thicketHttpApple   := ThicketHttpApple.unpackTask.value,
       ThicketMacPlugin.autoImport.thicketDeviceApple := ThicketDeviceApple.unpackTask.value,
       nativeConfig ~= ThicketNativeFlags.ios()
     )
