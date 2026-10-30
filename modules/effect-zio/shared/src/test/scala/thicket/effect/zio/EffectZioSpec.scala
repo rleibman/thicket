@@ -234,11 +234,14 @@ object EffectZioSpec extends ZIOSpecDefault {
       val chk = Checks()
       val o = Owner(); given Owner = o
       var signal: thicket.signals.Signal[Int] = null
-      val seen = reported {
+      val seen = mutable.ArrayBuffer.empty[Throwable]
+      val previous = ErrorSink.installed
+      ErrorSink.install(e => seen += e)
+      // Polled, not a fixed sleep: under a loaded build the stream may not have run 50 ms in (#117).
+      try {
         signal = (ZStream(1, 2) ++ ZStream.fail("dropped")).asSignal(0)
-        Thread.sleep(50)
-        TestUiThread.drain()
-      }
+        val _ = scala.util.Try(eventually("the failure is reported")(seen.nonEmpty))
+      } finally ErrorSink.install(previous)
       chk.yes(seen.nonEmpty, "the failure is not silent")
       chk.eq(signal.now, 2)
       o.dispose()
