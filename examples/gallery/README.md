@@ -217,6 +217,11 @@ GTK the self-test turns the portal off (`GDK_DEBUG=no-portals`) so the file choo
 in-process, finds it among the app's windows, sets the file and accepts or cancels. Each pick
 must come back as a copy in the app's cache, byte for byte.
 
+The same section takes a photo. On Android `build.sh` presses the shutter and Done in the
+emulator's camera app (`DRIVE photo`); the photo must come back as a JPEG in the app's cache,
+and the MediaStore entry the camera wrote to must be gone. Backing out answers no photo. On GTK
+the section says the desktop has no camera screen.
+
 When the desktop is locked, GNOME suspends every window and the Device section's foreground
 check fails. A private headless shell avoids that:
 `dbus-run-session -- gnome-shell --headless --wayland --no-x11 --virtual-monitor 1024x768 --wayland-display thicket-headless &`,

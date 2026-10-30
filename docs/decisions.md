@@ -72,6 +72,25 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-30 — **Camera capture: `thicket-camera` and `-android`** (docs/16 §16.10 item 5).
+  - **API:** `Camera.capturePhoto(onResult: Option[Path] => Unit)` and `availability`. The photo
+    arrives as a JPEG copied into the app's cache, as a picked file does (`PickedFiles`, so
+    `thicket-camera` depends on `thicket-pickers`).
+  - **Android:** `ACTION_IMAGE_CAPTURE` writing to a MediaStore entry Thicket creates (§16.3:
+    `FileProvider` is AndroidX); after the answer the photo is copied and the entry deleted, so
+    the user's library keeps nothing the app did not keep. **Android 10+**: before that, a
+    MediaStore entry needs storage permission, so `Unavailable`. The entry must not be
+    `IS_PENDING` (measured: the camera app could not write to a pending entry and no photo
+    came back). An app that declares `CAMERA` must have it granted, or Android refuses the
+    camera screen: `NeedsPermission(Camera)`.
+  - **GTK:** `Camera.unavailable` (§16.3: the portal's camera is a stream, not a capture).
+  - **Measured.** `CameraSpec` 2/2, JVM and Native. GTK gallery 137 (136 + 1), todo 69, on the
+    desktop. Android gallery 85 (81 + 4) on `s2test`: `build.sh` presses the emulator camera's
+    shutter and Done; the JPEG comes back (`FF D8 FF`), the entry is gone, and backing out
+    answers no photo and leaves no entry.
+  - **Falsified.** With the entry not deleted, both "no entry left" checks fail, naming the
+    `thicket-<time>.jpg` entries left behind.
+
 - 2026-10-30 — **Pickers: `thicket-pickers`, `-gtk` and `-android`, built to the owner's
   decisions** (docs/16 §16.10 item 5).
   - **API:** `Photos.pick(limit)`, `Documents.open(mimeTypes, multiple)` and
