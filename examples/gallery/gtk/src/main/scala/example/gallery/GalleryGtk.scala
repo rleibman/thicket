@@ -16,6 +16,8 @@
 
 package example.gallery
 
+import thicket.device.AppState
+import thicket.device.gtk.{GtkDevice, GtkLifecycle}
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
 import thicket.secrets.gtk.GtkSecrets
@@ -511,8 +513,66 @@ object GalleryGtk {
       s"${GtkInspect.cssParseErrors} CSS parse errors"
     )
 
-    storageChecks(root)(presentedAndNav(root))
+    storageChecks(root)(deviceChecks(root)(presentedAndNav(root)))
   }
+
+  /** Lifecycle and permissions on GTK (docs/16 §16.10 item 3). The window is hidden and shown again through GTK, so the
+    * state comes from the real map and unmap; minimising needs a window manager, which Xvfb does not have. On GTK every
+    * permission is granted without asking, on the UI thread. The terminate hook is checked once the main loop has
+    * ended, in `main`.
+    */
+  private def deviceChecks(root: Ptr[GtkWidget])(next: => Unit): Unit =
+    Gallery.currentDevice match {
+      case None =>
+        check("the GTK host provides lifecycle and permissions", false, "Gallery.currentDevice is None")
+        next
+      case Some(demo) =>
+        import sn.gnome.gtk4.internal.{GtkWindow, gtk_widget_set_visible, gtk_window_present}
+        val window = GtkApp.windowHandle
+        def onScreen(t: String) = GtkInspect.allTexts(root).contains(t)
+        check(
+          "the app is in the foreground while its window is shown, and the section says so",
+          GtkApp.shown && GtkLifecycle.state.now == AppState.Foreground &&
+            onScreen(DeviceDemo.stateLabel(AppState.Foreground)) && onScreen(DeviceDemo.returnsLabel(0)),
+          s"shown ${GtkApp.shown}, ${GtkLifecycle.state.now}; " + GtkInspect
+            .allTexts(root).filter(_.startsWith("The app"))
+        )
+        gtk_widget_set_visible(window, 0.asInstanceOf[sn.gnome.glib.internal.gboolean])
+        when(100)(GtkLifecycle.state.now == AppState.Background) {
+          check(
+            "hiding the window puts the app in the background",
+            !GtkApp.shown && GtkLifecycle.state.now == AppState.Background &&
+              onScreen(DeviceDemo.stateLabel(AppState.Background)),
+            s"shown ${GtkApp.shown}, ${GtkLifecycle.state.now}"
+          )
+          gtk_window_present(window.asInstanceOf[Ptr[GtkWindow]])
+          when(250)(GtkLifecycle.state.now == AppState.Foreground) {
+            check(
+              "showing it again brings the app to the foreground, once",
+              GtkApp.shown && onScreen(DeviceDemo.stateLabel(AppState.Foreground)) &&
+                onScreen(DeviceDemo.returnsLabel(1)),
+              s"shown ${GtkApp.shown}, ${GtkLifecycle.state.now}, returns ${demo.returns.now}"
+            )
+            terminateHook = Some(GtkLifecycle.onTerminate(() => terminated = true))
+            GtkInspect
+              .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Ask for notifications"))
+              .headOption.foreach(GtkInspect.click)
+            val synchronous = demo.notifications.now
+            when(50)(demo.notifications.now != DeviceDemo.asking) {
+              check(
+                "asking for a permission answers Granted, on a later turn of the main loop",
+                synchronous == DeviceDemo.asking && onScreen("Notifications: Granted"),
+                s"right after the click: $synchronous; now ${demo.notifications.now}"
+              )
+              next
+            }
+          }
+        }
+    }
+
+  /** Set by the terminate hook the device checks register; read in `main` after the main loop ends. */
+  private var terminated = false
+  private var terminateHook: Option[thicket.signals.Disposable] = None
 
   /** Device services on GTK (docs/16): preferences in the XDG data directory, SQLite through the Scala Native driver,
     * and the "Add a note" button really writing a row. The database works on a worker, so the check waits for the count
@@ -607,12 +667,16 @@ object GalleryGtk {
     }
   }
 
+  /** Ends the main loop. The verdict is `main`'s, after it: the terminate hook runs as the application shuts down. */
+  private def finish(): Unit = GtkApp.quit(failures min 120)
+
   /** The verdict, and the exit status: 0, or the failure count (capped below 124, which `timeout` uses). */
-  private def finish(): Unit = {
+  private def verdict(): Int = {
+    check("the terminate hook ran when the application shut down", terminateHook.isDefined && terminated)
     if failures == 0 then println(s"[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
     Console.out.flush()
-    GtkApp.quit(failures min 120)
+    failures min 120
   }
 
   /** Runs `next` once `cond` holds, letting the main loop run — layout, GtkListView binding the rows it shows, a page's
@@ -864,10 +928,17 @@ object GalleryGtk {
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => afterEffect(200)(selfTest()))
       Gallery.app(
         Gallery.logoSvg,
-        services = Some(Services(storage, NativeSqlite.driver, () => GtkSecrets.open("dev.thicket.gallery")))
+        services = Some(
+          Services(
+            storage,
+            NativeSqlite.driver,
+            () => GtkSecrets.open("dev.thicket.gallery"),
+            device = Some(GtkDevice())
+          )
+        )
       )
     }
-    sys.exit(status)
+    sys.exit(if sys.env.contains("THICKET_GALLERY_SELFTEST") then verdict() else status)
   }
 
 }

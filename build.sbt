@@ -587,6 +587,32 @@ lazy val secretsAndroid = project
   .dependsOn(secrets.jvm, rendererAndroid)
   .settings(commonSettings, name := "thicket-secrets-android", scalacOptions ++= Seq("-release", "17"))
 
+/** The app's lifecycle and permissions (`docs/16` §16.3, §16.10 item 3): the API every later device service sits on,
+  * and fakes for tests. Depends on `signals` alone: the lifecycle is a `Signal`.
+  */
+lazy val device = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/device"))
+  .dependsOn(signals)
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-device")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** Lifecycle and permissions on GTK, from `GtkApp`'s window and application. In `platforms`, with the renderer. */
+lazy val deviceGtk = project
+  .in(file("modules/device-gtk"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(device.native, rendererGtk)
+  .settings(commonSettings, name := "thicket-device-gtk")
+
+/** Lifecycle and permissions on Android, from `ThicketActivity`'s callbacks and the system's permission dialog. */
+lazy val deviceAndroid = project
+  .in(file("modules/device-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(device.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-device-android", scalacOptions ++= Seq("-release", "17"))
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot put a `File` on a classpath —
@@ -694,7 +720,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   // storage and sqlite: the device services' section; each host supplies its platform's implementation.
-  .dependsOn(core, effectZio, storage, sqlite, secrets)
+  .dependsOn(core, effectZio, storage, sqlite, secrets, device)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
@@ -708,7 +734,7 @@ lazy val galleryGtk = project
   .in(file("examples/gallery/gtk"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.gtk.buildinfo"))
-  .dependsOn(rendererGtk, galleryShared.native, storageGtk, secretsGtk)
+  .dependsOn(rendererGtk, galleryShared.native, storageGtk, secretsGtk, deviceGtk)
   .settings(commonSettings)
   .settings(gtkNativeSettings)
   .settings(
@@ -722,8 +748,17 @@ lazy val galleryGtk = project
   */
 lazy val galleryAndroid = project
   .in(file("examples/gallery/android/scala"))
-  // httpChecks: the gallery's self-test runs the HTTP checks over HttpURLConnectionBackend.
-  .dependsOn(rendererAndroid, galleryShared.jvm, storageAndroid, sqliteAndroid, secretsAndroid, httpChecks.jvm, httpAndroid)
+  // httpChecks: the gallery's self-test runs the HTTP checks over AndroidHttpBackend.
+  .dependsOn(
+    rendererAndroid,
+    galleryShared.jvm,
+    storageAndroid,
+    sqliteAndroid,
+    secretsAndroid,
+    deviceAndroid,
+    httpChecks.jvm,
+    httpAndroid
+  )
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.android.buildinfo"))
   .settings(commonSettings)
@@ -923,6 +958,8 @@ lazy val platforms = project
     sqliteAndroid,
     secretsAndroid,
     secretsApple,
+    deviceGtk,
+    deviceAndroid,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,
@@ -968,6 +1005,8 @@ lazy val root = project
     secrets.jvm,
     secrets.native,
     secretsGtk,
+    device.jvm,
+    device.native,
     httpGtk,
     httpAndroid,
     shimGen,

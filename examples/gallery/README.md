@@ -175,3 +175,15 @@ self-test also holds the storage directories to what Foundation reports. On Andr
 self-test also runs `examples/http`'s HTTP checks over `thicket-http-android`, after the
 others: `build.sh` starts `examples/http/server.py` on this machine and `adb reverse`s its
 port, and the app's network security config allows cleartext to loopback only.
+
+The Device section (GTK and Android) shows the app's lifecycle, the number of times it came
+back to the front, and the notifications permission, with a button to ask for it. On GTK the
+self-test hides and shows the window, and checks the terminate hook once the main loop has
+ended. On Android it can't press Home or answer the system's dialog itself, so it asks
+`build.sh` to, with `[gallery] DRIVE <action>` lines in the log:
+- `home`: press Home;
+- `front`: bring the same Activity back;
+- `deny` and `allow`: tap the dialog's buttons, found with `uiautomator`.
+
+`build.sh` revokes `POST_NOTIFICATIONS` before the run, so the dialog appears each time.
+After the verdict it presses Back and looks for the terminate hook's line.

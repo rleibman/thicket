@@ -24,7 +24,7 @@ import _root_.android.widget.FrameLayout
 import _root_.android.window.{OnBackInvokedCallback, OnBackInvokedDispatcher}
 import scala.annotation.nowarn
 import thicket.core.{Action, AppRoot, Host, Mounted, Reconciler, Theme}
-import thicket.signals.{Owner, Signal, Tracking}
+import thicket.signals.{Disposable, Owner, Signal, Tracking}
 
 /** The Android host: an `Activity` that mounts an [[AppRoot]] and applies its chrome the platform's way.
   *
@@ -39,6 +39,8 @@ import thicket.signals.{Owner, Signal, Tracking}
   *     on rotation, say — every page's effects stop with it (P2-19).
   *   - **Chrome.** Title, Up and the options menu follow the top screen; Back and Up pop, and Back at the root finishes
   *     the Activity.
+  *   - **Device services.** Start, stop, destruction and permission results go to every [[ThicketActivity.Listener]],
+  *     which is how `thicket-device-android` hears them without the app forwarding anything (`docs/16` §16.7).
   */
 abstract class ThicketActivity extends Activity {
 
@@ -73,6 +75,7 @@ abstract class ThicketActivity extends Activity {
 
   override def onCreate(saved: Bundle): Unit = {
     super.onCreate(saved)
+    ThicketActivity.live += this
     val main = Handler(Looper.getMainLooper)
     Host.install(f => { val _ = main.post(() => f()) })
     Theme.install(theme)
@@ -182,9 +185,80 @@ abstract class ThicketActivity extends Activity {
   override def onBackPressed(): Unit =
     if !root.back() then super.onBackPressed()
 
+  override def onStart(): Unit = {
+    super.onStart()
+    ThicketActivity.startedOnes += this
+    ThicketActivity.tell(_.started(this))
+  }
+
+  override def onStop(): Unit = {
+    ThicketActivity.startedOnes -= this
+    ThicketActivity.tell(_.stopped(this))
+    super.onStop()
+  }
+
+  override def onRequestPermissionsResult(
+    requestCode: Int,
+    permissions: Array[String],
+    results:     Array[Int]
+  ): Unit =
+    if !ThicketActivity.listeners.exists(_.permissionsResult(this, requestCode, permissions, results)) then
+      super.onRequestPermissionsResult(requestCode, permissions, results)
+
   override def onDestroy(): Unit = {
     rootOwner.dispose()
+    ThicketActivity.live -= this
+    ThicketActivity.tell(_.destroyed(this))
     super.onDestroy()
   }
+
+}
+
+object ThicketActivity {
+
+  /** What a device service hears from every [[ThicketActivity]], on the main thread. Each method has a default that
+    * does nothing.
+    */
+  trait Listener {
+
+    /** `onStart`: the Activity is on screen. */
+    def started(activity: ThicketActivity): Unit = ()
+
+    /** `onStop`: the Activity is off screen. `activity.isChangingConfigurations` says whether it is only being
+      * recreated, as on a rotation.
+      */
+    def stopped(activity: ThicketActivity): Unit = ()
+
+    /** `onDestroy`, after the Activity's owner is disposed. `isFinishing` says whether it is closing for good. */
+    def destroyed(activity: ThicketActivity): Unit = ()
+
+    /** `onRequestPermissionsResult`. True if the request was this listener's. */
+    def permissionsResult(
+      activity:    ThicketActivity,
+      requestCode: Int,
+      permissions: Array[String],
+      results:     Array[Int]
+    ): Boolean = false
+
+  }
+
+  // Main thread only, as are the Activity callbacks that read and write them.
+  private val listeners = scala.collection.mutable.ArrayBuffer.empty[Listener]
+  private val live = scala.collection.mutable.LinkedHashSet.empty[ThicketActivity]
+  private val startedOnes = scala.collection.mutable.LinkedHashSet.empty[ThicketActivity]
+
+  /** Adds `l`, from the main thread; disposing the result removes it. */
+  def listen(l: Listener): Disposable = {
+    listeners += l
+    () => { val _ = listeners -= l }
+  }
+
+  /** The most recently created Activity not yet destroyed: the one a permission dialog is asked from. */
+  def current: Option[ThicketActivity] = live.lastOption
+
+  /** Whether any Activity is between `onStart` and `onStop`. */
+  def anyStarted: Boolean = startedOnes.nonEmpty
+
+  private def tell(f: Listener => Unit): Unit = listeners.toList.foreach(f)
 
 }
