@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- The HTTP checks in the self-test (sttp's HttpURLConnectionBackend). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The Device section asks for it: a runtime permission on Android 13+ that needs no hardware. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application android:label="Thicket gallery" android:allowBackup="false"
                  android:networkSecurityConfig="@xml/network_security_config"
                  android:enableOnBackInvokedCallback="true">

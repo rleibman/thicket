@@ -17,7 +17,8 @@ echo "== sbt: building the Scala JARs =="
 (cd "$root" && sbt --error \
   "signalsJVM/package" "rendererApiJVM/package" "coreJVM/package" "effectZioJVM/package" \
   "storageJVM/package" "sqliteJVM/package" "storageAndroid/package" "sqliteAndroid/package" \
-  "secretsJVM/package" "secretsAndroid/package" "httpChecksJVM/package" "httpAndroid/package" \
+  "secretsJVM/package" "secretsAndroid/package" "deviceJVM/package" "deviceAndroid/package" \
+  "httpChecksJVM/package" "httpAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
 # The version and the Scala version, asked rather than assumed: both are in the jar paths.
@@ -31,7 +32,8 @@ mkdir -p "$here/app/libs"
 rm -f "$here"/app/libs/*.jar
 for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-zio \
               thicket-storage thicket-sqlite thicket-storage-android thicket-sqlite-android \
-              thicket-secrets thicket-secrets-android http-checks thicket-http-android \
+              thicket-secrets thicket-secrets-android thicket-device thicket-device-android \
+              http-checks thicket-http-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
   src=$(readlink -f "$root/target/out/jvm/scala-$sv/$module/${module}_3-$ver.jar")
@@ -56,6 +58,14 @@ if ! adb get-state >/dev/null 2>&1; then
 fi
 adb install -r -g "$apk" >/dev/null
 adb shell am force-stop dev.thicket.gallery
+pkg=dev.thicket.gallery
+activity=$pkg/example.gallery.android.GalleryActivity
+if [ -n "${SELFTEST:-}" ]; then
+  # `install -g` granted every permission; the self-test asks for this one through the system's dialog, so it starts
+  # revoked and with no "don't ask again" left from an earlier run.
+  adb shell pm revoke $pkg android.permission.POST_NOTIFICATIONS
+  adb shell pm clear-permission-flags $pkg android.permission.POST_NOTIFICATIONS user-set user-fixed
+fi
 adb logcat -c
 # The self-test's HTTP checks talk to examples/http/server.py on this machine's loopback, which `adb reverse` makes
 # the emulator's 127.0.0.1 too. Nothing leaves the machine.
@@ -71,16 +81,68 @@ if [ -n "${SELFTEST:-}" ]; then
   adb reverse "tcp:$port" "tcp:$port" >/dev/null
   httparg=(--ei httptest "$port")
 fi
-adb shell am start -W -n dev.thicket.gallery/example.gallery.android.GalleryActivity \
-  ${SELFTEST:+--ez selftest true} "${httparg[@]}" >/dev/null
+# A fresh task: a permission dialog left in the old one by an aborted run would otherwise come back to the front and
+# swallow this launch, so the self-test never starts.
+adb shell am start -W --activity-clear-task -n $activity ${SELFTEST:+--ez selftest true} "${httparg[@]}" >/dev/null
 echo "== installed and launched =="
 [ -n "${SELFTEST:-}" ] || exit 0
 
-# Wait for the verdict rather than a fixed sleep: the checks are spread over main-loop turns.
-for _ in $(seq 1 60); do
-  if adb logcat -d -s thicket 2>/dev/null | grep -qE '\[gallery\] (ALL CHECKS PASSED|[0-9]+ CHECK)'; then break; fi
+# Taps a button of the system's permission dialog, found by its id in a uiautomator dump, as a user would. The dialog
+# may not be up yet at the first dump, so finding nothing is not an error here (set -e would make it one).
+tap_dialog() { # resource id
+  local id=$1 b
+  for _ in $(seq 1 30); do
+    adb shell rm -f /sdcard/thicket-ui.xml
+    adb shell uiautomator dump /sdcard/thicket-ui.xml >/dev/null 2>&1 || true
+    b=$(adb shell cat /sdcard/thicket-ui.xml 2>/dev/null | tr '>' '\n' \
+      | grep "resource-id=\"com.android.permissioncontroller:id/$id\"" \
+      | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p' | head -1 || true)
+    if [ -n "$b" ]; then
+      read -r x1 y1 x2 y2 <<<"$b"
+      adb shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
+      echo "   (build.sh) tapped $id"
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "   (build.sh) no $id on screen"
+}
+
+# What the self-test asks for with "[gallery] DRIVE <action>": what only the system or the user can do.
+drive() {
+  case $1 in
+    home) adb shell input keyevent KEYCODE_HOME ;;
+    front) adb shell am start -n $activity --activity-reorder-to-front >/dev/null ;;
+    deny) tap_dialog permission_deny_button ;;
+    allow) tap_dialog permission_allow_button ;;
+    *) echo "   (build.sh) unknown action $1" ;;
+  esac
+}
+
+# Wait for the verdict rather than a fixed sleep: the checks are spread over main-loop turns. Meanwhile, act on each
+# DRIVE line once, in order.
+done_drives=0
+for _ in $(seq 1 120); do
+  current=$(adb logcat -d -s thicket 2>/dev/null | tr -d '\r')
+  mapfile -t drives < <(sed -n 's/.*\[gallery\] DRIVE //p' <<<"$current")
+  while [ "$done_drives" -lt "${#drives[@]}" ]; do
+    echo "   (build.sh) ${drives[$done_drives]}"
+    drive "${drives[$done_drives]}"
+    done_drives=$((done_drives + 1))
+  done
+  if grep -qE '\[gallery\] (ALL CHECKS PASSED|[0-9]+ CHECK)' <<<"$current"; then break; fi
   sleep 1
+done
+
+# Back at the root finishes the Activity: the app's terminate hook runs, and says so.
+adb shell input keyevent KEYCODE_BACK
+for _ in $(seq 1 10); do
+  adb logcat -d -s thicket 2>/dev/null | grep -q '\[gallery\] TERMINATED' && break
+  sleep 0.5
 done
 log=$(adb logcat -d -s thicket 2>/dev/null | tr -d '\r' | sed -n 's/.*\[gallery\]/[gallery]/p')
 echo "$log"
-grep -q '\[gallery\] ALL CHECKS PASSED' <<<"$log"
+verdict=0
+grep -q '\[gallery\] ALL CHECKS PASSED' <<<"$log" || verdict=1
+grep -q '\[gallery\] TERMINATED' <<<"$log" || { echo "FAIL: Back did not run the terminate hook"; verdict=1; }
+exit $verdict

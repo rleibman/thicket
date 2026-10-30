@@ -72,6 +72,59 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-28 — **Lifecycle and permissions: `thicket-device`, `-gtk` and `-android`; on GTK
+  the foreground is the window on screen, not its focus** (docs/16 §16.10 item 3).
+  - **API** (JVM, Native; depends on `signals` only):
+    - `AppLifecycle.state: Signal[AppState]` (Foreground, Background) and `onTerminate`;
+    - `Permissions.status` and `request(p)(onResult)`, answering `Granted`, `Denied` or
+      `Restricted`, for `Location`, `Camera`, `Microphone` and `Notifications`;
+    - `Device`, and the fakes.
+    - `Availability` waits for the first service that reports it.
+  - **The hosts tell, the device modules listen.** `ThicketActivity` gains `onStart`,
+    `onStop` and `onRequestPermissionsResult`, plus a process-wide `Listener` list and
+    `current`. `GtkApp` gains `shown`, `onShownChange` and `onShutdown`. An app forwards
+    nothing.
+  - **Android:**
+    - Foreground runs from any Activity's `onStart` to the last `onStop`. A stop with
+      `isChangingConfigurations` (a rotation) does not count, and terminate is the last
+      Activity finishing.
+    - Permissions go through a queue, one dialog at a time.
+    - A permission not in the manifest throws `IllegalStateException` naming it. Android would
+      refuse it at once, with no dialog, which reads like a user's "no".
+  - **GTK:**
+    - Foreground means the window is mapped, and its surface is neither minimised nor
+      suspended (GTK 4.12+). This replaces the proposal's `is-active`, which is focus: an
+      unfocused window is still on screen. On GNOME 50 (Wayland), minimising reached
+      Background after **3.3 s**: mutter reports suspended, since Wayland never tells a client
+      it is minimised. A Wayland client cannot un-minimise itself, so the way back from a
+      minimise was not measured; under Xvfb only hide and show change it.
+    - Every permission is `Granted`: a sandboxed app's portal asks when the device is used.
+  - **Measured:**
+    - `deviceJVM`/`deviceNative` 7 tests each.
+    - GTK gallery **126** (121 + 5), on this box's GNOME session under `bin/with-keyring.sh`.
+    - Android gallery **56** (47 + 9) on `s2test`, todo 84, and the terminate hook on Back.
+    - The Android checks drive the system: `build.sh` acts on `[gallery] DRIVE` lines. It
+      presses Home, brings the same Activity back with `--activity-reorder-to-front`, and taps
+      "Don't allow", then "Allow", found by resource id in a `uiautomator` dump.
+  - **Controls**, each reverted:
+    - GTK, no `unmap` handler: hiding and the return both fail.
+    - GTK, no `shutdown` handler: the terminate check fails.
+    - The queue asking without waiting: its unit test fails.
+    - Android, `onStop` ignored: Background and the return fail. The request then raced the
+      `am start` and Android blocked the dialog as a background launch, so both permission
+      checks failed too.
+    - Android, no manifest check: `Success(Denied)`.
+    - Android, no terminate hooks: `build.sh` fails.
+    - Android, results not delivered: both permission checks fail, and the second dialog never
+      appears, queued behind the first.
+  - **Found on the way:** two `build.sh` faults.
+    - Under `set -e`, a dump taken before the dialog was up ended the script silently.
+    - A permission dialog left in the gallery's task by an aborted run swallowed the next
+      launch once (`am start` result code 3; the self-test never ran). The launch now uses
+      `--activity-clear-task`, so each run starts in a fresh task. That failure did not
+      recur when re-created deliberately (a run killed with the dialog up, then a launch
+      without the flag passed), so the flag is a precaution, not a measured fix.
+
 - 2026-10-28 — **The moved HTTP self-test passes on the Mac, and Apple CI runs it** (#112, on
   #111). `examples/http/selftest.sh macos` and `ios "iPhone 17e"`: **14/14 each** (12 shared
   with Linux and Android, 2 Apple-only), with no change to `URLSessionBackend`. The new

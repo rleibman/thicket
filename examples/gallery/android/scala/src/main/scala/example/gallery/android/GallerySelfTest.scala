@@ -20,16 +20,19 @@ import _root_.android.os.{Handler, Looper, SystemClock}
 import _root_.android.util.Log
 import _root_.android.view.{View, ViewGroup}
 import _root_.android.widget.{Button, EditText, ImageView, Spinner, TextView}
-import example.gallery.{Gallery, StorageDemo}
+import example.gallery.{DeviceDemo, Gallery, StorageDemo}
 import example.http.HttpChecks
 import scala.collection.mutable
 import sttp.client4.*
 import thicket.http.android.AndroidHttpBackend
 import thicket.core.Reconciler
 import thicket.core.dsl.*
+import thicket.device.{AppState, Permission}
+import thicket.device.android.{AndroidLifecycle, AndroidPermissions}
+import thicket.renderer.android.ThicketActivity
 import thicket.secrets.android.AndroidSecrets
 import thicket.secrets.testing.SecretsConformance
-import thicket.signals.{ErrorSink, Owner}
+import thicket.signals.{ErrorSink, Owner, Signal}
 import thicket.sqlite.Sqlite
 import thicket.sqlite.android.AndroidSqlite
 import thicket.sqlite.testing.JdbcConformance
@@ -87,6 +90,11 @@ object GallerySelfTest {
     def apply(): Unit = ()
 
   }
+
+  /** Asks `build.sh` to do what only the system or the user can — press Home, bring the app back, answer the permission
+    * dialog — by a line in the log it is reading.
+    */
+  private def drive(action: String): Unit = Log.i(Tag, s"[gallery] DRIVE $action")
 
   /** Runs the steps in order, one main-loop turn apart. */
   private def sequence(steps: List[() => Unit]): Unit =
@@ -418,15 +426,108 @@ object GallerySelfTest {
             activity.renderer0.tableEntries == entriesBefore,
             s"$entriesBefore before the push, ${activity.renderer0.tableEntries} after the pop"
           )
-          if httpPort > 0 then {
-            httpWorker.start()
-            awaitHttp(SystemClock.uptimeMillis() + 30000)
-          } else {
-            check("http: build.sh passed the test server's port (--ei httptest)", false)
-            finish()
-          }
         }
-      )
+      ) ++ deviceSteps(activity, () => texts, click) ++ List(() => {
+        if httpPort > 0 then {
+          httpWorker.start()
+          awaitHttp(SystemClock.uptimeMillis() + 30000)
+        } else {
+          check("http: build.sh passed the test server's port (--ei httptest)", false)
+          finish()
+        }
+      })
+    )
+  }
+
+  /** Lifecycle and permissions (docs/16 §16.10 item 3), with `build.sh` as the user: Home sends the app to the
+    * background and an `am start` brings the same Activity back; the system's permission dialog is answered "Don't
+    * allow", then "Allow". `build.sh` revokes the permission before the run, so the dialog is shown each time, and
+    * after the verdict it presses Back and looks for the terminate hook's line.
+    */
+  private def deviceSteps(
+    activity: GalleryActivity,
+    texts:    () => List[String],
+    click:    String => Unit
+  ): List[() => Unit] = {
+    val notifications = "android.permission.POST_NOTIFICATIONS"
+    def granted = activity.checkSelfPermission(notifications) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    def demo = Gallery.currentDevice
+    def answer = demo.map(_.notifications.now).getOrElse("")
+    var askedAt = ""
+    var sawBackground = false
+    val watch = Owner()
+    List(
+      () => {
+        check("the Android host provides lifecycle and permissions", demo.isDefined)
+        check(
+          "the app is in the foreground, and the section says so",
+          AndroidLifecycle.state.now == AppState.Foreground &&
+            texts().contains(DeviceDemo.stateLabel(AppState.Foreground)) &&
+            texts().contains(DeviceDemo.returnsLabel(0)),
+          s"${AndroidLifecycle.state.now}; " + texts().filter(t => t.startsWith("The app") || t.startsWith("Back"))
+        )
+        check(
+          "notifications start Denied: build.sh revoked them",
+          !granted && answer == "Notifications: Denied",
+          s"granted $granted; $answer"
+        )
+        val undeclared = scala.util.Try(AndroidPermissions(activity).status(Permission.Camera))
+        check(
+          "a permission the manifest does not declare throws, naming it, instead of answering Denied",
+          undeclared.failed.toOption.exists(e =>
+            e.isInstanceOf[IllegalStateException] && e.getMessage.contains("android.permission.CAMERA")
+          ),
+          undeclared.toString
+        )
+        val _ = AndroidLifecycle.onTerminate(() => Log.i(Tag, "[gallery] TERMINATED: the terminate hook ran"))
+        drive("home")
+      },
+      Await(10000, () => AndroidLifecycle.state.now == AppState.Background),
+      () => {
+        check(
+          "Home puts the app in the background, the Activity stopped but not destroyed",
+          AndroidLifecycle.state.now == AppState.Background && !activity.isDestroyed &&
+            texts().contains(DeviceDemo.stateLabel(AppState.Background)),
+          s"${AndroidLifecycle.state.now}, destroyed ${activity.isDestroyed}"
+        )
+        drive("front")
+      },
+      Await(10000, () => AndroidLifecycle.state.now == AppState.Foreground),
+      () => {
+        check(
+          "bringing it back puts the same Activity in the foreground, counted once",
+          AndroidLifecycle.state.now == AppState.Foreground && ThicketActivity.current.contains(activity) &&
+            texts().contains(DeviceDemo.returnsLabel(1)),
+          s"${AndroidLifecycle.state.now}, same Activity ${ThicketActivity.current.contains(activity)}; " +
+            texts().filter(_.startsWith("Back"))
+        )
+        // A dialog over the app pauses the Activity but does not stop it: the app stays in the foreground.
+        Signal.effect { if AndroidLifecycle.state() == AppState.Background then sawBackground = true }(using watch)
+        click("Ask for notifications")
+        askedAt = answer
+        drive("deny")
+      },
+      Await(15000, () => answer != DeviceDemo.asking),
+      () => {
+        check(
+          "\"Don't allow\" in the system's dialog answers Denied, on screen",
+          askedAt == DeviceDemo.asking && answer == "Notifications: Denied" &&
+            texts().contains("Notifications: Denied") && !granted,
+          s"while asking: $askedAt; then: $answer; granted $granted"
+        )
+        click("Ask for notifications")
+        drive("allow")
+      },
+      Await(15000, () => answer != DeviceDemo.asking),
+      () => {
+        check(
+          "asking again shows the dialog again, and \"Allow\" answers Granted",
+          answer == "Notifications: Granted" && texts().contains("Notifications: Granted") && granted,
+          s"$answer; granted $granted"
+        )
+        check("the app stayed in the foreground under the dialogs", !sawBackground)
+        watch.dispose()
+      }
     )
   }
 

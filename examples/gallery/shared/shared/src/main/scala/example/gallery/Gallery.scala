@@ -172,7 +172,8 @@ object Gallery {
     loaded:   Signal[RemoteData[Nothing, String]],
     logoFile: String,
     logo:     Array[Byte],
-    storage:  Option[StorageDemo] = None
+    storage:  Option[StorageDemo] = None,
+    device:   Option[DeviceDemo] = None
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -452,6 +453,21 @@ object Gallery {
                 )
             }
           ),
+          // The app's lifecycle and a permission (docs/16 §16.10 item 3): the plumbing every later device service sits
+          // on. GTK and Android so far; Apple's is a Mac issue.
+          section("Device — the app's lifecycle, and asking for a permission")(
+            device match {
+              case None =>
+                Label("No lifecycle or permissions on this platform yet", emphasis = Emphasis.Secondary)
+              case Some(demo) =>
+                Column(spacing = 8)(
+                  Label(demo.state),
+                  Label(demo.returns.map(DeviceDemo.returnsLabel)),
+                  Label(demo.notifications),
+                  Button("Ask for notifications")(demo.askForNotifications())
+                )
+            }
+          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -516,6 +532,9 @@ object Gallery {
   /** The running app's storage demo, for a host's self-test. Set by [[app]] when the host provides services. */
   var currentStorage: Option[StorageDemo] = None
 
+  /** The running app's device demo, for a host's self-test. Set by [[app]] when the host provides a `Device`. */
+  var currentDevice: Option[DeviceDemo] = None
+
   /** The whole app, for a host to mount. Hosts differ only in how they start, in which logo file their platform can
     * draw, and in the device services they have.
     */
@@ -530,13 +549,15 @@ object Gallery {
     val model = Model()
     val storage = services.map(StorageDemo(_))
     currentStorage = storage
+    val device = services.flatMap(_.device).map(DeviceDemo(_))
+    currentDevice = device
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logoFile, bytes, storage)
+        val s = screen(model, loaded, logoFile, bytes, storage, device)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

@@ -19,7 +19,7 @@ package thicket.renderer.gtk
 import scala.scalanative.unsafe.*
 import scala.scalanative.unsigned.*
 import thicket.core.{AppRoot, GcState, Host, Reconciler}
-import thicket.signals.{Owner, Signal, Tracking}
+import thicket.signals.{Disposable, Owner, Signal, Tracking}
 import sn.gnome.gtk4.internal.*
 import sn.gnome.gobject.internal.*
 import sn.gnome.gio.internal.*
@@ -193,6 +193,9 @@ object GtkApp {
           val w = window.asInstanceOf[Ptr[GtkWindow]]
           mainWindow = w
           gtk_window_set_default_size(w, windowSize._1, windowSize._2)
+          // Shown or not, for the app's lifecycle: mapped, and on map the surface's minimised and suspended states.
+          Handles.connect(window, "map", Handles.clickedPtr, Handles.register(() => { watchSurface(); updateShown() }))
+          Handles.connect(window, "unmap", Handles.clickedPtr, Handles.register(() => updateShown()))
           val header = gtk_header_bar_new()
           headerBar = header
           gtk_window_set_titlebar(w, header)
@@ -470,6 +473,7 @@ object GtkApp {
     )
     application = app
     Handles.connect(app, "activate", CFuncPtr.toPtr(onActivate), 0L)
+    Handles.connect(app, "shutdown", Handles.clickedPtr, Handles.register(() => runAll(shutdownHooks)))
 
     // From here the GTK main loop owns this thread, so Scala must not look Managed to the
     // GC while it is parked in poll() (S3).
@@ -480,6 +484,76 @@ object GtkApp {
   }
 
   private var application: Ptr[GtkApplication] = null
+
+  // -- shown or not, and shutdown: what thicket-device-gtk turns into the app's lifecycle (docs/16 §16.3) --------
+
+  private var isShown = false
+  private var watchedSurface: Ptr[sn.gnome.gdk4.internal.GdkSurface] = null
+  private val shownListeners = scala.collection.mutable.LinkedHashMap.empty[Long, Boolean => Unit]
+  private val shutdownHooks = scala.collection.mutable.LinkedHashMap.empty[Long, () => Unit]
+  private var nextListener = 0L
+
+  /** Whether the window is on screen: mapped, and its surface neither minimised nor suspended. Suspended is GTK 4.12+'s
+    * "not visible to the user", which a compositor reports for a window on another workspace or fully covered; without
+    * a window manager (Xvfb) only hiding and showing change it.
+    */
+  def shown: Boolean = isShown
+
+  /** Calls `f` on the UI thread each time [[shown]] changes, with its new value. Disposing the result removes `f`. */
+  def onShownChange(f: Boolean => Unit): Disposable = keep(shownListeners, f)
+
+  /** Calls `f` on the UI thread when the application shuts down: its window closed, or [[quit]]. */
+  def onShutdown(f: () => Unit): Disposable = keep(shutdownHooks, f)
+
+  private def keep[F](
+    to: scala.collection.mutable.LinkedHashMap[Long, F],
+    f:  F
+  ): Disposable = {
+    nextListener += 1
+    val id = nextListener
+    to(id) = f
+    () => { val _ = to.remove(id) }
+  }
+
+  private def runAll(hooks: scala.collection.mutable.LinkedHashMap[Long, () => Unit]): Unit =
+    hooks.values.toList.foreach(f => thicket.signals.ErrorSink.catching(())(f()))
+
+  /** The surface exists once the window is realised, and is the one whose state says minimised or suspended. */
+  private def watchSurface(): Unit = {
+    val surface = gtk_native_get_surface(mainWindow.asInstanceOf[Ptr[GtkNative]])
+    if surface != null && surface != watchedSurface then {
+      watchedSurface = surface
+      Handles.connect(surface, "notify::state", CFuncPtr.toPtr(onSurfaceState), 0L)
+    }
+  }
+
+  private def updateShown(): Unit = {
+    import sn.gnome.gdk4.internal.{GdkToplevel, GdkToplevelState, gdk_toplevel_get_state}
+    val mapped =
+      mainWindow != null && gtk_widget_get_mapped(mainWindow.asInstanceOf[Ptr[GtkWidget]]).asInstanceOf[CInt] != 0
+    val hidden = watchedSurface != null && {
+      val state = gdk_toplevel_get_state(watchedSurface.asInstanceOf[Ptr[GdkToplevel]])
+      state.is(GdkToplevelState.GDK_TOPLEVEL_STATE_MINIMIZED) || state.is(GdkToplevelState.GDK_TOPLEVEL_STATE_SUSPENDED)
+    }
+    val now = mapped && !hidden
+    if now != isShown then {
+      isShown = now
+      shownListeners.values.toList.foreach(f => thicket.signals.ErrorSink.catching(())(f(now)))
+    }
+  }
+
+  /** GObject's `notify`: (GObject*, GParamSpec*, gpointer) -> void, one argument more than the trampolines in
+    * [[Handles]] take.
+    */
+  private val onSurfaceState: CFuncPtr3[Ptr[Byte], Ptr[Byte], Ptr[Byte], Unit] =
+    CFuncPtr3.fromScalaFunction {
+      (
+        _: Ptr[Byte],
+        _: Ptr[Byte],
+        _: Ptr[Byte]
+      ) =>
+        GcState.guarded(updateShown())
+    }
 
   /** The app's renderer, once the window exists. For [[GtkInspect]]. */
   private[gtk] var liveRenderer: GtkRenderer = scala.compiletime.uninitialized

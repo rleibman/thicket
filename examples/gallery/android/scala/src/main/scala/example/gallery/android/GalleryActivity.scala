@@ -19,6 +19,7 @@ package example.gallery.android
 import _root_.android.os.Bundle
 import example.gallery.{Gallery, Services}
 import thicket.core.AppRoot
+import thicket.device.android.AndroidDevice
 import thicket.renderer.android.ThicketActivity
 import thicket.signals.Owner
 import thicket.sqlite.android.AndroidSqlite
@@ -38,7 +39,14 @@ class GalleryActivity extends ThicketActivity {
   protected def createApp(saved: Option[Bundle])(using Owner): AppRoot =
     Gallery.app(
       logo = assetBytes(Gallery.logo),
-      services = Some(Services(AndroidStorage(this), AndroidSqlite.driver, () => Right(AndroidSecrets(this))))
+      services = Some(
+        Services(
+          AndroidStorage(this),
+          AndroidSqlite.driver,
+          () => Right(AndroidSecrets(this)),
+          device = Some(AndroidDevice(this))
+        )
+      )
     )
 
   override protected def started(): Unit =
