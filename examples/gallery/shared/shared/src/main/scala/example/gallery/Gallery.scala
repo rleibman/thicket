@@ -175,7 +175,8 @@ object Gallery {
     storage:  Option[StorageDemo] = None,
     device:   Option[DeviceDemo] = None,
     location: Option[LocationDemo] = None,
-    motion:   Option[MotionDemo] = None
+    motion:   Option[MotionDemo] = None,
+    clip:     Option[ClipboardDemo] = None
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -497,6 +498,22 @@ object Gallery {
                 )
             }
           ),
+          // The system clipboard and haptic taps (docs/16 §16.10 item 5). GTK has no haptics and says so.
+          section("Clipboard and haptics — copy, paste, and a tap to feel")(
+            clip match {
+              case None       => Label("No clipboard or haptics on this platform yet", emphasis = Emphasis.Secondary)
+              case Some(demo) =>
+                Column(spacing = 8)(
+                  Row(spacing = 8)(
+                    Button("Copy") { val _ = demo.copy() },
+                    Button("Paste")(demo.paste())
+                  ),
+                  Label(demo.pasted),
+                  Label(demo.hapticsLabel),
+                  Button("Tap")(demo.tap())
+                )
+            }
+          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -570,6 +587,9 @@ object Gallery {
   /** The running app's motion demo, for a host's self-test. Set by [[app]] when the host provides `Motion`. */
   var currentMotion: Option[MotionDemo] = None
 
+  /** The running app's clipboard and haptics demo, for a host's self-test. */
+  var currentClipboard: Option[ClipboardDemo] = None
+
   /** The whole app, for a host to mount. Hosts differ only in how they start, in which logo file their platform can
     * draw, and in the device services they have.
     */
@@ -590,13 +610,16 @@ object Gallery {
     currentLocation = location
     val motion = services.flatMap(_.motion).map(MotionDemo(_))
     currentMotion = motion
+    val clip =
+      services.filter(s => s.clipboard.isDefined || s.haptics.isDefined).map(s => ClipboardDemo(s.clipboard, s.haptics))
+    currentClipboard = clip
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logoFile, bytes, storage, device, location, motion)
+        val s = screen(model, loaded, logoFile, bytes, storage, device, location, motion, clip)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

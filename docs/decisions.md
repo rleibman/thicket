@@ -72,6 +72,60 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-30 — **Apple clipboard and haptics: `thicket-clipboard-apple`,
+  `thicket-haptics-apple`** (#123, the Apple half of docs/16 §16.10 item 5).
+  - **C through the Objective-C runtime, not Swift.** Each module has one C file under
+    `resources/scala-native` (`thicket_pasteboard.c`, `thicket_feedback.c`) that sends its few
+    messages with `objc_msgSend` and names UIKit or AppKit in the object (`LC_LINKER_OPTION`),
+    as #108's Keychain helper does. Scala Native compiles `.c`, `.cpp` and `.S` but not `.m`
+    (checked in `tools_3-0.5.12`). A Swift library as #90's would need a build script, an
+    archive in the jar, the plugins to unpack it and a shim-gen ABI, for four calls each.
+  - **Clipboard:** reads synchronously and answers on the next run-loop turn
+    (`AppleApp.postToUi`), so it depends on `rendererApple`, as `clipboardGtk` does on its
+    renderer. **Haptics** needs no renderer.
+  - **macOS haptics are mapped, not `Haptics.none`:** `NSHapticFeedbackManager` reaches a
+    Force Touch trackpad, which current MacBooks have; with a mouse nothing is felt and nothing
+    fails. Light → `.alignment`, Medium → `.generic`, Heavy → `.levelChange`, selection →
+    `.alignment`. `availability` is `Available`: AppKit does not say whether such a trackpad is
+    attached.
+  - **"Allow Paste" on the iOS 27 simulator ("iPhone Air", Xcode 27.0), measured:** the
+    gallery's own copies read back with no prompt (25–77 ms). Text from `xcrun simctl pbcopy`
+    prompts ("would like to paste from CoreSimulatorBridge"), and so does **the same app's
+    copy from an earlier launch** ("… from GalleryIos"); the read blocks the main thread until
+    the user answers (120 s in the run, unanswered). So the self-test pastes only after its
+    copy raised the pasteboard's `changeCount`; otherwise a broken `set` hung it instead of
+    failing.
+  - **Measured.** `bin/verify-apple.sh "iPhone Air"`: all 16 steps pass. Gallery macOS
+    **188** (185 + 3) on each of its two runs, iOS simulator **182** (179 + 3). Outside the
+    apps, `pbpaste` and `xcrun simctl pbpaste "iPhone Air"` read the gallery's last copy
+    (`Thicket gallery 44460, copy 2` / `9382, copy 2` on macOS, `1759, copy 2` on iOS);
+    `verify-apple.sh` now checks this and puts the user's macOS clipboard back. The simulator's
+    haptics calls return; nothing can be felt or read there.
+  - **Falsified.** With `set` doing nothing, both rounds fail on macOS and on the simulator
+    (change count unchanged; the outside reads show the older text).
+
+- 2026-10-30 — **Clipboard and haptics; the pickers' shape** (docs/16 §16.10 item 5).
+  - **Owner's decisions for the pickers and camera capture, to come:** a picked or captured
+    file is **copied into the app's cache and returned as a `Path`** on every platform, so
+    Android's `content://` URIs never reach the app (the cost: a large video is copied); and
+    results arrive by **UI-thread callback**, as every service's do, with any ZIO form in
+    `effect-zio`.
+  - **Clipboard:** `thicket-clipboard` (`set(text)`, `get(onResult)`, text only) over
+    `GdkClipboard` (read with `gdk_clipboard_read_text_async`) and Android's
+    `ClipboardManager`. `get` is a callback on both, since GTK's read is asynchronous.
+  - **Haptics:** `thicket-haptics` (`impact(Light | Medium | Heavy)`, `selection()`,
+    `availability`) over `View.performHapticFeedback` (no `VIBRATE` permission); GTK uses
+    `Haptics.none`.
+  - **Measured.** Unit tests: clipboard 1, haptics 2, JVM and Native. GTK gallery 131
+    (128 + 3), todo 69. Android gallery 76 (71 + 5) on `s2test`. Outside the apps: `wl-paste`
+    read the GTK gallery's copy from another process, and Android's vibrator history
+    (`dumpsys vibrator_manager`) shows the gallery's taps, `played: Prebaked=CLICK`, which
+    `build.sh` now checks.
+  - **Falsified.** With `set` doing nothing, both copy-and-paste rounds fail on GTK and on
+    Android, each pasting a previous run's text, so the read comes from the system clipboard
+    too. With `performHapticFeedback` not called, the in-app check and `build.sh`'s vibrator
+    count both fail.
+
 - 2026-10-30 — **Motion: `thicket-motion` and `-android`; `WhileInFront` shared with
   location** (docs/16 §16.10 item 4).
   - **API:** `Motion.acceleration`, `rotationRate`, `attitude`, each `(rate)(using Owner)` and

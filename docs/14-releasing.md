@@ -57,10 +57,14 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-device-gtk_native0.5_3` / `thicket-device-android_3` | the app's lifecycle and permissions (`thicket-device` comes with them) |
 | `net.leibman:thicket-location_3` / `_native0.5_3`, `thicket-location-android_3` | the device's position; on GTK, `Location.unavailable` from `thicket-location` |
 | `net.leibman:thicket-motion_3` / `_native0.5_3`, `thicket-motion-android_3` | acceleration, rotation rate and attitude; on GTK, `Motion.unavailable` from `thicket-motion` |
+| `net.leibman:thicket-clipboard-gtk_native0.5_3` / `thicket-clipboard-android_3` | text on the system clipboard (`thicket-clipboard` comes with them) |
+| `net.leibman:thicket-haptics_3` / `_native0.5_3`, `thicket-haptics-android_3` | haptic taps; on GTK, `Haptics.none` from `thicket-haptics` |
 | `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
 | `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
 | `net.leibman:thicket-storage-apple_native0.5_3` | app directories and preferences on macOS and iOS (`thicket-storage` comes with it); no Swift |
 | `net.leibman:thicket-secrets-apple_native0.5_3` | tokens and passwords in the Keychain on macOS and iOS (`thicket-secrets` comes with it); no Swift, and it links Security itself. An iOS app needs keychain entitlements, on the simulator too (`modules/secrets/README.md`) |
+| `net.leibman:thicket-clipboard-apple_native0.5_3` | text on the general pasteboard, `NSPasteboard` / `UIPasteboard` (`thicket-clipboard` and the Apple renderer come with it); no Swift, and it links UIKit or AppKit itself |
+| `net.leibman:thicket-haptics-apple_native0.5_3` | haptic taps: iOS's feedback generators, macOS's `NSHapticFeedbackManager` (`thicket-haptics` comes with it); no Swift |
 | `net.leibman:thicket-http-apple_native0.5_3` | an sttp `SyncBackend` over `URLSession`, for iOS (no libcurl there), with its own Swift library inside the jar |
 | `net.leibman:thicket-http-gtk_native0.5_3` | an sttp `SyncBackend` over libcurl, in place of sttp's `CurlBackend`; libcurl is loaded at run time, so no `-dev` package |
 | `net.leibman:thicket-http-android_3` | sttp's `HttpURLConnectionBackend` with repeated headers and cancellation by interrupt (plain JVM bytecode, `-release 17`) |
@@ -165,4 +169,6 @@ The examples have `publish / skip := true`; the `platforms` aggregate publishes 
 renderers and the platform modules that are not in `root`: `thicket-http-apple`,
 `thicket-storage-android`, `thicket-sqlite-android`, `thicket-secrets-android`,
 `thicket-secrets-apple`, `thicket-device-gtk`, `thicket-device-android` and
-`thicket-location-android` and `thicket-motion-android`.
+`thicket-location-android`, `thicket-motion-android`, `thicket-clipboard-gtk`,
+`thicket-clipboard-android`, `thicket-clipboard-apple`, `thicket-haptics-android` and
+`thicket-haptics-apple`.

@@ -201,3 +201,15 @@ The Motion section shows which sensors the device has, and each one's latest rea
 it says the desktop has none. On Android the self-test sets the emulator's acceleration and
 rotation rate and checks they reach the section, checks the fused attitude arrives, and counts
 listeners through Home and back, as for location.
+
+The Clipboard and haptics section copies a numbered text and pastes it back, and plays a tap.
+Both self-tests copy and paste twice: each paste must show that round's copy, so a clipboard
+that never took the text, or kept an older one, fails. On GTK the section says there are no
+haptics. On Android the self-test checks `performHapticFeedback` answered true, and after the
+run `build.sh` looks for the gallery's taps in the system's vibrator history
+(`dumpsys vibrator_manager`), counting only those since the launch. The Apple self-test (#123)
+also requires each copy to raise the pasteboard's change count before it pastes — on iOS a
+paste of text this process did not write waits on the "Allow Paste" prompt — and checks the
+haptics label says available and "Tap" returns; the simulator plays nothing. After it,
+`bin/verify-apple.sh` reads the last copy back from outside the app (`pbpaste`,
+`xcrun simctl pbpaste`).
