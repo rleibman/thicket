@@ -114,6 +114,26 @@ object ThicketNativeFlags {
       )
     )
 
+  /** `thicket-device-apple`'s Swift library on macOS (#114): `libthicketdevice.a` and Swift's runtime. The object names
+    * AppKit, UserNotifications and AVFoundation itself (Swift's autolink), so no framework flags. Applied on top of
+    * [[apple]]. Not needed on iOS, where the host's own link takes the archive.
+    *
+    * @param libDir
+    *   the directory holding `libthicketdevice.a`
+    */
+  def appleDevice(libDir: File)(c: NativeConfig): NativeConfig =
+    c.withLinkingOptions(
+      c.linkingOptions ++ Seq(
+        "-L" + libDir.getAbsolutePath,
+        "-lthicketdevice",
+        "-L/usr/lib/swift",
+        "-Xlinker",
+        "-rpath",
+        "-Xlinker",
+        "/usr/lib/swift"
+      )
+    )
+
   /** The iOS simulator variant. Three differences from the macOS one, each forced:
     *
     *   - `libraryStatic`, because the host owns `@main` (iOS 27 requires UIScene adoption, and a scene delegate cannot
