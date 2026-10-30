@@ -320,8 +320,8 @@ this means many modules. Names follow the published ones:
 | SQLite | `thicket-sqlite` (`Sqlite.open`; `java.sql` is the API) | `thicket-sqlite-android` (a JDBC driver); Native uses `scala-native-jdbc-sqlite` |
 | location | `thicket-location` (built) | `-android` (built), `-apple` (Mac issue); GTK and macOS use `Location.unavailable` |
 | motion | `thicket-motion` (built) | `-android` (built), `-ios` (Mac issue); GTK and macOS use `Motion.unavailable` |
-| clipboard | `thicket-clipboard` (built) | `-gtk`, `-android` (built); `-apple` (Mac issue) |
-| haptics | `thicket-haptics` (built) | `-android` (built), `-apple` (Mac issue); GTK uses `Haptics.none` |
+| clipboard | `thicket-clipboard` (built) | `-gtk`, `-android`, `-apple` (built) |
+| haptics | `thicket-haptics` (built) | `-android`, `-apple` (built); GTK uses `Haptics.none` |
 | pickers, camera capture, share | one API each | per platform, as built |
 
 The implementations need the host (`ThicketActivity`, `GtkApp`, a Swift library), so each
@@ -439,10 +439,12 @@ Every service gets a gallery section and self-test checks on every host where it
      (roll, pitch, yaw), not the `Vec3` §16.3's table shows.
 5. **Pickers, camera capture, share, clipboard, haptics.** *Clipboard (GTK, Android) and
    haptics (Android; GTK has none) done 2026-10-30 (`modules/clipboard/README.md`,
-   `modules/haptics/README.md`); Apple is a Mac issue. The owner decided the pickers' shape
+   `modules/haptics/README.md`); Apple the same day (#123: `NSPasteboard`, `UIPasteboard`, the
+   feedback generators, `NSHapticFeedbackManager`). The owner decided the pickers' shape
    the same day: a picked file is copied into the app's cache and returned as a `Path` on
    every platform, and results arrive by UI-thread callback, as every service's do.*
    - The clipboard's text left the app: `wl-paste` read the GTK gallery's copy from another
      process, and a paste read text a previous run had left. The haptic tap is in Android's
-     vibrator history, which `build.sh` checks.
+     vibrator history, which `build.sh` checks. On Apple, `pbpaste` and `xcrun simctl pbpaste`
+     read the galleries' last copy after the run (`bin/verify-apple.sh`).
 6. **Tier 3** as separate designs, live camera preview first if wanted.
