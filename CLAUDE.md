@@ -34,8 +34,23 @@ compiling them. The heap is in `.jvmopts`.
 
 - **Scope.** Do what was asked. Findings outside it go in the PR description or an issue,
   not in the change.
-- **Git.** Never `git commit`, `git push`, `git tag` unless the user asks in that
-  message. Never commit to `main`. Check `git rev-parse --abbrev-ref HEAD` first.
+- **Git: a standing permission** (granted by the owner, 2026-10-30). On a feature branch,
+  commit, push and open PRs as part of the work, without asking each time. This overrides
+  the per-request rule in the owner's global instructions, for this repository only.
+  - Never commit to `main`. Check `git rev-parse --abbrev-ref HEAD` before every commit.
+  - `git tag` and force-pushes still only when the owner asks in that message.
+  - The other rules still hold: `sbt scalafmtAll` before each commit, explicit paths when
+    staging, the measured numbers in the commit message, and never a merge.
+- **Working on your own.** Keep going through the plan (`docs/16` §16.10, then open issues)
+  until there is a question for the owner or nothing is left:
+  - Start the next piece on a branch stacked on the open PR rather than waiting for a merge,
+    and rebase it when the base is merged.
+  - Answer review comments on open PRs as they arrive.
+  - File each Apple half as a Mac issue.
+  - Stop and ask for a design choice the plan doesn't settle, a system install, or anything
+    destructive.
+  - Use agents for research and review. Run builds and self-tests one at a time: one
+    emulator, one desktop, and `checkLinux` needs 8 GB.
 - **Run `sbt scalafmtAll` before every commit.** Format, do not merely check —
   otherwise the next person's diff is full of reflows that have nothing to do with
   their change.
