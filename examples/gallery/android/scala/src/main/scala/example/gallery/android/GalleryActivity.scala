@@ -21,6 +21,7 @@ import example.gallery.{Gallery, Services}
 import thicket.core.AppRoot
 import thicket.device.android.AndroidDevice
 import thicket.location.android.AndroidLocation
+import thicket.motion.android.AndroidMotion
 import thicket.renderer.android.ThicketActivity
 import thicket.signals.Owner
 import thicket.sqlite.android.AndroidSqlite
@@ -46,7 +47,8 @@ class GalleryActivity extends ThicketActivity {
           AndroidSqlite.driver,
           () => Right(AndroidSecrets(this)),
           device = Some(AndroidDevice(this)),
-          location = Some(AndroidLocation(this))
+          location = Some(AndroidLocation(this)),
+          motion = Some(AndroidMotion(this))
         )
       )
     )

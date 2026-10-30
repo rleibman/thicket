@@ -20,7 +20,7 @@ import _root_.android.os.{Handler, Looper, SystemClock}
 import _root_.android.util.Log
 import _root_.android.view.{View, ViewGroup}
 import _root_.android.widget.{Button, EditText, ImageView, Spinner, TextView}
-import example.gallery.{DeviceDemo, Gallery, LocationDemo, StorageDemo}
+import example.gallery.{DeviceDemo, Gallery, LocationDemo, MotionDemo, StorageDemo}
 import example.http.HttpChecks
 import scala.collection.mutable
 import sttp.client4.*
@@ -35,6 +35,8 @@ import thicket.secrets.testing.SecretsConformance
 import thicket.signals.{Disposable, ErrorSink, Owner, Signal}
 import thicket.location.{Accuracy, Fix, Location, LocationProvider}
 import thicket.location.android.AndroidLocationProvider
+import thicket.motion.{Motion, MotionProvider, Rate, Sensor, Vec3}
+import thicket.motion.android.AndroidMotionProvider
 import thicket.sqlite.Sqlite
 import thicket.sqlite.android.AndroidSqlite
 import thicket.sqlite.testing.JdbcConformance
@@ -429,7 +431,10 @@ object GallerySelfTest {
             s"$entriesBefore before the push, ${activity.renderer0.tableEntries} after the pop"
           )
         }
-      ) ++ deviceSteps(activity, () => texts, click) ++ locationSteps(activity, () => texts) ++ List(() => {
+      ) ++ deviceSteps(activity, () => texts, click) ++ locationSteps(activity, () => texts) ++ motionSteps(
+        activity,
+        () => texts
+      ) ++ List(() => {
         if httpPort > 0 then {
           httpWorker.start()
           awaitHttp(SystemClock.uptimeMillis() + 30000)
@@ -611,6 +616,83 @@ object GallerySelfTest {
         )
         probe.dispose()
         check("disposing the owner stops it", listening == 0, s"$listening listening")
+      }
+    )
+  }
+
+  /** Motion (docs/16 §16.10 item 4), with `build.sh` setting the emulator's sensors: `DRIVE accel x:y:z` and
+    * `DRIVE gyro x:y:z` are `adb emu sensor set`. The attitude is Android's fusion of the others and can't be set, so
+    * it is only checked to arrive.
+    *
+    * Android stops sensor events to an app in the background by itself, as it throttles location, so the listening is
+    * counted through a provider wrapping the real one, under the real lifecycle.
+    */
+  private def motionSteps(
+    activity: GalleryActivity,
+    texts:    () => List[String]
+  ): List[() => Unit] = {
+    def demo = Gallery.currentMotion
+    def acceleration = demo.map(_.acceleration.now).getOrElse("")
+    def rotation = demo.map(_.rotationRate.now).getOrElse("")
+    def attitude = demo.map(_.attitude.now).getOrElse("")
+    val pushed = MotionDemo.accelerationLabel(Vec3(1, 2, 9.5))
+    val turning = MotionDemo.rotationLabel(Vec3(0.1, 0.2, 0.3))
+    var listening = 0
+    val real = AndroidMotionProvider(activity)
+    val counted = new MotionProvider {
+      def availability(sensor: Sensor): Availability = real.availability(sensor)
+      def start(
+        sensor:   Sensor,
+        rate:     Rate,
+        onSample: Vec3 => Unit
+      ): Disposable = {
+        listening += 1
+        val d = real.start(sensor, rate, onSample)
+        var stopped = false
+        () =>
+          if !stopped then {
+            stopped = true
+            listening -= 1
+            d.dispose()
+          }
+      }
+    }
+    val probe = Owner()
+    List(
+      () => {
+        val all = MotionDemo.sensorsLabel(Sensor.values.toList.map(_ -> Availability.Available))
+        check(
+          "the Android host provides Motion, and the emulator has all three sensors",
+          demo.isDefined && texts().contains(all),
+          texts().filter(_.startsWith("Sensors")).toString
+        )
+        val _ = Motion(counted, AndroidLifecycle).acceleration()(using probe)
+        drive("accel 1:2:9.5")
+      },
+      Await(10000, () => acceleration == pushed),
+      () => {
+        check("an acceleration set on the emulator reaches the section", texts().contains(pushed), acceleration)
+        drive("gyro 0.1:0.2:0.3")
+      },
+      Await(10000, () => rotation == turning),
+      Await(10000, () => attitude != MotionDemo.noAttitude),
+      () => {
+        check("a rotation rate set on the emulator reaches the section", texts().contains(turning), rotation)
+        check("the fused attitude arrives", attitude.startsWith("Attitude: roll"), attitude)
+        check("in the foreground, Thicket listens to the sensor", listening == 1, s"$listening listening")
+        drive("home")
+      },
+      Await(10000, () => AndroidLifecycle.state.now == AppState.Background),
+      () => {
+        check("in the background, Thicket stops listening", listening == 0, s"$listening listening")
+        drive("front")
+      },
+      Await(10000, () => AndroidLifecycle.state.now == AppState.Foreground),
+      () => {
+        check("back in front, it listens again", listening == 1, s"$listening listening")
+        probe.dispose()
+        check("disposing the owner stops it", listening == 0, s"$listening listening")
+        drive("gyro 0:0:0")
       }
     )
   }

@@ -111,6 +111,31 @@ object DeviceSpec extends ZIOSpecDefault {
           closed == 1
         )
       },
+      test("WhileInFront: started in front, stopped in the background and with the owner, retried when it could not") {
+        val owner = Owner()
+        given Owner = owner
+        val life = FakeLifecycle()
+        var running = 0
+        var startable = false
+        var tries = 0
+        WhileInFront(life) { () =>
+          tries += 1
+          Option.when(startable) {
+            running += 1
+            (() => running -= 1): thicket.signals.Disposable
+          }
+        }
+        val notYet = running
+        startable = true
+        life.set(AppState.Background)
+        life.set(AppState.Foreground)
+        val front = running
+        life.set(AppState.Background)
+        val away = running
+        life.set(AppState.Foreground)
+        owner.dispose()
+        assertTrue(notYet == 0, front == 1, away == 0, running == 0, tries == 3)
+      },
       test("FakePermissions: the user is asked once; a granted permission is not asked again") {
         val perms = FakePermissions(_ => Granted)
         val got = mutable.ArrayBuffer.empty[PermissionStatus]

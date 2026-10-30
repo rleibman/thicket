@@ -184,7 +184,8 @@ ended. On Android it can't press Home or answer the system's dialog itself, so i
 - `home`: press Home;
 - `front`: bring the same Activity back;
 - `deny` and `allow`: tap the dialog's buttons, found with `uiautomator`;
-- `geo <lon> <lat>`: `adb emu geo fix`, which the emulator's GPS reports.
+- `geo <lon> <lat>`: `adb emu geo fix`, which the emulator's GPS reports;
+- `accel x:y:z` and `gyro x:y:z`: `adb emu sensor set`, for the accelerometer and gyroscope.
 
 `build.sh` revokes `POST_NOTIFICATIONS` before the run, so the dialog appears each time.
 After the verdict it presses Back and looks for the terminate hook's line.
@@ -195,3 +196,8 @@ On Android, `build.sh` installs with location granted, and the self-test sends o
 front, then one in the background, and checks that only the first reaches the section until
 the app is back. Android throttles background location by itself, so the self-test also
 counts Thicket's listeners on the real provider: one in front, none in the background.
+
+The Motion section shows which sensors the device has, and each one's latest reading. On GTK
+it says the desktop has none. On Android the self-test sets the emulator's acceleration and
+rotation rate and checks they reach the section, checks the fused attitude arrives, and counts
+listeners through Home and back, as for location.

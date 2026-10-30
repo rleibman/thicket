@@ -19,6 +19,7 @@ package example.gallery
 import thicket.core.UiThread
 import thicket.device.Device
 import thicket.location.Location
+import thicket.motion.Motion
 import thicket.secrets.Secrets
 import thicket.signals.Var
 import thicket.sqlite.{Sqlite, SqliteDriver}
@@ -37,13 +38,16 @@ import java.util.concurrent.{Executors, ThreadFactory}
   *   the app's lifecycle and permissions, where the host has them (GTK and Android since `docs/16` §16.10 item 3).
   * @param location
   *   the device's position: Android's `LocationManager`; on GTK, `Location.unavailable` (`docs/16` §16.10 item 4).
+  * @param motion
+  *   the motion sensors: Android's `SensorManager`; on GTK, `Motion.unavailable` (`docs/16` §16.10 item 4).
   */
 final case class Services(
   storage:  Storage,
   sqlite:   SqliteDriver,
   secrets:  () => Either[String, Secrets] = () => Left("not on this platform yet"),
   device:   Option[Device] = None,
-  location: Option[Location] = None
+  location: Option[Location] = None,
+  motion:   Option[Motion] = None
 )
 
 /** The Storage section's state: a launch counter in preferences, and a table of notes in SQLite.

@@ -36,6 +36,12 @@ Each device service answers `availability`: `Available`, `NeedsPermission(permis
 `Unavailable(reason)` (`docs/16` §16.6). "No GPS on this desktop" is a branch in the app, not
 an exception. Location is the first service to report it (`modules/location`).
 
+## Only while in front
+
+`WhileInFront(lifecycle)(start)` runs a sensor while an owner lives and the app is in the
+foreground: `start` is called on each return to the front, and what it returned is disposed in
+the background and with the owner. Location and motion are built on it.
+
 ## Lifecycle
 
 `state` is a `Signal[AppState]`: `Foreground` while the app is on screen, otherwise

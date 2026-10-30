@@ -319,7 +319,7 @@ this means many modules. Names follow the published ones:
 | secrets | `thicket-secrets` | `-android` (Keystore), `-apple` (Keychain), `-gtk` (libsecret) |
 | SQLite | `thicket-sqlite` (`Sqlite.open`; `java.sql` is the API) | `thicket-sqlite-android` (a JDBC driver); Native uses `scala-native-jdbc-sqlite` |
 | location | `thicket-location` (built) | `-android` (built), `-apple` (Mac issue); GTK and macOS use `Location.unavailable` |
-| motion | `thicket-motion` | `-android`, `-ios` |
+| motion | `thicket-motion` (built) | `-android` (built), `-ios` (Mac issue); GTK and macOS use `Motion.unavailable` |
 | pickers, camera capture, share, clipboard, haptics | one API each | per platform, as built |
 
 The implementations need the host (`ThicketActivity`, `GtkApp`, a Swift library), so each
@@ -420,8 +420,10 @@ Every service gets a gallery section and self-test checks on every host where it
      the window, and shutdown. On Android: Home and back, "Don't allow" then "Allow" in the
      system's dialog (`build.sh` taps them), an undeclared permission, and Back.
 4. **Location,** then **motion**, each with emulator-injected self-tests. *Location done on
-   Android, and `Unavailable` on GTK, 2026-10-30 (`modules/location/README.md`); Apple is a
-   Mac issue. Motion next.*
+   Android, and `Unavailable` on GTK, 2026-10-30 (`modules/location/README.md`); motion the
+   same day (`modules/motion/README.md`). Apple's halves are Mac issues.*
+   - Both use `thicket-device`'s `WhileInFront`: start while the owner lives and the app is in
+     front, stop in the background, try again on each return.
    - `Location(provider, lifecycle)` is shared: a platform supplies a `LocationProvider`, and
      `updates` listens only while its owner lives and the app is in front, picking up the
      platform's last known position on each return.
@@ -429,5 +431,9 @@ Every service gets a gallery section and self-test checks on every host where it
      listeners through a wrapping provider: Android throttles background location by itself,
      so a position that stops changing in the background proves nothing (measured: with the
      background stop removed, the on-screen check still passed and the count failed).
+   - Motion: `acceleration`, `rotationRate` and `attitude`, each a `Signal` at a `Rate`. The
+     emulator's accelerometer and gyroscope are set with `adb emu sensor set`; the attitude is
+     Android's fusion of them and is only checked to arrive. `Attitude` is its own type
+     (roll, pitch, yaw), not the `Vec3` §16.3's table shows.
 5. **Pickers, camera capture, share, clipboard, haptics.**
 6. **Tier 3** as separate designs, live camera preview first if wanted.
