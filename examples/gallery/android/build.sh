@@ -81,7 +81,9 @@ if [ -n "${SELFTEST:-}" ]; then
   adb reverse "tcp:$port" "tcp:$port" >/dev/null
   httparg=(--ei httptest "$port")
 fi
-adb shell am start -W -n $activity ${SELFTEST:+--ez selftest true} "${httparg[@]}" >/dev/null
+# A fresh task: a permission dialog left in the old one by an aborted run would otherwise come back to the front and
+# swallow this launch, so the self-test never starts.
+adb shell am start -W --activity-clear-task -n $activity ${SELFTEST:+--ez selftest true} "${httparg[@]}" >/dev/null
 echo "== installed and launched =="
 [ -n "${SELFTEST:-}" ] || exit 0
 

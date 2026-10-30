@@ -22,6 +22,9 @@ import zio.test.*
 
 import scala.collection.mutable
 
+/** `sequential` is mandatory: the fakes' test tracks signals, and the tracking context is process-global. See
+  * `SignalSpec`.
+  */
 object DeviceSpec extends ZIOSpecDefault {
 
   import PermissionStatus.*

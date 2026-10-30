@@ -120,7 +120,10 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   - **Found on the way:** two `build.sh` faults.
     - Under `set -e`, a dump taken before the dialog was up ended the script silently.
     - A permission dialog left in the gallery's task by an aborted run swallowed the next
-      launch. The launch now uses `--activity-clear-task`.
+      launch once (`am start` result code 3; the self-test never ran). The launch now uses
+      `--activity-clear-task`, so each run starts in a fresh task. That failure did not
+      recur when re-created deliberately (a run killed with the dialog up, then a launch
+      without the flag passed), so the flag is a precaution, not a measured fix.
 
 - 2026-10-27 — **HTTP on GTK and Android: Thicket's own `LibcurlBackend`, and a wrapper over
   sttp's `HttpURLConnectionBackend`** (docs/16 §16.4, §16.10 item 1). The Apple self-test's
