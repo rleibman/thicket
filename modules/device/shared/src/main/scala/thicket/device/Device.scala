@@ -93,6 +93,22 @@ trait Permissions {
 
 }
 
+/** Whether a device service can be used here and now (`docs/16` §16.6: capabilities are values). "No GPS on a desktop"
+  * is a branch in the app, not an exception.
+  */
+enum Availability {
+
+  /** It can be used. */
+  case Available
+
+  /** It can, once the user grants the permission: ask with [[Permissions.request]], then use it. */
+  case NeedsPermission(permission: Permission)
+
+  /** It cannot, for `reason`: the platform has no such service, or the user turned it off in the system settings. */
+  case Unavailable(reason: String)
+
+}
+
 /** What a host gives an app: its lifecycle and its permissions. */
 final case class Device(
   lifecycle:   AppLifecycle,

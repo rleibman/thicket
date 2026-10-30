@@ -16,8 +16,9 @@
 
 package example.gallery
 
-import thicket.device.AppState
+import thicket.device.{AppState, Availability}
 import thicket.device.gtk.{GtkDevice, GtkLifecycle}
+import thicket.location.Location
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
 import thicket.secrets.gtk.GtkSecrets
@@ -513,7 +514,7 @@ object GalleryGtk {
       s"${GtkInspect.cssParseErrors} CSS parse errors"
     )
 
-    storageChecks(root)(deviceChecks(root)(presentedAndNav(root)))
+    storageChecks(root)(deviceChecks(root)(locationChecks(root)(presentedAndNav(root))))
   }
 
   /** Lifecycle and permissions on GTK (docs/16 §16.10 item 3). The window is hidden and shown again through GTK, so the
@@ -569,6 +570,33 @@ object GalleryGtk {
           }
         }
     }
+
+  /** Location on GTK (docs/16 §16.9, decision 7): no location service yet, so the section says why, "Use my location"
+    * changes nothing, and no position ever arrives.
+    */
+  private def locationChecks(root: Ptr[GtkWidget])(next: => Unit): Unit = {
+    Gallery.currentLocation match {
+      case None =>
+        check("the GTK host provides a Location", false, "Gallery.currentLocation is None")
+      case Some(demo) =>
+        GtkInspect
+          .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Use my location"))
+          .headOption.foreach(GtkInspect.click)
+        val texts = GtkInspect.allTexts(root)
+        val unavailable = LocationDemo.availabilityLabel(Availability.Unavailable(GalleryGtk.noLocation))
+        check(
+          "location says it is unavailable on the desktop, and asking for it changes nothing",
+          texts.contains(unavailable) && texts.contains(
+            LocationDemo.waiting
+          ) && demo.position.now == LocationDemo.waiting,
+          texts.filter(t => t.startsWith("Location") || t.startsWith("Position")).toString
+        )
+    }
+    next
+  }
+
+  /** Why the desktop has no location: GeoClue and the portal are not wired up yet (docs/16 §16.9, decision 7). */
+  val noLocation: String = "no location service on the desktop yet"
 
   /** Set by the terminate hook the device checks register; read in `main` after the main loop ends. */
   private var terminated = false
@@ -933,7 +961,8 @@ object GalleryGtk {
             storage,
             NativeSqlite.driver,
             () => GtkSecrets.open("dev.thicket.gallery"),
-            device = Some(GtkDevice())
+            device = Some(GtkDevice()),
+            location = Some(Location.unavailable(noLocation))
           )
         )
       )

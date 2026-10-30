@@ -173,7 +173,8 @@ object Gallery {
     logoFile: String,
     logo:     Array[Byte],
     storage:  Option[StorageDemo] = None,
-    device:   Option[DeviceDemo] = None
+    device:   Option[DeviceDemo] = None,
+    location: Option[LocationDemo] = None
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -468,6 +469,19 @@ object Gallery {
                 )
             }
           ),
+          // The device's position (docs/16 §16.10 item 4), followed only while the app is in front. Android's
+          // LocationManager; GTK has no location service yet and says so.
+          section("Location — the device's position, while the app is in front")(
+            location match {
+              case None       => Label("No location on this platform yet", emphasis = Emphasis.Secondary)
+              case Some(demo) =>
+                Column(spacing = 8)(
+                  Label(demo.availability),
+                  Label(demo.position),
+                  Button("Use my location")(demo.use())
+                )
+            }
+          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -535,6 +549,9 @@ object Gallery {
   /** The running app's device demo, for a host's self-test. Set by [[app]] when the host provides a `Device`. */
   var currentDevice: Option[DeviceDemo] = None
 
+  /** The running app's location demo, for a host's self-test. Set by [[app]] when the host provides a `Location`. */
+  var currentLocation: Option[LocationDemo] = None
+
   /** The whole app, for a host to mount. Hosts differ only in how they start, in which logo file their platform can
     * draw, and in the device services they have.
     */
@@ -551,13 +568,15 @@ object Gallery {
     currentStorage = storage
     val device = services.flatMap(_.device).map(DeviceDemo(_))
     currentDevice = device
+    val location = services.flatMap(svc => svc.location.map(LocationDemo(_, svc.device)))
+    currentLocation = location
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logoFile, bytes, storage, device)
+        val s = screen(model, loaded, logoFile, bytes, storage, device, location)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

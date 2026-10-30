@@ -313,12 +313,12 @@ this means many modules. Names follow the published ones:
 
 | Service | API (cross: JVM, JS, Native) | Implementations |
 |---|---|---|
-| shared plumbing: `Availability`, `Permissions`, lifecycle, fakes | `thicket-device` (JVM, Native; built without `Availability`, which comes with the first service that reports it) | `thicket-device-android`, `-gtk` (built); `-apple` (Mac issue) |
+| shared plumbing: `Availability`, `Permissions`, lifecycle, fakes | `thicket-device` (JVM, Native; `Availability` added with location) | `thicket-device-android`, `-gtk` (built); `-apple` (Mac issue) |
 | HTTP | none: sttp is the API | `thicket-http-apple` (#90), `thicket-http-android`, `thicket-http-gtk` |
 | storage: directories, preferences | `thicket-storage` | `-android`, `-apple`, `-gtk` |
 | secrets | `thicket-secrets` | `-android` (Keystore), `-apple` (Keychain), `-gtk` (libsecret) |
 | SQLite | `thicket-sqlite` (`Sqlite.open`; `java.sql` is the API) | `thicket-sqlite-android` (a JDBC driver); Native uses `scala-native-jdbc-sqlite` |
-| location | `thicket-location` | `-android`, `-apple`; GTK and macOS report `Unavailable` |
+| location | `thicket-location` (built) | `-android` (built), `-apple` (Mac issue); GTK and macOS use `Location.unavailable` |
 | motion | `thicket-motion` | `-android`, `-ios` |
 | pickers, camera capture, share, clipboard, haptics | one API each | per platform, as built |
 
@@ -419,6 +419,15 @@ Every service gets a gallery section and self-test checks on every host where it
    - The gallery's Device section is driven through the real hosts. On GTK: hiding and showing
      the window, and shutdown. On Android: Home and back, "Don't allow" then "Allow" in the
      system's dialog (`build.sh` taps them), an undeclared permission, and Back.
-4. **Location,** then **motion**, each with emulator-injected self-tests.
+4. **Location,** then **motion**, each with emulator-injected self-tests. *Location done on
+   Android, and `Unavailable` on GTK, 2026-10-30 (`modules/location/README.md`); Apple is a
+   Mac issue. Motion next.*
+   - `Location(provider, lifecycle)` is shared: a platform supplies a `LocationProvider`, and
+     `updates` listens only while its owner lives and the app is in front, picking up the
+     platform's last known position on each return.
+   - The Android gallery moves the emulator with `adb emu geo fix` and counts Thicket's
+     listeners through a wrapping provider: Android throttles background location by itself,
+     so a position that stops changing in the background proves nothing (measured: with the
+     background stop removed, the on-screen check still passed and the count failed).
 5. **Pickers, camera capture, share, clipboard, haptics.**
 6. **Tier 3** as separate designs, live camera preview first if wanted.

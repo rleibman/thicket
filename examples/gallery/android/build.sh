@@ -17,7 +17,7 @@ echo "== sbt: building the Scala JARs =="
 (cd "$root" && sbt --error \
   "signalsJVM/package" "rendererApiJVM/package" "coreJVM/package" "effectZioJVM/package" \
   "storageJVM/package" "sqliteJVM/package" "storageAndroid/package" "sqliteAndroid/package" \
-  "secretsJVM/package" "secretsAndroid/package" "deviceJVM/package" "deviceAndroid/package" \
+  "secretsJVM/package" "secretsAndroid/package" "deviceJVM/package" "deviceAndroid/package" "locationJVM/package" "locationAndroid/package" \
   "httpChecksJVM/package" "httpAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
@@ -33,6 +33,7 @@ rm -f "$here"/app/libs/*.jar
 for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-zio \
               thicket-storage thicket-sqlite thicket-storage-android thicket-sqlite-android \
               thicket-secrets thicket-secrets-android thicket-device thicket-device-android \
+              thicket-location thicket-location-android \
               http-checks thicket-http-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
@@ -115,6 +116,8 @@ drive() {
     front) adb shell am start -n $activity --activity-reorder-to-front >/dev/null ;;
     deny) tap_dialog permission_deny_button ;;
     allow) tap_dialog permission_allow_button ;;
+    # "geo <lon> <lat>": the emulator's GPS reports there. The two numbers are split into two arguments on purpose.
+    geo\ *) adb emu geo fix ${1#geo } >/dev/null ;;
     *) echo "   (build.sh) unknown action $1" ;;
   esac
 }
@@ -122,7 +125,7 @@ drive() {
 # Wait for the verdict rather than a fixed sleep: the checks are spread over main-loop turns. Meanwhile, act on each
 # DRIVE line once, in order.
 done_drives=0
-for _ in $(seq 1 120); do
+for _ in $(seq 1 180); do
   current=$(adb logcat -d -s thicket 2>/dev/null | tr -d '\r')
   mapfile -t drives < <(sed -n 's/.*\[gallery\] DRIVE //p' <<<"$current")
   while [ "$done_drives" -lt "${#drives[@]}" ]; do

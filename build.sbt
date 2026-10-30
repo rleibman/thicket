@@ -613,6 +613,25 @@ lazy val deviceAndroid = project
   .dependsOn(device.jvm, rendererAndroid)
   .settings(commonSettings, name := "thicket-device-android", scalacOptions ++= Seq("-release", "17"))
 
+/** The device's position (`docs/16` §16.3, §16.10 item 4): `Location`, `Fix`, `Accuracy`, the lifecycle-aware
+  * `Location(provider, lifecycle)`, and a fake provider for tests. GTK and macOS use `Location.unavailable`.
+  */
+lazy val location = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/location"))
+  .dependsOn(device)
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-location")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** Location on Android, from the framework's `LocationManager` (no Play Services, `docs/16` §16.9). */
+lazy val locationAndroid = project
+  .in(file("modules/location-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(location.jvm, deviceAndroid)
+  .settings(commonSettings, name := "thicket-location-android", scalacOptions ++= Seq("-release", "17"))
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot put a `File` on a classpath —
@@ -720,7 +739,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   // storage and sqlite: the device services' section; each host supplies its platform's implementation.
-  .dependsOn(core, effectZio, storage, sqlite, secrets, device)
+  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
@@ -756,6 +775,7 @@ lazy val galleryAndroid = project
     sqliteAndroid,
     secretsAndroid,
     deviceAndroid,
+    locationAndroid,
     httpChecks.jvm,
     httpAndroid
   )
@@ -960,6 +980,7 @@ lazy val platforms = project
     secretsApple,
     deviceGtk,
     deviceAndroid,
+    locationAndroid,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,
@@ -1007,6 +1028,8 @@ lazy val root = project
     secretsGtk,
     device.jvm,
     device.native,
+    location.jvm,
+    location.native,
     httpGtk,
     httpAndroid,
     shimGen,

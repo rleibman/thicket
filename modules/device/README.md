@@ -6,7 +6,7 @@ the Apple scene. The plan is in `docs/16-device-services.md`, §16.3 and §16.10
 
 | Module | Platform | From |
 |---|---|---|
-| `thicket-device` | JVM, Native | the API: `AppLifecycle`, `AppState`, `Permissions`, `Permission`, `PermissionStatus`, `Device`; fakes in `testing` (`FakeLifecycle`, `FakePermissions`) |
+| `thicket-device` | JVM, Native | the API: `AppLifecycle`, `AppState`, `Permissions`, `Permission`, `PermissionStatus`, `Availability`, `Device`; fakes in `testing` (`FakeLifecycle`, `FakePermissions`) |
 | `thicket-device-gtk` | Scala Native | `GtkApp`'s window and application |
 | `thicket-device-android` | Android | `ThicketActivity`'s callbacks and the system's permission dialog |
 
@@ -29,6 +29,12 @@ def screen(device: Device)(using Owner): Element = {
   }
 }
 ```
+
+## Availability
+
+Each device service answers `availability`: `Available`, `NeedsPermission(permission)` or
+`Unavailable(reason)` (`docs/16` §16.6). "No GPS on this desktop" is a branch in the app, not
+an exception. Location is the first service to report it (`modules/location`).
 
 ## Lifecycle
 

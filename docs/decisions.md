@@ -72,6 +72,30 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-30 — **Location: `thicket-location` and `-android`; GTK uses `Location.unavailable`**
+  (docs/16 §16.10 item 4).
+  - **API** (JVM, Native; depends on `thicket-device`): `Location.availability`,
+    `updates(accuracy)(using Owner): Signal[Option[Fix]]` and `current(accuracy)(onResult)`.
+    `Availability` (`Available`, `NeedsPermission(p)`, `Unavailable(reason)`) joins
+    `thicket-device`, as §16.6 planned for the first service that reports one.
+  - **The lifecycle is shared code**, not each platform's: `Location(provider, lifecycle)`
+    starts the provider while the owner lives and the app is in front, stops it in the
+    background, and on each return starts again from the provider's last known position. A
+    platform supplies only a `LocationProvider` (`availability`, `start`, `last`), so Apple's
+    half is a provider too.
+  - **Android:** the framework's `LocationManager` (§16.9, decision 3). `Fine` is the GPS
+    provider when fine permission is granted, else the network; at most one report a second.
+  - **GTK:** `Location.unavailable` (decision 7). No `-gtk` module: there is nothing to wrap.
+  - **Measured.** `LocationSpec` 7/7 on JVM and Native. GTK gallery 127 (126 + 1), todo 69.
+    Android gallery 63 (56 + 7) on `s2test`, the terminate hook still run on Back. `build.sh`
+    moves the emulator with `adb emu geo fix` (`DRIVE geo`).
+  - **Falsified.** Without the background stop, `LocationSpec`'s lifecycle test fails, and on
+    Android "in the background, Thicket stops listening" fails (1 listening). The on-screen
+    check, that a position sent in the background does not reach the section, still passed
+    without the fix: Android throttles background location for an app without background
+    permission by itself. So the self-test counts listeners through a provider that wraps the
+    real one, and the on-screen check is kept only as what a user would see.
+
 - 2026-10-28 — **Lifecycle and permissions: `thicket-device`, `-gtk` and `-android`; on GTK
   the foreground is the window on screen, not its focus** (docs/16 §16.10 item 3).
   - **API** (JVM, Native; depends on `signals` only):

@@ -183,7 +183,15 @@ ended. On Android it can't press Home or answer the system's dialog itself, so i
 `build.sh` to, with `[gallery] DRIVE <action>` lines in the log:
 - `home`: press Home;
 - `front`: bring the same Activity back;
-- `deny` and `allow`: tap the dialog's buttons, found with `uiautomator`.
+- `deny` and `allow`: tap the dialog's buttons, found with `uiautomator`;
+- `geo <lon> <lat>`: `adb emu geo fix`, which the emulator's GPS reports.
 
 `build.sh` revokes `POST_NOTIFICATIONS` before the run, so the dialog appears each time.
 After the verdict it presses Back and looks for the terminate hook's line.
+
+The Location section shows whether positions can be had and the latest one, with "Use my
+location" to ask for the permission. On GTK it says location is unavailable on the desktop.
+On Android, `build.sh` installs with location granted, and the self-test sends one position in
+front, then one in the background, and checks that only the first reaches the section until
+the app is back. Android throttles background location by itself, so the self-test also
+counts Thicket's listeners on the real provider: one in front, none in the background.

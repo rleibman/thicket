@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- The Device section asks for it: a runtime permission on Android 13+ that needs no hardware. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The Location section: fine for the GPS provider, which the self-test moves with `adb emu geo fix`. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <application android:label="Thicket gallery" android:allowBackup="false"
                  android:networkSecurityConfig="@xml/network_security_config"
                  android:enableOnBackInvokedCallback="true">
