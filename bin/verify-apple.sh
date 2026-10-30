@@ -18,7 +18,7 @@
 #   shim-ios       compile Shim+UIKit.swift  (build-shim.sh ios-sim)
 #   abi            shim-gen's consistency checks: ABI, C header, Scala externs, both shims
 #   secrets        thicket-secrets-apple's tests against the real Keychain (#108): conformance, isolation
-#   link           sbt nativeLink for the four Apple apps, after deleting their old outputs
+#   link           sbt nativeLink for the six Apple apps, after deleting their old outputs
 #   macos-gallery  THICKET_GALLERY_SELFTEST=1 gallery-macos, twice: its secret stored, then kept
 #   macos-todo     THICKET_SELFTEST=1 todo-macos
 #   macos-lazy     THICKET_LAZYTEST=1 todo-macos: 10 000 rows, virtualised and freed
@@ -26,6 +26,9 @@
 #   ios-todo       the todo app on the simulator (examples/todo-apple/ios/ios-app/build-app.sh)
 #   ios-lazy       the 10 000-row probe on the simulator
 #   fit            ContentFit measured on both toolkits (shim/run-fit-harness.sh)
+#   http-macos     examples/http/selftest.sh macos: URLSessionBackend against a local server, the
+#                  checks Linux and Android run too (#112)
+#   http-ios       the same on the simulator
 #   getting-started  bin/verify-getting-started-apple.sh: publish locally, build and run the
 #                  macOS and iOS templates from outside the repository
 #
@@ -114,11 +117,11 @@ native() { find "$root/target/out" -type f -perm -u+x -name "$1" 2>/dev/null | h
 # a binary from an earlier build — which the first run of this script did.
 link_all() {
   find "$root/target/out" \( -name gallery-macos -o -name todo-macos -o -name 'libgallery-ios.a' \
-    -o -name 'libtodo-ios.a' \) -type f -delete 2>/dev/null || true
+    -o -name 'libtodo-ios.a' -o -name http-macos -o -name 'libhttp-ios.a' \) -type f -delete 2>/dev/null || true
   local t ok=0
   # One command per invocation: sbt's thin client does not take several as separate
   # arguments, and rejected all four at once in the first run.
-  for t in galleryMacos todoMacos galleryIos todoIos; do
+  for t in galleryMacos todoMacos galleryIos todoIos httpMacos httpIos; do
     echo "-- $t/nativeLink"
     sbt --error "$t/nativeLink" || ok=1
   done
@@ -153,6 +156,8 @@ run ios-gallery on_fresh_simulator examples/gallery/ios/ios-app/build-app.sh "$d
 run ios-todo on_fresh_simulator examples/todo-apple/ios/ios-app/build-app.sh "$device"
 run ios-lazy on_fresh_simulator ios_lazy
 run fit modules/renderer-apple/shim/run-fit-harness.sh "$out/fit" "$device"
+run http-macos examples/http/selftest.sh macos
+run http-ios on_fresh_simulator examples/http/selftest.sh ios "$device"
 run getting-started bin/verify-getting-started-apple.sh "$device"
 
 # Keep what a reviewer would want to look at next to the logs.

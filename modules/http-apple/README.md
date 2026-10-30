@@ -106,5 +106,6 @@ checks every platform's backend runs (`examples/http`) against a local server on
 (`examples/http/server.py`), and two of Apple's own: main-thread refusal, GET, IDN host names,
 POST (text and binary), 404, repeated headers, redirect, timeout, connect refused, a reset
 connection, cancellation by interrupt, the GC check above, one caliban-client query, and no
-request left behind — 14. Numbers in the decision log, 2026-10-22, when they were 13: the
-reset check (2026-10-27) has not yet run on Apple.
+request left behind — 14. Confirmed on the Mac on 2026-10-28 (#112): 14/14 on macOS and on the
+iOS simulator, a reset coming back as sttp's `ReadException` with no change to the backend.
+`bin/verify-apple.sh` runs both, so Apple CI does too.

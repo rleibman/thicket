@@ -125,6 +125,20 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
       recur when re-created deliberately (a run killed with the dialog up, then a launch
       without the flag passed), so the flag is a precaution, not a measured fix.
 
+- 2026-10-28 — **The moved HTTP self-test passes on the Mac, and Apple CI runs it** (#112, on
+  #111). `examples/http/selftest.sh macos` and `ios "iPhone 17e"`: **14/14 each** (12 shared
+  with Linux and Android, 2 Apple-only), with no change to `URLSessionBackend`. The new
+  connection-reset check passes as is: URLSession reports the RST as "The network connection
+  was lost", an `IOException`, which sttp classifies as `ReadException`. GC wait 5 ms (macOS) /
+  3 ms (iOS); cancellation 307 / 306 ms with the server seeing the hang-up. `bin/verify-apple.sh`
+  now links `httpMacos`/`httpIos` with the other apps and runs both self-tests, so `apple.yml`
+  covers HTTP as `ci.yml` does for Linux: **16/16 steps**. Also fixed: getting-started's window
+  check read the window once after a fixed 10 s sleep, and a run on `main` (40593045032, on
+  `b88a39f`) read `windows=0` for an app that was coming up under load; the next run passed. It
+  now polls every 2 s for up to 60 s, with the probe compiled once (`swift script.swift`
+  recompiled on every call). Control: a size filter the template never matches fails with
+  "the macOS app has no window" after the full wait (87 s for the step).
+
 - 2026-10-27 — **HTTP on GTK and Android: Thicket's own `LibcurlBackend`, and a wrapper over
   sttp's `HttpURLConnectionBackend`** (docs/16 §16.4, §16.10 item 1). The Apple self-test's
   checks became `examples/http`, shared by every platform, with a new connection-reset check.
