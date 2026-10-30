@@ -246,6 +246,8 @@ every remaining entry before it is built, not after.
 | Lifecycle and permissions | `modules/device`, `device-gtk`, `device-android` | done on GTK and Android (2026-10-28) — `AppLifecycle.state` (Foreground while a `ThicketActivity` is started, or while the GTK window is shown and not minimised or suspended) and `onTerminate`; `Permissions` (Android's dialog, one at a time; an undeclared permission throws; GTK grants all). The gallery's Device section drives them through each host. Apple is a Mac issue. `modules/device/README.md` |
 | Location | `modules/location`, `location-android` | done on Android (2026-10-30) — the framework's `LocationManager` (GPS for `Fine` when fine permission is granted, else network), listened to only while the app is in front; `availability` says `NeedsPermission` or why it's `Unavailable`. GTK uses `Location.unavailable` (`docs/16` §16.9, decision 7). The gallery's Location section is driven with `adb emu geo fix`. Apple is a Mac issue. `modules/location/README.md` |
 | Motion | `modules/motion`, `motion-android` | done on Android (2026-10-30) — acceleration (gravity included), rotation rate and attitude through `SensorManager`, each a `Signal` at a requested `Rate`, running only while the app is in front; a sensor the device lacks is `Unavailable`. GTK uses `Motion.unavailable`. The gallery's Motion section is driven with `adb emu sensor set`. Apple (iOS) is a Mac issue. `modules/motion/README.md` |
+| Clipboard | `modules/clipboard`, `clipboard-gtk`, `clipboard-android` | done on GTK (`GdkClipboard`, read asynchronously) and Android (`ClipboardManager`) (2026-10-30) — text only. The gallery copies and pastes twice, each paste showing that round's copy. Apple is a Mac issue. `modules/clipboard/README.md` |
+| Haptics | `modules/haptics`, `haptics-android` | done on Android (2026-10-30) — `performHapticFeedback`, which `build.sh` finds in the system's vibrator history; GTK uses `Haptics.none`. Apple is a Mac issue. `modules/haptics/README.md` |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
 | Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine. Since #90 also `thicket-http-apple`'s 12 `thk_http_*` functions (`HttpAbi`): `thicket_http.h` and `HttpShim.scala` generated, `HttpShim.swift` checked |
 | HTTP on Apple | `modules/http-apple` | done on iOS and macOS (#90) — `URLSessionBackend`, an sttp `SyncBackend` over `URLSession`, because the iOS SDK has no libcurl. Its own module and Swift library, not linked by an app that does not depend on it. The self-test checks against a local server pass on the iOS simulator and on macOS, among them one caliban-client query; each is seen to fail with its feature broken. Not a widget, so not in the gallery. The checks are now `examples/http`'s, shared by every platform; the Mac re-ran them there — 14/14 on macOS and the iOS simulator (2026-10-28, #112), with `bin/verify-apple.sh` running both so Apple CI does too |
@@ -355,6 +357,8 @@ someone who did not write the framework, running on all three targets.
 | `httpAndroid` | 5 — on the desktop JDK: a repeated header sent twice, through a redirect too; an interrupt returns at once; errors still sttp's (2026-10-27) |
 | `deviceJVM` / `deviceNative` | 8 — the permission queue (one dialog at a time, answers in order, re-entrant), the terminate hooks, `WhileInFront`, the fakes (2026-10-30) |
 | `locationJVM` / `locationNative` | 7 — updates follow the lifecycle (stop in the background, restart in front with the last known position), stop with their owner, wait for availability; `current` once; `Location.unavailable` (2026-10-30) |
+| `clipboardJVM` / `clipboardNative` | 1 — `MemoryClipboard` (2026-10-30); the real clipboards are checked in the galleries |
+| `hapticsJVM` / `hapticsNative` | 2 — `RecordingHaptics`, `Haptics.none` (2026-10-30) |
 | `motionJVM` / `motionNative` | 5 — each reading follows its sensor, attitude as roll/pitch/yaw; stop in the background and with the owner; the rate asked for; a missing sensor; `Motion.unavailable` (2026-10-30) |
 | `secretsApple` | 4 (2026-10-27, a Mac only: `bin/verify-apple.sh`'s `secrets` step) — an unsigned binary gets the login keychain; the 11 checks; services are separate; a status in Security's words |
 | `shimGen` | 15 |
@@ -362,11 +366,12 @@ someone who did not write the framework, running on all three targets.
 
 Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run; the
 storage and sqlite rows 2026-10-21, the secrets rows and `storageGtk` 2026-10-26. On top of
-these, the self-tests drive the real toolkits: GTK gallery **128** and todo **69**
-(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **71** and
+these, the self-tests drive the real toolkits: GTK gallery **131** and todo **69**
+(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **76** and
 todo **84** on the `s2test` emulator (2026-10-30, the storage section's checks each included,
 secrets among them, the 14 HTTP checks, the Device section's 5 on GTK and 9 on Android, and
-the Location section's 1 on GTK and 7 on Android, and the Motion section's 1 and 8).
+the Location section's 1 on GTK and 7 on Android, the Motion section's 1 and 8, and the
+Clipboard and haptics section's 3 and 5).
 The Android gallery's `build.sh` also checks that Back runs the terminate hook. HTTP on Linux: `examples/http/selftest.sh linux`,
 **12**. Apple gallery (2026-10-22, #98): macOS **174**, iOS simulator **168**,
 each with six storage checks; 2026-10-27 (#108): macOS **185**, iOS simulator **179**, the two

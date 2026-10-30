@@ -19,6 +19,7 @@ echo "== sbt: building the Scala JARs =="
   "storageJVM/package" "sqliteJVM/package" "storageAndroid/package" "sqliteAndroid/package" \
   "secretsJVM/package" "secretsAndroid/package" "deviceJVM/package" "deviceAndroid/package" "locationJVM/package" "locationAndroid/package" \
   "motionJVM/package" "motionAndroid/package" \
+  "clipboardJVM/package" "clipboardAndroid/package" "hapticsJVM/package" "hapticsAndroid/package" \
   "httpChecksJVM/package" "httpAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
@@ -35,6 +36,7 @@ for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-z
               thicket-storage thicket-sqlite thicket-storage-android thicket-sqlite-android \
               thicket-secrets thicket-secrets-android thicket-device thicket-device-android \
               thicket-location thicket-location-android thicket-motion thicket-motion-android \
+              thicket-clipboard thicket-clipboard-android thicket-haptics thicket-haptics-android \
               http-checks thicket-http-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
@@ -69,6 +71,8 @@ if [ -n "${SELFTEST:-}" ]; then
   adb shell pm clear-permission-flags $pkg android.permission.POST_NOTIFICATIONS user-set user-fixed
 fi
 adb logcat -c
+# The device's clock now: the vibrator's history outlives a run, so only taps recorded after this count.
+started_at=$(adb shell "date '+%m-%d %H:%M:%S'" | tr -d '\r')
 # The self-test's HTTP checks talk to examples/http/server.py on this machine's loopback, which `adb reverse` makes
 # the emulator's 127.0.0.1 too. Nothing leaves the machine.
 httparg=()
@@ -152,4 +156,12 @@ echo "$log"
 verdict=0
 grep -q '\[gallery\] ALL CHECKS PASSED' <<<"$log" || verdict=1
 grep -q '\[gallery\] TERMINATED' <<<"$log" || { echo "FAIL: Back did not run the terminate hook"; verdict=1; }
+# The Clipboard and haptics section's tap, as the system's vibrator recorded it: evidence from outside the app.
+if [ -n "${SELFTEST:-}" ]; then
+  taps=$(adb shell dumpsys vibrator_manager | tr -d '\r' |
+    grep 'dev.thicket.gallery' | grep 'performHapticFeedback' |
+    awk -v since="$started_at" '{ if (($1 " " $2) >= since) n++ } END { print n + 0 }')
+  if [ "$taps" -gt 0 ]; then echo "ok: the vibrator played $taps of the gallery's haptic taps"
+  else echo "FAIL: the vibrator recorded none of the gallery's haptic taps since $started_at"; verdict=1; fi
+fi
 exit $verdict

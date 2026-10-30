@@ -72,6 +72,28 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-30 — **Clipboard and haptics; the pickers' shape** (docs/16 §16.10 item 5).
+  - **Owner's decisions for the pickers and camera capture, to come:** a picked or captured
+    file is **copied into the app's cache and returned as a `Path`** on every platform, so
+    Android's `content://` URIs never reach the app (the cost: a large video is copied); and
+    results arrive by **UI-thread callback**, as every service's do, with any ZIO form in
+    `effect-zio`.
+  - **Clipboard:** `thicket-clipboard` (`set(text)`, `get(onResult)`, text only) over
+    `GdkClipboard` (read with `gdk_clipboard_read_text_async`) and Android's
+    `ClipboardManager`. `get` is a callback on both, since GTK's read is asynchronous.
+  - **Haptics:** `thicket-haptics` (`impact(Light | Medium | Heavy)`, `selection()`,
+    `availability`) over `View.performHapticFeedback` (no `VIBRATE` permission); GTK uses
+    `Haptics.none`.
+  - **Measured.** Unit tests: clipboard 1, haptics 2, JVM and Native. GTK gallery 131
+    (128 + 3), todo 69. Android gallery 76 (71 + 5) on `s2test`. Outside the apps: `wl-paste`
+    read the GTK gallery's copy from another process, and Android's vibrator history
+    (`dumpsys vibrator_manager`) shows the gallery's taps, `played: Prebaked=CLICK`, which
+    `build.sh` now checks.
+  - **Falsified.** With `set` doing nothing, both copy-and-paste rounds fail on GTK and on
+    Android, each pasting a previous run's text, so the read comes from the system clipboard
+    too. With `performHapticFeedback` not called, the in-app check and `build.sh`'s vibrator
+    count both fail.
+
 - 2026-10-30 — **Motion: `thicket-motion` and `-android`; `WhileInFront` shared with
   location** (docs/16 §16.10 item 4).
   - **API:** `Motion.acceleration`, `rotationRate`, `attitude`, each `(rate)(using Owner)` and
