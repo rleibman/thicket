@@ -20,19 +20,21 @@ import _root_.android.os.{Handler, Looper, SystemClock}
 import _root_.android.util.Log
 import _root_.android.view.{View, ViewGroup}
 import _root_.android.widget.{Button, EditText, ImageView, Spinner, TextView}
-import example.gallery.{DeviceDemo, Gallery, StorageDemo}
+import example.gallery.{DeviceDemo, Gallery, LocationDemo, StorageDemo}
 import example.http.HttpChecks
 import scala.collection.mutable
 import sttp.client4.*
 import thicket.http.android.AndroidHttpBackend
 import thicket.core.Reconciler
 import thicket.core.dsl.*
-import thicket.device.{AppState, Permission}
+import thicket.device.{AppState, Availability, Permission}
 import thicket.device.android.{AndroidLifecycle, AndroidPermissions}
 import thicket.renderer.android.ThicketActivity
 import thicket.secrets.android.AndroidSecrets
 import thicket.secrets.testing.SecretsConformance
-import thicket.signals.{ErrorSink, Owner, Signal}
+import thicket.signals.{Disposable, ErrorSink, Owner, Signal}
+import thicket.location.{Accuracy, Fix, Location, LocationProvider}
+import thicket.location.android.AndroidLocationProvider
 import thicket.sqlite.Sqlite
 import thicket.sqlite.android.AndroidSqlite
 import thicket.sqlite.testing.JdbcConformance
@@ -427,7 +429,7 @@ object GallerySelfTest {
             s"$entriesBefore before the push, ${activity.renderer0.tableEntries} after the pop"
           )
         }
-      ) ++ deviceSteps(activity, () => texts, click) ++ List(() => {
+      ) ++ deviceSteps(activity, () => texts, click) ++ locationSteps(activity, () => texts) ++ List(() => {
         if httpPort > 0 then {
           httpWorker.start()
           awaitHttp(SystemClock.uptimeMillis() + 30000)
@@ -527,6 +529,88 @@ object GallerySelfTest {
         )
         check("the app stayed in the foreground under the dialogs", !sawBackground)
         watch.dispose()
+      }
+    )
+  }
+
+  /** Location (docs/16 §16.10 item 4), with `build.sh` moving the emulator: `DRIVE geo <lon> <lat>` is
+    * `adb emu geo fix`, which the GPS provider reports. `build.sh` installs with every permission granted, location
+    * among them.
+    *
+    * Android throttles location for an app in the background on its own, so a section that stops changing there would
+    * pass even if Thicket kept listening. The listening itself is counted instead, through a provider that wraps the
+    * real one under the real lifecycle.
+    */
+  private def locationSteps(
+    activity: GalleryActivity,
+    texts:    () => List[String]
+  ): List[() => Unit] = {
+    def demo = Gallery.currentLocation
+    def position = demo.map(_.position.now).getOrElse("")
+    val paris = LocationDemo.positionLabel(Fix(48.8584, 2.2945, None, None, 0L))
+    val sydney = LocationDemo.positionLabel(Fix(-33.8568, 151.2153, None, None, 0L))
+    var listening = 0
+    val real = AndroidLocationProvider(activity, AndroidPermissions(activity))
+    val counted = new LocationProvider {
+      def availability: Availability = real.availability
+      def start(
+        accuracy: Accuracy,
+        onFix:    Fix => Unit
+      ): Disposable = {
+        listening += 1
+        val d = real.start(accuracy, onFix)
+        var stopped = false
+        () =>
+          if !stopped then {
+            stopped = true
+            listening -= 1
+            d.dispose()
+          }
+      }
+      def last(accuracy: Accuracy): Option[Fix] = real.last(accuracy)
+    }
+    val probe = Owner()
+    List(
+      () => {
+        check(
+          "the Android host provides a Location, available: build.sh installs with location granted",
+          demo.isDefined && texts().contains(LocationDemo.availabilityLabel(Availability.Available)),
+          texts().filter(_.startsWith("Location")).toString
+        )
+        val _ = Location(counted, AndroidLifecycle).updates(Accuracy.Fine)(using probe)
+        drive("geo 2.2945 48.8584")
+      },
+      Await(20000, () => position == paris),
+      () => {
+        check(
+          "a position sent to the emulator's GPS reaches the section",
+          position == paris && texts().contains(paris),
+          position
+        )
+        check("in the foreground, Thicket listens to the provider", listening == 1, s"$listening listening")
+        drive("home")
+      },
+      Await(10000, () => AndroidLifecycle.state.now == AppState.Background),
+      () => {
+        check("in the background, Thicket stops listening", listening == 0, s"$listening listening")
+        drive("geo 151.2153 -33.8568")
+      },
+      // Time for a report to arrive, were anyone listening.
+      Await(3000, () => false),
+      () => {
+        check("and a position sent there does not reach the section", position == paris, position)
+        drive("front")
+      },
+      Await(10000, () => AndroidLifecycle.state.now == AppState.Foreground),
+      Await(20000, () => position == sydney),
+      () => {
+        check(
+          "back in front, it listens again and shows where the device went meanwhile",
+          listening == 1 && position == sydney && texts().contains(sydney),
+          s"$listening listening; $position"
+        )
+        probe.dispose()
+        check("disposing the owner stops it", listening == 0, s"$listening listening")
       }
     )
   }
