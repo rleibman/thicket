@@ -72,6 +72,25 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-30 — **Motion: `thicket-motion` and `-android`; `WhileInFront` shared with
+  location** (docs/16 §16.10 item 4).
+  - **API:** `Motion.acceleration`, `rotationRate`, `attitude`, each `(rate)(using Owner)` and
+    a `Signal[Option[_]]`; `availability(sensor)`, with no permission. **`Attitude` is its own
+    type** (roll, pitch, yaw), not §16.3's `Vec3`: three angles named by axis read better than
+    `x`, `y`, `z`. Acceleration includes gravity, as Android's accelerometer reports it.
+  - **`WhileInFront`** moves into `thicket-device`: location's lifecycle code, now shared by
+    both. Location's tests still pass 7/7 after the move.
+  - **Android:** `SensorManager`: the accelerometer, the gyroscope, and the fused rotation
+    vector through `getOrientation`. `Rate` is `SENSOR_DELAY_NORMAL`, `_UI` or `_GAME`.
+  - **GTK:** `Motion.unavailable` (decision 7).
+  - **Measured.** `MotionSpec` 5/5 and `DeviceSpec` 8/8 on JVM and Native. GTK gallery 128
+    (127 + 1), todo 69. Android gallery 71 (63 + 8) on `s2test`: `build.sh` sets the
+    accelerometer and gyroscope (`DRIVE accel`, `DRIVE gyro`).
+  - **Falsified.** Without `WhileInFront`'s background stop: `DeviceSpec`'s and `MotionSpec`'s
+    lifecycle tests fail, and on Android both "in the background, Thicket stops listening"
+    checks (location and motion) fail. The counts are through wrapping providers, since
+    Android stops background sensor events by itself.
+
 - 2026-10-30 — **Location: `thicket-location` and `-android`; GTK uses `Location.unavailable`**
   (docs/16 §16.10 item 4).
   - **API** (JVM, Native; depends on `thicket-device`): `Location.availability`,

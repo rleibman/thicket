@@ -174,7 +174,8 @@ object Gallery {
     logo:     Array[Byte],
     storage:  Option[StorageDemo] = None,
     device:   Option[DeviceDemo] = None,
-    location: Option[LocationDemo] = None
+    location: Option[LocationDemo] = None,
+    motion:   Option[MotionDemo] = None
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -482,6 +483,20 @@ object Gallery {
                 )
             }
           ),
+          // The motion sensors (docs/16 §16.10 item 4), running only while the app is in front. Android's
+          // SensorManager; GTK has none to offer yet and says so.
+          section("Motion — acceleration, rotation and attitude, while the app is in front")(
+            motion match {
+              case None       => Label("No motion sensors on this platform yet", emphasis = Emphasis.Secondary)
+              case Some(demo) =>
+                Column(spacing = 8)(
+                  Label(demo.sensors),
+                  Label(demo.acceleration),
+                  Label(demo.rotationRate),
+                  Label(demo.attitude)
+                )
+            }
+          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -552,6 +567,9 @@ object Gallery {
   /** The running app's location demo, for a host's self-test. Set by [[app]] when the host provides a `Location`. */
   var currentLocation: Option[LocationDemo] = None
 
+  /** The running app's motion demo, for a host's self-test. Set by [[app]] when the host provides `Motion`. */
+  var currentMotion: Option[MotionDemo] = None
+
   /** The whole app, for a host to mount. Hosts differ only in how they start, in which logo file their platform can
     * draw, and in the device services they have.
     */
@@ -570,13 +588,15 @@ object Gallery {
     currentDevice = device
     val location = services.flatMap(svc => svc.location.map(LocationDemo(_, svc.device)))
     currentLocation = location
+    val motion = services.flatMap(_.motion).map(MotionDemo(_))
+    currentMotion = motion
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logoFile, bytes, storage, device, location)
+        val s = screen(model, loaded, logoFile, bytes, storage, device, location, motion)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

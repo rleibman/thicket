@@ -16,7 +16,7 @@
 
 package thicket.location
 
-import thicket.device.{AppLifecycle, AppState, Availability}
+import thicket.device.{AppLifecycle, Availability, WhileInFront}
 import thicket.signals.{Disposable, Owner, Signal, Var}
 
 /** Where the device is: one position report from the platform. */
@@ -109,25 +109,15 @@ object Location {
 
       def availability: Availability = provider.availability
 
-      def updates(accuracy: Accuracy)(using owner: Owner): Signal[Option[Fix]] = {
+      def updates(accuracy: Accuracy)(using Owner): Signal[Option[Fix]] = {
         val fix = Var(if available then provider.last(accuracy) else None)
-        var running: Option[Disposable] = None
-        def stop():  Unit = {
-          running.foreach(_.dispose())
-          running = None
-        }
-        val _ = Signal.effect {
-          lifecycle.state() match {
-            case AppState.Foreground =>
-              if running.isEmpty && available then {
-                // Where the platform last saw the device: it may have moved while the app was away.
-                Signal.untracked(provider.last(accuracy).foreach(f => fix.set(Some(f))))
-                running = Some(provider.start(accuracy, f => fix.set(Some(f))))
-              }
-            case AppState.Background => stop()
+        WhileInFront(lifecycle) { () =>
+          Option.when(available) {
+            // Where the platform last saw the device: it may have moved while the app was away.
+            provider.last(accuracy).foreach(f => fix.set(Some(f)))
+            provider.start(accuracy, f => fix.set(Some(f)))
           }
         }
-        owner.own(() => stop())
         fix
       }
 

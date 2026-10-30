@@ -316,6 +316,7 @@ modules/
   secrets/           tokens and passwords in the platform's secure store; secrets-gtk/, secrets-android/, secrets-apple/
   device/            the app's lifecycle and permissions; device-gtk/, device-android/
   location/          the device's position; location-android/ (GTK: Location.unavailable)
+  motion/            acceleration, rotation rate, attitude; motion-android/ (GTK: Motion.unavailable)
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)
@@ -355,9 +356,10 @@ SELFTEST=1 examples/todo-android/build.sh
 `checkLinux` is what CI runs (`.github/workflows/ci.yml`), with the GTK self-tests under
 xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 2026-10-21:
 signals 30, core 170, effect-zio 25, storage 14, sqlite 2 and secrets 2 per backend,
-storage-gtk 4, storage-apple 4, secrets-gtk 2, http-gtk 5, http-android 5, device 7 and
-location 7 per backend, shim-gen 15, sbt-thicket 9; GTK 127 + 69 self-test checks, Android
-63 + 84 (2026-10-30, the gallery's with the HTTP checks and the Device and Location sections'),
+storage-gtk 4, storage-apple 4, secrets-gtk 2, http-gtk 5, http-android 5, device 8,
+location 7 and motion 5 per backend, shim-gen 15, sbt-thicket 9; GTK 128 + 69 self-test
+checks, Android 71 + 84 (2026-10-30, the gallery's with the HTTP checks and the Device,
+Location and Motion sections'),
 the HTTP checks on Linux 12.
 
 Coverage over the JVM-tested modules:

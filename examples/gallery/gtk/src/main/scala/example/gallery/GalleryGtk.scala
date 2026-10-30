@@ -19,6 +19,7 @@ package example.gallery
 import thicket.device.{AppState, Availability}
 import thicket.device.gtk.{GtkDevice, GtkLifecycle}
 import thicket.location.Location
+import thicket.motion.{Motion, Sensor}
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
 import thicket.secrets.gtk.GtkSecrets
@@ -514,7 +515,7 @@ object GalleryGtk {
       s"${GtkInspect.cssParseErrors} CSS parse errors"
     )
 
-    storageChecks(root)(deviceChecks(root)(locationChecks(root)(presentedAndNav(root))))
+    storageChecks(root)(deviceChecks(root)(locationChecks(root)(motionChecks(root)(presentedAndNav(root)))))
   }
 
   /** Lifecycle and permissions on GTK (docs/16 §16.10 item 3). The window is hidden and shown again through GTK, so the
@@ -594,6 +595,27 @@ object GalleryGtk {
     }
     next
   }
+
+  /** Motion on GTK (docs/16 §16.9, decision 7): no sensors yet, so the section says so and no reading arrives. */
+  private def motionChecks(root: Ptr[GtkWidget])(next: => Unit): Unit = {
+    Gallery.currentMotion match {
+      case None =>
+        check("the GTK host provides Motion", false, "Gallery.currentMotion is None")
+      case Some(_) =>
+        val texts = GtkInspect.allTexts(root)
+        val expected = MotionDemo.sensorsLabel(Sensor.values.toList.map(_ -> Availability.Unavailable(noMotion)))
+        check(
+          "motion says the desktop has no sensors, and shows no reading",
+          texts.contains(expected) && texts.contains(MotionDemo.noAcceleration) &&
+            texts.contains(MotionDemo.noRotation) && texts.contains(MotionDemo.noAttitude),
+          texts.filter(t => t.startsWith("Sensors") || t.startsWith("Acceleration")).toString
+        )
+    }
+    next
+  }
+
+  /** Why the desktop has no motion sensors: iio-sensor-proxy is not wired up yet (docs/16 §16.9, decision 7). */
+  val noMotion: String = "no motion sensors on the desktop yet"
 
   /** Why the desktop has no location: GeoClue and the portal are not wired up yet (docs/16 §16.9, decision 7). */
   val noLocation: String = "no location service on the desktop yet"
@@ -962,7 +984,8 @@ object GalleryGtk {
             NativeSqlite.driver,
             () => GtkSecrets.open("dev.thicket.gallery"),
             device = Some(GtkDevice()),
-            location = Some(Location.unavailable(noLocation))
+            location = Some(Location.unavailable(noLocation)),
+            motion = Some(Motion.unavailable(noMotion))
           )
         )
       )

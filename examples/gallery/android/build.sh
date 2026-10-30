@@ -18,6 +18,7 @@ echo "== sbt: building the Scala JARs =="
   "signalsJVM/package" "rendererApiJVM/package" "coreJVM/package" "effectZioJVM/package" \
   "storageJVM/package" "sqliteJVM/package" "storageAndroid/package" "sqliteAndroid/package" \
   "secretsJVM/package" "secretsAndroid/package" "deviceJVM/package" "deviceAndroid/package" "locationJVM/package" "locationAndroid/package" \
+  "motionJVM/package" "motionAndroid/package" \
   "httpChecksJVM/package" "httpAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
@@ -33,7 +34,7 @@ rm -f "$here"/app/libs/*.jar
 for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-zio \
               thicket-storage thicket-sqlite thicket-storage-android thicket-sqlite-android \
               thicket-secrets thicket-secrets-android thicket-device thicket-device-android \
-              thicket-location thicket-location-android \
+              thicket-location thicket-location-android thicket-motion thicket-motion-android \
               http-checks thicket-http-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
@@ -118,6 +119,9 @@ drive() {
     allow) tap_dialog permission_allow_button ;;
     # "geo <lon> <lat>": the emulator's GPS reports there. The two numbers are split into two arguments on purpose.
     geo\ *) adb emu geo fix ${1#geo } >/dev/null ;;
+    # "accel x:y:z" and "gyro x:y:z": the emulator's accelerometer and gyroscope report these from now on.
+    accel\ *) adb emu sensor set acceleration "${1#accel }" >/dev/null ;;
+    gyro\ *) adb emu sensor set gyroscope "${1#gyro }" >/dev/null ;;
     *) echo "   (build.sh) unknown action $1" ;;
   esac
 }
