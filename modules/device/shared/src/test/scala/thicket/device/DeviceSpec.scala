@@ -120,6 +120,6 @@ object DeviceSpec extends ZIOSpecDefault {
           perms.asked.toList == List(Permission.Location)
         )
       }
-    )
+    ) @@ TestAspect.sequential
 
 }
