@@ -84,7 +84,8 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     listeners, as it does permission results. One picker at a time.
   - **GTK:** `GtkFileDialog` over `GtkApp`'s window (the portal when sandboxed).
   - **Measured, through the real pickers.** `PickersSpec` 4/4, JVM and Native. GTK gallery
-    135 (131 + 4), todo 69: the self-test turns the portal off so the chooser is in-process,
+    136 (131 + 5, one of them that a second request while the chooser is up answers empty
+    without a second chooser; it fails with the busy check removed), todo 69: the self-test turns the portal off so the chooser is in-process,
     and answers it. Android gallery 81 (76 + 5) on `s2test`: `build.sh` taps the photo picker
     and the documents UI, and reads the saved file back from Downloads. The photo picker names
     a copy by its media id (`36.png`), not the original name; the bytes match.

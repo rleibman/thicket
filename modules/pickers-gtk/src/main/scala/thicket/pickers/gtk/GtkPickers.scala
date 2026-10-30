@@ -94,7 +94,7 @@ final class GtkPickers(cache: Path) {
             case Some(path) =>
               onWorker(scala.util.Try { Files.write(path, bytes); path.getFileName.toString }.toOption)(onResult)
           }
-      }(gtk_file_dialog_save)
+      }(gtk_file_dialog_save, () => onResult(None))
     }
 
   }
@@ -124,7 +124,7 @@ final class GtkPickers(cache: Path) {
           val list = gtk_file_dialog_open_multiple_finish(d, result, err)
           if !err != null then g_error_free(!err)
           chosen(if list == null then Nil else filesIn(list))
-      }(gtk_file_dialog_open_multiple)
+      }(gtk_file_dialog_open_multiple, () => chosen(Nil))
     else
       start(dialog) {
         (
@@ -136,7 +136,7 @@ final class GtkPickers(cache: Path) {
           val file = gtk_file_dialog_open_finish(d, result, err)
           if !err != null then g_error_free(!err)
           chosen(pathOf(file).toList)
-      }(gtk_file_dialog_open)
+      }(gtk_file_dialog_open, () => chosen(Nil))
   }
 
   private def copyAll(paths: List[Path])(onResult: Seq[Path] => Unit): Unit =
@@ -148,8 +148,8 @@ final class GtkPickers(cache: Path) {
 
 object GtkPickers {
 
-  // Callbacks cannot close over state in Scala Native: each dialog's continuation waits here under the id that travels
-  // as the callback's user data, as `thicket.renderer.gtk.Handles` does.
+  // Callbacks cannot close over state in Scala Native: the dialog's continuation waits here under the id that travels
+  // as the callback's user data, as `thicket.renderer.gtk.Handles` does. At most one entry: one picker at a time.
   private val pending = new ConcurrentHashMap[java.lang.Long, (Ptr[GtkFileDialog], Ptr[GAsyncResult]) => Unit]()
   private val nextId = new AtomicLong(1L)
 
@@ -161,19 +161,33 @@ object GtkPickers {
     gpointer
   ) => Unit
 
-  /** Shows `dialog` with `show` over the app's window; `k` gets it back with the result, after which it is released. */
-  private def start(dialog: Ptr[GtkFileDialog])(k: (Ptr[GtkFileDialog], Ptr[GAsyncResult]) => Unit)(show: Show)
-    : Unit = {
-    val id = nextId.getAndIncrement()
-    pending.put(id, k)
-    show(
-      dialog,
-      GtkApp.windowHandle.asInstanceOf[Ptr[GtkWindow]],
-      null,
-      GAsyncReadyCallback.fromPtr(CFuncPtr.toPtr(finished)),
-      fromRawPtr[Byte](Intrinsics.castLongToRawPtr(id)).asInstanceOf[gpointer]
-    )
-  }
+  /** Shows `dialog` with `show` over the app's window; `k` gets it back with the result, after which it is released.
+    *
+    * One picker at a time, for the photos and the documents alike, as on Android: while one is up, `dialog` is released
+    * unshown and `busy` answers on the next turn of the main loop.
+    */
+  private def start(
+    dialog: Ptr[GtkFileDialog]
+  )(
+    k: (Ptr[GtkFileDialog], Ptr[GAsyncResult]) => Unit
+  )(
+    show: Show,
+    busy: () => Unit
+  ): Unit =
+    if !pending.isEmpty then {
+      g_object_unref(dialog.asInstanceOf[gpointer])
+      GtkApp.postToUi(busy)
+    } else {
+      val id = nextId.getAndIncrement()
+      pending.put(id, k)
+      show(
+        dialog,
+        GtkApp.windowHandle.asInstanceOf[Ptr[GtkWindow]],
+        null,
+        GAsyncReadyCallback.fromPtr(CFuncPtr.toPtr(finished)),
+        fromRawPtr[Byte](Intrinsics.castLongToRawPtr(id)).asInstanceOf[gpointer]
+      )
+    }
 
   private val finished: CFuncPtr3[Ptr[Byte], Ptr[Byte], gpointer, Unit] =
     CFuncPtr3.fromScalaFunction {

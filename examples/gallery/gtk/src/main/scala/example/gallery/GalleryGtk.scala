@@ -707,6 +707,18 @@ object GalleryGtk {
           }
         }
         press("Pick a photo")
+        // While the chooser is up, a second request answers empty, and no second chooser appears.
+        var second: Option[Seq[Path]] = None
+        when(100)(PickerDriver.chooser.isDefined) {
+          pickers.documents.open(Nil)(r => second = Some(r))
+          when(50)(second.isDefined) {
+            check(
+              "a picker asked for while one is up answers empty, without a second chooser",
+              second.contains(Nil) && PickerDriver.choosers == 1,
+              s"answered $second; ${PickerDriver.choosers} choosers"
+            )
+          }
+        }
         answer(Some(photoFile)) {
           when(150)(demo.photo.now != PickersDemo.nothing("Photo")) {
             val got = demo.lastPhotos
@@ -831,6 +843,9 @@ object GalleryGtk {
     }
 
   lazy private val storage = GtkStorage("dev.thicket.gallery")
+
+  /** The pickers the gallery shows, kept for the self-test's one-at-a-time check. */
+  lazy private val pickers = GtkPickers(storage.dirs.cache)
 
   /** Secrets on GTK: the Secret Service of the session the self-test runs in, which this machine and CI both provide
     * (CI starts a keyring). Required, not skipped when absent: a gallery that silently had no secrets would pass.
@@ -1136,10 +1151,7 @@ object GalleryGtk {
             motion = Some(Motion.unavailable(noMotion)),
             clipboard = Some(GtkClipboard()),
             haptics = Some(Haptics.none(noHaptics)),
-            pickers = Some {
-              val p = GtkPickers(storage.dirs.cache)
-              (p.photos, p.documents)
-            }
+            pickers = Some((pickers.photos, pickers.documents))
           )
         )
       )

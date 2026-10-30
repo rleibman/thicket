@@ -36,7 +36,12 @@ private[gallery] object PickerDriver {
   }
 
   /** The open file chooser, if one is up. */
-  def chooser: Option[Ptr[GtkWidget]] = {
+  def chooser: Option[Ptr[GtkWidget]] = all.headOption
+
+  /** How many file choosers are up. */
+  def choosers: Int = all.size
+
+  private def all: List[Ptr[GtkWidget]] = {
     val windows = gtk_window_get_toplevels()
     val n = g_list_model_get_n_items(windows).asInstanceOf[scala.scalanative.unsigned.UInt].toInt
     (0 until n).iterator
@@ -47,7 +52,7 @@ private[gallery] object PickerDriver {
         g_object_unref(item)
         Option.when(name == "GtkFileChooserDialog" && gtk_widget_get_visible(w).asInstanceOf[CInt] != 0)(w)
       }
-      .nextOption()
+      .toList
   }
 
   /** Sets `file` on the chooser and accepts, or cancels when there is none. */
