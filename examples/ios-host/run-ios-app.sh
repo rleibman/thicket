@@ -98,7 +98,14 @@ codesign --force --sign - "$APP"
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null 2>&1 || true
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
-if [ "${FRESH_INSTALL:-0}" = 1 ]; then xcrun simctl uninstall "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true; fi
+# Uninstalling forgets the notifications answer, but not on a just-booted simulator: uninstalled
+# 0 s or 10 s after `bootstatus` returned, a "Don't Allow" from before the boot survived the
+# reinstall; 30 s after, it was gone (measured, #114; the service that keeps it seems to start
+# late). So a fresh install waits for that first.
+if [ "${FRESH_INSTALL:-0}" = 1 ]; then
+  sleep "${FRESH_INSTALL_SETTLE:-30}"
+  xcrun simctl uninstall "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+fi
 xcrun simctl install "$DEVICE" "$APP"
 for service in ${PRIVACY_GRANT:-}; do xcrun simctl privacy "$DEVICE" grant "$service" "$BUNDLE_ID"; done
 
@@ -123,7 +130,7 @@ for _ in $(seq 1 "${WAIT_SECONDS:-120}"); do
       driven=$((driven + 1))
       action=$(printf "%s\n" "$lines" | sed -n "${driven}p")
       echo "=== DRIVE $action ==="
-      drive "$action" || echo "=== DRIVE $action failed ==="
+      drive "$action" || { echo "=== DRIVE $action failed ==="; drive_failed=1; }
     done
   fi
   sleep 1
@@ -138,4 +145,6 @@ xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
 echo "=== app output ==="
 cat "$LOG"
 echo "=== end ==="
+# A DRIVE that failed (no alert to answer, say) fails the run, whatever the app concluded.
+if [ "${drive_failed:-0}" = 1 ]; then echo "a DRIVE action failed"; exit 1; fi
 grep -q "ALL CHECKS PASSED" "$LOG"

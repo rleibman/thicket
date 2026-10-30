@@ -63,8 +63,8 @@ the app is being built, no window is shown and no Activity has started.
 - **iOS:** `Foreground` from a scene's `willEnterForeground` to the last scene's
   `didEnterBackground`. Not activation: the notifications alert over the app did not even
   deactivate the scene, and a headless simulator never activated one at all (measured, #114).
-  Settings opened over the gallery reached `Background` 4.6 s after the request, and launching
-  the gallery again brought the same process back in 1.3 s (both through `simctl launch`).
+  Settings opened over the gallery reached `Background` 4.0–4.6 s after the request, and launching
+  the gallery again brought the same process back in 0.6–1.3 s (both through `simctl launch`).
 - **macOS:** `Foreground` while any part of any of the app's windows is visible
   (`NSApp.occlusionState`). Hidden (Cmd-H), minimised, ordered out or fully covered is
   `Background`, and so is everything while the screen is locked. Not "active", which is focus,

@@ -185,10 +185,11 @@ object GalleryDeviceChecks {
     next: () => Unit
   ): Unit = {
     def answer = demo.notifications.now
+    val notAsked = AppleDevice.testing.notYetAsked(Permission.Notifications)
     check(
       "notifications start Denied, not yet asked: the build script installed the app afresh",
-      answer == "Notifications: Denied" && onScreen(answer),
-      answer
+      answer == "Notifications: Denied" && onScreen(answer) && notAsked,
+      s"$answer; not yet asked: $notAsked (a refusal left by an earlier run would answer with no alert)"
     )
     var microphone = Option.empty[PermissionStatus]
     val before = Try(ApplePermissions.status(Permission.Microphone))

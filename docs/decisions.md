@@ -104,13 +104,20 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     `run-ios-app.sh` gains `drive` (for `[gallery] DRIVE` lines, as on Android),
     `EXTRA_LIBS`, `USAGE_STRINGS`, `FRESH_INSTALL` and `PRIVACY_GRANT`.
   - **Measured.** iOS gallery **191** (179 + 12) on "iPhone 17e": Settings over the app →
-    `Background` 4.6 s after the DRIVE line, relaunch → `Foreground` 1.3 s, "Don't Allow" →
-    `Denied` 15.6 s (the XCUITest's build and launch), asked again → `Denied` at once, no alert;
+    `Background` 4.0–4.6 s after the DRIVE line, relaunch → `Foreground` 0.6–1.3 s, "Don't Allow" →
+    `Denied` 6–16 s (the XCUITest's launch; its first build included), asked again → `Denied` at once, no alert;
     microphone (granted by `simctl privacy`) → `Granted`; the terminate hook on a posted
     `willTerminateNotification`. macOS gallery **191** (185 + 6) with the screen locked, the
     only state this Mac was in: the lifecycle checks are skipped, saying so; the terminate hook
     runs from a real `NSApp.terminate` and prints the verdict. The unlocked run (hide, unhide,
     minimise, restore; 4 more checks) was **not** run.
+  - **Found on the way: a vacuous pass.** The first full `verify-apple.sh` passed while the
+    alert was never shown: on a just-booted simulator, uninstalling did not forget an earlier
+    "Don't Allow" (0 s and 10 s after `bootstatus`; 30 s after, it did), so the request
+    answered `Denied` in 17 ms and the tap failed unnoticed. Now the self-test checks the
+    permission is not yet asked (`AppleDevice.testing.notYetAsked`; the API reads both as
+    `Denied`), a failed DRIVE fails the run, a fresh install waits 30 s after boot, and the
+    tapper skips xcodebuild's failure sysdiagnose (which held a failed tap for 10 min).
   - **Controls**, each restored: iOS without the `didEnterBackground` observer, the app is
     suspended unseen and the run ends with no verdict; without `willEnterForeground`, 2 fail;
     answers not delivered, 3 fail; no will-terminate observer, 1 fails; no usage-string check,

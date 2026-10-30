@@ -158,6 +158,12 @@ object AppleDevice {
       */
     def screenLocked: Boolean = DeviceShim.thk_dev_test_screen_locked() != 0
 
+    /** Whether the user has not yet been asked for `p`, which [[ApplePermissions.status]] reports as `Denied` like a
+      * refusal. A self-test needs the difference: a refusal left over from an earlier run answers at once, with no
+      * alert, and would pass a check of "Don't Allow" without one.
+      */
+    def notYetAsked(p: Permission): Boolean = DeviceShim.thk_dev_permission_status(p.ordinal) == 3
+
   }
 
 }
