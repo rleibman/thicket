@@ -98,6 +98,13 @@ object DeviceAbi {
       doc = "macOS: minimises (1) or restores (0) the app's visible windows. Returns how many, 0 on iOS."
     ),
     Fn(
+      "thk_dev_test_screen_locked",
+      I32,
+      Nil,
+      doc = "macOS: 1 while the login session's screen is locked, which occludes every window, so the\n" +
+        "   app is off screen whatever it does. 0 otherwise, and always on iOS."
+    ),
+    Fn(
       "thk_dev_test_terminate",
       Void,
       Nil,

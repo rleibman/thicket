@@ -205,7 +205,8 @@ public func thk_dev_test_miniaturize(_ miniaturized: Int32) -> Int32 {
   #else
     var n: Int32 = 0
     for w in NSApp.windows {
-      if miniaturized != 0, w.isVisible, w.isMiniaturizable {
+      // Not `isVisible`: under a locked screen it was false for the gallery's own window.
+      if miniaturized != 0, w.isMiniaturizable, w.canBecomeMain, !w.isMiniaturized {
         w.miniaturize(nil)
         n += 1
       } else if miniaturized == 0, w.isMiniaturized {
@@ -214,6 +215,18 @@ public func thk_dev_test_miniaturize(_ miniaturized: Int32) -> Int32 {
       }
     }
     return n
+  #endif
+}
+
+@_cdecl("thk_dev_test_screen_locked")
+public func thk_dev_test_screen_locked() -> Int32 {
+  #if os(iOS)
+    return 0
+  #else
+    // A locked Mac occludes every window, so every app is off screen: Background, correctly, and
+    // nothing an app does brings it back (measured, #114).
+    let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+    return (session?["CGSSessionScreenIsLocked"] as? Bool ?? false) ? 1 : 0
   #endif
 }
 

@@ -48,6 +48,9 @@ void thk_dev_permission_request(int32_t permission, thk_dev_int_cb answered, int
 int32_t thk_dev_test_hide(int32_t hidden);
 /* macOS: minimises (1) or restores (0) the app's visible windows. Returns how many, 0 on iOS. */
 int32_t thk_dev_test_miniaturize(int32_t miniaturized);
+/* macOS: 1 while the login session's screen is locked, which occludes every window, so the
+   app is off screen whatever it does. 0 otherwise, and always on iOS. */
+int32_t thk_dev_test_screen_locked(void);
 /* macOS: NSApp.terminate, the real path; the process exits after the will-terminate
    observers run. iOS: posts UIApplication.willTerminateNotification, since an app may not
    end itself and simctl's terminate kills it without one. */

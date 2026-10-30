@@ -24,5 +24,6 @@ private[apple] object DeviceShim {
   def thk_dev_permission_request(permission: CInt, answered: IntCb, ctx: Long): Unit = extern
   def thk_dev_test_hide(hidden: CInt): CInt = extern
   def thk_dev_test_miniaturize(miniaturized: CInt): CInt = extern
+  def thk_dev_test_screen_locked(): CInt = extern
   def thk_dev_test_terminate(): Unit = extern
 }

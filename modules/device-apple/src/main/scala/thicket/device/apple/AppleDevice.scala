@@ -140,6 +140,11 @@ object AppleDevice {
 
     def terminate(): Unit = DeviceShim.thk_dev_test_terminate()
 
+    /** macOS: whether the screen is locked, which occludes every window: the app is in the background then, whatever
+      * it does. Always false on iOS.
+      */
+    def screenLocked: Boolean = DeviceShim.thk_dev_test_screen_locked() != 0
+
   }
 
 }

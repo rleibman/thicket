@@ -70,10 +70,17 @@ object GalleryDeviceChecks {
       case Some(demo) =>
         def onScreen(t: String) = texts().contains(t)
         check("the Apple host provides lifecycle and permissions", true, "")
+        val locked = AppleDevice.testing.screenLocked
+        if locked then
+          println(
+            "[gallery] SKIP the Mac's screen is locked: every window is occluded, so the app is in the background " +
+              "and hiding or minimising cannot change it. Run unlocked for the lifecycle checks."
+          )
+        val expected = if locked then AppState.Background else AppState.Foreground
         check(
-          "the app is in the foreground, and the section says so",
-          lc == AppState.Foreground && onScreen(DeviceDemo.stateLabel(AppState.Foreground)) &&
-            onScreen(DeviceDemo.returnsLabel(0)),
+          if locked then "the screen is locked, so the app is in the background, and the section says so"
+          else "the app is in the foreground, and the section says so",
+          lc == expected && onScreen(DeviceDemo.stateLabel(expected)) && onScreen(DeviceDemo.returnsLabel(0)),
           s"$lc; " + texts().filter(t => t.startsWith("The app") || t.startsWith("Back"))
         )
         val camera = Try(ApplePermissions.status(Permission.Camera))
@@ -90,7 +97,9 @@ object GalleryDeviceChecks {
           location.failed.toOption.exists(_.isInstanceOf[UnsupportedOperationException]),
           location.toString
         )
-        if ios then iosSteps(check, click, onScreen, demo)(next) else macSteps(check, click, onScreen, demo)(next)
+        if ios then iosSteps(check, click, onScreen, demo)(next)
+        else if locked then macNotifications(check, click, onScreen, demo)(next)
+        else macSteps(check, click, onScreen, demo)(next)
     }
 
   /** macOS: hide and unhide, minimise and restore, through AppKit. The gallery runs as a plain executable, outside an
@@ -136,18 +145,32 @@ object GalleryDeviceChecks {
               lc == AppState.Foreground && onScreen(DeviceDemo.returnsLabel(2)),
               s"$lc, returns ${demo.returns.now}"
             )
-            val clicked = click("Ask for notifications")
-            val answer = demo.notifications.now
-            check(
-              "outside an app bundle, asking for notifications throws at once, naming why, and the section shows it",
-              clicked && answer.contains("an app bundle") && onScreen(answer),
-              s"clicked $clicked; $answer"
-            )
-            next()
+            macNotifications(check, click, onScreen, demo)(next)
           }
         }
       }
     }
+  }
+
+  /** The macOS gallery is a plain executable, outside an app bundle, so `UNUserNotificationCenter` cannot be asked: the
+    * request throws, naming why, and the section shows it.
+    */
+  private def macNotifications(
+    check:    Check,
+    click:    String => Boolean,
+    onScreen: String => Boolean,
+    demo:     DeviceDemo
+  )(
+    next: () => Unit
+  ): Unit = {
+    val clicked = click("Ask for notifications")
+    val answer = demo.notifications.now
+    check(
+      "outside an app bundle, asking for notifications throws at once, naming why, and the section shows it",
+      clicked && answer.contains("an app bundle") && onScreen(answer),
+      s"clicked $clicked; $answer"
+    )
+    next()
   }
 
   /** iOS: the build script opens Settings over the gallery and launches it again, and answers the notifications alert
