@@ -114,9 +114,10 @@ object ThicketNativeFlags {
       )
     )
 
-  /** `thicket-device-apple`'s Swift library on macOS (#114): `libthicketdevice.a` and Swift's runtime. The object names
-    * AppKit, UserNotifications and AVFoundation itself (Swift's autolink), so no framework flags. Applied on top of
-    * [[apple]]. Not needed on iOS, where the host's own link takes the archive.
+  /** `thicket-device-apple`'s Swift library on macOS (#114): `libthicketdevice.a`. The object names AppKit,
+    * UserNotifications and AVFoundation itself (Swift's autolink), so no framework flags. Applied on top of [[apple]],
+    * which brings Swift's runtime (repeating its `-rpath` makes ld warn). Not needed on iOS, where the host's own link
+    * takes the archive.
     *
     * @param libDir
     *   the directory holding `libthicketdevice.a`
@@ -125,12 +126,7 @@ object ThicketNativeFlags {
     c.withLinkingOptions(
       c.linkingOptions ++ Seq(
         "-L" + libDir.getAbsolutePath,
-        "-lthicketdevice",
-        "-L/usr/lib/swift",
-        "-Xlinker",
-        "-rpath",
-        "-Xlinker",
-        "/usr/lib/swift"
+        "-lthicketdevice"
       )
     )
 

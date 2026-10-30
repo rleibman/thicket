@@ -93,9 +93,17 @@ object GallerySelfTest {
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
   }
 
-  private def finish(): Unit =
+  private def verdict(): Unit =
     if failures == 0 then println("[gallery] ALL CHECKS PASSED")
     else println(s"[gallery] $failures CHECK(S) FAILED")
+
+  /** The verdict comes from the terminate hook (#114): the last check is that the hook runs, so the run ends through
+    * the platform's terminate path — `NSApp.terminate` on macOS, which ends the process, and the will-terminate
+    * notification on iOS. A hook that never runs leaves no verdict on macOS, which fails the run, and a FAIL after 5 s on
+    * iOS.
+    */
+  private def finish(): Unit =
+    GalleryDeviceChecks.terminate(checker, () => verdict())
 
   private def catalogue(): Unit = {
     val root = AppleApp.rootHandle
@@ -222,13 +230,23 @@ object GallerySelfTest {
       s"${AppleInspect.presentedCount} presented"
     )
 
-    storageChecks(() => sheet(all)(() => bigList(() => finish())))
+    storageChecks(() => deviceChecks(() => sheet(all)(() => bigList(() => finish()))))
   }
 
   /** Device services (docs/16 §16.5–16.6), the GTK host's checks asked of Apple: preferences in Application Support,
     * the directories where Foundation says they are, SQLite through the Scala Native driver, and "Add a note" writing a
     * row on the worker thread.
     */
+  private val checker: (String, Boolean, String) => Unit = (n, ok, d) => check(n, ok, d)
+
+  /** Lifecycle and permissions (#114), in [[GalleryDeviceChecks]]. */
+  private def deviceChecks(next: () => Unit): Unit =
+    GalleryDeviceChecks.run(
+      checker,
+      label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
+      () => AppleInspect.allTexts(AppleApp.rootHandle)
+    )(next)
+
   private def storageChecks(next: () => Unit): Unit =
     (Gallery.currentStorage, storage) match {
       case (Some(demo), Some(store)) =>
