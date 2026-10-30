@@ -2,18 +2,19 @@
 
 The app's lifecycle and its permissions. Every later device service (location, motion, the
 camera) is built on these, because only the host hears either: the Activity, the GTK window,
-the Apple scene. The plan is in `docs/16-device-services.md`, §16.3 and §16.10 item 3.
+the Apple scene or window. The plan is in `docs/16-device-services.md`, §16.3 and §16.10 item 3.
 
 | Module | Platform | From |
 |---|---|---|
 | `thicket-device` | JVM, Native | the API: `AppLifecycle`, `AppState`, `Permissions`, `Permission`, `PermissionStatus`, `Availability`, `Device`; fakes in `testing` (`FakeLifecycle`, `FakePermissions`) |
 | `thicket-device-gtk` | Scala Native | `GtkApp`'s window and application |
 | `thicket-device-android` | Android | `ThicketActivity`'s callbacks and the system's permission dialog |
+| `thicket-device-apple` | Scala Native, macOS and iOS | the platform's notifications and each service's authorisation API, through its own Swift library (`libthicketdevice.a`, in the jar) |
 
-Apple's half is a Mac issue.
 
 ```scala
-// In the host: GtkApp.run(...) { ... GtkDevice() ... }; in a ThicketActivity's createApp, AndroidDevice(this).
+// In the host: GtkApp.run(...) { ... GtkDevice() ... }; in a ThicketActivity's createApp, AndroidDevice(this);
+// inside AppleApp.run, AppleDevice().
 def screen(device: Device)(using Owner): Element = {
   Signal.effect {
     device.lifecycle.state() match {
@@ -59,12 +60,25 @@ the app is being built, no window is shown and no Activity has started.
   - Measured on GNOME 50 (Wayland): minimising reaches `Background` after 3.3 s. Wayland does
     not tell a client it is minimised, and mutter reports suspended after its own delay.
   - Under Xvfb, with no window manager, only hiding and showing the window change it.
+- **iOS:** `Foreground` from a scene's `willEnterForeground` to the last scene's
+  `didEnterBackground`. Not activation: the notifications alert over the app did not even
+  deactivate the scene, and a headless simulator never activated one at all (measured, #114).
+  Settings opened over the gallery reached `Background` 4.6 s after the request, and launching
+  the gallery again brought the same process back in 1.3 s (both through `simctl launch`).
+- **macOS:** `Foreground` while any part of any of the app's windows is visible
+  (`NSApp.occlusionState`). Hidden (Cmd-H), minimised, ordered out or fully covered is
+  `Background`, and so is everything while the screen is locked. Not "active", which is focus,
+  as on GTK. One notification covers all of them: hiding reached `Background` in 35 ms,
+  minimising after its animation (~0.6 s), in a probe app.
 
 `onTerminate(f)` runs `f` when the app closes for good:
 
 - on Android, when the last Activity finishes (Back at the root, `finish()`), not when one
   rotates;
-- on GTK, at the application's shutdown.
+- on GTK, at the application's shutdown;
+- on macOS, on `NSApplication.willTerminateNotification` (Quit, `NSApp.terminate`);
+- on iOS, on `UIApplication.willTerminateNotification`, which iOS rarely sends: never to a
+  suspended app, and `simctl terminate` kills the app without it (measured).
 
 Don't save state there. Android and iOS kill a background app without calling anything, so
 save when the app goes to the background.
@@ -74,12 +88,12 @@ save when the app goes to the background.
 `status(p)` is the answer as it stands, and `request(p)(onResult)` asks the user, if needed,
 and calls `onResult` on the UI thread. Call both from the UI thread.
 
-| Permission | Android | GTK |
-|---|---|---|
-| `Location` | `ACCESS_FINE_LOCATION` and/or `ACCESS_COARSE_LOCATION`; either granted is `Granted` | `Granted` |
-| `Camera` | `CAMERA` | `Granted` |
-| `Microphone` | `RECORD_AUDIO` | `Granted` |
-| `Notifications` | `POST_NOTIFICATIONS` from Android 13; before that, always `Granted` | `Granted` |
+| Permission | Android | GTK | macOS and iOS |
+|---|---|---|---|
+| `Location` | `ACCESS_FINE_LOCATION` and/or `ACCESS_COARSE_LOCATION`; either granted is `Granted` | `Granted` | not yet: throws `UnsupportedOperationException` until `thicket-location-apple` (#118) |
+| `Camera` | `CAMERA` | `Granted` | `AVCaptureDevice`, `.video`; needs `NSCameraUsageDescription` |
+| `Microphone` | `RECORD_AUDIO` | `Granted` | `AVCaptureDevice`, `.audio`; needs `NSMicrophoneUsageDescription` |
+| `Notifications` | `POST_NOTIFICATIONS` from Android 13; before that, always `Granted` | `Granted` | `UNUserNotificationCenter` (alert, sound, badge); provisional counts as `Granted`; needs an app bundle |
 
 - **One request at a time.** A request made while a dialog is up waits until that one is
   answered. Every platform needs this, and on Android a second `requestPermissions` would
@@ -94,6 +108,18 @@ and calls `onResult` on the UI thread. Call both from the UI thread.
   has. Inside one (Flatpak), the portal asks the user when a device is first used, and the
   service using it reports that it is unavailable if the user says no. So every permission is
   `Granted`, and a request answers on the next turn of the main loop.
+- **Apple asks once.** After "Don't Allow" a request answers `Denied` at once, with no alert;
+  only Settings can change it. `Restricted` is real there (`.restricted`: parental controls, a
+  device policy). Not yet asked reads as `Denied`.
+- **Apple: declare it, or it throws.** iOS *terminates* an app that asks for the camera or the
+  microphone without the usage string in its `Info.plist`, so `status` and `request` throw
+  `IllegalStateException` naming the key first. `UNUserNotificationCenter` raises for a process
+  outside an app bundle (the macOS gallery is a plain executable), so notifications throw there,
+  saying so. An iOS host's `build-app.sh` adds usage strings with `USAGE_STRINGS`
+  (`examples/ios-host/run-ios-app.sh`).
+- **Apple's answers arrive on a queue of the platform's own;** the Swift library moves each to
+  the main thread before calling Scala, and reads the status back rather than trusting the
+  completion's `Bool`, so a refusal given earlier reads as such.
 
 ## How it is checked
 
