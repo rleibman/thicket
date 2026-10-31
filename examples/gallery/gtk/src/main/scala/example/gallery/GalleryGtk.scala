@@ -690,7 +690,13 @@ object GalleryGtk {
         ) = Files.readAllBytes(a).sameElements(Files.readAllBytes(b))
         // The chooser, once it is up: answered with `file` (accept) or none (cancel). It loads its folder after it
         // appears, and an accept before the file is selected is ignored, so the answer is repeated until it closes.
-        def answer(file: Option[Path])(andThen: => Unit): Unit = {
+        // `ready`: what must have happened before the answer, so a check on the open chooser runs first.
+        def answer(
+          file:  Option[Path],
+          ready: => Boolean = true
+        )(
+          andThen: => Unit
+        ): Unit = {
           def attempt(left: Int): Unit =
             PickerDriver.chooser match {
               case None                 => andThen
@@ -701,14 +707,18 @@ object GalleryGtk {
                 PickerDriver.respond(d, file)
                 GtkApp.postToUiAfter(300)(() => attempt(left - 1))
             }
-          when(100)(PickerDriver.chooser.isDefined) {
+          when(150)(PickerDriver.chooser.isDefined && ready) {
             if PickerDriver.chooser.isEmpty then check("the file chooser appeared", false, "no GtkFileChooserDialog")
-            attempt(20)
+            // A second, as a user would take: answered while it is still loading its folder, the chooser closes with
+            // GTK's own criticals (thaw_updates; gtk_box_remove on CI's GTK 4.14).
+            GtkApp.postToUiAfter(1000)(() => attempt(20))
           }
         }
         press("Pick a photo")
         // While the chooser is up, a second request answers empty, and no second chooser appears.
+        // The answer below waits for this check: on CI it once closed the chooser first (0 choosers counted).
         var second: Option[Seq[Path]] = None
+        var busyChecked = false
         when(100)(PickerDriver.chooser.isDefined) {
           pickers.documents.open(Nil)(r => second = Some(r))
           when(50)(second.isDefined) {
@@ -717,9 +727,10 @@ object GalleryGtk {
               second.contains(Nil) && PickerDriver.choosers == 1,
               s"answered $second; ${PickerDriver.choosers} choosers"
             )
+            busyChecked = true
           }
         }
-        answer(Some(photoFile)) {
+        answer(Some(photoFile), busyChecked) {
           when(150)(demo.photo.now != PickersDemo.nothing("Photo")) {
             val got = demo.lastPhotos
             check(
