@@ -155,7 +155,7 @@ object AndroidPickers {
     }
 
   /** The URIs an answer carries: several in its `ClipData`, or one as its data. */
-  def uris(data: Intent): List[Uri] =
+  private def uris(data: Intent): List[Uri] =
     Option(data.getClipData) match {
       case Some(clip) => (0 until clip.getItemCount).toList.flatMap(i => Option(clip.getItemAt(i).getUri))
       case None       => Option(data.getData).toList
