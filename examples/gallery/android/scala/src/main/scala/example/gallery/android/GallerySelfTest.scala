@@ -20,7 +20,7 @@ import _root_.android.os.{Handler, Looper, SystemClock}
 import _root_.android.util.Log
 import _root_.android.view.{View, ViewGroup}
 import _root_.android.widget.{Button, EditText, ImageView, Spinner, TextView}
-import example.gallery.{DeviceDemo, Gallery, LocationDemo, MotionDemo, StorageDemo}
+import example.gallery.{ClipboardDemo, DeviceDemo, Gallery, LocationDemo, MotionDemo, StorageDemo}
 import example.http.HttpChecks
 import scala.collection.mutable
 import sttp.client4.*
@@ -37,6 +37,8 @@ import thicket.location.{Accuracy, Fix, Location, LocationProvider}
 import thicket.location.android.AndroidLocationProvider
 import thicket.motion.{Motion, MotionProvider, Rate, Sensor, Vec3}
 import thicket.motion.android.AndroidMotionProvider
+import thicket.haptics.Impact
+import thicket.haptics.android.AndroidHaptics
 import thicket.sqlite.Sqlite
 import thicket.sqlite.android.AndroidSqlite
 import thicket.sqlite.testing.JdbcConformance
@@ -434,7 +436,7 @@ object GallerySelfTest {
       ) ++ deviceSteps(activity, () => texts, click) ++ locationSteps(activity, () => texts) ++ motionSteps(
         activity,
         () => texts
-      ) ++ List(() => {
+      ) ++ clipboardSteps(() => texts, click) ++ List(() => {
         if httpPort > 0 then {
           httpWorker.start()
           awaitHttp(SystemClock.uptimeMillis() + 30000)
@@ -695,6 +697,45 @@ object GallerySelfTest {
         drive("gyro 0:0:0")
       }
     )
+  }
+
+  /** The clipboard and haptics (docs/16 §16.10 item 5). "Copy" then "Paste", twice, through the system's
+    * `ClipboardManager`: each paste must show that round's copy. Haptics are played through `performHapticFeedback`,
+    * whose answer says whether the system played them.
+    */
+  private def clipboardSteps(
+    texts: () => List[String],
+    click: String => Unit
+  ): List[() => Unit] = {
+    def demo = Gallery.currentClipboard
+    def pasted = demo.map(_.pasted.now).getOrElse("")
+    def expected = ClipboardDemo.pastedLabel(demo.flatMap(_.lastCopied))
+    var before = ""
+    def round(n: Int): List[() => Unit] =
+      List(
+        () => {
+          before = pasted
+          click("Copy")
+          click("Paste")
+        },
+        Await(5000, () => pasted != before),
+        () =>
+          check(
+            s"copy $n, then paste: the clipboard gives back that copy",
+            demo.flatMap(_.lastCopied).exists(_.endsWith(s"copy $n")) && texts().contains(expected),
+            s"copied ${demo.flatMap(_.lastCopied)}; $pasted"
+          )
+      )
+    List(() => check("the Android host provides a clipboard and haptics", demo.isDefined)) ++ round(1) ++ round(2) ++
+      List(() => {
+        check(
+          "haptics are available, and the section says so",
+          texts().contains(ClipboardDemo.hapticsLabel(Availability.Available))
+        )
+        val played = AndroidHaptics.perform(AndroidHaptics.constant(Impact.Medium))
+        check("a tap is played: performHapticFeedback answers true", played)
+        click("Tap")
+      })
   }
 
 }
