@@ -842,7 +842,8 @@ object GallerySelfTest {
         // An entry left by a run Android killed while the camera app was in front: a new AndroidCamera removes it.
         AndroidCameraChecks.plantLeftover(activity)
         planted = AndroidCameraChecks.leftover(activity)
-        AndroidCamera(activity).sweep(n => swept = Some(n))
+        // One sweep: the constructor's, whose count comes back through onSwept.
+        val _ = AndroidCamera(activity, onSwept = n => swept = Some(n))
       },
       Await(10000, () => swept.isDefined),
       () =>

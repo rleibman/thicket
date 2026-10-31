@@ -40,7 +40,10 @@ import thicket.renderer.android.ThicketActivity
   *     it granted, or Android refuses the camera screen: `NeedsPermission(Camera)` until it is.
   *   - One request at a time; a second answers `None` at once.
   */
-final class AndroidCamera(context: Context) extends Camera {
+final class AndroidCamera(
+  context: Context,
+  onSwept: Int => Unit = _ => ()
+) extends Camera {
 
   import AndroidCamera.*
 
@@ -50,10 +53,10 @@ final class AndroidCamera(context: Context) extends Camera {
   /** Deletes the entries an earlier run left behind (review of #130). An entry is deleted once the camera answers, but
     * only this process remembers it: if Android kills the app while the camera app is in front, as it may under memory
     * pressure, the entry would stay in the user's photo library. So each new `AndroidCamera` removes every
-    * `thicket-*.jpg` entry this app owns and is not waiting on, on a worker thread. Only the app's own entries
-    * (`OWNER_PACKAGE_NAME`), never another app's photos.
+    * `thicket-*.jpg` entry this app owns and is not waiting on, on a worker thread, and tells `onSwept` how many it
+    * deleted. Only the app's own entries (`OWNER_PACKAGE_NAME`), never another app's photos.
     */
-  def sweep(onDone: Int => Unit = _ => ()): Unit =
+  private def sweep(onDone: Int => Unit): Unit =
     if Build.VERSION.SDK_INT >= 29 then {
       val t = Thread(() => {
         val waiting = pending.map(_._1.toString).toSet
@@ -83,7 +86,7 @@ final class AndroidCamera(context: Context) extends Camera {
       t.start()
     } else post(onDone(0))
 
-  sweep()
+  sweep(onSwept)
 
   def availability: Availability =
     if Build.VERSION.SDK_INT < 29 then Availability.Unavailable("Taking a photo needs Android 10 or later")
