@@ -39,6 +39,7 @@ import thicket.motion.{Motion, MotionProvider, Rate, Sensor, Vec3}
 import thicket.motion.android.AndroidMotionProvider
 import thicket.haptics.Impact
 import thicket.haptics.android.AndroidHaptics
+import thicket.camera.android.AndroidCamera
 import thicket.sqlite.Sqlite
 import thicket.sqlite.android.AndroidSqlite
 import thicket.sqlite.testing.JdbcConformance
@@ -753,6 +754,8 @@ object GallerySelfTest {
     def document = demo.map(_.document.now).getOrElse("")
     def saved = demo.map(_.saved.now).getOrElse("")
     def taken = demo.map(_.taken.now).getOrElse("")
+    var planted: List[String] = Nil
+    var swept:   Option[Int] = None
     def inCache(p: java.nio.file.Path) = p.startsWith(activity.getCacheDir.toPath)
     def bytes(p:   java.nio.file.Path) = java.nio.file.Files.readAllBytes(p).toList
     lazy val logo = {
@@ -830,11 +833,23 @@ object GallerySelfTest {
         drive("back")
       },
       Await(30000, () => demo.flatMap(_.lastTaken).isDefined),
-      () =>
+      () => {
         check(
           "backing out of the camera answers no photo, and leaves no entry",
           demo.flatMap(_.lastTaken).contains(None) && AndroidCameraChecks.leftover(activity).isEmpty,
           s"$taken; ${AndroidCameraChecks.leftover(activity)}"
+        )
+        // An entry left by a run Android killed while the camera app was in front: a new AndroidCamera removes it.
+        AndroidCameraChecks.plantLeftover(activity)
+        planted = AndroidCameraChecks.leftover(activity)
+        AndroidCamera(activity).sweep(n => swept = Some(n))
+      },
+      Await(10000, () => swept.isDefined),
+      () =>
+        check(
+          "an entry left by an earlier run is swept when the camera is created",
+          planted.size == 1 && swept.contains(1) && AndroidCameraChecks.leftover(activity).isEmpty,
+          s"planted $planted; swept $swept; left ${AndroidCameraChecks.leftover(activity)}"
         )
     )
   }
@@ -859,6 +874,20 @@ private object AndroidCameraChecks {
       while c != null && c.moveToNext() do names += c.getString(0)
       names.toList.filter(n => n != null && n.startsWith("thicket-") && n.endsWith(".jpg"))
     } finally if c != null then c.close()
+  }
+
+  /** An entry like the ones `AndroidCamera` makes, as if a run had been killed before the camera answered. */
+  def plantLeftover(activity: GalleryActivity): Unit = {
+    val values = android.content.ContentValues()
+    values.put(
+      android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+      s"thicket-${System.currentTimeMillis()}.jpg"
+    )
+    values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+    val uri = activity.getContentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+    val out = activity.getContentResolver.openOutputStream(uri)
+    try out.write(Array[Byte](-1, -40, -1, -32))
+    finally out.close()
   }
 
 }

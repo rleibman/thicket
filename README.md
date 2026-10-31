@@ -362,7 +362,7 @@ xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 
 signals 30, core 170, effect-zio 25, storage 14, sqlite 2 and secrets 2 per backend,
 storage-gtk 4, storage-apple 4, secrets-gtk 2, http-gtk 5, http-android 5, device 8,
 location 7, motion 5, clipboard 1, haptics 2, pickers 4 and camera 2 per backend, shim-gen 15,
-sbt-thicket 9; GTK 137 + 69 self-test checks, Android 85 + 84 (2026-10-30, the gallery's with
+sbt-thicket 9; GTK 137 + 69 self-test checks, Android 86 + 84 (2026-10-30, the gallery's with
 the HTTP checks and every device section's),
 the HTTP checks on Linux 12.
 

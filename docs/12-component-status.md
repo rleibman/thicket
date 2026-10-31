@@ -371,11 +371,11 @@ someone who did not write the framework, running on all three targets.
 Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run; the
 storage and sqlite rows 2026-10-21, the secrets rows and `storageGtk` 2026-10-26. On top of
 these, the self-tests drive the real toolkits: GTK gallery **137** and todo **69**
-(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **85** and
+(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **86** and
 todo **84** on the `s2test` emulator (2026-10-30, the storage section's checks each included,
 secrets among them, the 14 HTTP checks, the Device section's 5 on GTK and 9 on Android, and
 the Location section's 1 on GTK and 7 on Android, the Motion section's 1 and 8, and the
-Clipboard and haptics section's 3 and 5, and the Pickers and camera section's 6 and 9).
+Clipboard and haptics section's 3 and 5, and the Pickers and camera section's 6 and 10).
 The Android gallery's `build.sh` also checks that Back runs the terminate hook. HTTP on Linux: `examples/http/selftest.sh linux`,
 **12**. Apple gallery (2026-10-22, #98): macOS **174**, iOS simulator **168**,
 each with six storage checks; 2026-10-27 (#108): macOS **185**, iOS simulator **179**, the two

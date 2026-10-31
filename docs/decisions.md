@@ -90,6 +90,11 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     answers no photo and leaves no entry.
   - **Falsified.** With the entry not deleted, both "no entry left" checks fail, naming the
     `thicket-<time>.jpg` entries left behind.
+  - **A sweep for a killed run** (review): the entry is remembered only in memory, so if Android
+    kills the app while the camera app is in front, it would stay. Each new `AndroidCamera`
+    deletes the `thicket-*.jpg` entries this app owns (`OWNER_PACKAGE_NAME`) and is not waiting
+    on. The self-test plants one and checks a new camera removes it (Android 86); with the sweep
+    deleting nothing, that check fails with the entry still there.
 
 - 2026-10-30 — **Pickers: `thicket-pickers`, `-gtk` and `-android`, built to the owner's
   decisions** (docs/16 §16.10 item 5).

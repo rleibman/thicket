@@ -47,6 +47,44 @@ final class AndroidCamera(context: Context) extends Camera {
   private val app: Context = Option(context.getApplicationContext).getOrElse(context)
   private val picked = PickedFiles(app.getCacheDir.toPath)
 
+  /** Deletes the entries an earlier run left behind (review of #130). An entry is deleted once the camera answers, but
+    * only this process remembers it: if Android kills the app while the camera app is in front, as it may under memory
+    * pressure, the entry would stay in the user's photo library. So each new `AndroidCamera` removes every
+    * `thicket-*.jpg` entry this app owns and is not waiting on, on a worker thread. Only the app's own entries
+    * (`OWNER_PACKAGE_NAME`), never another app's photos.
+    */
+  def sweep(onDone: Int => Unit = _ => ()): Unit =
+    if Build.VERSION.SDK_INT >= 29 then {
+      val t = Thread(() => {
+        val waiting = pending.map(_._1.toString).toSet
+        val resolver = app.getContentResolver
+        val owned = scala.util
+          .Try {
+            val c = resolver.query(
+              MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+              Array(_root_.android.provider.BaseColumns._ID),
+              s"${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ? AND ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?",
+              Array(app.getPackageName, "thicket-%.jpg"),
+              null
+            )
+            try {
+              val ids = scala.collection.mutable.ListBuffer.empty[Uri]
+              while c != null && c.moveToNext() do
+                ids += android.content.ContentUris
+                  .withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(0))
+              ids.toList
+            } finally if c != null then c.close()
+          }.getOrElse(Nil)
+        val deleted = owned
+          .filterNot(u => waiting(u.toString)).map(u => scala.util.Try(resolver.delete(u, null, null)).getOrElse(0)).sum
+        post(onDone(deleted))
+      })
+      t.setName("thicket-camera-sweep")
+      t.start()
+    } else post(onDone(0))
+
+  sweep()
+
   def availability: Availability =
     if Build.VERSION.SDK_INT < 29 then Availability.Unavailable("Taking a photo needs Android 10 or later")
     else if !app.getPackageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) then
@@ -66,7 +104,7 @@ final class AndroidCamera(context: Context) extends Camera {
         Option(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)) match {
           case None      => post(onResult(None))
           case Some(uri) =>
-            pending = Some(answer(uri, onResult))
+            pending = Some((uri, answer(uri, onResult)))
             val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, uri)
             try activity.startActivityForResult(intent, RequestCode)
             catch {
@@ -118,8 +156,8 @@ object AndroidCamera {
 
   private def post(f: => Unit): Unit = { val _ = main.post(() => f) }
 
-  /** The request waiting for the camera: called with whether the user took a photo. */
-  private var pending: Option[Boolean => Unit] = None
+  /** The request waiting for the camera: its entry, and what to call with whether the user took a photo. */
+  private var pending: Option[(Uri, Boolean => Unit)] = None
 
   locally {
     val _ = ThicketActivity.listen(new ThicketActivity.Listener {
@@ -133,7 +171,7 @@ object AndroidCamera {
         requestCode == RequestCode && {
           val waiting = pending
           pending = None
-          waiting.foreach(_(resultCode == Activity.RESULT_OK))
+          waiting.foreach(_._2(resultCode == Activity.RESULT_OK))
           true
         }
 

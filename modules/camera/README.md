@@ -21,7 +21,8 @@ Button("Take a photo")(camera.capturePhoto(_.foreach(attach)))
   is up (one at a time).
 - **Android:** the camera app writes to a MediaStore entry Thicket creates; the photo is then
   copied into the cache and the entry deleted, so the user's photo library keeps nothing the
-  app did not ask to keep.
+  app did not ask to keep. If Android kills the app while the camera app is in front, the next
+  `AndroidCamera` sweeps away the entry it left: only `thicket-*.jpg` entries this app owns.
   - **Android 10+.** Before that, a MediaStore entry needs storage permission: `Unavailable`.
   - **`CAMERA` permission** is not needed. But an app that declares it (for its own preview,
     say) must have it granted, or Android refuses the camera screen: `NeedsPermission(Camera)`.
@@ -32,4 +33,5 @@ Button("Take a photo")(camera.capturePhoto(_.foreach(attach)))
 - The Android gallery takes a photo in the emulator's camera app: `build.sh` presses the
   shutter and Done (`DRIVE photo`). The photo must come back as a JPEG in the app's cache, and
   the entry it was written to must be gone; backing out must answer no photo and leave no
-  entry. With the delete removed, both entry checks fail.
+  entry. With the delete removed, both entry checks fail. The self-test also plants a leftover
+  entry and checks that a new `AndroidCamera` sweeps it; with the sweep disabled, that fails.
