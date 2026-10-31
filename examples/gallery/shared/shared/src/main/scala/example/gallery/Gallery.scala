@@ -471,7 +471,7 @@ object Gallery {
             }
           ),
           // The device's position (docs/16 §16.10 item 4), followed only while the app is in front. Android's
-          // LocationManager; GTK has no location service yet and says so.
+          // LocationManager, iOS's CLLocationManager; GTK and macOS have no location service yet and say so.
           section("Location — the device's position, while the app is in front")(
             location match {
               case None       => Label("No location on this platform yet", emphasis = Emphasis.Secondary)

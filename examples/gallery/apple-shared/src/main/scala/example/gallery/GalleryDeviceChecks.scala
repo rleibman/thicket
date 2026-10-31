@@ -91,10 +91,18 @@ object GalleryDeviceChecks {
           ),
           camera.toString
         )
+        // #118: iOS has NSLocationWhenInUseUsageDescription and the build script's grant; the macOS gallery is a
+        // plain executable, with no Info.plist to declare NSLocationUsageDescription in.
         val location = Try(ApplePermissions.status(Permission.Location))
         check(
-          "Location throws UnsupportedOperationException until thicket-location-apple (#118)",
-          location.failed.toOption.exists(_.isInstanceOf[UnsupportedOperationException]),
+          if ios then "Location, granted by simctl privacy, is Granted"
+          else "Location, with no NSLocationUsageDescription to declare it, throws, naming the key",
+          if ios then location.toOption.contains(PermissionStatus.Granted)
+          else
+            location.failed.toOption.exists(e =>
+              e.isInstanceOf[IllegalStateException] && e.getMessage.contains("NSLocationUsageDescription")
+            )
+          ,
           location.toString
         )
         if ios then iosSteps(check, click, onScreen, demo)(next)

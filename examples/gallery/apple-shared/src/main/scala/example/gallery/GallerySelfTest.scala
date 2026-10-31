@@ -230,7 +230,7 @@ object GallerySelfTest {
       s"${AppleInspect.presentedCount} presented"
     )
 
-    storageChecks(() => deviceChecks(() => sheet(all)(() => bigList(() => finish()))))
+    storageChecks(() => deviceChecks(() => locationChecks(() => sheet(all)(() => bigList(() => finish())))))
   }
 
   /** Device services (docs/16 §16.5–16.6), the GTK host's checks asked of Apple: preferences in Application Support,
@@ -246,6 +246,14 @@ object GallerySelfTest {
   /** Lifecycle and permissions (#114), in [[GalleryDeviceChecks]]. */
   private def deviceChecks(next: () => Unit): Unit =
     GalleryDeviceChecks.run(
+      checker,
+      label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
+      () => AppleInspect.allTexts(AppleApp.rootHandle)
+    )(next)
+
+  /** The device's position (#118), in [[GalleryLocationChecks]]. */
+  private def locationChecks(next: () => Unit): Unit =
+    GalleryLocationChecks.run(
       checker,
       label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
       () => AppleInspect.allTexts(AppleApp.rootHandle)

@@ -37,7 +37,8 @@ import java.util.concurrent.{Executors, ThreadFactory}
   * @param device
   *   the app's lifecycle and permissions, where the host has them (GTK and Android since `docs/16` §16.10 item 3).
   * @param location
-  *   the device's position: Android's `LocationManager`; on GTK, `Location.unavailable` (`docs/16` §16.10 item 4).
+  *   the device's position: Android's `LocationManager`, iOS's `CLLocationManager`; on GTK and macOS,
+  *   `Location.unavailable` (`docs/16` §16.10 item 4).
   * @param motion
   *   the motion sensors: Android's `SensorManager`; on GTK, `Motion.unavailable` (`docs/16` §16.10 item 4).
   */
