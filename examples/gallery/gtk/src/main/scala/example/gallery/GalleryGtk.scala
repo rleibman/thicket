@@ -22,6 +22,7 @@ import thicket.location.Location
 import thicket.motion.{Motion, Sensor}
 import thicket.clipboard.gtk.GtkClipboard
 import thicket.haptics.Haptics
+import thicket.pickers.gtk.GtkPickers
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
 import thicket.secrets.gtk.GtkSecrets
@@ -518,7 +519,9 @@ object GalleryGtk {
     )
 
     storageChecks(root)(
-      deviceChecks(root)(locationChecks(root)(motionChecks(root)(clipboardChecks(root)(presentedAndNav(root)))))
+      deviceChecks(root)(
+        locationChecks(root)(motionChecks(root)(clipboardChecks(root)(pickerChecks(root)(presentedAndNav(root)))))
+      )
     )
   }
 
@@ -658,6 +661,124 @@ object GalleryGtk {
         }
     }
 
+  /** The pickers on GTK (docs/16 §16.10 item 5), answered as a user would: the self-test finds the file chooser among
+    * the app's windows (in-process, since `main` turns the portal off), sets a file on it, and accepts or cancels. Each
+    * pick must come back as a copy in the app's cache holding the original's bytes; the save must write the file the
+    * chooser was given.
+    */
+  private def pickerChecks(root: Ptr[GtkWidget])(next: => Unit): Unit =
+    Gallery.currentPickers match {
+      case None =>
+        check("the GTK host provides the pickers", false, "Gallery.currentPickers is None")
+        next
+      case Some(demo) =>
+        import java.nio.file.{Files, Path}
+        val dir = Files.createTempDirectory("thicket-gallery-pickers")
+        val photoFile = Path.of(Gallery.logo).toAbsolutePath
+        val docFile = dir.resolve("thicket-test.txt")
+        Files.write(docFile, "a test document\n".getBytes("UTF-8"))
+        // In GTK 4 a file that does not exist yet only sets the save chooser's folder; the suggested name stays.
+        val saveTo = dir.resolve(PickersDemo.savedName)
+        val cache = storage.dirs.cache
+        def press(label: String) =
+          GtkInspect
+            .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List(label))
+            .headOption.foreach(GtkInspect.click)
+        def same(
+          a: Path,
+          b: Path
+        ) = Files.readAllBytes(a).sameElements(Files.readAllBytes(b))
+        // The chooser, once it is up: answered with `file` (accept) or none (cancel). It loads its folder after it
+        // appears, and an accept before the file is selected is ignored, so the answer is repeated until it closes.
+        // `ready`: what must have happened before the answer, so a check on the open chooser runs first.
+        def answer(
+          file:  Option[Path],
+          ready: => Boolean = true
+        )(
+          andThen: => Unit
+        ): Unit = {
+          def attempt(left: Int): Unit =
+            PickerDriver.chooser match {
+              case None                 => andThen
+              case Some(_) if left == 0 =>
+                check("the file chooser took the answer", false, s"still up after the answers; file $file")
+                andThen
+              case Some(d) =>
+                PickerDriver.respond(d, file)
+                GtkApp.postToUiAfter(300)(() => attempt(left - 1))
+            }
+          when(150)(PickerDriver.chooser.isDefined && ready) {
+            if PickerDriver.chooser.isEmpty then check("the file chooser appeared", false, "no GtkFileChooserDialog")
+            // A second, as a user would take: answered while it is still loading its folder, the chooser closes with
+            // GTK's own criticals (thaw_updates; gtk_box_remove on CI's GTK 4.14).
+            GtkApp.postToUiAfter(1000)(() => attempt(20))
+          }
+        }
+        press("Pick a photo")
+        // While the chooser is up, a second request answers empty, and no second chooser appears.
+        // The answer below waits for this check: on CI it once closed the chooser first (0 choosers counted).
+        var second: Option[Seq[Path]] = None
+        var busyChecked = false
+        when(100)(PickerDriver.chooser.isDefined) {
+          pickers.documents.open(Nil)(r => second = Some(r))
+          when(50)(second.isDefined) {
+            check(
+              "a picker asked for while one is up answers empty, without a second chooser",
+              second.contains(Nil) && PickerDriver.choosers == 1,
+              s"answered $second; ${PickerDriver.choosers} choosers"
+            )
+            busyChecked = true
+          }
+        }
+        answer(Some(photoFile), busyChecked) {
+          when(150)(demo.photo.now != PickersDemo.nothing("Photo")) {
+            val got = demo.lastPhotos
+            check(
+              "the photo picker hands back the chosen photo, copied into the app's cache, byte for byte",
+              got.size == 1 && got.forall(_.startsWith(cache)) && got.forall(same(_, photoFile)) &&
+                demo.photo.now == PickersDemo.pickedLabel("Photo", got),
+              s"${demo.photo.now}; $got"
+            )
+            press("Pick a photo")
+            answer(None) {
+              when(150)(demo.photo.now == "Photo: cancelled") {
+                check(
+                  "cancelling the photo picker answers nothing",
+                  demo.photo.now == "Photo: cancelled",
+                  demo.photo.now
+                )
+                press("Open a document")
+                answer(Some(docFile)) {
+                  when(150)(demo.document.now != PickersDemo.nothing("Document")) {
+                    val docs = demo.lastDocuments
+                    check(
+                      "the document picker hands back the chosen file, copied into the app's cache, byte for byte",
+                      docs.size == 1 && docs.forall(_.startsWith(cache)) && docs.forall(same(_, docFile)) &&
+                        demo.document.now == "Document: thicket-test.txt (16 bytes)",
+                      s"${demo.document.now}; $docs"
+                    )
+                    press("Save a document")
+                    answer(Some(saveTo)) {
+                      when(150)(demo.saved.now != PickersDemo.notSaved) {
+                        check(
+                          "saving a document writes where the chooser was told, and answers its name",
+                          demo.saved.now == PickersDemo.savedLabel(Some(PickersDemo.savedName)) && Files.exists(
+                            saveTo
+                          ) &&
+                            new String(Files.readAllBytes(saveTo), "UTF-8") == PickersDemo.savedText,
+                          s"${demo.saved.now}; exists ${Files.exists(saveTo)}"
+                        )
+                        next
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+    }
+
   /** Why the desktop has no haptics: there is no haptic hardware to drive (docs/16 §16.3). */
   val noHaptics: String = "no haptics on the desktop"
 
@@ -733,6 +854,9 @@ object GalleryGtk {
     }
 
   lazy private val storage = GtkStorage("dev.thicket.gallery")
+
+  /** The pickers the gallery shows, kept for the self-test's one-at-a-time check. */
+  lazy private val pickers = GtkPickers(storage.dirs.cache)
 
   /** Secrets on GTK: the Secret Service of the session the self-test runs in, which this machine and CI both provide
     * (CI starts a keyring). Required, not skipped when absent: a gallery that silently had no secrets would pass.
@@ -1021,6 +1145,9 @@ object GalleryGtk {
   }
 
   def main(args: Array[String]): Unit = {
+    // The self-test answers the file chooser itself, which it can only do in-process: the portal's chooser is another
+    // program. Set before GTK starts, which reads it once.
+    if sys.env.contains("THICKET_GALLERY_SELFTEST") then PickerDriver.withoutPortal()
     val status = GtkApp.run("dev.thicket.gallery", width = 520, height = 760) {
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => afterEffect(200)(selfTest()))
       Gallery.app(
@@ -1034,7 +1161,8 @@ object GalleryGtk {
             location = Some(Location.unavailable(noLocation)),
             motion = Some(Motion.unavailable(noMotion)),
             clipboard = Some(GtkClipboard()),
-            haptics = Some(Haptics.none(noHaptics))
+            haptics = Some(Haptics.none(noHaptics)),
+            pickers = Some((pickers.photos, pickers.documents))
           )
         )
       )

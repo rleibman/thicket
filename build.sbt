@@ -691,6 +691,32 @@ lazy val hapticsAndroid = project
   .dependsOn(haptics.jvm, rendererAndroid)
   .settings(commonSettings, name := "thicket-haptics-android", scalacOptions ++= Seq("-release", "17"))
 
+/** The photo picker and the document picker and save dialog (`docs/16` §16.3, §16.10 item 5): picked files copied into
+  * the app's cache and handed back as paths. Fakes for tests.
+  */
+lazy val pickers = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/pickers"))
+  .dependsOn(device)
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-pickers")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** The pickers on GTK, through `GtkFileDialog`. */
+lazy val pickersGtk = project
+  .in(file("modules/pickers-gtk"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(pickers.native, rendererGtk)
+  .settings(commonSettings, name := "thicket-pickers-gtk")
+
+/** The pickers on Android: the photo picker and the Storage Access Framework, through `ThicketActivity`. */
+lazy val pickersAndroid = project
+  .in(file("modules/pickers-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(pickers.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-pickers-android", scalacOptions ++= Seq("-release", "17"))
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot put a `File` on a classpath —
@@ -798,7 +824,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   // storage and sqlite: the device services' section; each host supplies its platform's implementation.
-  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics)
+  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics, pickers)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
@@ -812,7 +838,7 @@ lazy val galleryGtk = project
   .in(file("examples/gallery/gtk"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.gtk.buildinfo"))
-  .dependsOn(rendererGtk, galleryShared.native, storageGtk, secretsGtk, deviceGtk, clipboardGtk)
+  .dependsOn(rendererGtk, galleryShared.native, storageGtk, secretsGtk, deviceGtk, clipboardGtk, pickersGtk)
   .settings(commonSettings)
   .settings(gtkNativeSettings)
   .settings(
@@ -838,6 +864,7 @@ lazy val galleryAndroid = project
     motionAndroid,
     clipboardAndroid,
     hapticsAndroid,
+    pickersAndroid,
     httpChecks.jvm,
     httpAndroid
   )
@@ -1047,6 +1074,8 @@ lazy val platforms = project
     clipboardGtk,
     clipboardAndroid,
     hapticsAndroid,
+    pickersGtk,
+    pickersAndroid,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,
@@ -1102,6 +1131,8 @@ lazy val root = project
     clipboard.native,
     haptics.jvm,
     haptics.native,
+    pickers.jvm,
+    pickers.native,
     httpGtk,
     httpAndroid,
     shimGen,
