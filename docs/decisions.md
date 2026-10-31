@@ -105,12 +105,17 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     `EXTRA_LIBS`, `USAGE_STRINGS`, `FRESH_INSTALL` and `PRIVACY_GRANT`.
   - **Measured.** iOS gallery **191** (179 + 12) on "iPhone 17e": Settings over the app →
     `Background` 4.0–4.6 s after the DRIVE line, relaunch → `Foreground` 0.6–1.3 s, "Don't Allow" →
-    `Denied` 6–16 s (the XCUITest's launch; its first build included), asked again → `Denied` at once, no alert;
+    `Denied` 6–16 s (the XCUITest's launch; its first build included), asked again → `Denied`
+    at once, no alert;
     microphone (granted by `simctl privacy`) → `Granted`; the terminate hook on a posted
-    `willTerminateNotification`. macOS gallery **191** (185 + 6) with the screen locked, the
-    only state this Mac was in: the lifecycle checks are skipped, saying so; the terminate hook
-    runs from a real `NSApp.terminate` and prints the verdict. The unlocked run (hide, unhide,
-    minimise, restore; 4 more checks) was **not** run.
+    `willTerminateNotification`. macOS gallery **195** (185 + 10), twice per
+    `verify-apple.sh`: hidden → `Background` 49 ms, unhidden → `Foreground` 33 ms, minimised →
+    595 ms, restored → 528 ms; the terminate hook runs from a real `NSApp.terminate` and prints
+    the verdict. With the screen locked (as it was for most of this work) every window is
+    occluded: the lifecycle checks are skipped, saying so, and the gallery passes **191**
+    (185 + 6).
+  - **`bin/verify-apple.sh "iPhone 17e"`: 17/17 steps** (a new `shim-device` step; `abi` runs
+    `DeviceConsistencySpec`), on `9cff276`.
   - **Found on the way: a vacuous pass.** The first full `verify-apple.sh` passed while the
     alert was never shown: on a just-booted simulator, uninstalling did not forget an earlier
     "Don't Allow" (7 of 9 tries, 30 s after the boot included), so the request
@@ -122,7 +127,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   - **Controls**, each restored: iOS without the `didEnterBackground` observer, the app is
     suspended unseen and the run ends with no verdict; without `willEnterForeground`, 2 fail;
     answers not delivered, 3 fail; no will-terminate observer, 1 fails; no usage-string check,
-    1 fails (`Success(Denied)`). macOS without the will-terminate observer, no verdict.
+    1 fails (`Success(Denied)`). macOS without the will-terminate observer, no verdict; without the occlusion observer, 4 fail.
 
 - 2026-10-30 — **Motion: `thicket-motion` and `-android`; `WhileInFront` shared with
   location** (docs/16 §16.10 item 4).

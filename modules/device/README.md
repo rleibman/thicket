@@ -141,9 +141,8 @@ and calls `onResult` on the UI thread. Call both from the UI thread.
     `simctl privacy` has no notifications service), then asked again and answered `Denied` at
     once; the microphone granted by `simctl privacy` and answered `Granted`; the camera's
     missing usage string; and the terminate hook, on a posted `willTerminateNotification`.
-  - **macOS** (gallery 191 with the screen locked; the unlocked run's hide and minimise checks
-    were not yet run on this Mac, which stayed locked): hiding and unhiding the app,
-    minimising and restoring its window, all through AppKit; notifications throwing outside an
+  - **macOS** (10 checks, gallery 195; hidden → `Background` 49 ms, minimised 595 ms):
+    hiding and unhiding the app, minimising and restoring its window, all through AppKit; notifications throwing outside an
     app bundle; the camera's missing usage string; and the terminate hook from a real
     `NSApp.terminate`, which prints the run's verdict, so a hook that does not run leaves no
     verdict. A locked screen occludes every window, so there the lifecycle checks are skipped,
@@ -151,4 +150,5 @@ and calls `onResult` on the UI thread. Call both from the UI thread.
   - **Controls** (each fix removed, then restored), iOS: no `didEnterBackground` observer, the
     app is suspended unseen and the run ends with no verdict; no `willEnterForeground`, 2 fail;
     answers not delivered, 3 fail; no will-terminate observer, 1 fails (5 s); no usage-string
-    check, 1 fails (`Success(Denied)`). macOS: no will-terminate observer, no verdict.
+    check, 1 fails (`Success(Denied)`). macOS: no will-terminate observer, no verdict; no
+    occlusion observer, 4 fail.

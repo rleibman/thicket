@@ -371,7 +371,7 @@ The Android gallery's `build.sh` also checks that Back runs the terminate hook. 
 **12**. Apple gallery (2026-10-22, #98): macOS **174**, iOS simulator **168**,
 each with six storage checks; 2026-10-27 (#108): macOS **185**, iOS simulator **179**, the two
 secrets checks included; 2026-10-30 (#114): iOS simulator **191** (179 + 12, the Device section),
-macOS **191** with the screen locked (185 + 6; unlocked adds 4 lifecycle checks, not yet run).
+macOS **195** (185 + 10; 191 with the screen locked, where the lifecycle checks are skipped).
 
 Four rules the migration established:
 
