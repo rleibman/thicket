@@ -113,10 +113,11 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     minimise, restore; 4 more checks) was **not** run.
   - **Found on the way: a vacuous pass.** The first full `verify-apple.sh` passed while the
     alert was never shown: on a just-booted simulator, uninstalling did not forget an earlier
-    "Don't Allow" (0 s and 10 s after `bootstatus`; 30 s after, it did), so the request
+    "Don't Allow" (7 of 9 tries, 30 s after the boot included), so the request
     answered `Denied` in 17 ms and the tap failed unnoticed. Now the self-test checks the
     permission is not yet asked (`AppleDevice.testing.notYetAsked`; the API reads both as
-    `Denied`), a failed DRIVE fails the run, a fresh install waits 30 s after boot, and the
+    `Denied`), a failed DRIVE fails the run, a fresh install also uninstalls at the end of the run (in the
+    same boot that always worked, 9 of 9), and the
     tapper skips xcodebuild's failure sysdiagnose (which held a failed tap for 10 min).
   - **Controls**, each restored: iOS without the `didEnterBackground` observer, the app is
     suspended unseen and the run ends with no verdict; without `willEnterForeground`, 2 fail;

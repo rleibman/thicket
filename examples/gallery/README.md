@@ -196,8 +196,8 @@ screen locked every window is occluded, so it skips those, saying so. The galler
 executable, so asking for notifications throws (no app bundle). On iOS `ios-app/build-app.sh`
 is the user, through `examples/ios-host/run-ios-app.sh`'s `drive`: `home` launches Settings
 over the gallery, `front` launches the gallery again (the same process comes back), and `deny`
-answers the alert through an XCUITest (`examples/ios-host/tapper`). It installs afresh (30 s after the boot: earlier, a
-just-booted simulator kept the last answer through the uninstall), so the alert is shown, and grants the microphone with `simctl privacy`. The terminate hook runs on a
+answers the alert through an XCUITest (`examples/ios-host/tapper`). It installs afresh and uninstalls at the end (a
+just-booted simulator kept the last answer through an uninstall), so the alert is shown, and grants the microphone with `simctl privacy`. The terminate hook runs on a
 posted `willTerminateNotification`.
 
 The Location section shows whether positions can be had and the latest one, with "Use my

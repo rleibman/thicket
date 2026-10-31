@@ -98,14 +98,13 @@ codesign --force --sign - "$APP"
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null 2>&1 || true
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
-# Uninstalling forgets the notifications answer, but not on a just-booted simulator: uninstalled
-# 0 s or 10 s after `bootstatus` returned, a "Don't Allow" from before the boot survived the
-# reinstall; 30 s after, it was gone (measured, #114; the service that keeps it seems to start
-# late). So a fresh install waits for that first.
-if [ "${FRESH_INSTALL:-0}" = 1 ]; then
-  sleep "${FRESH_INSTALL_SETTLE:-30}"
-  xcrun simctl uninstall "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
-fi
+# Uninstalling forgets the notifications answer, but not on a just-booted simulator: there a
+# "Don't Allow" from before the boot survived the uninstall and reinstall in 7 of 9 tries (0 s,
+# 10 s or 30 s after the boot, or after launching Settings or the app first). Uninstalled in the
+# boot it was given in, it was forgotten every time (9 tries), across a later reboot too. So a
+# fresh install also uninstalls at the end of the run, below, and verify-apple's reboots do no
+# harm. (#114)
+if [ "${FRESH_INSTALL:-0}" = 1 ]; then xcrun simctl uninstall "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true; fi
 xcrun simctl install "$DEVICE" "$APP"
 for service in ${PRIVACY_GRANT:-}; do xcrun simctl privacy "$DEVICE" grant "$service" "$BUNDLE_ID"; done
 
@@ -141,6 +140,7 @@ if [ "${SCREENSHOT:-0}" = 1 ]; then
 fi
 kill "$LAUNCHER" 2>/dev/null || true
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+if [ "${FRESH_INSTALL:-0}" = 1 ]; then xcrun simctl uninstall "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true; fi
 
 echo "=== app output ==="
 cat "$LOG"
