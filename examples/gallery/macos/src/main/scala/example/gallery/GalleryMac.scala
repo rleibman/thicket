@@ -17,6 +17,7 @@
 package example.gallery
 
 import thicket.device.apple.AppleDevice
+import thicket.motion.Motion
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.sqlite.NativeSqlite
@@ -42,7 +43,16 @@ object GalleryMac {
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then
         AppleApp.postToUi(() => GallerySelfTest.run(Some(storage), bundleId, svgWhereDecoded = true))
       val services =
-        Some(Services(storage, NativeSqlite.driver, () => AppleSecrets.open(bundleId), device = Some(AppleDevice())))
+        Some(
+          Services(
+            storage,
+            NativeSqlite.driver,
+            () => AppleSecrets.open(bundleId),
+            device = Some(AppleDevice()),
+            // No CMMotionManager on macOS (docs/16 §16.9, decision 7), as on GTK.
+            motion = Some(Motion.unavailable(GalleryMotionChecks.noDesktopMotion))
+          )
+        )
       // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise
       // (#85). Asked of the decoder, not the OS version: on macOS 13, the shim's minimum, NSImage
       // is not reported to take SVG, and an image view given bytes it cannot decode is an empty

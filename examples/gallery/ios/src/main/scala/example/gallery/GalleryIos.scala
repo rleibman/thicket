@@ -19,6 +19,7 @@ package example.gallery
 import scala.scalanative.unsafe.exported
 import thicket.core.GcState
 import thicket.device.apple.AppleDevice
+import thicket.motion.ios.{IosMotion, IosMotionProvider}
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.sqlite.NativeSqlite
@@ -51,7 +52,9 @@ object GalleryIos {
       AppleApp.run("Thicket gallery", 520, 760) {
         val storage = AppleStorage(bundleId)
         if sys.env.contains("THICKET_GALLERY_SELFTEST") then
-          AppleApp.postToUi(() => GallerySelfTest.run(Some(storage), bundleId))
+          AppleApp.postToUi { () =>
+            GallerySelfTest.run(Some(storage), bundleId, motion = Some(IosMotionProvider -> IosMotionProvider.testing.active))
+          }
         // The app's working directory is `/`, so `Gallery.logoBytes` — a repo-relative read —
         // finds nothing here, and the bytes-backed Image showed nothing (#73). The logo is in
         // the bundle, where `FromFile` finds it too; this host reads it from there, as the
@@ -59,7 +62,13 @@ object GalleryIos {
         Gallery.app(
           logo = Gallery.logoBytes(AppleApp.resourcePath(Gallery.logo)),
           services = Some(
-            Services(storage, NativeSqlite.driver, () => AppleSecrets.open(bundleId), device = Some(AppleDevice()))
+            Services(
+              storage,
+              NativeSqlite.driver,
+              () => AppleSecrets.open(bundleId),
+              device = Some(AppleDevice()),
+              motion = Some(IosMotion())
+            )
           )
         )
       }

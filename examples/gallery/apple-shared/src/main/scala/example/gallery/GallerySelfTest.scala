@@ -23,6 +23,7 @@ import thicket.core.{Element, GcState, Reconciler}
 import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim, ShimKind}
+import thicket.motion.{MotionProvider, Sensor}
 import thicket.secrets.apple.AppleSecrets
 import thicket.secrets.testing.SecretsConformance
 import thicket.signals.{ErrorSink, Owner}
@@ -77,6 +78,10 @@ object GallerySelfTest {
   /** Set by [[run]]: the host shows the SVG logo wherever the platform decodes it (#85). */
   private var svgWhereDecoded = false
 
+  /** Set by [[run]]: the iOS host's motion provider, and what Core Motion says it is delivering (#120); `None` on macOS.
+    */
+  private var motion: Option[(MotionProvider, Sensor => Boolean)] = None
+
   /** Waits for the Effects section's ZIO result first, as the GTK host does, so the synchronous checks see it.
     *
     * `svgWhereDecoded`: the host promises the SVG logo wherever the platform's image class decodes it - the macOS host
@@ -85,11 +90,13 @@ object GallerySelfTest {
   def run(
     storage:         Option[Storage],
     bundleId:        String,
-    svgWhereDecoded: Boolean = false
+    svgWhereDecoded: Boolean = false,
+    motion:          Option[(MotionProvider, Sensor => Boolean)] = None
   ): Unit = {
     this.storage = storage
     this.bundleId = bundleId
     this.svgWhereDecoded = svgWhereDecoded
+    this.motion = motion
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
   }
 
@@ -230,7 +237,7 @@ object GallerySelfTest {
       s"${AppleInspect.presentedCount} presented"
     )
 
-    storageChecks(() => deviceChecks(() => sheet(all)(() => bigList(() => finish()))))
+    storageChecks(() => deviceChecks(() => motionChecks(() => sheet(all)(() => bigList(() => finish())))))
   }
 
   /** Device services (docs/16 §16.5–16.6), the GTK host's checks asked of Apple: preferences in Application Support,
@@ -250,6 +257,10 @@ object GallerySelfTest {
       label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
       () => AppleInspect.allTexts(AppleApp.rootHandle)
     )(next)
+
+  /** The motion sensors (#120), in [[GalleryMotionChecks]]. */
+  private def motionChecks(next: () => Unit): Unit =
+    GalleryMotionChecks.run(checker, () => AppleInspect.allTexts(AppleApp.rootHandle), motion)(next)
 
   private def storageChecks(next: () => Unit): Unit =
     (Gallery.currentStorage, storage) match {
