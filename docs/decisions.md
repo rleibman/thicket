@@ -85,7 +85,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     camera screen: `NeedsPermission(Camera)`.
   - **GTK:** `Camera.unavailable` (§16.3: the portal's camera is a stream, not a capture).
   - **Measured.** `CameraSpec` 2/2, JVM and Native. GTK gallery 137 (136 + 1), todo 69, on the
-    desktop. Android gallery 85 (81 + 4) on `s2test`: `build.sh` presses the emulator camera's
+    desktop. Android gallery 86 (81 + 5, the sweep check below among them) on `s2test`: `build.sh` presses the emulator camera's
     shutter and Done; the JPEG comes back (`FF D8 FF`), the entry is gone, and backing out
     answers no photo and leaves no entry.
   - **Falsified.** With the entry not deleted, both "no entry left" checks fail, naming the
