@@ -335,7 +335,8 @@ private[apple] object DeviceShim {
     sb.toString
   }
 
-  /** `thicket_motion.h`: the `thk_mot_*` surface of `thicket-motion-ios` ([[MotionAbi]]), with its own callback type. */
+  /** `thicket_motion.h`: the `thk_mot_*` surface of `thicket-motion-ios` ([[MotionAbi]]), with its own callback type.
+    */
   def motionHeader(groups: List[Group] = MotionAbi.groups): String = {
     val sb = new StringBuilder
     sb.append("""/*

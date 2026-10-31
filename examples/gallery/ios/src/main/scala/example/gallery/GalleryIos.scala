@@ -53,7 +53,11 @@ object GalleryIos {
         val storage = AppleStorage(bundleId)
         if sys.env.contains("THICKET_GALLERY_SELFTEST") then
           AppleApp.postToUi { () =>
-            GallerySelfTest.run(Some(storage), bundleId, motion = Some(IosMotionProvider -> IosMotionProvider.testing.active))
+            GallerySelfTest.run(
+              Some(storage),
+              bundleId,
+              motion = Some(IosMotionProvider -> IosMotionProvider.testing.active)
+            )
           }
         // The app's working directory is `/`, so `Gallery.logoBytes` — a repo-relative read —
         // finds nothing here, and the bytes-backed Image showed nothing (#73). The logo is in

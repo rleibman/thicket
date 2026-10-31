@@ -24,8 +24,8 @@ import thicket.signals.{Disposable, Owner}
 
 /** The Motion section on AppKit and UIKit (#120).
   *
-  *   - **macOS** has no `CMMotionManager`: the host passes `Motion.unavailable(`[[noDesktopMotion]]`)`, as GTK does, and
-  *     the section says so.
+  *   - **macOS** has no `CMMotionManager`: the host passes `Motion.unavailable(`[[noDesktopMotion]]`)`, as GTK does,
+  *     and the section says so.
   *   - **iOS** passes `IosMotion()`, and the host gives this its provider. The simulator has no motion hardware, so
   *     every sensor is `Unavailable`: the section must name each reason, and `Motion`'s lifecycle (`WhileInFront`) must
   *     never start one. That is counted through a provider wrapping the real one, under the real lifecycle, as the
@@ -51,7 +51,8 @@ object GalleryMotionChecks {
     loop()
   }
 
-  /** `provider`: the iOS host's real one, with `active`, what Core Motion itself says it is delivering; `None` on macOS.
+  /** `provider`: the iOS host's real one, with `active`, what Core Motion itself says it is delivering; `None` on
+    * macOS.
     */
   def run(
     check:    Check,
@@ -83,7 +84,12 @@ object GalleryMotionChecks {
         val missing = all.collect { case (s, Availability.Unavailable(r)) => s -> r }
         check(
           "the section names each sensor the device has, and each one it lacks with Core Motion's reason",
-          t.contains(label) && missing.forall((_, r) => r.startsWith("This device has no ") && label.contains(r)) &&
+          t.contains(label) && missing.forall(
+            (
+              _,
+              r
+            ) => r.startsWith("This device has no ") && label.contains(r)
+          ) &&
             missing.size + has.size == Sensor.values.length,
           t.filter(_.startsWith("Sensors")).toString
         )

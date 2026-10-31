@@ -29,8 +29,8 @@ import thicket.signals.Disposable
   *   - `Acceleration` is the accelerometer, converted from Core Motion's g to m/s², gravity included, **and negated**
   *     (see [[IosMotionProvider.acceleration]]), so it reads about (0, 0, 9.81) flat, screen up, as on Android;
   *   - `RotationRate` is the gyroscope, rad/s, as Core Motion reports it;
-  *   - `Attitude` is device motion's fused `attitude`: (roll, pitch, yaw), radians, in Core Motion's own reference frame
-  *     (`xArbitraryZVertical`: yaw is zero where updates started, not north).
+  *   - `Attitude` is device motion's fused `attitude`: (roll, pitch, yaw), radians, in Core Motion's own reference
+  *     frame (`xArbitraryZVertical`: yaw is zero where updates started, not north).
   *
   * A sensor the device lacks is `Unavailable` (the simulator has none). None needs a permission. Samples arrive on the
   * main thread.
@@ -44,10 +44,10 @@ object IosMotionProvider extends MotionProvider {
   val g: Double = 9.80665
 
   /** Core Motion's accelerometer, in g, as Thicket's: m/s², the same axes, **the opposite sign**. Core Motion reads
-    * about (0, 0, -1) g flat on a table, screen up (Apple's Core Motion documentation: gravity is reported as
-    * an acceleration towards the ground); Android reads the support force, about (0, 0, +9.81) m/s². Thicket's
-    * convention is Android's (`modules/motion/README.md`), so the sample is multiplied by -g. Unmeasured: the simulator
-    * has no accelerometer, and no device was available (#120).
+    * about (0, 0, -1) g flat on a table, screen up (Apple's Core Motion documentation: gravity is reported as an
+    * acceleration towards the ground); Android reads the support force, about (0, 0, +9.81) m/s². Thicket's convention
+    * is Android's (`modules/motion/README.md`), so the sample is multiplied by -g. Unmeasured: the simulator has no
+    * accelerometer, and no device was available (#120).
     */
   def acceleration(coreMotion: Vec3): Vec3 = Vec3(-g * coreMotion.x, -g * coreMotion.y, -g * coreMotion.z)
 
@@ -59,7 +59,7 @@ object IosMotionProvider extends MotionProvider {
       case Rate.Game   => 1.0 / 50
     }
 
-  private final class Listener(
+  final private class Listener(
     val rate:     Rate,
     val onSample: Vec3 => Unit
   )

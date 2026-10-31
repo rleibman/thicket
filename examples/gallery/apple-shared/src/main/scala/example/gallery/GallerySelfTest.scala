@@ -78,7 +78,8 @@ object GallerySelfTest {
   /** Set by [[run]]: the host shows the SVG logo wherever the platform decodes it (#85). */
   private var svgWhereDecoded = false
 
-  /** Set by [[run]]: the iOS host's motion provider, and what Core Motion says it is delivering (#120); `None` on macOS.
+  /** Set by [[run]]: the iOS host's motion provider, and what Core Motion says it is delivering (#120); `None` on
+    * macOS.
     */
   private var motion: Option[(MotionProvider, Sensor => Boolean)] = None
 
