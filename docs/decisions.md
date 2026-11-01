@@ -117,7 +117,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     "Use my location" changes nothing). Unlocked it would be 196 (195 + 1); that was not
     measured.
   - **`bin/verify-apple.sh "iPhone Air"`: 17/17 steps** on `2e2d61a`. Two earlier full runs
-    failed `ios-gallery` on the notifications flake described below, and the second of them
+    failed `ios-gallery` on the notifications flake described below, and the first of them
     also failed `getting-started` ("the macOS app has no window") while the machine was under
     load (`shim-ios` took 941 s).
   - **Control:** with `WhileInFront`'s background stop removed, exactly 1 check fails ("in
