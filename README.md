@@ -316,7 +316,7 @@ modules/
   secrets/           tokens and passwords in the platform's secure store; secrets-gtk/, secrets-android/, secrets-apple/
   device/            the app's lifecycle and permissions; device-gtk/, device-android/
   location/          the device's position; location-android/ (GTK: Location.unavailable)
-  motion/            acceleration, rotation rate, attitude; motion-android/ (GTK: Motion.unavailable)
+  motion/            acceleration, rotation rate, attitude; motion-android/, motion-ios/ (GTK, macOS: Motion.unavailable)
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)

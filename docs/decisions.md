@@ -72,6 +72,44 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-31 — **Motion on iOS: `thicket-motion-ios`, a Swift library of its own over
+  `CMMotionManager`; acceleration negated to Android's sign, unmeasured; macOS
+  `Motion.unavailable`** (#120, docs/16 §16.10 item 4).
+  - **Swift, not a C helper**, as #114 proposed: `start…Updates(to:withHandler:)` take blocks,
+    which C cannot write without the blocks extension and Objective-C, and the handler reads
+    `CMAccelerometerData` / `CMGyroData` / `CMDeviceMotion` objects. `libthicketmotion.a`,
+    15 056 bytes, **iOS simulator only**: `CMMotionManager` is `API_UNAVAILABLE(macos)`. Its own
+    module and jar (`thicket-motion-ios`), not `device-apple`: an app without motion links no
+    CoreMotion. The ABI is `MotionAbi` (`thk_mot_*`, 4 functions) with `MotionConsistencySpec`
+    (7 tests); a new `Vec3Cb` callback type passes a sample as three doubles, never a struct.
+  - **The provider only**, as Android's: `Motion(IosMotionProvider, AppleLifecycle)`, the
+    lifecycle through `WhileInFront`. One `CMMotionManager` per process; each sensor's one
+    handler is shared by its listeners at the fastest interval asked (0.2 s, 1/15 s, 1/50 s).
+    No permission: `NSMotionUsageDescription` is for `CMMotionActivityManager`, not used.
+  - **Acceleration is Core Motion's g times -9.80665.** Core Motion reports gravity as
+    (0, 0, -1) g flat, screen up; Android the support force, (0, 0, +9.81) m/s², which is
+    `modules/motion/README.md`'s convention. **Unmeasured**: the simulator has no motion
+    hardware and no device was available. Attitude is Core Motion's roll, pitch, yaw as they
+    come; its yaw is zero where updates started, not north (`docs/09` §9.11).
+  - **The section shows each sensor's reason.** `MotionDemo.sensorsLabel` now lists an
+    unavailable sensor with its reason, sensors sharing one reason before it once, so GTK's and
+    macOS's label reads "no Acceleration, no RotationRate, no Attitude (no motion sensors on the
+    desktop yet)".
+  - **Measured.** iOS gallery on "iPhone 17e" **196** (191 + 5): the section names all three
+    sensors unavailable with Core Motion's reason ("This device has no accelerometer", …); in
+    the foreground, a provider wrapping `IosMotionProvider` under the real `AppleLifecycle` is
+    started **0** times and Core Motion delivers nothing (`isAccelerometerActive` and the
+    others); disposing the probe; no reading shown. macOS gallery **196** (195 + 1): the section
+    says the desktop has no sensors. `shimGen` 37/37.
+  - **Control.** `Motion.apply` ignoring availability: the start count check fails, "3
+    start(s) for 0 available", 1 FAIL; restored, it passes.
+  - **`bin/verify-apple.sh "iPhone 17e"`: VERIFY_RESULT** (a new `shim-motion` step).
+  - **Seen on the way, not this change's:** with another agent's iOS gallery running on
+    another simulator at the same time, one run's console log (`simctl launch --console-pty`)
+    held that run's `=== DRIVE geo … ===` line in the middle of a check line, and lost the next
+    check line: 195 counted instead of 196. How it got there is not established; a check count
+    from a run beside another is worth re-reading.
+
 - 2026-10-30 — **Apple lifecycle and permissions: `thicket-device-apple`, a Swift library of
   its own; iOS foreground is the scene's foreground, not its activation; macOS is the occlusion
   state** (#114, docs/16 §16.10 item 3).

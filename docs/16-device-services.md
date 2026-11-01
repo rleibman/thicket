@@ -319,7 +319,7 @@ this means many modules. Names follow the published ones:
 | secrets | `thicket-secrets` | `-android` (Keystore), `-apple` (Keychain), `-gtk` (libsecret) |
 | SQLite | `thicket-sqlite` (`Sqlite.open`; `java.sql` is the API) | `thicket-sqlite-android` (a JDBC driver); Native uses `scala-native-jdbc-sqlite` |
 | location | `thicket-location` (built) | `-android` (built), `-apple` (Mac issue); GTK and macOS use `Location.unavailable` |
-| motion | `thicket-motion` (built) | `-android` (built), `-ios` (Mac issue); GTK and macOS use `Motion.unavailable` |
+| motion | `thicket-motion` (built) | `-android` (built), `-ios` (built, #120); GTK and macOS use `Motion.unavailable` |
 | pickers, camera capture, share, clipboard, haptics | one API each | per platform, as built |
 
 The implementations need the host (`ThicketActivity`, `GtkApp`, a Swift library), so each
@@ -435,5 +435,10 @@ Every service gets a gallery section and self-test checks on every host where it
      emulator's accelerometer and gyroscope are set with `adb emu sensor set`; the attitude is
      Android's fusion of them and is only checked to arrive. `Attitude` is its own type
      (roll, pitch, yaw), not the `Vec3` §16.3's table shows.
+   - *iOS, 2026-10-31 (#120):* `thicket-motion-ios`, a `MotionProvider` over `CMMotionManager`
+     in its own Swift library (`thk_mot_*`, `MotionAbi`). Acceleration is Core Motion's g times
+     -9.80665, so it agrees with Android's sign; unmeasured, since the simulator has no motion
+     hardware. The simulator's gallery checks each sensor's `Unavailable` reason and counts
+     that `WhileInFront` starts none. macOS uses `Motion.unavailable`.
 5. **Pickers, camera capture, share, clipboard, haptics.**
 6. **Tier 3** as separate designs, live camera preview first if wanted.
