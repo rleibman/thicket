@@ -218,3 +218,21 @@ that never took the text, or kept an older one, fails. On GTK the section says t
 haptics. On Android the self-test checks `performHapticFeedback` answered true, and after the
 run `build.sh` looks for the gallery's taps in the system's vibrator history
 (`dumpsys vibrator_manager`), counting only those since the launch.
+
+The Pickers section picks a photo and a document and saves one, through the system's own
+pickers. On Android `build.sh` puts the gallery's logo in the media store and a text file in
+Downloads, and taps them in the photo picker and the documents UI (`DRIVE pick-photo`,
+`open-doc`, `save-doc`, `back`); after the run it reads the saved file back from Downloads. On
+GTK the self-test turns the portal off (`GDK_DEBUG=no-portals`) so the file chooser is
+in-process, finds it among the app's windows, sets the file and accepts or cancels. Each pick
+must come back as a copy in the app's cache, byte for byte.
+
+The same section takes a photo. On Android `build.sh` presses the shutter and Done in the
+emulator's camera app (`DRIVE photo`); the photo must come back as a JPEG in the app's cache,
+and the MediaStore entry the camera wrote to must be gone. Backing out answers no photo. On GTK
+the section says the desktop has no camera screen.
+
+When the desktop is locked, GNOME suspends every window and the Device section's foreground
+check fails. A private headless shell avoids that:
+`dbus-run-session -- gnome-shell --headless --wayland --no-x11 --virtual-monitor 1024x768 --wayland-display thicket-headless &`,
+then `WAYLAND_DISPLAY=thicket-headless bin/with-keyring.sh bin/gtk-selftests.sh`.
