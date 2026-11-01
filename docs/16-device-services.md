@@ -322,7 +322,9 @@ this means many modules. Names follow the published ones:
 | motion | `thicket-motion` (built) | `-android` (built), `-ios` (Mac issue); GTK and macOS use `Motion.unavailable` |
 | clipboard | `thicket-clipboard` (built) | `-gtk`, `-android` (built); `-apple` (Mac issue) |
 | haptics | `thicket-haptics` (built) | `-android` (built), `-apple` (Mac issue); GTK uses `Haptics.none` |
-| pickers, camera capture, share | one API each | per platform, as built |
+| pickers: photos, documents | `thicket-pickers` (built; `Documents`, not `Files`) | `-gtk`, `-android` (built); `-apple` (Mac issue) |
+| camera capture | `thicket-camera` (built) | `-android` (built), `-apple` (Mac issue); GTK and macOS use `Camera.unavailable` |
+| share | one API | per platform, as built |
 
 The implementations need the host (`ThicketActivity`, `GtkApp`, a Swift library), so each
 platform module depends on its renderer. Each Apple module carries its own small Swift
@@ -449,4 +451,13 @@ Every service gets a gallery section and self-test checks on every host where it
    - The clipboard's text left the app: `wl-paste` read the GTK gallery's copy from another
      process, and a paste read text a previous run had left. The haptic tap is in Android's
      vibrator history, which `build.sh` checks.
+   - *Pickers done on GTK and Android, 2026-10-30 (`modules/pickers/README.md`):* `Photos.pick`
+     and `Documents.open`/`save`, driven in the real system UI. `build.sh` taps the Android
+     photo picker and documents UI; the GTK self-test answers the file chooser in-process
+     (`GDK_DEBUG=no-portals`).
+   - *Camera capture done on Android, `Unavailable` on GTK, 2026-10-30
+     (`modules/camera/README.md`):* the camera app writes to a MediaStore entry Thicket makes,
+     and the photo is copied into the cache and the entry deleted. Android 10+. `build.sh`
+     presses the shutter and Done in the emulator's camera app. Share is next, waiting on the
+     owner's choice of how to hand a file to another app without AndroidX's `FileProvider`.
 6. **Tier 3** as separate designs, live camera preview first if wanted.
