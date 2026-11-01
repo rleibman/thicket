@@ -20,6 +20,7 @@ echo "== sbt: building the Scala JARs =="
   "secretsJVM/package" "secretsAndroid/package" "deviceJVM/package" "deviceAndroid/package" "locationJVM/package" "locationAndroid/package" \
   "motionJVM/package" "motionAndroid/package" \
   "clipboardJVM/package" "clipboardAndroid/package" "hapticsJVM/package" "hapticsAndroid/package" \
+  "pickersJVM/package" "pickersAndroid/package" "cameraJVM/package" "cameraAndroid/package" \
   "httpChecksJVM/package" "httpAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
@@ -37,6 +38,7 @@ for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-z
               thicket-secrets thicket-secrets-android thicket-device thicket-device-android \
               thicket-location thicket-location-android thicket-motion thicket-motion-android \
               thicket-clipboard thicket-clipboard-android thicket-haptics thicket-haptics-android \
+              thicket-pickers thicket-pickers-android thicket-camera thicket-camera-android \
               http-checks thicket-http-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
@@ -69,6 +71,13 @@ if [ -n "${SELFTEST:-}" ]; then
   # revoked and with no "don't ask again" left from an earlier run.
   adb shell pm revoke $pkg android.permission.POST_NOTIFICATIONS
   adb shell pm clear-permission-flags $pkg android.permission.POST_NOTIFICATIONS user-set user-fixed
+  # What the pickers' checks pick: the gallery's logo as a photo in the media store, a text file in Downloads; and no
+  # file left where the save check writes.
+  adb push "$root/docs/assets/thicket-logo.png" /sdcard/Pictures/thicket-test.png >/dev/null
+  printf 'a test document\n' >"$here/app/build/thicket-test.txt"
+  adb push "$here/app/build/thicket-test.txt" /sdcard/Download/thicket-test.txt >/dev/null
+  adb shell rm -f /sdcard/Download/thicket-gallery.txt
+  adb shell content call --uri content://media/ --method scan_volume --arg external_primary >/dev/null
 fi
 adb logcat -c
 # The device's clock now: the vibrator's history outlives a run, so only taps recorded after this count.
@@ -95,23 +104,46 @@ echo "== installed and launched =="
 
 # Taps a button of the system's permission dialog, found by its id in a uiautomator dump, as a user would. The dialog
 # may not be up yet at the first dump, so finding nothing is not an error here (set -e would make it one).
-tap_dialog() { # resource id
-  local id=$1 b
+# Taps the first node of a uiautomator dump whose attributes match the regex, as a user would. The screen may not be up
+# yet at the first dump, so finding nothing is not an error here (set -e would make it one).
+tap_ui() { # attribute regex
+  local re=$1 b
   for _ in $(seq 1 30); do
     adb shell rm -f /sdcard/thicket-ui.xml
     adb shell uiautomator dump /sdcard/thicket-ui.xml >/dev/null 2>&1 || true
-    b=$(adb shell cat /sdcard/thicket-ui.xml 2>/dev/null | tr '>' '\n' \
-      | grep "resource-id=\"com.android.permissioncontroller:id/$id\"" \
+    b=$(adb shell cat /sdcard/thicket-ui.xml 2>/dev/null | tr '>' '\n' | grep -E "$re" \
       | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p' | head -1 || true)
     if [ -n "$b" ]; then
       read -r x1 y1 x2 y2 <<<"$b"
       adb shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
-      echo "   (build.sh) tapped $id"
+      echo "   (build.sh) tapped $re"
       return 0
     fi
     sleep 0.5
   done
-  echo "   (build.sh) no $id on screen"
+  echo "   (build.sh) nothing matching $re on screen"
+}
+
+# A button of the system's permission dialog, by its id.
+tap_dialog() { tap_ui "resource-id=\"com.android.permissioncontroller:id/$1\""; }
+
+# The documents UI opens wherever it was last: go to Downloads, where build.sh put the test file, through the roots
+# drawer's own entry (the breadcrumb says "Downloads" too), and let the drawer finish closing before the next tap.
+to_downloads() {
+  tap_ui 'content-desc="Show roots"'
+  tap_ui 'text="Downloads" resource-id="android:id/title"'
+  sleep 2
+}
+
+# Save in the documents UI: a tap that lands while it is still animating is lost, so tap until it has gone.
+save_doc() {
+  to_downloads
+  for _ in 1 2 3; do
+    tap_ui 'resource-id="android:id/button1"'
+    sleep 2
+    adb shell dumpsys activity activities | grep -m1 topResumedActivity | grep -q documentsui || return 0
+  done
+  echo "   (build.sh) the save screen is still up"
 }
 
 # What the self-test asks for with "[gallery] DRIVE <action>": what only the system or the user can do.
@@ -126,6 +158,13 @@ drive() {
     # "accel x:y:z" and "gyro x:y:z": the emulator's accelerometer and gyroscope report these from now on.
     accel\ *) adb emu sensor set acceleration "${1#accel }" >/dev/null ;;
     gyro\ *) adb emu sensor set gyroscope "${1#gyro }" >/dev/null ;;
+    # The pickers: the photo build.sh put in the media store, the document in Downloads, and Save there; back cancels.
+    pick-photo) tap_ui 'content-desc="Photo taken on' ;;
+    open-doc) to_downloads; tap_ui 'text="thicket-test.txt"' ;;
+    save-doc) save_doc ;;
+    back) adb shell input keyevent KEYCODE_BACK ;;
+    # The camera app's capture screen: the shutter, then Done on its review screen.
+    photo) tap_ui 'resource-id="com.android.camera2:id/shutter_button"'; tap_ui 'resource-id="com.android.camera2:id/done_button"' ;;
     *) echo "   (build.sh) unknown action $1" ;;
   esac
 }
@@ -156,6 +195,12 @@ echo "$log"
 verdict=0
 grep -q '\[gallery\] ALL CHECKS PASSED' <<<"$log" || verdict=1
 grep -q '\[gallery\] TERMINATED' <<<"$log" || { echo "FAIL: Back did not run the terminate hook"; verdict=1; }
+# The document the save check wrote, read back from Downloads: evidence from outside the app.
+if [ -n "${SELFTEST:-}" ]; then
+  if [ "$(adb shell cat /sdcard/Download/thicket-gallery.txt 2>/dev/null | tr -d '\r')" = "Saved from the Thicket gallery" ]
+  then echo "ok: Downloads/thicket-gallery.txt holds what the gallery saved"
+  else echo "FAIL: Downloads/thicket-gallery.txt does not hold what the gallery saved"; verdict=1; fi
+fi
 # The Clipboard and haptics section's tap, as the system's vibrator recorded it: evidence from outside the app.
 if [ -n "${SELFTEST:-}" ]; then
   taps=$(adb shell dumpsys vibrator_manager | tr -d '\r' |

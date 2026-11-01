@@ -22,6 +22,8 @@ import thicket.location.Location
 import thicket.motion.Motion
 import thicket.clipboard.Clipboard
 import thicket.haptics.Haptics
+import thicket.pickers.{Documents, Photos}
+import thicket.camera.Camera
 import thicket.secrets.Secrets
 import thicket.signals.Var
 import thicket.sqlite.{Sqlite, SqliteDriver}
@@ -46,6 +48,10 @@ import java.util.concurrent.{Executors, ThreadFactory}
   *   the system clipboard: `GdkClipboard`, Android's `ClipboardManager` (`docs/16` §16.10 item 5).
   * @param haptics
   *   haptic taps: Android's `performHapticFeedback`; on GTK, `Haptics.none` (`docs/16` §16.10 item 5).
+  * @param pickers
+  *   the photo picker and the document picker and save dialog (`docs/16` §16.10 item 5).
+  * @param camera
+  *   taking a photo with the platform's camera screen: Android's camera app; on GTK, `Camera.unavailable`.
   */
 final case class Services(
   storage:   Storage,
@@ -55,7 +61,9 @@ final case class Services(
   location:  Option[Location] = None,
   motion:    Option[Motion] = None,
   clipboard: Option[Clipboard] = None,
-  haptics:   Option[Haptics] = None
+  haptics:   Option[Haptics] = None,
+  pickers:   Option[(Photos, Documents)] = None,
+  camera:    Option[Camera] = None
 )
 
 /** The Storage section's state: a launch counter in preferences, and a table of notes in SQLite.
