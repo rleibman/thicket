@@ -176,8 +176,7 @@ object Gallery {
     device:   Option[DeviceDemo] = None,
     location: Option[LocationDemo] = None,
     motion:   Option[MotionDemo] = None,
-    clip:     Option[ClipboardDemo] = None,
-    pickers:  Option[PickersDemo] = None
+    clip:     Option[ClipboardDemo] = None
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -515,21 +514,6 @@ object Gallery {
                 )
             }
           ),
-          // The system's pickers (docs/16 §16.10 item 5): each picked file comes back as a copy in the app's cache.
-          section("Pickers — a photo, a document, and saving one")(
-            pickers match {
-              case None       => Label("No pickers on this platform yet", emphasis = Emphasis.Secondary)
-              case Some(demo) =>
-                Column(spacing = 8)(
-                  Button("Pick a photo")(demo.pickPhoto()),
-                  Label(demo.photo),
-                  Button("Open a document")(demo.openDocument()),
-                  Label(demo.document),
-                  Button("Save a document")(demo.saveDocument()),
-                  Label(demo.saved)
-                )
-            }
-          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -606,9 +590,6 @@ object Gallery {
   /** The running app's clipboard and haptics demo, for a host's self-test. */
   var currentClipboard: Option[ClipboardDemo] = None
 
-  /** The running app's pickers demo, for a host's self-test. */
-  var currentPickers: Option[PickersDemo] = None
-
   /** The whole app, for a host to mount. Hosts differ only in how they start, in which logo file their platform can
     * draw, and in the device services they have.
     */
@@ -632,21 +613,13 @@ object Gallery {
     val clip =
       services.filter(s => s.clipboard.isDefined || s.haptics.isDefined).map(s => ClipboardDemo(s.clipboard, s.haptics))
     currentClipboard = clip
-    val pickers = services
-      .flatMap(_.pickers).map(
-        (
-          photos,
-          documents
-        ) => PickersDemo(photos, documents)
-      )
-    currentPickers = pickers
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logoFile, bytes, storage, device, location, motion, clip, pickers)
+        val s = screen(model, loaded, logoFile, bytes, storage, device, location, motion, clip)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

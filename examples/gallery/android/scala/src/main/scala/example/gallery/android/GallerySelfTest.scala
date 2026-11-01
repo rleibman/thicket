@@ -20,7 +20,7 @@ import _root_.android.os.{Handler, Looper, SystemClock}
 import _root_.android.util.Log
 import _root_.android.view.{View, ViewGroup}
 import _root_.android.widget.{Button, EditText, ImageView, Spinner, TextView}
-import example.gallery.{ClipboardDemo, DeviceDemo, Gallery, LocationDemo, MotionDemo, PickersDemo, StorageDemo}
+import example.gallery.{ClipboardDemo, DeviceDemo, Gallery, LocationDemo, MotionDemo, StorageDemo}
 import example.http.HttpChecks
 import scala.collection.mutable
 import sttp.client4.*
@@ -436,7 +436,7 @@ object GallerySelfTest {
       ) ++ deviceSteps(activity, () => texts, click) ++ locationSteps(activity, () => texts) ++ motionSteps(
         activity,
         () => texts
-      ) ++ clipboardSteps(() => texts, click) ++ pickerSteps(activity, () => texts, click) ++ List(() => {
+      ) ++ clipboardSteps(() => texts, click) ++ List(() => {
         if httpPort > 0 then {
           httpWorker.start()
           awaitHttp(SystemClock.uptimeMillis() + 30000)
@@ -736,77 +736,6 @@ object GallerySelfTest {
         check("a tap is played: performHapticFeedback answers true", played)
         click("Tap")
       })
-  }
-
-  /** The pickers (docs/16 §16.10 item 5), with `build.sh` as the user in the system's own pickers: it put the gallery's
-    * logo in the media store and a text file in Downloads, and taps them when asked (`DRIVE pick-photo`, `open-doc`,
-    * `save-doc`, `back`). Each pick must come back as a copy in the app's cache holding the original's bytes; after the
-    * run, `build.sh` reads the saved document back from Downloads.
-    */
-  private def pickerSteps(
-    activity: GalleryActivity,
-    texts:    () => List[String],
-    click:    String => Unit
-  ): List[() => Unit] = {
-    def demo = Gallery.currentPickers
-    def photo = demo.map(_.photo.now).getOrElse("")
-    def document = demo.map(_.document.now).getOrElse("")
-    def saved = demo.map(_.saved.now).getOrElse("")
-    def inCache(p: java.nio.file.Path) = p.startsWith(activity.getCacheDir.toPath)
-    def bytes(p:   java.nio.file.Path) = java.nio.file.Files.readAllBytes(p).toList
-    lazy val logo = {
-      val in = activity.getAssets.open(Gallery.logo)
-      try in.readAllBytes().toList
-      finally in.close()
-    }
-    var before = ""
-    List(
-      () => {
-        check("the Android host provides the pickers", demo.isDefined)
-        click("Pick a photo")
-        drive("pick-photo")
-      },
-      Await(20000, () => photo != PickersDemo.nothing("Photo")),
-      () => {
-        val got = demo.toList.flatMap(_.lastPhotos)
-        check(
-          "the photo picker hands back the picked photo, copied into the app's cache, byte for byte",
-          got.size == 1 && got.forall(inCache) && got.headOption.map(bytes).contains(logo) &&
-            // The photo picker names the copy by its own media id, not the original file name.
-            texts().contains(PickersDemo.pickedLabel("Photo", got)),
-          s"$photo; $got"
-        )
-        before = photo
-        click("Pick a photo")
-        drive("back")
-      },
-      Await(20000, () => photo != before),
-      () => {
-        check("cancelling the photo picker answers nothing", photo == "Photo: cancelled", photo)
-        click("Open a document")
-        drive("open-doc")
-      },
-      Await(20000, () => document != PickersDemo.nothing("Document")),
-      () => {
-        val got = demo.toList.flatMap(_.lastDocuments)
-        check(
-          "the document picker hands back the picked file, copied into the app's cache, byte for byte",
-          got.size == 1 && got.forall(inCache) &&
-            got.headOption.map(bytes).contains("a test document\n".getBytes("UTF-8").toList) &&
-            document == "Document: thicket-test.txt (16 bytes)",
-          s"$document; $got"
-        )
-        click("Save a document")
-        drive("save-doc")
-      },
-      Await(20000, () => saved != PickersDemo.notSaved),
-      () =>
-        check(
-          "saving a document answers the name it was saved under",
-          saved == PickersDemo.savedLabel(Some(PickersDemo.savedName)),
-          saved
-        )
-    )
   }
 
 }

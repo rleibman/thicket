@@ -17,7 +17,6 @@
 package thicket.renderer.android
 
 import _root_.android.app.Activity
-import _root_.android.content.Intent
 import _root_.android.os.{Build, Bundle, Handler, Looper}
 import _root_.android.transition.{Slide, TransitionManager}
 import _root_.android.view.{Menu, MenuItem, View}
@@ -40,9 +39,8 @@ import thicket.signals.{Disposable, Owner, Signal, Tracking}
   *     on rotation, say — every page's effects stop with it (P2-19).
   *   - **Chrome.** Title, Up and the options menu follow the top screen; Back and Up pop, and Back at the root finishes
   *     the Activity.
-  *   - **Device services.** Start, stop, destruction, permission results and activity results go to every
-  *     [[ThicketActivity.Listener]], which is how `thicket-device-android` hears them without the app forwarding
-  *     anything (`docs/16` §16.7).
+  *   - **Device services.** Start, stop, destruction and permission results go to every [[ThicketActivity.Listener]],
+  *     which is how `thicket-device-android` hears them without the app forwarding anything (`docs/16` §16.7).
   */
 abstract class ThicketActivity extends Activity {
 
@@ -207,14 +205,6 @@ abstract class ThicketActivity extends Activity {
     if !ThicketActivity.listeners.exists(_.permissionsResult(this, requestCode, permissions, results)) then
       super.onRequestPermissionsResult(requestCode, permissions, results)
 
-  override def onActivityResult(
-    requestCode: Int,
-    resultCode:  Int,
-    data:        Intent
-  ): Unit =
-    if !ThicketActivity.listeners.exists(_.activityResult(this, requestCode, resultCode, Option(data))) then
-      super.onActivityResult(requestCode, resultCode, data)
-
   override def onDestroy(): Unit = {
     rootOwner.dispose()
     ThicketActivity.live -= this
@@ -248,16 +238,6 @@ object ThicketActivity {
       requestCode: Int,
       permissions: Array[String],
       results:     Array[Int]
-    ): Boolean = false
-
-    /** `onActivityResult`: a picker, the camera or another app answering `startActivityForResult`. `data` is `None`
-      * when the user cancelled. True if the request was this listener's.
-      */
-    def activityResult(
-      activity:    ThicketActivity,
-      requestCode: Int,
-      resultCode:  Int,
-      data:        Option[Intent]
     ): Boolean = false
 
   }
