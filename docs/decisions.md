@@ -103,7 +103,14 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     says the desktop has no sensors. `shimGen` 37/37.
   - **Control.** `Motion.apply` ignoring availability: the start count check fails, "3
     start(s) for 0 available", 1 FAIL; restored, it passes.
-  - **`bin/verify-apple.sh "iPhone 17e"`: VERIFY_RESULT** (a new `shim-motion` step).
+  - **`bin/verify-apple.sh "iPhone 17e"`: 18/18 on `ef811a1`** (a new `shim-motion` step).
+    After merging #132's base again (main's clipboard and haptics), **17/18 on `3f6ea69`**,
+    twice. Each time `ios-gallery` failed only #114's "notifications start … not yet asked":
+    a "Don't Allow" from the run before survived the reboot and the uninstall. #114 had fixed
+    that by uninstalling at the end of each run, in the same boot (9 of 9 then); here that
+    did not hold, 3 runs out of 3. The Motion checks passed in every run. Run alone in the
+    same boot, after `simctl privacy reset all` and one more run, the iOS gallery passed,
+    196. With the screen locked the macOS gallery is 192 (196 less #114's 4 lifecycle checks).
   - **Seen on the way, not this change's:** with another agent's iOS gallery running on
     another simulator at the same time, one run's console log (`simctl launch --console-pty`)
     held that run's `=== DRIVE geo … ===` line in the middle of a check line, and lost the next
