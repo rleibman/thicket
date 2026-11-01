@@ -106,7 +106,7 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     240, which the first run ran past.
   - **Measured** on "iPhone Air" (iOS 27 simulator). The iOS gallery passes **199** checks
     (191 + 8, the Location section). A position from `simctl location set` reached the screen
-    2.3–2.6 s after the DRIVE line (4 runs). Back in front, the new position showed 3.7–3.8 s
+    2.0–2.6 s after the DRIVE line (6 runs). Back in front, the new position showed 3.5–3.8 s
     after the DRIVE lines (the 3 s wait included). In front, 1 listener counted through the
     wrapping provider and 2 in the library (the gallery's and the probe's). In the
     background, 0 and 0. After the probe's owner was disposed, 0 and 1.
@@ -116,6 +116,10 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     **192** with the screen locked (191 + 1: the section says location is unavailable, and
     "Use my location" changes nothing). Unlocked it would be 196 (195 + 1); that was not
     measured.
+  - **`bin/verify-apple.sh "iPhone Air"`: 17/17 steps** on `2e2d61a`. Two earlier full runs
+    failed `ios-gallery` on the notifications flake described below, and the second of them
+    also failed `getting-started` ("the macOS app has no window") while the machine was under
+    load (`shim-ios` took 941 s).
   - **Control:** with `WhileInFront`'s background stop removed, exactly 1 check fails ("in
     the background, Thicket stops listening": 1 counted, 2 in the library). "A position set
     in the background did not reach the section" still passes, as on Android. Restored.
