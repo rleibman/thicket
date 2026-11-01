@@ -58,8 +58,8 @@ final class AndroidCamera(
     */
   private def sweep(onDone: Int => Unit): Unit =
     if Build.VERSION.SDK_INT >= 29 then {
+      val waiting = pending.map(_._1.toString).toSet
       val t = Thread(() => {
-        val waiting = pending.map(_._1.toString).toSet
         val resolver = app.getContentResolver
         val owned = scala.util
           .Try {
