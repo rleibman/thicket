@@ -27,10 +27,10 @@ APP_NAME=GalleryIos
 BUNDLE_ID=dev.thicket.galleryios
 SWIFT_INCLUDE="$REPO/modules/renderer-apple/shim/include"
 EXTRA_LINK=-lsqlite3
-# The same THICKET_GALLERY_SELFTEST the macOS example reads. Up to 4 min (#78, #114): the gallery
+# The same THICKET_GALLERY_SELFTEST the macOS example reads. Up to 6 min (#78, #114, #118): the gallery
 # times 1 000 vs 2 000 children.
 RUN_ENV=THICKET_GALLERY_SELFTEST=1
-WAIT_SECONDS=240
+WAIT_SECONDS=360
 SCREENSHOT=1
 KEEP_UNSTRIPPED=1
 
