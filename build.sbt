@@ -694,6 +694,46 @@ lazy val motionAndroid = project
   .dependsOn(motion.jvm, deviceAndroid)
   .settings(commonSettings, name := "thicket-motion-android", scalacOptions ++= Seq("-release", "17"))
 
+/** Text on the system clipboard (`docs/16` §16.3, §16.10 item 5), and an in-memory one for tests. */
+lazy val clipboard = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/clipboard"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-clipboard")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** The clipboard on GTK, through `GdkClipboard`. */
+lazy val clipboardGtk = project
+  .in(file("modules/clipboard-gtk"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(clipboard.native, rendererGtk)
+  .settings(commonSettings, name := "thicket-clipboard-gtk")
+
+/** The clipboard on Android, through `ClipboardManager`. */
+lazy val clipboardAndroid = project
+  .in(file("modules/clipboard-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(clipboard.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-clipboard-android", scalacOptions ++= Seq("-release", "17"))
+
+/** Haptic taps (`docs/16` §16.3, §16.10 item 5), and a recording fake. GTK uses `Haptics.none`. */
+lazy val haptics = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/haptics"))
+  .dependsOn(device)
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-haptics")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** Haptics on Android, through `View.performHapticFeedback`. */
+lazy val hapticsAndroid = project
+  .in(file("modules/haptics-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(haptics.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-haptics-android", scalacOptions ++= Seq("-release", "17"))
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot put a `File` on a classpath —
@@ -801,7 +841,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   // storage and sqlite: the device services' section; each host supplies its platform's implementation.
-  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion)
+  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
@@ -815,7 +855,7 @@ lazy val galleryGtk = project
   .in(file("examples/gallery/gtk"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.gtk.buildinfo"))
-  .dependsOn(rendererGtk, galleryShared.native, storageGtk, secretsGtk, deviceGtk)
+  .dependsOn(rendererGtk, galleryShared.native, storageGtk, secretsGtk, deviceGtk, clipboardGtk)
   .settings(commonSettings)
   .settings(gtkNativeSettings)
   .settings(
@@ -839,6 +879,8 @@ lazy val galleryAndroid = project
     deviceAndroid,
     locationAndroid,
     motionAndroid,
+    clipboardAndroid,
+    hapticsAndroid,
     httpChecks.jvm,
     httpAndroid
   )
@@ -1051,6 +1093,9 @@ lazy val platforms = project
     locationAndroid,
     locationApple,
     motionAndroid,
+    clipboardGtk,
+    clipboardAndroid,
+    hapticsAndroid,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,
@@ -1102,6 +1147,10 @@ lazy val root = project
     location.native,
     motion.jvm,
     motion.native,
+    clipboard.jvm,
+    clipboard.native,
+    haptics.jvm,
+    haptics.native,
     httpGtk,
     httpAndroid,
     shimGen,
