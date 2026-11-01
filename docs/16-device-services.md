@@ -450,4 +450,6 @@ Every service gets a gallery section and self-test checks on every host where it
      and `Documents.open`/`save`, driven in the real system UI. `build.sh` taps the Android
      photo picker and documents UI; the GTK self-test answers the file chooser in-process
      (`GDK_DEBUG=no-portals`). Share and camera capture are next.
-6. **Tier 3** as separate designs, live camera preview first if wanted.
+6. **Tier 3** as separate designs, live camera preview first if wanted. *The owner wants tier 3
+   (2026-11-01); the camera preview's design is `docs/17-camera-preview.md`, proposed, with its
+   questions for the owner in §17.8.*
