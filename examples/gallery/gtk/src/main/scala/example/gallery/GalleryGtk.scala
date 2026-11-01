@@ -23,6 +23,7 @@ import thicket.motion.{Motion, Sensor}
 import thicket.clipboard.gtk.GtkClipboard
 import thicket.haptics.Haptics
 import thicket.pickers.gtk.GtkPickers
+import thicket.camera.Camera
 import thicket.share.Share
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
@@ -770,6 +771,12 @@ object GalleryGtk {
                           s"${demo.saved.now}; exists ${Files.exists(saveTo)}"
                         )
                         check(
+                          "the camera says the desktop has none to take a photo with",
+                          GtkInspect
+                            .allTexts(root).contains(PickersDemo.cameraLabel(Availability.Unavailable(noCamera))),
+                          demo.taken.now
+                        )
+                        check(
                           "share says the desktop has no share sheet",
                           GtkInspect
                             .allTexts(root).contains(ShareDemo.availabilityLabel(Availability.Unavailable(noShare))),
@@ -785,6 +792,10 @@ object GalleryGtk {
           }
         }
     }
+
+  /** Why the desktop has no camera capture: the portal's camera is a live stream, not a capture screen (docs/16 §16.3).
+    */
+  val noCamera: String = "no camera screen on the desktop"
 
   /** Why the desktop has no share: GTK has no share sheet (docs/16 §16.3). */
   val noShare: String = "no share sheet on the desktop"
@@ -1162,21 +1173,21 @@ object GalleryGtk {
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then GtkApp.postToUi(() => afterEffect(200)(selfTest()))
       Gallery.app(
         Gallery.logoSvg,
-        services =
-          Some(
-            Services(
-              storage,
-              NativeSqlite.driver,
-              () => GtkSecrets.open("dev.thicket.gallery"),
-              device = Some(GtkDevice()),
-              location = Some(Location.unavailable(noLocation)),
-              motion = Some(Motion.unavailable(noMotion)),
-              clipboard = Some(GtkClipboard()),
-              haptics = Some(Haptics.none(noHaptics)),
-              pickers = Some((pickers.photos, pickers.documents)),
-              share = Some(Share.unavailable(noShare))
-            )
+        services = Some(
+          Services(
+            storage,
+            NativeSqlite.driver,
+            () => GtkSecrets.open("dev.thicket.gallery"),
+            device = Some(GtkDevice()),
+            location = Some(Location.unavailable(noLocation)),
+            motion = Some(Motion.unavailable(noMotion)),
+            clipboard = Some(GtkClipboard()),
+            haptics = Some(Haptics.none(noHaptics)),
+            pickers = Some((pickers.photos, pickers.documents)),
+            camera = Some(Camera.unavailable(noCamera)),
+            share = Some(Share.unavailable(noShare))
           )
+        )
       )
     }
     sys.exit(if sys.env.contains("THICKET_GALLERY_SELFTEST") then verdict() else status)

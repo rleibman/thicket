@@ -249,6 +249,7 @@ every remaining entry before it is built, not after.
 | Clipboard | `modules/clipboard`, `clipboard-gtk`, `clipboard-android` | done on GTK (`GdkClipboard`, read asynchronously) and Android (`ClipboardManager`) (2026-10-30) — text only. The gallery copies and pastes twice, each paste showing that round's copy. Apple is a Mac issue. `modules/clipboard/README.md` |
 | Haptics | `modules/haptics`, `haptics-android` | done on Android (2026-10-30) — `performHapticFeedback`, which `build.sh` finds in the system's vibrator history; GTK uses `Haptics.none`. Apple is a Mac issue. `modules/haptics/README.md` |
 | Pickers | `modules/pickers`, `pickers-gtk`, `pickers-android` | done on GTK (`GtkFileDialog`) and Android (the photo picker, the Storage Access Framework) (2026-10-30) — `Photos.pick(limit)`, `Documents.open(types)` and `save(name, bytes)`; every picked file is copied into the app's cache and handed back as a `Path`, by callback. The gallery's self-tests answer the real pickers: `build.sh` taps Android's, the GTK test answers the in-process chooser. Apple is a Mac issue. `modules/pickers/README.md` |
+| Camera capture | `modules/camera`, `camera-android` | done on Android 10+ (2026-10-30) — `Camera.capturePhoto`: the camera app's screen, the photo copied into the app's cache as a JPEG, the MediaStore entry it was written to deleted; GTK uses `Camera.unavailable`. The gallery's self-test presses the emulator camera's shutter and Done, and backs out. Apple is a Mac issue. `modules/camera/README.md` |
 | Share | `modules/share`, `share-android` | done on Android (2026-11-01) — `Share.text` and `Share.file` through the chooser; a file is copied and served by Thicket's own `ThicketFileProvider`, read-only, with a grant for the chosen app; the app declares the provider in its manifest. GTK uses `Share.unavailable`. The gallery's self-test shares to its own share target, tapped in the real chooser. Apple is a Mac issue. `modules/share/README.md` |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
 | Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine. Since #90 also `thicket-http-apple`'s 12 `thk_http_*` functions (`HttpAbi`): `thicket_http.h` and `HttpShim.scala` generated, `HttpShim.swift` checked |
@@ -360,6 +361,7 @@ someone who did not write the framework, running on all three targets.
 | `deviceJVM` / `deviceNative` | 8 — the permission queue (one dialog at a time, answers in order, re-entrant), the terminate hooks, `WhileInFront`, the fakes (2026-10-30) |
 | `locationJVM` / `locationNative` | 7 — updates follow the lifecycle (stop in the background, restart in front with the last known position), stop with their owner, wait for availability; `current` once; `Location.unavailable` (2026-10-30) |
 | `clipboardJVM` / `clipboardNative` | 1 — `MemoryClipboard` (2026-10-30); the real clipboards are checked in the galleries |
+| `cameraJVM` / `cameraNative` | 2 — `FakeCamera`, `Camera.unavailable` (2026-10-30) |
 | `shareJVM` / `shareNative` | 5 — `SharedFiles` serves a copy under its name and type, never outside its directory or the type file, prunes old copies; names kept to one segment; the fakes (2026-11-01) |
 | `pickersJVM` / `pickersNative` | 4 — `PickedFiles` copies byte for byte into a directory of its own, closes the stream on failure, keeps names inside it; the fakes (2026-10-30) |
 | `hapticsJVM` / `hapticsNative` | 2 — `RecordingHaptics`, `Haptics.none` (2026-10-30) |
@@ -371,11 +373,12 @@ someone who did not write the framework, running on all three targets.
 Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run; the
 storage and sqlite rows 2026-10-21, the secrets rows and `storageGtk` 2026-10-26. On top of
 these, the self-tests drive the real toolkits: GTK gallery **137** and todo **69**
-(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **85** and
+(`bin/gtk-selftests.sh`, which also fails on any `Gtk-CRITICAL`), Android gallery **90** and
 todo **84** on the `s2test` emulator (2026-10-30, the storage section's checks each included,
 secrets among them, the 14 HTTP checks, the Device section's 5 on GTK and 9 on Android, and
 the Location section's 1 on GTK and 7 on Android, the Motion section's 1 and 8, and the
-Clipboard and haptics section's 3 and 5, the Pickers section's 5 and 5, and the Share section's 1 and 4).
+Clipboard and haptics section's 3 and 5, the Pickers and camera section's 6 and 10, and the
+Share section's 1 and 4).
 The Android gallery's `build.sh` also checks that Back runs the terminate hook. HTTP on Linux: `examples/http/selftest.sh linux`,
 **12**. Apple gallery (2026-10-22, #98): macOS **174**, iOS simulator **168**,
 each with six storage checks; 2026-10-27 (#108): macOS **185**, iOS simulator **179**, the two

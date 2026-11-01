@@ -217,6 +217,11 @@ GTK the self-test turns the portal off (`GDK_DEBUG=no-portals`) so the file choo
 in-process, finds it among the app's windows, sets the file and accepts or cancels. Each pick
 must come back as a copy in the app's cache, byte for byte.
 
+The same section takes a photo. On Android `build.sh` presses the shutter and Done in the
+emulator's camera app (`DRIVE photo`); the photo must come back as a JPEG in the app's cache,
+and the MediaStore entry the camera wrote to must be gone. Backing out answers no photo. On GTK
+the section says the desktop has no camera screen.
+
 The Share section shares a text and a small file. On Android the gallery is also a share
 target ("Thicket gallery inbox", `ShareTargetActivity`): `build.sh` taps it in the system's
 chooser (`DRIVE share-pick`), and it reads what it was given, the file through the URI

@@ -99,6 +99,29 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   - **Falsified.** Without the grant, the share sheet's read is gone (the provider logs only
     the gallery's own) and that check fails; the inbox still got the file, being the same app,
     which is why the check is there.
+- 2026-10-30 — **Camera capture: `thicket-camera` and `-android`** (docs/16 §16.10 item 5).
+  - **API:** `Camera.capturePhoto(onResult: Option[Path] => Unit)` and `availability`. The photo
+    arrives as a JPEG copied into the app's cache, as a picked file does (`PickedFiles`, so
+    `thicket-camera` depends on `thicket-pickers`).
+  - **Android:** `ACTION_IMAGE_CAPTURE` writing to a MediaStore entry Thicket creates (§16.3:
+    `FileProvider` is AndroidX); after the answer the photo is copied and the entry deleted, so
+    the user's library keeps nothing the app did not keep. **Android 10+**: before that, a
+    MediaStore entry needs storage permission, so `Unavailable`. The entry must not be
+    `IS_PENDING` (measured: the camera app could not write to a pending entry and no photo
+    came back). An app that declares `CAMERA` must have it granted, or Android refuses the
+    camera screen: `NeedsPermission(Camera)`.
+  - **GTK:** `Camera.unavailable` (§16.3: the portal's camera is a stream, not a capture).
+  - **Measured.** `CameraSpec` 2/2, JVM and Native. GTK gallery 137 (136 + 1), todo 69, on the
+    desktop. Android gallery 86 (81 + 5, the sweep check below among them) on `s2test`: `build.sh` presses the emulator camera's
+    shutter and Done; the JPEG comes back (`FF D8 FF`), the entry is gone, and backing out
+    answers no photo and leaves no entry.
+  - **Falsified.** With the entry not deleted, both "no entry left" checks fail, naming the
+    `thicket-<time>.jpg` entries left behind.
+  - **A sweep for a killed run** (review): the entry is remembered only in memory, so if Android
+    kills the app while the camera app is in front, it would stay. Each new `AndroidCamera`
+    deletes the `thicket-*.jpg` entries this app owns (`OWNER_PACKAGE_NAME`) and is not waiting
+    on. The self-test plants one and checks a new camera removes it (Android 86); with the sweep
+    deleting nothing, that check fails with the entry still there.
 
 - 2026-10-30 — **Pickers: `thicket-pickers`, `-gtk` and `-android`, built to the owner's
   decisions** (docs/16 §16.10 item 5).
