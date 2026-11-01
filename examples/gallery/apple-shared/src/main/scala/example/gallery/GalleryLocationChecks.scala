@@ -21,7 +21,7 @@ import thicket.device.apple.{AppleDevice, AppleLifecycle, ApplePermissions}
 import thicket.location.{Accuracy, Fix, Location, LocationProvider}
 import thicket.location.apple.AppleLocationProvider
 import thicket.renderer.apple.AppleApp
-import thicket.signals.{Disposable, Owner}
+import thicket.signals.{Disposable, Owner, Signal}
 
 /** The Location section on AppKit and UIKit (#118): the Android gallery's `locationSteps` on iOS, and the GTK host's
   * check on macOS, which has no location service yet.
@@ -159,27 +159,40 @@ object GalleryLocationChecks {
             lc == AppState.Background && listening == 0 && native == 0,
             s"$lc; $listening counted; $native in libthicketdevice"
           )
+          // What the section shows while the app is away. iOS suspends it seconds after it leaves, so it cannot wait
+          // and look (measured: a 3 s timer set there never fired): the build script sets the position, waits and
+          // brings the app back, and the positions the section showed in between are what is checked.
+          val away = Owner()
+          var shownAway = List.empty[String]
+          Signal.effect {
+            val p = demo.position()
+            if AppleLifecycle.state.now == AppState.Background then shownAway = shownAway :+ p
+          }(using away)
           drive("geo -33.8568,151.2153")
           // Time for a report to arrive, were anyone listening.
-          AppleApp.postToUiAfter(3000) { () =>
-            check("and a position set there does not reach the section", position == paris, position)
-            drive("front")
-            eventually(20000)(lc == AppState.Foreground && position == sydney) { ms =>
-              println(s"[gallery] measured: relaunched -> the new position on screen in $ms ms after the DRIVE line")
-              check(
-                "back in front, it listens again and shows where the device went meanwhile",
-                lc == AppState.Foreground && listening == 1 && native == 2 && position == sydney &&
-                  texts().contains(sydney),
-                s"$lc; $listening counted; $native in libthicketdevice; $position"
-              )
-              probe.dispose()
-              check(
-                "disposing the owner stops it; the gallery's own listener is left",
-                listening == 0 && native == 1,
-                s"$listening counted; $native in libthicketdevice"
-              )
-              next()
-            }
+          drive("wait 3")
+          drive("front")
+          eventually(30000)(lc == AppState.Foreground && position == sydney) { ms =>
+            println(s"[gallery] measured: relaunched -> the new position on screen in $ms ms after the DRIVE lines")
+            away.dispose()
+            check(
+              "a position set in the background did not reach the section there",
+              shownAway.nonEmpty && shownAway.forall(_ == paris),
+              s"shown while away: $shownAway"
+            )
+            check(
+              "back in front, it listens again and shows where the device went meanwhile",
+              lc == AppState.Foreground && listening == 1 && native == 2 && position == sydney &&
+                texts().contains(sydney),
+              s"$lc; $listening counted; $native in libthicketdevice; $position"
+            )
+            probe.dispose()
+            check(
+              "disposing the owner stops it; the gallery's own listener is left",
+              listening == 0 && native == 1,
+              s"$listening counted; $native in libthicketdevice"
+            )
+            next()
           }
         }
       }

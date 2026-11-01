@@ -58,6 +58,7 @@ drive() {
     home) xcrun simctl launch "$DEVICE" com.apple.Preferences ;;
     front) xcrun simctl launch "$DEVICE" "$BUNDLE_ID" ;;
     geo\ *) xcrun simctl location "$DEVICE" set "${1#geo }" ;;
+    wait\ *) sleep "${1#wait }" ;;
     deny | allow) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "$1" ;;
     *) echo "unknown DRIVE action: $1" ;;
   esac

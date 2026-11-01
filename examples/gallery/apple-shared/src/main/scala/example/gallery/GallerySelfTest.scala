@@ -233,7 +233,9 @@ object GallerySelfTest {
     storageChecks(() => deviceChecks(() => locationChecks(() => sheet(all)(() => bigList(() => finish())))))
   }
 
-  /** [[check]] as a plain function, for checks that live outside this object ([[GalleryDeviceChecks]], [[GalleryLocationChecks]]). */
+  /** [[check]] as a plain function, for checks that live outside this object ([[GalleryDeviceChecks]],
+    * [[GalleryLocationChecks]]).
+    */
   private val checker: (String, Boolean, String) => Unit = (
     n,
     ok,
