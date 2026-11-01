@@ -104,6 +104,33 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   - **Falsified.** With `set` doing nothing, both rounds fail on macOS and on the simulator
     (change count unchanged; the outside reads show the older text).
 
+- 2026-10-30 — **Pickers: `thicket-pickers`, `-gtk` and `-android`, built to the owner's
+  decisions** (docs/16 §16.10 item 5).
+  - **API:** `Photos.pick(limit)`, `Documents.open(mimeTypes, multiple)` and
+    `Documents.save(name, mimeType, bytes)`, by UI-thread callback. Every picked file is copied
+    into the app's cache (`PickedFiles`, a directory per file) and handed back as a `Path`,
+    copied on a worker thread. **`Documents`, not §16.3's `Files`**, which would collide with
+    `java.nio.file.Files` in every app that imports both.
+  - **Android:** the photo picker (`ACTION_PICK_IMAGES`, API 33+; `ACTION_GET_CONTENT` below)
+    and the Storage Access Framework. `ThicketActivity` now passes `onActivityResult` to its
+    listeners, as it does permission results. One picker at a time.
+  - **GTK:** `GtkFileDialog` over `GtkApp`'s window (the portal when sandboxed).
+  - **Measured, through the real pickers.** `PickersSpec` 4/4, JVM and Native. GTK gallery
+    136 (131 + 5, one of them that a second request while the chooser is up answers empty
+    without a second chooser; it fails with the busy check removed), todo 69: the self-test turns the portal off so the chooser is in-process,
+    and answers it. Android gallery 81 (76 + 5) on `s2test`: `build.sh` taps the photo picker
+    and the documents UI, and reads the saved file back from Downloads. The photo picker names
+    a copy by its media id (`36.png`), not the original name; the bytes match.
+  - **Found on the way:** GTK's chooser ignores an accept that comes before it has loaded its
+    folder, so the self-test repeats the answer until it closes; and in GTK 4, a save chooser
+    given a file that does not exist yet takes only its folder. Android's documents UI loses a
+    tap that lands while its drawer is still closing, so `build.sh` waits and retries Save. A
+    locked GNOME desktop suspends every window and fails the Device section's foreground
+    check; a private headless `gnome-shell` gives a clean run (gallery README).
+  - **Falsified.** Without the copy, `PickersSpec`'s byte test fails, and on GTK both
+    "copied into the app's cache" checks fail. With `onActivityResult` not passed on, every
+    Android picker check fails, and so does `build.sh`'s read-back.
+
 - 2026-10-30 — **Clipboard and haptics; the pickers' shape** (docs/16 §16.10 item 5).
   - **Owner's decisions for the pickers and camera capture, to come:** a picked or captured
     file is **copied into the app's cache and returned as a `Path`** on every platform, so

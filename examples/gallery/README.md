@@ -213,3 +213,16 @@ paste of text this process did not write waits on the "Allow Paste" prompt — a
 haptics label says available and "Tap" returns; the simulator plays nothing. After it,
 `bin/verify-apple.sh` reads the last copy back from outside the app (`pbpaste`,
 `xcrun simctl pbpaste`).
+
+The Pickers section picks a photo and a document and saves one, through the system's own
+pickers. On Android `build.sh` puts the gallery's logo in the media store and a text file in
+Downloads, and taps them in the photo picker and the documents UI (`DRIVE pick-photo`,
+`open-doc`, `save-doc`, `back`); after the run it reads the saved file back from Downloads. On
+GTK the self-test turns the portal off (`GDK_DEBUG=no-portals`) so the file chooser is
+in-process, finds it among the app's windows, sets the file and accepts or cancels. Each pick
+must come back as a copy in the app's cache, byte for byte.
+
+When the desktop is locked, GNOME suspends every window and the Device section's foreground
+check fails. A private headless shell avoids that:
+`dbus-run-session -- gnome-shell --headless --wayland --no-x11 --virtual-monitor 1024x768 --wayland-display thicket-headless &`,
+then `WAYLAND_DISPLAY=thicket-headless bin/with-keyring.sh bin/gtk-selftests.sh`.

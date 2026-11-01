@@ -322,7 +322,8 @@ this means many modules. Names follow the published ones:
 | motion | `thicket-motion` (built) | `-android` (built), `-ios` (Mac issue); GTK and macOS use `Motion.unavailable` |
 | clipboard | `thicket-clipboard` (built) | `-gtk`, `-android`, `-apple` (built) |
 | haptics | `thicket-haptics` (built) | `-android`, `-apple` (built); GTK uses `Haptics.none` |
-| pickers, camera capture, share | one API each | per platform, as built |
+| pickers: photos, documents | `thicket-pickers` (built; `Documents`, not `Files`) | `-gtk`, `-android` (built); `-apple` (Mac issue) |
+| camera capture, share | one API each | per platform, as built |
 
 The implementations need the host (`ThicketActivity`, `GtkApp`, a Swift library), so each
 platform module depends on its renderer. Each Apple module carries its own small Swift
@@ -447,4 +448,8 @@ Every service gets a gallery section and self-test checks on every host where it
      process, and a paste read text a previous run had left. The haptic tap is in Android's
      vibrator history, which `build.sh` checks. On Apple, `pbpaste` and `xcrun simctl pbpaste`
      read the galleries' last copy after the run (`bin/verify-apple.sh`).
+   - *Pickers done on GTK and Android, 2026-10-30 (`modules/pickers/README.md`):* `Photos.pick`
+     and `Documents.open`/`save`, driven in the real system UI. `build.sh` taps the Android
+     photo picker and documents UI; the GTK self-test answers the file chooser in-process
+     (`GDK_DEBUG=no-portals`). Share and camera capture are next.
 6. **Tier 3** as separate designs, live camera preview first if wanted.
