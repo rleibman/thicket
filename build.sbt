@@ -717,6 +717,25 @@ lazy val pickersAndroid = project
   .dependsOn(pickers.jvm, rendererAndroid)
   .settings(commonSettings, name := "thicket-pickers-android", scalacOptions ++= Seq("-release", "17"))
 
+/** Taking a photo with the platform's camera screen (`docs/16` §16.3, §16.10 item 5); the photo arrives as a copy in
+  * the app's cache, as a picked file does. GTK and macOS use `Camera.unavailable`.
+  */
+lazy val camera = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/camera"))
+  .dependsOn(pickers)
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-camera")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** The camera on Android: the camera app's `ACTION_IMAGE_CAPTURE`, writing to a MediaStore entry. */
+lazy val cameraAndroid = project
+  .in(file("modules/camera-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(camera.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-camera-android", scalacOptions ++= Seq("-release", "17"))
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot put a `File` on a classpath —
@@ -824,7 +843,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   // storage and sqlite: the device services' section; each host supplies its platform's implementation.
-  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics, pickers)
+  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics, pickers, camera)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
@@ -865,6 +884,7 @@ lazy val galleryAndroid = project
     clipboardAndroid,
     hapticsAndroid,
     pickersAndroid,
+    cameraAndroid,
     httpChecks.jvm,
     httpAndroid
   )
@@ -1076,6 +1096,7 @@ lazy val platforms = project
     hapticsAndroid,
     pickersGtk,
     pickersAndroid,
+    cameraAndroid,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,
@@ -1133,6 +1154,8 @@ lazy val root = project
     haptics.native,
     pickers.jvm,
     pickers.native,
+    camera.jvm,
+    camera.native,
     httpGtk,
     httpAndroid,
     shimGen,

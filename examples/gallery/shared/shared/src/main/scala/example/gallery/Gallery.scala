@@ -516,7 +516,7 @@ object Gallery {
             }
           ),
           // The system's pickers (docs/16 §16.10 item 5): each picked file comes back as a copy in the app's cache.
-          section("Pickers — a photo, a document, and saving one")(
+          section("Pickers and the camera — a photo, a document, saving one, and taking a photo")(
             pickers match {
               case None       => Label("No pickers on this platform yet", emphasis = Emphasis.Secondary)
               case Some(demo) =>
@@ -526,7 +526,9 @@ object Gallery {
                   Button("Open a document")(demo.openDocument()),
                   Label(demo.document),
                   Button("Save a document")(demo.saveDocument()),
-                  Label(demo.saved)
+                  Label(demo.saved),
+                  Button("Take a photo")(demo.takePhoto()),
+                  Label(demo.taken)
                 )
             }
           ),
@@ -632,12 +634,14 @@ object Gallery {
     val clip =
       services.filter(s => s.clipboard.isDefined || s.haptics.isDefined).map(s => ClipboardDemo(s.clipboard, s.haptics))
     currentClipboard = clip
-    val pickers = services
-      .flatMap(_.pickers).map(
-        (
-          photos,
-          documents
-        ) => PickersDemo(photos, documents)
+    val pickers =
+      services.flatMap(s =>
+        s.pickers.map(
+          (
+            photos,
+            documents
+          ) => PickersDemo(photos, documents, s.camera)
+        )
       )
     currentPickers = pickers
     given UiRuntime[Any] = UiRuntime.default
