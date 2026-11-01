@@ -214,3 +214,10 @@ listeners through Home and back, as for location. On macOS it says the desktop h
 on GTK. The iOS simulator has no motion hardware: the self-test checks the section names each
 sensor with Core Motion's reason, and counts, through a provider wrapping the real one, that
 none is started while the app is in front (#120).
+
+The Clipboard and haptics section copies a numbered text and pastes it back, and plays a tap.
+Both self-tests copy and paste twice: each paste must show that round's copy, so a clipboard
+that never took the text, or kept an older one, fails. On GTK the section says there are no
+haptics. On Android the self-test checks `performHapticFeedback` answered true, and after the
+run `build.sh` looks for the gallery's taps in the system's vibrator history
+(`dumpsys vibrator_manager`), counting only those since the launch.

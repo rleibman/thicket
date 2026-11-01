@@ -20,6 +20,8 @@ import thicket.device.{AppState, Availability}
 import thicket.device.gtk.{GtkDevice, GtkLifecycle}
 import thicket.location.Location
 import thicket.motion.{Motion, Sensor}
+import thicket.clipboard.gtk.GtkClipboard
+import thicket.haptics.Haptics
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
 import thicket.secrets.gtk.GtkSecrets
@@ -515,7 +517,9 @@ object GalleryGtk {
       s"${GtkInspect.cssParseErrors} CSS parse errors"
     )
 
-    storageChecks(root)(deviceChecks(root)(locationChecks(root)(motionChecks(root)(presentedAndNav(root)))))
+    storageChecks(root)(
+      deviceChecks(root)(locationChecks(root)(motionChecks(root)(clipboardChecks(root)(presentedAndNav(root)))))
+    )
   }
 
   /** Lifecycle and permissions on GTK (docs/16 §16.10 item 3). The window is hidden and shown again through GTK, so the
@@ -613,6 +617,49 @@ object GalleryGtk {
     }
     next
   }
+
+  /** The clipboard and haptics on GTK (docs/16 §16.10 item 5). "Copy" then "Paste", twice, through `GdkClipboard`: each
+    * paste must show that round's copy, so a clipboard that kept the first text, or never took one, fails. The read is
+    * asynchronous, so each check waits for the label to change, letting the main loop run.
+    */
+  private def clipboardChecks(root: Ptr[GtkWidget])(next: => Unit): Unit =
+    Gallery.currentClipboard match {
+      case None =>
+        check("the GTK host provides a clipboard", false, "Gallery.currentClipboard is None")
+        next
+      case Some(demo) =>
+        def press(label: String) =
+          GtkInspect
+            .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List(label))
+            .headOption.foreach(GtkInspect.click)
+        def round(n: Int)(andThen: => Unit): Unit = {
+          val before = demo.pasted.now
+          press("Copy")
+          press("Paste")
+          when(50)(demo.pasted.now != before) {
+            val expected = ClipboardDemo.pastedLabel(demo.lastCopied)
+            check(
+              s"copy $n, then paste: the clipboard gives back that copy",
+              demo.lastCopied.exists(_.endsWith(s"copy $n")) && GtkInspect.allTexts(root).contains(expected),
+              s"copied ${demo.lastCopied}; ${demo.pasted.now}"
+            )
+            andThen
+          }
+        }
+        round(1) {
+          round(2) {
+            check(
+              "haptics say the desktop has none",
+              GtkInspect.allTexts(root).contains(ClipboardDemo.hapticsLabel(Availability.Unavailable(noHaptics))),
+              demo.hapticsLabel
+            )
+            next
+          }
+        }
+    }
+
+  /** Why the desktop has no haptics: there is no haptic hardware to drive (docs/16 §16.3). */
+  val noHaptics: String = "no haptics on the desktop"
 
   /** Why the desktop has no motion sensors: iio-sensor-proxy is not wired up yet (docs/16 §16.9, decision 7). */
   val noMotion: String = "no motion sensors on the desktop yet"
@@ -985,7 +1032,9 @@ object GalleryGtk {
             () => GtkSecrets.open("dev.thicket.gallery"),
             device = Some(GtkDevice()),
             location = Some(Location.unavailable(noLocation)),
-            motion = Some(Motion.unavailable(noMotion))
+            motion = Some(Motion.unavailable(noMotion)),
+            clipboard = Some(GtkClipboard()),
+            haptics = Some(Haptics.none(noHaptics))
           )
         )
       )

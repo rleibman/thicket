@@ -241,10 +241,7 @@ object GallerySelfTest {
     storageChecks(() => deviceChecks(() => motionChecks(() => sheet(all)(() => bigList(() => finish())))))
   }
 
-  /** Device services (docs/16 §16.5–16.6), the GTK host's checks asked of Apple: preferences in Application Support,
-    * the directories where Foundation says they are, SQLite through the Scala Native driver, and "Add a note" writing a
-    * row on the worker thread.
-    */
+  /** [[check]] as a plain function, for checks that live outside this object ([[GalleryDeviceChecks]]). */
   private val checker: (String, Boolean, String) => Unit = (
     n,
     ok,
@@ -263,6 +260,10 @@ object GallerySelfTest {
   private def motionChecks(next: () => Unit): Unit =
     GalleryMotionChecks.run(checker, () => AppleInspect.allTexts(AppleApp.rootHandle), motion)(next)
 
+  /** Device services (docs/16 §16.5–16.6), the GTK host's checks asked of Apple: preferences in Application Support,
+    * the directories where Foundation says they are, SQLite through the Scala Native driver, and "Add a note" writing a
+    * row on the worker thread.
+    */
   private def storageChecks(next: () => Unit): Unit =
     (Gallery.currentStorage, storage) match {
       case (Some(demo), Some(store)) =>
