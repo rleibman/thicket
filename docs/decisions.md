@@ -104,6 +104,57 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
   - **Falsified.** With `set` doing nothing, both rounds fail on macOS and on the simulator
     (change count unchanged; the outside reads show the older text).
 
+- 2026-10-30 — **Camera capture: `thicket-camera` and `-android`** (docs/16 §16.10 item 5).
+  - **API:** `Camera.capturePhoto(onResult: Option[Path] => Unit)` and `availability`. The photo
+    arrives as a JPEG copied into the app's cache, as a picked file does (`PickedFiles`, so
+    `thicket-camera` depends on `thicket-pickers`).
+  - **Android:** `ACTION_IMAGE_CAPTURE` writing to a MediaStore entry Thicket creates (§16.3:
+    `FileProvider` is AndroidX); after the answer the photo is copied and the entry deleted, so
+    the user's library keeps nothing the app did not keep. **Android 10+**: before that, a
+    MediaStore entry needs storage permission, so `Unavailable`. The entry must not be
+    `IS_PENDING` (measured: the camera app could not write to a pending entry and no photo
+    came back). An app that declares `CAMERA` must have it granted, or Android refuses the
+    camera screen: `NeedsPermission(Camera)`.
+  - **GTK:** `Camera.unavailable` (§16.3: the portal's camera is a stream, not a capture).
+  - **Measured.** `CameraSpec` 2/2, JVM and Native. GTK gallery 137 (136 + 1), todo 69, on the
+    desktop. Android gallery 86 (81 + 5, the sweep check below among them) on `s2test`: `build.sh` presses the emulator camera's
+    shutter and Done; the JPEG comes back (`FF D8 FF`), the entry is gone, and backing out
+    answers no photo and leaves no entry.
+  - **Falsified.** With the entry not deleted, both "no entry left" checks fail, naming the
+    `thicket-<time>.jpg` entries left behind.
+  - **A sweep for a killed run** (review): the entry is remembered only in memory, so if Android
+    kills the app while the camera app is in front, it would stay. Each new `AndroidCamera`
+    deletes the `thicket-*.jpg` entries this app owns (`OWNER_PACKAGE_NAME`) and is not waiting
+    on. The self-test plants one and checks a new camera removes it (Android 86); with the sweep
+    deleting nothing, that check fails with the entry still there.
+
+- 2026-10-30 — **Pickers: `thicket-pickers`, `-gtk` and `-android`, built to the owner's
+  decisions** (docs/16 §16.10 item 5).
+  - **API:** `Photos.pick(limit)`, `Documents.open(mimeTypes, multiple)` and
+    `Documents.save(name, mimeType, bytes)`, by UI-thread callback. Every picked file is copied
+    into the app's cache (`PickedFiles`, a directory per file) and handed back as a `Path`,
+    copied on a worker thread. **`Documents`, not §16.3's `Files`**, which would collide with
+    `java.nio.file.Files` in every app that imports both.
+  - **Android:** the photo picker (`ACTION_PICK_IMAGES`, API 33+; `ACTION_GET_CONTENT` below)
+    and the Storage Access Framework. `ThicketActivity` now passes `onActivityResult` to its
+    listeners, as it does permission results. One picker at a time.
+  - **GTK:** `GtkFileDialog` over `GtkApp`'s window (the portal when sandboxed).
+  - **Measured, through the real pickers.** `PickersSpec` 4/4, JVM and Native. GTK gallery
+    136 (131 + 5, one of them that a second request while the chooser is up answers empty
+    without a second chooser; it fails with the busy check removed), todo 69: the self-test turns the portal off so the chooser is in-process,
+    and answers it. Android gallery 81 (76 + 5) on `s2test`: `build.sh` taps the photo picker
+    and the documents UI, and reads the saved file back from Downloads. The photo picker names
+    a copy by its media id (`36.png`), not the original name; the bytes match.
+  - **Found on the way:** GTK's chooser ignores an accept that comes before it has loaded its
+    folder, so the self-test repeats the answer until it closes; and in GTK 4, a save chooser
+    given a file that does not exist yet takes only its folder. Android's documents UI loses a
+    tap that lands while its drawer is still closing, so `build.sh` waits and retries Save. A
+    locked GNOME desktop suspends every window and fails the Device section's foreground
+    check; a private headless `gnome-shell` gives a clean run (gallery README).
+  - **Falsified.** Without the copy, `PickersSpec`'s byte test fails, and on GTK both
+    "copied into the app's cache" checks fail. With `onActivityResult` not passed on, every
+    Android picker check fails, and so does `build.sh`'s read-back.
+
 - 2026-10-30 — **Clipboard and haptics; the pickers' shape** (docs/16 §16.10 item 5).
   - **Owner's decisions for the pickers and camera capture, to come:** a picked or captured
     file is **copied into the app's cache and returned as a `Path`** on every platform, so
