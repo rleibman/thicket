@@ -60,6 +60,7 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-clipboard-gtk_native0.5_3` / `thicket-clipboard-android_3` | text on the system clipboard (`thicket-clipboard` comes with them) |
 | `net.leibman:thicket-haptics_3` / `_native0.5_3`, `thicket-haptics-android_3` | haptic taps; on GTK, `Haptics.none` from `thicket-haptics` |
 | `net.leibman:thicket-pickers-gtk_native0.5_3` / `thicket-pickers-android_3` | the photo picker, the document picker and save dialog (`thicket-pickers` comes with them) |
+| `net.leibman:thicket-share_3` / `_native0.5_3`, `thicket-share-android_3` | the share sheet; on Android the app declares `ThicketFileProvider`; on GTK, `Share.unavailable` |
 | `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
 | `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
 | `net.leibman:thicket-storage-apple_native0.5_3` | app directories and preferences on macOS and iOS (`thicket-storage` comes with it); no Swift |
@@ -170,4 +171,4 @@ renderers and the platform modules that are not in `root`: `thicket-http-apple`,
 `thicket-secrets-apple`, `thicket-device-gtk`, `thicket-device-android` and
 `thicket-location-android`, `thicket-motion-android`, `thicket-clipboard-gtk`,
 `thicket-clipboard-android`, `thicket-haptics-android`, `thicket-pickers-gtk` and
-`thicket-pickers-android`.
+`thicket-pickers-android` and `thicket-share-android`.

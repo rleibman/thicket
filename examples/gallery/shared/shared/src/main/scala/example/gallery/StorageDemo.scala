@@ -23,6 +23,7 @@ import thicket.motion.Motion
 import thicket.clipboard.Clipboard
 import thicket.haptics.Haptics
 import thicket.pickers.{Documents, Photos}
+import thicket.share.Share
 import thicket.secrets.Secrets
 import thicket.signals.Var
 import thicket.sqlite.{Sqlite, SqliteDriver}
@@ -49,6 +50,8 @@ import java.util.concurrent.{Executors, ThreadFactory}
   *   haptic taps: Android's `performHapticFeedback`; on GTK, `Haptics.none` (`docs/16` §16.10 item 5).
   * @param pickers
   *   the photo picker and the document picker and save dialog (`docs/16` §16.10 item 5).
+  * @param share
+  *   the share sheet: Android's chooser, files served by Thicket's own provider; on GTK, `Share.unavailable`.
   */
 final case class Services(
   storage:   Storage,
@@ -59,7 +62,8 @@ final case class Services(
   motion:    Option[Motion] = None,
   clipboard: Option[Clipboard] = None,
   haptics:   Option[Haptics] = None,
-  pickers:   Option[(Photos, Documents)] = None
+  pickers:   Option[(Photos, Documents)] = None,
+  share:     Option[Share] = None
 )
 
 /** The Storage section's state: a launch counter in preferences, and a table of notes in SQLite.

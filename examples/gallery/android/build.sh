@@ -20,7 +20,7 @@ echo "== sbt: building the Scala JARs =="
   "secretsJVM/package" "secretsAndroid/package" "deviceJVM/package" "deviceAndroid/package" "locationJVM/package" "locationAndroid/package" \
   "motionJVM/package" "motionAndroid/package" \
   "clipboardJVM/package" "clipboardAndroid/package" "hapticsJVM/package" "hapticsAndroid/package" \
-  "pickersJVM/package" "pickersAndroid/package" \
+  "pickersJVM/package" "pickersAndroid/package" "shareJVM/package" "shareAndroid/package" \
   "httpChecksJVM/package" "httpAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
@@ -38,7 +38,7 @@ for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-z
               thicket-secrets thicket-secrets-android thicket-device thicket-device-android \
               thicket-location thicket-location-android thicket-motion thicket-motion-android \
               thicket-clipboard thicket-clipboard-android thicket-haptics thicket-haptics-android \
-              thicket-pickers thicket-pickers-android \
+              thicket-pickers thicket-pickers-android thicket-share thicket-share-android \
               http-checks thicket-http-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.
@@ -163,6 +163,8 @@ drive() {
     open-doc) to_downloads; tap_ui 'text="thicket-test.txt"' ;;
     save-doc) save_doc ;;
     back) adb shell input keyevent KEYCODE_BACK ;;
+    # The system's share sheet: the gallery's own share target in it.
+    share-pick) tap_ui 'text="Thicket gallery inbox"' ;;
     *) echo "   (build.sh) unknown action $1" ;;
   esac
 }

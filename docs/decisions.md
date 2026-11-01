@@ -72,6 +72,34 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-01 — **Share: `thicket-share` and `-android`, with Thicket's own file provider**
+  (docs/16 §16.10 item 5).
+  - **Owner's decision:** files are handed to other apps through a Thicket `ContentProvider`
+    written against the framework, declared by the app with one `<provider>` element (option
+    (a); not AndroidX's `FileProvider`, not the MediaStore, not text only).
+  - **API:** `Share.text(text, subject)`, `Share.file(path, mimeType)`, `availability`. Fire and
+    forget: Android's chooser does not say what the user picked.
+  - **Android:** `ACTION_SEND` through `Intent.createChooser`. A file is copied into
+    `<cache>/thicket-shared/<id>/<name>` (`SharedFiles`, shared code) and served by
+    `ThicketFileProvider`: not exported, read-only, only that directory (no `..`, no other
+    segment), with `FLAG_GRANT_READ_URI_PERMISSION` and the URI in the intent's `ClipData` so
+    the chooser's preview can read it too. Copies older than a day are pruned at each share. A
+    file shared with the provider undeclared throws, naming the element (not measured: it
+    needs a build without it).
+  - **Found on the way:** Android's ART has no `Files.writeString`/`readString` (Java 11),
+    though `-release 17` compiles them: the first run failed with `NoSuchMethodError`.
+    `SharedFiles` uses `write` and `readAllBytes`.
+  - **GTK:** `Share.unavailable` (§16.3: share is n/a).
+  - **Measured.** `ShareSpec` 5/5, JVM and Native. GTK gallery 137 (136 + 1), todo 69 (under a
+    headless `gnome-shell`: the desktop was locked). Android gallery 85 (81 + 4) on `s2test`:
+    `build.sh` taps the gallery's own share target in the real chooser; the text arrives, the
+    file arrives with its name, type and bytes, and the provider logs
+    `com.android.intentresolver: query thicket-share.txt`, the share sheet reading it through
+    the grant.
+  - **Falsified.** Without the grant, the share sheet's read is gone (the provider logs only
+    the gallery's own) and that check fails; the inbox still got the file, being the same app,
+    which is why the check is there.
+
 - 2026-10-30 — **Pickers: `thicket-pickers`, `-gtk` and `-android`, built to the owner's
   decisions** (docs/16 §16.10 item 5).
   - **API:** `Photos.pick(limit)`, `Documents.open(mimeTypes, multiple)` and

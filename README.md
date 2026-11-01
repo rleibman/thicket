@@ -320,6 +320,7 @@ modules/
   clipboard/         text on the system clipboard; clipboard-gtk/, clipboard-android/
   haptics/           haptic taps; haptics-android/ (GTK: Haptics.none)
   pickers/           photo and document pickers, save dialog; pickers-gtk/, pickers-android/
+  share/             the share sheet; share-android/ (GTK: Share.unavailable)
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)
@@ -360,8 +361,8 @@ SELFTEST=1 examples/todo-android/build.sh
 xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 2026-10-21:
 signals 30, core 170, effect-zio 25, storage 14, sqlite 2 and secrets 2 per backend,
 storage-gtk 4, storage-apple 4, secrets-gtk 2, http-gtk 5, http-android 5, device 8,
-location 7, motion 5, clipboard 1, haptics 2 and pickers 4 per backend, shim-gen 15,
-sbt-thicket 9; GTK 136 + 69 self-test checks, Android 81 + 84 (2026-10-30, the gallery's with
+location 7, motion 5, clipboard 1, haptics 2, pickers 4 and share 5 per backend, shim-gen 15,
+sbt-thicket 9; GTK 137 + 69 self-test checks, Android 85 + 84 (2026-10-30, the gallery's with
 the HTTP checks and every device section's),
 the HTTP checks on Linux 12.
 

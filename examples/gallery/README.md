@@ -217,6 +217,13 @@ GTK the self-test turns the portal off (`GDK_DEBUG=no-portals`) so the file choo
 in-process, finds it among the app's windows, sets the file and accepts or cancels. Each pick
 must come back as a copy in the app's cache, byte for byte.
 
+The Share section shares a text and a small file. On Android the gallery is also a share
+target ("Thicket gallery inbox", `ShareTargetActivity`): `build.sh` taps it in the system's
+chooser (`DRIVE share-pick`), and it reads what it was given, the file through the URI
+Thicket's provider served. The inbox is the gallery itself, which needs no grant, so the
+self-test also requires the share sheet, another app, to have read the file through it. On
+GTK the section says there is no share sheet.
+
 When the desktop is locked, GNOME suspends every window and the Device section's foreground
 check fails. A private headless shell avoids that:
 `dbus-run-session -- gnome-shell --headless --wayland --no-x11 --virtual-monitor 1024x768 --wayland-display thicket-headless &`,
