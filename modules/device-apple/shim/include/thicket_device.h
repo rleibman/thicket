@@ -34,8 +34,9 @@ void thk_dev_on_terminate(thk_dev_void_cb terminating, int64_t ctx);
    usage key (iOS terminates an app that asks without one), or an app bundle (notifications).
    A string that lives as long as the process. */
 const char *thk_dev_permission_missing(int32_t permission);
-/* The answer as it stands, without asking. Waits for UserNotifications' answer, a few ms,
-   so Scala marks the call blocking. */
+/* The answer as it stands, without asking: 0 granted, 1 denied, 2 restricted, 3 not yet
+   asked, 4 UserNotifications did not answer within 5 s (#128). Waits for that answer, usually a
+   few ms, so Scala marks the call blocking. */
 int32_t thk_dev_permission_status(int32_t permission);
 /* Asks the user (the system shows its dialog only while the answer is not yet given) and calls
    `answered` with the resulting status, always later, on the main thread. */

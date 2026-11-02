@@ -70,8 +70,9 @@ object DeviceAbi {
       "thk_dev_permission_status",
       I32,
       List(permission),
-      doc = "The answer as it stands, without asking. Waits for UserNotifications' answer, a few ms,\n" +
-        "   so Scala marks the call blocking.",
+      doc = "The answer as it stands, without asking: 0 granted, 1 denied, 2 restricted, 3 not yet\n" +
+        "   asked, 4 UserNotifications did not answer within 5 s (#128). Waits for that answer, usually a\n" +
+        "   few ms, so Scala marks the call blocking.",
       blocking = true
     ),
     Fn(
