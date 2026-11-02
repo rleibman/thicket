@@ -186,15 +186,17 @@ final class AndroidShare(context: Context) extends Share {
     val t = Thread(() => {
       val shared = SharedFiles(ThicketFileProvider.directory(app))
       scala.util.Try(shared.prune())
-      val (id, name) = shared.put(path, mimeType)
-      val uri = Uri.Builder().scheme("content").authority(authority).appendPath(id).appendPath(name).build()
-      val intent = Intent(Intent.ACTION_SEND)
-        .setType(mimeType)
-        .putExtra(Intent.EXTRA_STREAM, uri)
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-      // The chooser shows a preview, and reads it through this grant.
-      intent.setClipData(ClipData.newRawUri(name, uri))
-      val _ = main.post(() => choose(intent))
+      val _ = scala.util.Try {
+        val (id, name) = shared.put(path, mimeType)
+        val uri = Uri.Builder().scheme("content").authority(authority).appendPath(id).appendPath(name).build()
+        val intent = Intent(Intent.ACTION_SEND)
+          .setType(mimeType)
+          .putExtra(Intent.EXTRA_STREAM, uri)
+          .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // The chooser shows a preview, and reads it through this grant.
+        intent.setClipData(ClipData.newRawUri(name, uri))
+        main.post(() => choose(intent))
+      }
     })
     t.setName("thicket-share")
     t.start()
