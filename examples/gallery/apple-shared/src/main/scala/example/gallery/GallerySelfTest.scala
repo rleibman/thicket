@@ -19,7 +19,9 @@ package example.gallery
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
 import scala.scalanative.unsafe.{Zone, toCString}
+import thicket.clipboard.apple.AppleClipboard
 import thicket.core.{Element, GcState, Reconciler}
+import thicket.device.Availability
 import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim, ShimKind}
@@ -230,7 +232,7 @@ object GallerySelfTest {
       s"${AppleInspect.presentedCount} presented"
     )
 
-    storageChecks(() => deviceChecks(() => sheet(all)(() => bigList(() => finish()))))
+    storageChecks(() => deviceChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
   }
 
   /** [[check]] as a plain function, for checks that live outside this object ([[GalleryDeviceChecks]]). */
@@ -247,6 +249,57 @@ object GallerySelfTest {
       label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
       () => AppleInspect.allTexts(AppleApp.rootHandle)
     )(next)
+
+  /** The clipboard and haptics (#123), the GTK host's `clipboardChecks` asked of Apple. "Copy" then "Paste", twice,
+    * through the general pasteboard: each paste must show that round's copy, so a pasteboard that kept the first text,
+    * or never took one, fails. Each copy must also raise the pasteboard's change count, which only a real write does.
+    * The answer arrives on a later turn of the run loop, so each round waits for the label to change. Then the haptics
+    * label, and "Tap", which must return: the simulator plays nothing, so not failing is all it can show.
+    */
+  private def clipboardChecks(next: () => Unit): Unit =
+    Gallery.currentClipboard match {
+      case None =>
+        check("the host provides a clipboard", false, "Gallery.currentClipboard is None")
+        next()
+      case Some(demo) =>
+        def press(label: String) = buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click)
+        def round(n: Int)(andThen: => Unit): Unit = {
+          val before = demo.pasted.now
+          val count = AppleClipboard.changeCount
+          val started = System.nanoTime()
+          val copied = press("Copy")
+          val raised = AppleClipboard.changeCount
+          // Paste only once the copy reached the pasteboard. Otherwise it holds an earlier text, and on iOS reading
+          // anything this process did not write — even an earlier run's copy — waits on the "Allow Paste" prompt,
+          // which nothing here can answer: the run would hang instead of failing.
+          val clicked = copied && raised > count && press("Paste")
+          eventually(if clicked then 5000 else 0)(demo.pasted.now != before) { _ =>
+            val ms = (System.nanoTime() - started) / 1000000L
+            val expected = ClipboardDemo.pastedLabel(demo.lastCopied)
+            println(s"[gallery] clipboard round $n: change count $count -> $raised, answered in $ms ms")
+            check(
+              s"copy $n, then paste: the pasteboard gives back that copy",
+              clicked && demo.lastCopied.exists(_.endsWith(s"copy $n")) &&
+                AppleInspect.allTexts(AppleApp.rootHandle).contains(expected),
+              s"pasted $clicked; copied ${demo.lastCopied}; ${demo.pasted.now}; change count $count -> $raised"
+            )
+            andThen
+          }
+        }
+        round(1) {
+          round(2) {
+            demo.lastCopied.foreach(t => println(s"[gallery] clipboard: last copy \"$t\""))
+            val label = ClipboardDemo.hapticsLabel(Availability.Available)
+            val tapped = press("Tap")
+            check(
+              "haptics are available, and \"Tap\" returns",
+              tapped && AppleInspect.allTexts(AppleApp.rootHandle).contains(label),
+              s"tapped $tapped; ${demo.hapticsLabel}"
+            )
+            next()
+          }
+        }
+    }
 
   /** Device services (docs/16 §16.5–16.6), the GTK host's checks asked of Apple: preferences in Application Support,
     * the directories where Foundation says they are, SQLite through the Scala Native driver, and "Add a note" writing a

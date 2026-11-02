@@ -45,9 +45,11 @@ import java.util.concurrent.{Executors, ThreadFactory}
   * @param motion
   *   the motion sensors: Android's `SensorManager`; on GTK, `Motion.unavailable` (`docs/16` §16.10 item 4).
   * @param clipboard
-  *   the system clipboard: `GdkClipboard`, Android's `ClipboardManager` (`docs/16` §16.10 item 5).
+  *   the system clipboard: `GdkClipboard`, Android's `ClipboardManager`, `NSPasteboard` and `UIPasteboard` (`docs/16`
+  *   §16.10 item 5, #123).
   * @param haptics
-  *   haptic taps: Android's `performHapticFeedback`; on GTK, `Haptics.none` (`docs/16` §16.10 item 5).
+  *   haptic taps: Android's `performHapticFeedback`, Apple's feedback generators; on GTK, `Haptics.none` (`docs/16`
+  *   §16.10 item 5).
   * @param pickers
   *   the photo picker and the document picker and save dialog (`docs/16` §16.10 item 5).
   * @param camera

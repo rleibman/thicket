@@ -217,7 +217,12 @@ Both self-tests copy and paste twice: each paste must show that round's copy, so
 that never took the text, or kept an older one, fails. On GTK the section says there are no
 haptics. On Android the self-test checks `performHapticFeedback` answered true, and after the
 run `build.sh` looks for the gallery's taps in the system's vibrator history
-(`dumpsys vibrator_manager`), counting only those since the launch.
+(`dumpsys vibrator_manager`), counting only those since the launch. The Apple self-test (#123)
+also requires each copy to raise the pasteboard's change count before it pastes — on iOS a
+paste of text this process did not write waits on the "Allow Paste" prompt — and checks the
+haptics label says available and "Tap" returns; the simulator plays nothing. After it,
+`bin/verify-apple.sh` reads the last copy back from outside the app (`pbpaste`,
+`xcrun simctl pbpaste`).
 
 The Pickers section picks a photo and a document and saves one, through the system's own
 pickers. On Android `build.sh` puts the gallery's logo in the media store and a text file in
