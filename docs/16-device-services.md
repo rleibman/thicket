@@ -324,7 +324,7 @@ this means many modules. Names follow the published ones:
 | haptics | `thicket-haptics` (built) | `-android`, `-apple` (built); GTK uses `Haptics.none` |
 | pickers: photos, documents | `thicket-pickers` (built; `Documents`, not `Files`) | `-gtk`, `-android` (built); `-apple` (Mac issue) |
 | camera capture | `thicket-camera` (built) | `-android` (built), `-apple` (Mac issue); GTK and macOS use `Camera.unavailable` |
-| share | one API | per platform, as built |
+| share | `thicket-share` (built) | `-android` (built; Thicket's own `ThicketFileProvider`, declared in the app's manifest), `-apple` (Mac issue); GTK uses `Share.unavailable` |
 
 The implementations need the host (`ThicketActivity`, `GtkApp`, a Swift library), so each
 platform module depends on its renderer. Each Apple module carries its own small Swift
@@ -456,8 +456,12 @@ Every service gets a gallery section and self-test checks on every host where it
    - *Camera capture done on Android, `Unavailable` on GTK, 2026-10-30
      (`modules/camera/README.md`):* the camera app writes to a MediaStore entry Thicket makes,
      and the photo is copied into the cache and the entry deleted. Android 10+. `build.sh`
-     presses the shutter and Done in the emulator's camera app. Share is next, waiting on the
-     owner's choice of how to hand a file to another app without AndroidX's `FileProvider`.
+     presses the shutter and Done in the emulator's camera app.
+   - *Share done on Android, `Unavailable` on GTK, 2026-11-01 (`modules/share/README.md`):*
+     text and files through the chooser. Files are served by Thicket's own `ContentProvider`
+     (owner's decision 2026-11-01: not AndroidX's `FileProvider`), which the app declares in its
+     manifest. The gallery is its own share target, and the share sheet's own read of the file
+     shows the grant works.
 6. **Tier 3** as separate designs, live camera preview first if wanted. *The owner wants tier 3
    (2026-11-01); the camera preview's design is `docs/17-camera-preview.md`, approved with every
    recommendation (2026-11-01); the embedding point is next.*

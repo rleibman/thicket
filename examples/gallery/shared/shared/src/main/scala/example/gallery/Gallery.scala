@@ -177,7 +177,8 @@ object Gallery {
     location: Option[LocationDemo] = None,
     motion:   Option[MotionDemo] = None,
     clip:     Option[ClipboardDemo] = None,
-    pickers:  Option[PickersDemo] = None
+    pickers:  Option[PickersDemo] = None,
+    sharing:  Option[ShareDemo] = None
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -532,6 +533,21 @@ object Gallery {
                 )
             }
           ),
+          // The share sheet (docs/16 §16.10 item 5): text, and a file served to the chosen app by Thicket's provider.
+          section("Share — text and a file, to another app")(
+            sharing match {
+              case None       => Label("No share sheet on this platform yet", emphasis = Emphasis.Secondary)
+              case Some(demo) =>
+                Column(spacing = 8)(
+                  Label(demo.availability),
+                  Row(spacing = 8)(
+                    Button("Share text")(demo.shareText()),
+                    Button("Share a file")(demo.shareFile())
+                  ),
+                  Label(demo.status)
+                )
+            }
+          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -611,6 +627,9 @@ object Gallery {
   /** The running app's pickers demo, for a host's self-test. */
   var currentPickers: Option[PickersDemo] = None
 
+  /** The running app's share demo, for a host's self-test. */
+  var currentShare: Option[ShareDemo] = None
+
   /** The whole app, for a host to mount. Hosts differ only in how they start, in which logo file their platform can
     * draw, and in the device services they have.
     */
@@ -644,13 +663,15 @@ object Gallery {
         )
       )
     currentPickers = pickers
+    val sharing = services.flatMap(s => s.share.map(ShareDemo(_, s.storage.dirs.temp)))
+    currentShare = sharing
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logoFile, bytes, storage, device, location, motion, clip, pickers)
+        val s = screen(model, loaded, logoFile, bytes, storage, device, location, motion, clip, pickers, sharing)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

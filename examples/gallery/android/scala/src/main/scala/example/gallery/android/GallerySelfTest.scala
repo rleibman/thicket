@@ -20,7 +20,17 @@ import _root_.android.os.{Handler, Looper, SystemClock}
 import _root_.android.util.Log
 import _root_.android.view.{View, ViewGroup}
 import _root_.android.widget.{Button, EditText, ImageView, Spinner, TextView}
-import example.gallery.{ClipboardDemo, DeviceDemo, Gallery, LocationDemo, MotionDemo, PickersDemo, StorageDemo}
+import example.gallery.{
+  ClipboardDemo,
+  DeviceDemo,
+  Gallery,
+  LocationDemo,
+  MotionDemo,
+  PickersDemo,
+  ShareDemo,
+  StorageDemo
+}
+import thicket.share.android.ThicketFileProvider
 import example.http.HttpChecks
 import scala.collection.mutable
 import sttp.client4.*
@@ -437,15 +447,16 @@ object GallerySelfTest {
       ) ++ deviceSteps(activity, () => texts, click) ++ locationSteps(activity, () => texts) ++ motionSteps(
         activity,
         () => texts
-      ) ++ clipboardSteps(() => texts, click) ++ pickerSteps(activity, () => texts, click) ++ List(() => {
-        if httpPort > 0 then {
-          httpWorker.start()
-          awaitHttp(SystemClock.uptimeMillis() + 30000)
-        } else {
-          check("http: build.sh passed the test server's port (--ei httptest)", false)
-          finish()
-        }
-      })
+      ) ++ clipboardSteps(() => texts, click) ++ pickerSteps(activity, () => texts, click) ++
+        shareSteps(() => texts, click) ++ List(() => {
+          if httpPort > 0 then {
+            httpWorker.start()
+            awaitHttp(SystemClock.uptimeMillis() + 30000)
+          } else {
+            check("http: build.sh passed the test server's port (--ei httptest)", false)
+            finish()
+          }
+        })
     )
   }
 
@@ -852,6 +863,58 @@ object GallerySelfTest {
           planted.size == 1 && swept.contains(1) && AndroidCameraChecks.leftover(activity).isEmpty,
           s"planted $planted; swept $swept; left ${AndroidCameraChecks.leftover(activity)}"
         )
+    )
+  }
+
+  /** Share (docs/16 §16.10 item 5), with the gallery on both ends: it shares through the system's chooser, `build.sh`
+    * taps the gallery's own share target there (`DRIVE share-pick`), and that target, [[ShareTargetActivity]], reads
+    * what it was given, the file through the grant Thicket's provider served it under.
+    */
+  private def shareSteps(
+    texts: () => List[String],
+    click: String => Unit
+  ): List[() => Unit] = {
+    def received = ShareInbox.received
+    List(
+      () => {
+        check(
+          "the Android host provides share, available",
+          texts().contains(ShareDemo.availabilityLabel(Availability.Available)),
+          texts().filter(_.startsWith("Share")).toString
+        )
+        ShareInbox.received = None
+        click("Share text")
+        drive("share-pick")
+      },
+      Await(20000, () => received.isDefined),
+      () => {
+        check(
+          "shared text reaches the app chosen in the share sheet",
+          received.flatMap(_.text).contains(ShareDemo.text),
+          received.toString
+        )
+        ShareInbox.received = None
+        ThicketFileProvider.reads.synchronized(ThicketFileProvider.reads.clear())
+        click("Share a file")
+        drive("share-pick")
+      },
+      Await(20000, () => received.isDefined),
+      () => {
+        val file = received.flatMap(_.file)
+        check(
+          "a shared file reaches the chosen app through Thicket's provider: its name, type and bytes",
+          file.contains((ShareDemo.fileName, "text/plain", ShareDemo.fileText.getBytes("UTF-8").toList)),
+          s"$received; provider reads ${ThicketFileProvider.reads.synchronized(ThicketFileProvider.reads.toList)}"
+        )
+        // The inbox is inside the gallery, which reads its own provider without a grant: another app's read is what
+        // shows the grant works. The share sheet (com.android.intentresolver) reads the file's name for its preview.
+        val reads = ThicketFileProvider.reads.synchronized(ThicketFileProvider.reads.toList)
+        check(
+          "another app, the share sheet, read the file through the grant",
+          reads.exists(r => !r.startsWith("dev.thicket.gallery:") && r.contains(ShareDemo.fileName)),
+          reads.toString
+        )
+      }
     )
   }
 

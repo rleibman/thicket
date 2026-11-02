@@ -769,6 +769,27 @@ lazy val cameraAndroid = project
   .dependsOn(camera.jvm, rendererAndroid)
   .settings(commonSettings, name := "thicket-camera-android", scalacOptions ++= Seq("-release", "17"))
 
+/** Handing text or a file to another app through the platform's share sheet (`docs/16` §16.3, §16.10 item 5), and the
+  * shared copies' store. GTK uses `Share.unavailable`.
+  */
+lazy val share = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/share"))
+  .dependsOn(device)
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-share")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** Share on Android: `ACTION_SEND` through the chooser, files served by Thicket's own `ThicketFileProvider`, which the
+  * app declares in its manifest (owner's decision, 2026-11-01: not AndroidX's `FileProvider`).
+  */
+lazy val shareAndroid = project
+  .in(file("modules/share-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(share.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-share-android", scalacOptions ++= Seq("-release", "17"))
+
 /** The clipboard on macOS and iOS: `NSPasteboard` and `UIPasteboard` (#123), through a small C helper that Scala
   * Native's own clang compiles (`resources/scala-native/thicket_pasteboard.c`) and that sends its few Objective-C
   * messages through the runtime. No Swift. Depends on `rendererApple` for `postToUi`, as `clipboardGtk` does on its
@@ -896,7 +917,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   // storage and sqlite: the device services' section; each host supplies its platform's implementation.
-  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics, pickers, camera)
+  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics, pickers, camera, share)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
@@ -938,6 +959,7 @@ lazy val galleryAndroid = project
     hapticsAndroid,
     pickersAndroid,
     cameraAndroid,
+    shareAndroid,
     httpChecks.jvm,
     httpAndroid
   )
@@ -1155,6 +1177,7 @@ lazy val platforms = project
     pickersGtk,
     pickersAndroid,
     cameraAndroid,
+    shareAndroid,
     clipboardApple,
     hapticsApple,
     examplesShared.jvm,
@@ -1216,6 +1239,8 @@ lazy val root = project
     pickers.native,
     camera.jvm,
     camera.native,
+    share.jvm,
+    share.native,
     httpGtk,
     httpAndroid,
     shimGen,

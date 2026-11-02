@@ -26,6 +26,7 @@ import thicket.clipboard.android.AndroidClipboard
 import thicket.haptics.android.AndroidHaptics
 import thicket.pickers.android.AndroidPickers
 import thicket.camera.android.AndroidCamera
+import thicket.share.android.AndroidShare
 import thicket.renderer.android.ThicketActivity
 import thicket.signals.Owner
 import thicket.sqlite.android.AndroidSqlite
@@ -59,7 +60,8 @@ class GalleryActivity extends ThicketActivity {
             val p = AndroidPickers(this)
             (p.photos, p.documents)
           },
-          camera = Some(AndroidCamera(this))
+          camera = Some(AndroidCamera(this)),
+          share = Some(AndroidShare(this))
         )
       )
     )
