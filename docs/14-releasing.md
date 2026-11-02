@@ -59,6 +59,7 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-location_3` / `_native0.5_3`, `thicket-location-android_3` | the device's position; on GTK and macOS, `Location.unavailable` from `thicket-location` |
 | `net.leibman:thicket-location-apple_native0.5_3` | the device's position on iOS, from `CLLocationManager` (Scala only: it uses `thicket-device-apple`'s Swift library); the app's `Info.plist` needs `NSLocationWhenInUseUsageDescription` |
 | `net.leibman:thicket-motion_3` / `_native0.5_3`, `thicket-motion-android_3` | acceleration, rotation rate and attitude; on GTK, `Motion.unavailable` from `thicket-motion` |
+| `net.leibman:thicket-motion-ios_native0.5_3` | motion on iOS through `CMMotionManager`, with its own Swift library inside the jar (`ios-sim/libthicketmotion.a`); on macOS, `Motion.unavailable` from `thicket-motion` |
 | `net.leibman:thicket-clipboard-gtk_native0.5_3` / `thicket-clipboard-android_3` | text on the system clipboard (`thicket-clipboard` comes with them) |
 | `net.leibman:thicket-haptics_3` / `_native0.5_3`, `thicket-haptics-android_3` | haptic taps; on GTK, `Haptics.none` from `thicket-haptics` |
 | `net.leibman:thicket-pickers-gtk_native0.5_3` / `thicket-pickers-android_3` | the photo picker, the document picker and save dialog (`thicket-pickers` comes with them) |
@@ -174,7 +175,7 @@ The examples have `publish / skip := true`; the `platforms` aggregate publishes 
 renderers and the platform modules that are not in `root`: `thicket-http-apple`,
 `thicket-storage-android`, `thicket-sqlite-android`, `thicket-secrets-android`,
 `thicket-secrets-apple`, `thicket-device-gtk`, `thicket-device-android`, `thicket-device-apple`,
-`thicket-location-android`, `thicket-location-apple`, `thicket-motion-android`, `thicket-clipboard-gtk`,
+`thicket-location-android`, `thicket-location-apple`, `thicket-motion-android`, `thicket-motion-ios`, `thicket-clipboard-gtk`,
 `thicket-clipboard-android`, `thicket-clipboard-apple`, `thicket-haptics-android`,
 `thicket-haptics-apple`, `thicket-pickers-gtk`, `thicket-pickers-android`,
 `thicket-camera-android` and `thicket-share-android`.

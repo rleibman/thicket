@@ -80,6 +80,9 @@ object Abi {
     /** A small integer — the depth the platform popped a navigation stack to. */
     case IntCb
 
+    /** A motion sample, three doubles (`thicket-motion-ios`, #120): passed as three scalars, never as a struct. */
+    case Vec3Cb
+
   }
 
   /** What a type is *at the ABI*, as opposed to what it is called.
@@ -103,8 +106,8 @@ object Abi {
         case CType.I64  => Repr.I64
         case CType.F64  => Repr.F64
 
-        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle                                  => Repr.Pointer
-        case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb | CType.ValueCb | CType.IntCb =>
+        case CType.Str | CType.Bytes | CType.OutF64 | CType.Handle => Repr.Pointer
+        case CType.VoidCb | CType.TextCb | CType.BoolCb | CType.RowCb | CType.ValueCb | CType.IntCb | CType.Vec3Cb =>
           Repr.FnPointer
       }
 

@@ -316,7 +316,7 @@ modules/
   secrets/           tokens and passwords in the platform's secure store; secrets-gtk/, secrets-android/, secrets-apple/
   device/            the app's lifecycle and permissions; device-gtk/, device-android/
   location/          the device's position; location-android/ (GTK: Location.unavailable)
-  motion/            acceleration, rotation rate, attitude; motion-android/ (GTK: Motion.unavailable)
+  motion/            acceleration, rotation rate, attitude; motion-android/, motion-ios/ (GTK, macOS: Motion.unavailable)
   clipboard/         text on the system clipboard; clipboard-gtk/, clipboard-android/, clipboard-apple/
   haptics/           haptic taps; haptics-android/, haptics-apple/ (GTK: Haptics.none)
   pickers/           photo and document pickers, save dialog; pickers-gtk/, pickers-android/

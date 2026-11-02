@@ -37,12 +37,23 @@ final class MotionDemo(motion: Motion)(using Owner) {
 
 object MotionDemo {
 
-  def sensorsLabel(all: List[(Sensor, Availability)]): String =
-    all
-      .map {
-        case (s, Availability.Available) => s"$s available"
-        case (s, _)                      => s"no $s"
-      }.mkString("Sensors: ", ", ", "")
+  /** Each sensor the device has, and each it lacks with the platform's reason: sensors that share a reason are listed
+    * before it once ("no Acceleration, no Attitude (reason)"), as GTK's all do.
+    */
+  def sensorsLabel(all: List[(Sensor, Availability)]): String = {
+    def reason(a: Availability): String =
+      a match {
+        case Availability.Unavailable(r)     => r
+        case Availability.NeedsPermission(p) => s"needs $p"
+        case Availability.Available          => ""
+      }
+    val available = all.collect { case (s, Availability.Available) => s"$s available" }
+    val missing = all.filter(_._2 != Availability.Available)
+    val byReason = missing.map(m => reason(m._2)).distinct.map { r =>
+      missing.filter(m => reason(m._2) == r).map(m => s"no ${m._1}").mkString(", ") + s" ($r)"
+    }
+    (available ++ byReason).mkString("Sensors: ", ", ", "")
+  }
 
   val noAcceleration: String = "Acceleration: no reading"
   val noRotation:     String = "Rotation: no reading"
