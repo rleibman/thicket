@@ -5,11 +5,33 @@
 //
 // A UI-testing bundle with no target application: it reaches SpringBoard, which owns the alert,
 // by bundle id.
+//
+// It also taps an app's own buttons (#129): TEST_RUNNER_TAP="app <bundle id> <label>|<label>…"
+// taps each in turn, waiting up to 20 s for each, in that app (the camera screen's shutter and
+// "Use Photo", in the gallery). A button that never appears fails the test, and the labels of
+// the buttons that were there are printed, to say what to ask for instead.
 import XCTest
 
 final class TapperUITests: XCTestCase {
   func testAnswerTheAlert() throws {
     let what = ProcessInfo.processInfo.environment["TAP"] ?? "allow"
+    if what.hasPrefix("app ") {
+      let parts = what.split(separator: " ", maxSplits: 2).map(String.init)
+      XCTAssertEqual(parts.count, 3, "want \"app <bundle id> <label>|<label>…\", got \"\(what)\"")
+      let app = XCUIApplication(bundleIdentifier: parts[1])
+      for label in parts[2].split(separator: "|").map(String.init) {
+        let button = app.buttons[label]
+        guard button.waitForExistence(timeout: 20) else {
+          let there = app.buttons.allElementsBoundByIndex.map { $0.label }
+          XCTFail("no \"\(label)\" button appeared in 20 s; there were \(there)")
+          print("[tapper] no \(label); buttons: \(there)")
+          return
+        }
+        button.tap()
+        print("[tapper] tapped \(label)")
+      }
+      return
+    }
     // The apostrophe is U+2019, as SpringBoard writes it.
     let label = what == "deny" ? "Don\u{2019}t Allow" : "Allow"
     let button = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons[label]

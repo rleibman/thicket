@@ -45,13 +45,14 @@ MOTION_LIB="$REPO/modules/motion-ios/shim/build-ios/libthicketmotion.a"
 [ -f "$MOTION_LIB" ] || { echo "Missing $MOTION_LIB — run modules/motion-ios/shim/build-shim.sh ios-sim" >&2; exit 1; }
 # The camera in the Pickers section (#129): thicket-camera-apple's Swift library, over
 # UIImagePickerController, and the camera's usage string, without which iOS terminates the app
-# when the camera opens (AppleCamera throws, naming it, instead). Not granted: never asked.
+# when the camera opens (AppleCamera throws, naming it, instead). Granted below: the iOS 27
+# simulator has a camera (a simulated grey frame), so the photo is taken through its screen.
 CAMERA_LIB="$REPO/modules/camera-apple/shim/build-ios/libthicketcamera.a"
 [ -f "$CAMERA_LIB" ] || { echo "Missing $CAMERA_LIB — run modules/camera-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
 EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB $CAMERA_LIB"
 FRESH_INSTALL=1
 # Location (#118) granted too, with its usage string, without which iOS ignores the request.
-PRIVACY_GRANT="microphone location"
+PRIVACY_GRANT="microphone location camera"
 USAGE_STRINGS="NSMicrophoneUsageDescription=The gallery checks that a granted permission answers Granted.
 NSLocationWhenInUseUsageDescription=The gallery shows where the device is while it is in front.
 NSCameraUsageDescription=The gallery takes a photo with the camera screen."
@@ -69,6 +70,9 @@ drive() {
     geo\ *) xcrun simctl location "$DEVICE" set "${1#geo }" ;;
     wait\ *) sleep "${1#wait }" ;;
     deny | allow) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "$1" ;;
+    # The camera screen (#129): the shutter, then "Done" on its review screen; or its X.
+    photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Take Picture|Done" ;;
+    cancel) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Dismiss" ;;
     *) echo "unknown DRIVE action: $1" ;;
   esac
 }

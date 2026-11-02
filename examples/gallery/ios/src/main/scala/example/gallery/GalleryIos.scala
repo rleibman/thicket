@@ -27,7 +27,7 @@ import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.sqlite.NativeSqlite
-import thicket.storage.apple.AppleStorage
+import thicket.storage.apple.{AppleDirs, AppleStorage}
 
 /** The gallery on iOS (UIKit) — the same tree, the same renderer, a different entry shape.
   *
@@ -68,7 +68,22 @@ object GalleryIos {
                   .Probe(
                     () => camera.availability,
                     () => AppleCamera.sourceAvailable,
-                    () => AppleCamera.testing.presented
+                    () => AppleCamera.testing.presented,
+                    camera.capturePhoto,
+                    storage.dirs.cache,
+                    // Where the library writes its JPEG: NSTemporaryDirectory(), the container's tmp.
+                    () => {
+                      val tmp = java.nio.file.Paths.get(AppleDirs.userTemp())
+                      if !java.nio.file.Files.isDirectory(tmp) then Nil
+                      else {
+                        val s = java.nio.file.Files.list(tmp)
+                        try
+                          s.toArray.toList
+                            .collect { case p: java.nio.file.Path => p }
+                            .filter(_.getFileName.toString.startsWith("thicket-camera-"))
+                        finally s.close()
+                      }
+                    }
                   )
               )
             )
