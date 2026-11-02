@@ -25,6 +25,7 @@ import thicket.device.Availability
 import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim, ShimKind}
+import thicket.motion.{MotionProvider, Sensor}
 import thicket.secrets.apple.AppleSecrets
 import thicket.secrets.testing.SecretsConformance
 import thicket.signals.{ErrorSink, Owner}
@@ -79,6 +80,11 @@ object GallerySelfTest {
   /** Set by [[run]]: the host shows the SVG logo wherever the platform decodes it (#85). */
   private var svgWhereDecoded = false
 
+  /** Set by [[run]]: the iOS host's motion provider, and what Core Motion says it is delivering (#120); `None` on
+    * macOS.
+    */
+  private var motion: Option[(MotionProvider, Sensor => Boolean)] = None
+
   /** Waits for the Effects section's ZIO result first, as the GTK host does, so the synchronous checks see it.
     *
     * `svgWhereDecoded`: the host promises the SVG logo wherever the platform's image class decodes it - the macOS host
@@ -87,11 +93,13 @@ object GallerySelfTest {
   def run(
     storage:         Option[Storage],
     bundleId:        String,
-    svgWhereDecoded: Boolean = false
+    svgWhereDecoded: Boolean = false,
+    motion:          Option[(MotionProvider, Sensor => Boolean)] = None
   ): Unit = {
     this.storage = storage
     this.bundleId = bundleId
     this.svgWhereDecoded = svgWhereDecoded
+    this.motion = motion
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
   }
 
@@ -233,7 +241,9 @@ object GallerySelfTest {
     )
 
     storageChecks(() =>
-      deviceChecks(() => locationChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+      deviceChecks(() =>
+        locationChecks(() => motionChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+      )
     )
   }
 
@@ -261,6 +271,10 @@ object GallerySelfTest {
       label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
       () => AppleInspect.allTexts(AppleApp.rootHandle)
     )(next)
+
+  /** The motion sensors (#120), in [[GalleryMotionChecks]]. */
+  private def motionChecks(next: () => Unit): Unit =
+    GalleryMotionChecks.run(checker, () => AppleInspect.allTexts(AppleApp.rootHandle), motion)(next)
 
   /** The clipboard and haptics (#123), the GTK host's `clipboardChecks` asked of Apple. "Copy" then "Paste", twice,
     * through the general pasteboard: each paste must show that round's copy, so a pasteboard that kept the first text,

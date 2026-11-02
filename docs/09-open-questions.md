@@ -431,3 +431,13 @@ should not be made until M1.
   run puts a fresh marker in the coverage compile's options, so it never hits the cache. The
   "inc_compile_3.zip is missing" failures from the earlier attempts did not recur with this
   approach, including after deleting `target/out`; what caused them was not established.
+
+## 9.11 Opened by #120 (2026-10-31)
+
+- **Do iOS and Android agree on motion's signs?** The iOS side is not measured: the simulator
+  has no motion hardware. Acceleration is negated on iOS by reasoning (Core Motion reports gravity as
+  (0, 0, -1) g flat, Android the support force, (0, 0, +9.81) m/s²); a device flat on a table
+  settles it. Attitude is Core Motion's roll, pitch and yaw as they come: yaw is zero where
+  updates started, not north as on Android, and whether roll and pitch turn the same way as
+  `getOrientation`'s is open. Either `Attitude` documents the difference or iOS converts
+  (`xMagneticNorthZVertical`, and signs measured on both).

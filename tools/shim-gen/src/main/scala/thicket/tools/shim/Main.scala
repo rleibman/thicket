@@ -21,7 +21,7 @@ import java.nio.file.{Files, Path, Paths}
 /** Writes the generated artefacts into the repository, or checks that they are current.
   *
   * {{{
-  * sbt shimGen/run                          # regenerate the renderer, http and device headers and externs
+  * sbt shimGen/run                          # regenerate the renderer, http, device and motion headers and externs
   * sbt "shimGen/run --check"                # exit 1 if any differs from what Abi or HttpAbi generates
   * sbt "shimGen/run --scaffold <dir>"       # Swift @_cdecl signatures for a new shim, into <dir>
   * }}}
@@ -43,7 +43,9 @@ object Main {
     "modules/http-apple/shim/include/thicket_http.h"                            -> (() => Emit.httpHeader()),
     "modules/http-apple/src/main/scala/thicket/http/apple/HttpShim.scala"       -> (() => Emit.httpScalaExterns()),
     "modules/device-apple/shim/include/thicket_device.h"                        -> (() => Emit.deviceHeader()),
-    "modules/device-apple/src/main/scala/thicket/device/apple/DeviceShim.scala" -> (() => Emit.deviceScalaExterns())
+    "modules/device-apple/src/main/scala/thicket/device/apple/DeviceShim.scala" -> (() => Emit.deviceScalaExterns()),
+    "modules/motion-ios/shim/include/thicket_motion.h"                          -> (() => Emit.motionHeader()),
+    "modules/motion-ios/src/main/scala/thicket/motion/ios/MotionShim.scala"     -> (() => Emit.motionScalaExterns())
   )
 
   private def root: Path = Paths.get(sys.props.getOrElse("thicket.root", ".")).toAbsolutePath.normalize
@@ -67,7 +69,7 @@ object Main {
               println(s"wrote     $rel")
             }
         }
-        println(s"${Abi.all.size} sui functions, ${Abi.kinds.size} kind codes, ${HttpAbi.all.size} thk_http functions, ${DeviceAbi.all.size} thk_dev functions.")
+        println(s"${Abi.all.size} sui functions, ${Abi.kinds.size} kind codes, ${HttpAbi.all.size} thk_http functions, ${DeviceAbi.all.size} thk_dev functions, ${MotionAbi.all.size} thk_mot functions.")
 
       case "--check" :: Nil =>
         val stale = generated.collect { case (rel, text) if !current(root.resolve(rel)).contains(text()) => rel }

@@ -20,6 +20,7 @@ import scala.scalanative.unsafe.exported
 import thicket.core.GcState
 import thicket.device.apple.AppleDevice
 import thicket.location.apple.AppleLocation
+import thicket.motion.ios.{IosMotion, IosMotionProvider}
 import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
@@ -54,7 +55,13 @@ object GalleryIos {
       AppleApp.run("Thicket gallery", 520, 760) {
         val storage = AppleStorage(bundleId)
         if sys.env.contains("THICKET_GALLERY_SELFTEST") then
-          AppleApp.postToUi(() => GallerySelfTest.run(Some(storage), bundleId))
+          AppleApp.postToUi { () =>
+            GallerySelfTest.run(
+              Some(storage),
+              bundleId,
+              motion = Some(IosMotionProvider -> IosMotionProvider.testing.active)
+            )
+          }
         // The app's working directory is `/`, so `Gallery.logoBytes` — a repo-relative read —
         // finds nothing here, and the bytes-backed Image showed nothing (#73). The logo is in
         // the bundle, where `FromFile` finds it too; this host reads it from there, as the
@@ -69,6 +76,7 @@ object GalleryIos {
               device = Some(AppleDevice()),
               // CLLocationManager (#118), listened to while the app is in front.
               location = Some(AppleLocation()),
+              motion = Some(IosMotion()),
               clipboard = Some(AppleClipboard()),
               haptics = Some(AppleHaptics())
             )

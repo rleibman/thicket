@@ -40,7 +40,10 @@ KEEP_UNSTRIPPED=1
 # string is left out on purpose: the self-test checks that asking without it throws, naming it.
 DEVICE_LIB="$REPO/modules/device-apple/shim/build-ios/libthicketdevice.a"
 [ -f "$DEVICE_LIB" ] || { echo "Missing $DEVICE_LIB — run modules/device-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
-EXTRA_LIBS="$DEVICE_LIB"
+# The Motion section (#120): thicket-motion-ios's Swift library, over CMMotionManager.
+MOTION_LIB="$REPO/modules/motion-ios/shim/build-ios/libthicketmotion.a"
+[ -f "$MOTION_LIB" ] || { echo "Missing $MOTION_LIB — run modules/motion-ios/shim/build-shim.sh ios-sim" >&2; exit 1; }
+EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB"
 FRESH_INSTALL=1
 # Location (#118) granted too, with its usage string, without which iOS ignores the request.
 PRIVACY_GRANT="microphone location"
