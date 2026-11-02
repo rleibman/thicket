@@ -20,13 +20,13 @@
 #   abi            shim-gen's consistency checks: ABI, C header, Scala externs, both shims
 #   secrets        thicket-secrets-apple's tests against the real Keychain (#108): conformance, isolation
 #   link           sbt nativeLink for the six Apple apps, after deleting their old outputs
-#   macos-gallery  THICKET_GALLERY_SELFTEST=1 gallery-macos, twice: its secret stored, then kept
-#                  (its verdict comes from the terminate hook, so the app quits by itself)
+#   macos-gallery  THICKET_GALLERY_SELFTEST=1 gallery-macos, twice: its secret stored, then kept;
+#                  after each, pbpaste must read its last copy (the user's text is put back)
 #   macos-todo     THICKET_SELFTEST=1 todo-macos
 #   macos-lazy     THICKET_LAZYTEST=1 todo-macos: 10 000 rows, virtualised and freed
-#   ios-gallery    the gallery on the simulator (examples/gallery/ios/ios-app/build-app.sh)
-#                  (it opens Settings over the gallery and answers its notifications alert
-#                  through an XCUITest, examples/ios-host/tapper)
+#   ios-gallery    the gallery on the simulator (examples/gallery/ios/ios-app/build-app.sh): it
+#                  opens Settings over the gallery and answers its notifications alert through an
+#                  XCUITest (examples/ios-host/tapper); then simctl pbpaste must read its last copy
 #   ios-todo       the todo app on the simulator (examples/todo-apple/ios/ios-app/build-app.sh)
 #   ios-lazy       the 10 000-row probe on the simulator
 #   fit            ContentFit measured on both toolkits (shim/run-fit-harness.sh)
@@ -102,16 +102,48 @@ macos_selftest() {
 # are bound to the build that made them (#108): the one an earlier build left cannot be read,
 # deleted or replaced by this one, so it is removed first with `security`, which can. The first run
 # then stores the secret and the second must find it — "stored", then "kept".
+#
+# Each run's last copy must also be on the pasteboard afterwards, read from outside the app
+# with pbpaste (#123). The pasteboard is the user's own, so its text is put back at the end.
 macos_gallery() {
-  local bin=$1 log
+  local bin=$1 log saved status=0
   security delete-generic-password -s dev.thicket.gallery -a gallery.secret >/dev/null 2>&1 || true
   log=$(mktemp)
-  macos_selftest "$bin" THICKET_GALLERY_SELFTEST | tee "$log" || { rm -f "$log"; return 1; }
-  grep -q "this run: A secret stored" "$log" || { echo "first run: the secret was not stored"; rm -f "$log"; return 1; }
-  echo "-- the same build again: its secret should be kept"
-  macos_selftest "$bin" THICKET_GALLERY_SELFTEST | tee "$log" || { rm -f "$log"; return 1; }
-  grep -q "this run: A secret kept" "$log" || { echo "second run: the secret was not kept"; rm -f "$log"; return 1; }
+  saved=$(mktemp)
+  pbpaste >"$saved" 2>/dev/null || true
+  # A subshell, so that a failure still reaches the restore below.
+  (
+    macos_selftest "$bin" THICKET_GALLERY_SELFTEST | tee "$log" || exit 1
+    grep -q "this run: A secret stored" "$log" || { echo "first run: the secret was not stored"; exit 1; }
+    outside_paste "$log" "$(pbpaste)" || exit 1
+    echo "-- the same build again: its secret should be kept"
+    macos_selftest "$bin" THICKET_GALLERY_SELFTEST | tee "$log" || exit 1
+    grep -q "this run: A secret kept" "$log" || { echo "second run: the secret was not kept"; exit 1; }
+    outside_paste "$log" "$(pbpaste)" || exit 1
+  ) || status=1
+  pbcopy <"$saved"
+  rm -f "$log" "$saved"
+  return $status
+}
+
+# outside_paste <log> <text>: the gallery's last copy, as its log names it, is <text> — what a
+# process outside the app read from the pasteboard after the run (#123).
+outside_paste() {
+  local want
+  # tr: the simulator's console is a pty, whose lines end in \r\n.
+  want=$(tr -d '\r' <"$1" | sed -n 's/^\[gallery\] clipboard: last copy "\(.*\)"$/\1/p' | tail -1)
+  echo "-- outside the app the pasteboard holds \"$2\"; the gallery's last copy was \"$want\""
+  [ -n "$want" ] && [ "$2" = "$want" ]
+}
+
+# The iOS gallery, then the simulator's pasteboard read from outside the app.
+ios_gallery() {
+  local log status=0
+  log=$(mktemp)
+  examples/gallery/ios/ios-app/build-app.sh "$device" | tee "$log" || status=1
+  [ $status = 0 ] && { outside_paste "$log" "$(xcrun simctl pbpaste "$device")" || status=1; }
   rm -f "$log"
+  return $status
 }
 
 native() { find "$root/target/out" -type f -perm -u+x -name "$1" 2>/dev/null | head -1; }
@@ -157,7 +189,7 @@ run link link_all
 run macos-gallery macos_gallery "$(native gallery-macos)"
 run macos-todo macos_selftest "$(native todo-macos)" THICKET_SELFTEST
 run macos-lazy macos_selftest "$(native todo-macos)" THICKET_LAZYTEST
-run ios-gallery on_fresh_simulator examples/gallery/ios/ios-app/build-app.sh "$device"
+run ios-gallery on_fresh_simulator ios_gallery
 run ios-todo on_fresh_simulator examples/todo-apple/ios/ios-app/build-app.sh "$device"
 run ios-lazy on_fresh_simulator ios_lazy
 run fit modules/renderer-apple/shim/run-fit-harness.sh "$out/fit" "$device"

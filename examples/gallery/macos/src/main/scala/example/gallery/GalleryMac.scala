@@ -18,6 +18,8 @@ package example.gallery
 
 import thicket.device.apple.AppleDevice
 import thicket.location.Location
+import thicket.clipboard.apple.AppleClipboard
+import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.sqlite.NativeSqlite
@@ -50,7 +52,9 @@ object GalleryMac {
             () => AppleSecrets.open(bundleId),
             device = Some(AppleDevice()),
             // No location service on the desktop yet (docs/16 §16.9, decision 7), as on GTK.
-            location = Some(Location.unavailable(GalleryLocationChecks.noLocation))
+            location = Some(Location.unavailable(GalleryLocationChecks.noLocation)),
+            clipboard = Some(AppleClipboard()),
+            haptics = Some(AppleHaptics())
           )
         )
       // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise

@@ -20,6 +20,8 @@ import scala.scalanative.unsafe.exported
 import thicket.core.GcState
 import thicket.device.apple.AppleDevice
 import thicket.location.apple.AppleLocation
+import thicket.clipboard.apple.AppleClipboard
+import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.sqlite.NativeSqlite
@@ -66,7 +68,9 @@ object GalleryIos {
               () => AppleSecrets.open(bundleId),
               device = Some(AppleDevice()),
               // CLLocationManager (#118), listened to while the app is in front.
-              location = Some(AppleLocation())
+              location = Some(AppleLocation()),
+              clipboard = Some(AppleClipboard()),
+              haptics = Some(AppleHaptics())
             )
           )
         )
