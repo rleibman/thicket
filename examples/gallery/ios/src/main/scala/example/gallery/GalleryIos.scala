@@ -18,6 +18,8 @@ package example.gallery
 
 import scala.scalanative.unsafe.exported
 import thicket.core.GcState
+import thicket.clipboard.apple.AppleClipboard
+import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.sqlite.NativeSqlite
@@ -57,7 +59,15 @@ object GalleryIos {
         // Android host reads it from the APK's assets.
         Gallery.app(
           logo = Gallery.logoBytes(AppleApp.resourcePath(Gallery.logo)),
-          services = Some(Services(storage, NativeSqlite.driver, () => AppleSecrets.open(bundleId)))
+          services = Some(
+            Services(
+              storage,
+              NativeSqlite.driver,
+              () => AppleSecrets.open(bundleId),
+              clipboard = Some(AppleClipboard()),
+              haptics = Some(AppleHaptics())
+            )
+          )
         )
       }
     }

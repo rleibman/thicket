@@ -317,8 +317,8 @@ modules/
   device/            the app's lifecycle and permissions; device-gtk/, device-android/
   location/          the device's position; location-android/ (GTK: Location.unavailable)
   motion/            acceleration, rotation rate, attitude; motion-android/ (GTK: Motion.unavailable)
-  clipboard/         text on the system clipboard; clipboard-gtk/, clipboard-android/
-  haptics/           haptic taps; haptics-android/ (GTK: Haptics.none)
+  clipboard/         text on the system clipboard; clipboard-gtk/, clipboard-android/, clipboard-apple/
+  haptics/           haptic taps; haptics-android/, haptics-apple/ (GTK: Haptics.none)
   pickers/           photo and document pickers, save dialog; pickers-gtk/, pickers-android/
   camera/            taking a photo with the camera app; camera-android/ (GTK: Camera.unavailable)
   share/             the share sheet; share-android/ (GTK: Share.unavailable)
