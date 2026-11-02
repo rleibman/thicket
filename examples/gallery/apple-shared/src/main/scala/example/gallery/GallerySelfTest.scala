@@ -85,6 +85,9 @@ object GallerySelfTest {
     */
   private var motion: Option[(MotionProvider, Sensor => Boolean)] = None
 
+  /** Set by [[run]]: the iOS host's camera (#129); `None` on macOS. */
+  private var camera: Option[GalleryCameraChecks.Probe] = None
+
   /** Waits for the Effects section's ZIO result first, as the GTK host does, so the synchronous checks see it.
     *
     * `svgWhereDecoded`: the host promises the SVG logo wherever the platform's image class decodes it - the macOS host
@@ -94,12 +97,14 @@ object GallerySelfTest {
     storage:         Option[Storage],
     bundleId:        String,
     svgWhereDecoded: Boolean = false,
-    motion:          Option[(MotionProvider, Sensor => Boolean)] = None
+    motion:          Option[(MotionProvider, Sensor => Boolean)] = None,
+    camera:          Option[GalleryCameraChecks.Probe] = None
   ): Unit = {
     this.storage = storage
     this.bundleId = bundleId
     this.svgWhereDecoded = svgWhereDecoded
     this.motion = motion
+    this.camera = camera
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
   }
 
@@ -242,7 +247,9 @@ object GallerySelfTest {
 
     storageChecks(() =>
       deviceChecks(() =>
-        locationChecks(() => motionChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+        locationChecks(() =>
+          motionChecks(() => cameraChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+        )
       )
     )
   }
@@ -275,6 +282,15 @@ object GallerySelfTest {
   /** The motion sensors (#120), in [[GalleryMotionChecks]]. */
   private def motionChecks(next: () => Unit): Unit =
     GalleryMotionChecks.run(checker, () => AppleInspect.allTexts(AppleApp.rootHandle), motion)(next)
+
+  /** The camera (#129), in [[GalleryCameraChecks]]. */
+  private def cameraChecks(next: () => Unit): Unit =
+    GalleryCameraChecks.run(
+      checker,
+      label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
+      () => AppleInspect.allTexts(AppleApp.rootHandle),
+      camera
+    )(next)
 
   /** The clipboard and haptics (#123), the GTK host's `clipboardChecks` asked of Apple. "Copy" then "Paste", twice,
     * through the general pasteboard: each paste must show that round's copy, so a pasteboard that kept the first text,

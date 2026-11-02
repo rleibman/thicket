@@ -36,19 +36,25 @@ KEEP_UNSTRIPPED=1
 
 # The Device section (#114): thicket-device-apple's Swift library; a fresh install, so the
 # notifications alert is shown (uninstalling forgets the answer); the microphone granted with
-# simctl privacy and its usage string, so asking answers Granted with no alert. Camera's usage
-# string is left out on purpose: the self-test checks that asking without it throws, naming it.
+# simctl privacy and its usage string, so asking answers Granted with no alert. (The camera's
+# usage string was left out until #129; the macOS gallery still checks that it throws without it.)
 DEVICE_LIB="$REPO/modules/device-apple/shim/build-ios/libthicketdevice.a"
 [ -f "$DEVICE_LIB" ] || { echo "Missing $DEVICE_LIB — run modules/device-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
 # The Motion section (#120): thicket-motion-ios's Swift library, over CMMotionManager.
 MOTION_LIB="$REPO/modules/motion-ios/shim/build-ios/libthicketmotion.a"
 [ -f "$MOTION_LIB" ] || { echo "Missing $MOTION_LIB — run modules/motion-ios/shim/build-shim.sh ios-sim" >&2; exit 1; }
-EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB"
+# The camera in the Pickers section (#129): thicket-camera-apple's Swift library, over
+# UIImagePickerController, and the camera's usage string, without which iOS terminates the app
+# when the camera opens (AppleCamera throws, naming it, instead). Not granted: never asked.
+CAMERA_LIB="$REPO/modules/camera-apple/shim/build-ios/libthicketcamera.a"
+[ -f "$CAMERA_LIB" ] || { echo "Missing $CAMERA_LIB — run modules/camera-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
+EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB $CAMERA_LIB"
 FRESH_INSTALL=1
 # Location (#118) granted too, with its usage string, without which iOS ignores the request.
 PRIVACY_GRANT="microphone location"
 USAGE_STRINGS="NSMicrophoneUsageDescription=The gallery checks that a granted permission answers Granted.
-NSLocationWhenInUseUsageDescription=The gallery shows where the device is while it is in front."
+NSLocationWhenInUseUsageDescription=The gallery shows where the device is while it is in front.
+NSCameraUsageDescription=The gallery takes a photo with the camera screen."
 
 # No simulated position before the launch, so the first one the self-test sets is a change it sees.
 before_launch() { xcrun simctl location "$DEVICE" clear; }

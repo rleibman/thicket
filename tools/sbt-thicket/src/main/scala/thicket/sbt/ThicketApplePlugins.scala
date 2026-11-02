@@ -150,6 +150,33 @@ object ThicketMotionIos {
 
 }
 
+/** `thicket-camera-apple`'s Swift library, unpacked from its jar when an iOS app depends on it (#129). Optional, like
+  * [[ThicketMotionIos]]; iOS only, since macOS has no camera screen: the jar carries `thicket-camera-apple/` with
+  * `ios-sim/` and `include/`.
+  */
+object ThicketCameraApple {
+
+  /** `thicket-camera-apple/` under `into`, or `None` when the module is not on the classpath. */
+  def unpack(
+    classpath: Seq[File],
+    into:      File
+  ): Option[File] =
+    classpath.find(_.getName.startsWith("thicket-camera-apple")).map { jar =>
+      IO.unzip(jar, into, new SimpleFilter(_.startsWith("thicket-camera-apple/")))
+      val dir = into / "thicket-camera-apple"
+      if !(dir / "include" / "thicket_camera.h").exists then
+        sys.error(s"$jar has no Swift library in it. Was it published from a machine without Xcode?")
+      dir
+    }
+
+  val unpackTask: Def.Initialize[Task[Option[File]]] = Def.task {
+    val conv = fileConverter.value
+    val jars = (Compile / dependencyClasspath).value.map(a => conv.toPath(a.data).toFile)
+    unpack(jars, target.value)
+  }
+
+}
+
 /** A macOS (AppKit) app: `enablePlugins(ThicketMacPlugin)`. A plain binary, like a GTK one — AppKit apps own `main`.
   *
   * Adds `thicket-core` and `thicket-renderer-apple` at this plugin's version, unpacks the Swift shim from the
@@ -229,6 +256,13 @@ object ThicketIosPlugin extends AutoPlugin {
     @transient
     lazy val thicketMotionIos = taskKey[Option[File]]("thicket-motion-ios's Swift library, if the app depends on it")
 
+    /** `thicket-camera-apple`'s Swift library, unpacked from its jar, or `None` when the app does not depend on it
+      * (#129). The host's link takes `ios-sim/libthicketcamera.a` from here.
+      */
+    @transient
+    lazy val thicketCameraApple =
+      taskKey[Option[File]]("thicket-camera-apple's Swift library, if the app depends on it")
+
     lazy val thicketIosSettings: Seq[Setting[?]] = Seq(
       thicketVersion := BuildInfo.version,
       libraryDependencies ++= ThicketAppleShim.dependencies(thicketVersion.value),
@@ -236,6 +270,7 @@ object ThicketIosPlugin extends AutoPlugin {
       ThicketMacPlugin.autoImport.thicketHttpApple   := ThicketHttpApple.unpackTask.value,
       ThicketMacPlugin.autoImport.thicketDeviceApple := ThicketDeviceApple.unpackTask.value,
       thicketMotionIos                               := ThicketMotionIos.unpackTask.value,
+      thicketCameraApple                             := ThicketCameraApple.unpackTask.value,
       nativeConfig ~= ThicketNativeFlags.ios()
     )
 

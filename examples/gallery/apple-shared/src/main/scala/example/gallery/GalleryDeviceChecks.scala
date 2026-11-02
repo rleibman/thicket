@@ -83,13 +83,21 @@ object GalleryDeviceChecks {
           lc == expected && onScreen(DeviceDemo.stateLabel(expected)) && onScreen(DeviceDemo.returnsLabel(0)),
           s"$lc; " + texts().filter(t => t.startsWith("The app") || t.startsWith("Back"))
         )
+        // #129: iOS declares NSCameraUsageDescription for the camera in the Pickers section, and asks for nothing, so
+        // the camera is not yet asked, which reads Denied. The macOS gallery is a plain executable with no Info.plist.
         val camera = Try(ApplePermissions.status(Permission.Camera))
         check(
-          "a permission whose Info.plist usage string is missing throws, naming the key, instead of answering Denied",
-          camera.failed.toOption.exists(e =>
-            e.isInstanceOf[IllegalStateException] && e.getMessage.contains("NSCameraUsageDescription")
-          ),
-          camera.toString
+          if ios then "the camera, declared in the Info.plist and never asked for, answers Denied instead of throwing"
+          else
+            "a permission whose Info.plist usage string is missing throws, naming the key, instead of answering Denied"
+          ,
+          if ios then camera.toOption.contains(PermissionStatus.Denied)
+          else
+            camera.failed.toOption.exists(e =>
+              e.isInstanceOf[IllegalStateException] && e.getMessage.contains("NSCameraUsageDescription")
+            )
+          ,
+          s"$camera" + (if ios then s"; not yet asked ${AppleDevice.testing.notYetAsked(Permission.Camera)}" else "")
         )
         // #118: iOS has NSLocationWhenInUseUsageDescription and the build script's grant; the macOS gallery is a
         // plain executable, with no Info.plist to declare NSLocationUsageDescription in.

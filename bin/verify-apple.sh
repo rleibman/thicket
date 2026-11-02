@@ -18,6 +18,7 @@
 #   shim-ios       compile Shim+UIKit.swift  (build-shim.sh ios-sim)
 #   shim-device    compile thicket-device-apple's Swift library, macOS and simulator (#114)
 #   shim-motion    compile thicket-motion-ios's Swift library, simulator only (#120)
+#   shim-camera    compile thicket-camera-apple's Swift library, simulator only (#129)
 #   abi            shim-gen's consistency checks: ABI, C header, Scala externs, both shims
 #   secrets        thicket-secrets-apple's tests against the real Keychain (#108): conformance, isolation
 #   link           sbt nativeLink for the six Apple apps, after deleting their old outputs
@@ -185,6 +186,7 @@ run shim-macos modules/renderer-apple/shim/build-shim.sh macos
 run shim-ios modules/renderer-apple/shim/build-shim.sh ios-sim
 run shim-device sh -c 'modules/device-apple/shim/build-shim.sh macos && modules/device-apple/shim/build-shim.sh ios-sim'
 run shim-motion modules/motion-ios/shim/build-shim.sh ios-sim
+run shim-camera modules/camera-apple/shim/build-shim.sh ios-sim
 run abi sbt --error shimGen/testFull
 run secrets sbt --error secretsApple/testFull
 run link link_all

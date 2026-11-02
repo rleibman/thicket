@@ -17,6 +17,7 @@
 package example.gallery
 
 import scala.scalanative.unsafe.exported
+import thicket.camera.apple.AppleCamera
 import thicket.core.GcState
 import thicket.device.apple.AppleDevice
 import thicket.location.apple.AppleLocation
@@ -54,12 +55,22 @@ object GalleryIos {
       // anyway so the two Apple hosts differ in nothing but their entry shape.
       AppleApp.run("Thicket gallery", 520, 760) {
         val storage = AppleStorage(bundleId)
+        // UIImagePickerController (#129): photos are copied into the app's cache.
+        val camera = AppleCamera(storage.dirs.cache)
         if sys.env.contains("THICKET_GALLERY_SELFTEST") then
           AppleApp.postToUi { () =>
             GallerySelfTest.run(
               Some(storage),
               bundleId,
-              motion = Some(IosMotionProvider -> IosMotionProvider.testing.active)
+              motion = Some(IosMotionProvider -> IosMotionProvider.testing.active),
+              camera = Some(
+                GalleryCameraChecks
+                  .Probe(
+                    () => camera.availability,
+                    () => AppleCamera.sourceAvailable,
+                    () => AppleCamera.testing.presented
+                  )
+              )
             )
           }
         // The app's working directory is `/`, so `Gallery.logoBytes` — a repo-relative read —
@@ -77,6 +88,7 @@ object GalleryIos {
               // CLLocationManager (#118), listened to while the app is in front.
               location = Some(AppleLocation()),
               motion = Some(IosMotion()),
+              camera = Some(camera),
               clipboard = Some(AppleClipboard()),
               haptics = Some(AppleHaptics())
             )
