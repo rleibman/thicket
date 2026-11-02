@@ -239,6 +239,16 @@ GTK the self-test turns the portal off (`GDK_DEBUG=no-portals`) so the file choo
 in-process, finds it among the app's windows, sets the file and accepts or cancels. Each pick
 must come back as a copy in the app's cache, byte for byte.
 
+On iOS (#125) `build-app.sh` puts the logo in the simulator's photo library (`simctl addmedia`)
+and a text file in Files' "On My iPhone", and the XCUITest tapper taps them in
+`PHPickerViewController` and `UIDocumentPickerViewController`, taps Cancel, and Save in "On My
+iPhone" (`DRIVE pick-photo`, `cancel-photo`, `pick-document`, `save-document`); after the save
+it reads the file back from the simulator's Files storage. On macOS 27 the open and save panels
+run in another process (`openAndSavePanelService`), whose OK cannot be pressed from the app: the
+self-test checks the real sheet, its types and suggested name, and its own `cancel(_:)`, and
+answers an accept with `ApplePickers.testing.choose`, a known file through the panel's own
+completion. The panel's OK button is the one part not exercised.
+
 The same section takes a photo. On Android `build.sh` presses the shutter and Done in the
 emulator's camera app (`DRIVE photo`); the photo must come back as a JPEG in the app's cache,
 and the MediaStore entry the camera wrote to must be gone. Backing out answers no photo. On GTK

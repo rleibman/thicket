@@ -8,11 +8,10 @@ The system's photo picker, document picker and save dialog. The plan is in
 | `thicket-pickers` | JVM, Native | the API: `Photos`, `Documents`; `PickedFiles`; `testing.FakePhotos`, `FakeDocuments` |
 | `thicket-pickers-gtk` | Scala Native | `GtkFileDialog`, over `GtkApp`'s window |
 | `thicket-pickers-android` | Android | the photo picker and the Storage Access Framework, from `ThicketActivity` |
-
-Apple's half is a Mac issue.
+| `thicket-pickers-apple` | Scala Native, macOS and iOS | `PHPickerViewController` and `UIDocumentPickerViewController` on iOS, `NSOpenPanel` and `NSSavePanel` sheets on macOS, through its own Swift library (`libthicketpickers.a`, #125) |
 
 ```scala
-val pickers = GtkPickers(storage.dirs.cache)      // AndroidPickers(this) in createApp
+val pickers = GtkPickers(storage.dirs.cache)      // AndroidPickers(this) in createApp; ApplePickers(storage.dirs.cache)
 Button("Choose a photo")(pickers.photos.pick(1) { paths => paths.headOption.foreach(show) })
 Button("Export")(pickers.documents.save("notes.txt", "text/plain", bytes)(_.foreach(n => status.set(s"Saved $n"))))
 ```
@@ -31,6 +30,20 @@ Button("Export")(pickers.documents.save("notes.txt", "text/plain", bytes)(_.fore
   `ACTION_GET_CONTENT`. Documents use `ACTION_OPEN_DOCUMENT` and `ACTION_CREATE_DOCUMENT`.
 - **GTK:** `GtkFileDialog` (GTK 4.10+), through the desktop portal when the app is sandboxed.
   `save` writes to the file the user chose.
+- **iOS:** `PHPickerViewController` (images, `selectionLimit = limit`, no permission needed).
+  Each result's `loadFileRepresentation` gives a temporary file that is deleted when its
+  callback returns, so the callback waits until Scala has copied it (`thk_pick_release`).
+  Documents: `UIDocumentPickerViewController(forOpeningContentTypes:asCopy: true)`, whose copy in
+  the app's tmp is deleted once Thicket's is made. `save` writes the bytes to a file named
+  `name` in the cache and exports it (`forExporting:asCopy: true`); the staged file is deleted
+  after.
+- **macOS:** `NSOpenPanel` (images for `Photos`; the MIME types as `allowedContentTypes`;
+  `allowsMultipleSelection`) and `NSSavePanel` (`nameFieldStringValue = name`), as sheets on the
+  app's window. `save` copies the staged file to where the panel answered.
+- **Apple's library:** Swift, not a C helper like `thicket-clipboard-apple`'s: the pickers
+  answer through delegate objects and completion blocks, which C cannot write without an
+  Objective-C file, and Scala Native compiles `.c` but not `.m`. Its ABI is `PickersAbi` in
+  `tools/shim-gen` (11 functions, one callback type), checked by `PickersConsistencySpec`.
 
 ## How it is checked
 
@@ -40,5 +53,14 @@ Button("Export")(pickers.documents.save("notes.txt", "text/plain", bytes)(_.fore
   - **Android:** `build.sh` taps the photo picker and the documents UI, and reads the saved
     file back from Downloads.
   - **GTK:** the self-test turns the portal off, so the chooser is in-process, then answers it.
+  - **iOS (simulator):** `build-app.sh` adds the logo to the photo library and a text file to
+    Files' "On My iPhone"; the XCUITest tapper (`examples/ios-host/tapper`) taps the photo,
+    Cancel, the file, and Save in "On My iPhone", then reads the saved file back on the host.
+  - **macOS 27:** the panels run in `com.apple.appkit.xpc.openAndSavePanelService` even for an
+    unsandboxed app (`-[NSSavePanel ok:]` raises "not implemented"; neither key events nor
+    accessibility reach its buttons from the app). The self-test checks the real sheet, its
+    types and suggested name, and its own `cancel(_:)`; an accept is
+    `ApplePickers.testing.choose`, which answers through the panel's own completion with a
+    known file. The panel's OK button is not exercised.
   - Both check that each pick comes back as a copy in the app's cache, byte for byte, and that
     cancelling answers nothing.
