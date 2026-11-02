@@ -26,6 +26,7 @@ import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim, ShimKind}
 import thicket.motion.{MotionProvider, Sensor}
+import thicket.pickers.apple.ApplePickers
 import thicket.secrets.apple.AppleSecrets
 import thicket.secrets.testing.SecretsConformance
 import thicket.signals.{ErrorSink, Owner}
@@ -85,6 +86,9 @@ object GallerySelfTest {
     */
   private var motion: Option[(MotionProvider, Sensor => Boolean)] = None
 
+  /** Set by [[run]]: the host's pickers (#125), and whether they are iOS's, driven from outside. */
+  private var pickers: Option[(ApplePickers, Boolean)] = None
+
   /** Waits for the Effects section's ZIO result first, as the GTK host does, so the synchronous checks see it.
     *
     * `svgWhereDecoded`: the host promises the SVG logo wherever the platform's image class decodes it - the macOS host
@@ -94,12 +98,14 @@ object GallerySelfTest {
     storage:         Option[Storage],
     bundleId:        String,
     svgWhereDecoded: Boolean = false,
-    motion:          Option[(MotionProvider, Sensor => Boolean)] = None
+    motion:          Option[(MotionProvider, Sensor => Boolean)] = None,
+    pickers:         Option[(ApplePickers, Boolean)] = None
   ): Unit = {
     this.storage = storage
     this.bundleId = bundleId
     this.svgWhereDecoded = svgWhereDecoded
     this.motion = motion
+    this.pickers = pickers
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
   }
 
@@ -242,7 +248,9 @@ object GallerySelfTest {
 
     storageChecks(() =>
       deviceChecks(() =>
-        locationChecks(() => motionChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+        locationChecks(() =>
+          motionChecks(() => clipboardChecks(() => pickerChecks(() => sheet(all)(() => bigList(() => finish())))))
+        )
       )
     )
   }
@@ -275,6 +283,25 @@ object GallerySelfTest {
   /** The motion sensors (#120), in [[GalleryMotionChecks]]. */
   private def motionChecks(next: () => Unit): Unit =
     GalleryMotionChecks.run(checker, () => AppleInspect.allTexts(AppleApp.rootHandle), motion)(next)
+
+  /** The pickers (#125), in [[GalleryPickerChecks]]. */
+  private def pickerChecks(next: () => Unit): Unit =
+    (pickers, storage) match {
+      case (Some((p, ios)), Some(s)) =>
+        val logo =
+          if ios then Paths.get(AppleApp.resourcePath(Gallery.logo)) else Paths.get(Gallery.logo).toAbsolutePath
+        GalleryPickerChecks.run(
+          checker,
+          label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
+          p,
+          s.dirs.cache,
+          logo,
+          ios
+        )(next)
+      case _ =>
+        check("the Apple host provides the pickers and storage", false, s"pickers $pickers; storage $storage")
+        next()
+    }
 
   /** The clipboard and haptics (#123), the GTK host's `clipboardChecks` asked of Apple. "Copy" then "Paste", twice,
     * through the general pasteboard: each paste must show that round's copy, so a pasteboard that kept the first text,
