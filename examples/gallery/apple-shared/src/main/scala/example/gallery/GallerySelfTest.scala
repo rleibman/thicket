@@ -232,10 +232,14 @@ object GallerySelfTest {
       s"${AppleInspect.presentedCount} presented"
     )
 
-    storageChecks(() => deviceChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+    storageChecks(() =>
+      deviceChecks(() => locationChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+    )
   }
 
-  /** [[check]] as a plain function, for checks that live outside this object ([[GalleryDeviceChecks]]). */
+  /** [[check]] as a plain function, for checks that live outside this object ([[GalleryDeviceChecks]],
+    * [[GalleryLocationChecks]]).
+    */
   private val checker: (String, Boolean, String) => Unit = (
     n,
     ok,
@@ -245,6 +249,14 @@ object GallerySelfTest {
   /** Lifecycle and permissions (#114), in [[GalleryDeviceChecks]]. */
   private def deviceChecks(next: () => Unit): Unit =
     GalleryDeviceChecks.run(
+      checker,
+      label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
+      () => AppleInspect.allTexts(AppleApp.rootHandle)
+    )(next)
+
+  /** The device's position (#118), in [[GalleryLocationChecks]]. */
+  private def locationChecks(next: () => Unit): Unit =
+    GalleryLocationChecks.run(
       checker,
       label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
       () => AppleInspect.allTexts(AppleApp.rootHandle)

@@ -90,7 +90,7 @@ and calls `onResult` on the UI thread. Call both from the UI thread.
 
 | Permission | Android | GTK | macOS and iOS |
 |---|---|---|---|
-| `Location` | `ACCESS_FINE_LOCATION` and/or `ACCESS_COARSE_LOCATION`; either granted is `Granted` | `Granted` | not yet: throws `UnsupportedOperationException` until `thicket-location-apple` (#118) |
+| `Location` | `ACCESS_FINE_LOCATION` and/or `ACCESS_COARSE_LOCATION`; either granted is `Granted` | `Granted` | `CLLocationManager`, when in use (`requestWhenInUseAuthorization`, answered by its delegate; #118); needs `NSLocationWhenInUseUsageDescription` on iOS, `NSLocationUsageDescription` on macOS |
 | `Camera` | `CAMERA` | `Granted` | `AVCaptureDevice`, `.video`; needs `NSCameraUsageDescription` |
 | `Microphone` | `RECORD_AUDIO` | `Granted` | `AVCaptureDevice`, `.audio`; needs `NSMicrophoneUsageDescription` |
 | `Notifications` | `POST_NOTIFICATIONS` from Android 13; before that, always `Granted` | `Granted` | `UNUserNotificationCenter` (alert, sound, badge); provisional counts as `Granted`; needs an app bundle |

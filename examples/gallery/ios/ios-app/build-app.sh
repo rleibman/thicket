@@ -27,10 +27,10 @@ APP_NAME=GalleryIos
 BUNDLE_ID=dev.thicket.galleryios
 SWIFT_INCLUDE="$REPO/modules/renderer-apple/shim/include"
 EXTRA_LINK=-lsqlite3
-# The same THICKET_GALLERY_SELFTEST the macOS example reads. Up to 4 min (#78, #114): the gallery
+# The same THICKET_GALLERY_SELFTEST the macOS example reads. Up to 6 min (#78, #114, #118): the gallery
 # times 1 000 vs 2 000 children.
 RUN_ENV=THICKET_GALLERY_SELFTEST=1
-WAIT_SECONDS=240
+WAIT_SECONDS=360
 SCREENSHOT=1
 KEEP_UNSTRIPPED=1
 
@@ -42,15 +42,23 @@ DEVICE_LIB="$REPO/modules/device-apple/shim/build-ios/libthicketdevice.a"
 [ -f "$DEVICE_LIB" ] || { echo "Missing $DEVICE_LIB — run modules/device-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
 EXTRA_LIBS="$DEVICE_LIB"
 FRESH_INSTALL=1
-PRIVACY_GRANT=microphone
-USAGE_STRINGS="NSMicrophoneUsageDescription=The gallery checks that a granted permission answers Granted."
+# Location (#118) granted too, with its usage string, without which iOS ignores the request.
+PRIVACY_GRANT="microphone location"
+USAGE_STRINGS="NSMicrophoneUsageDescription=The gallery checks that a granted permission answers Granted.
+NSLocationWhenInUseUsageDescription=The gallery shows where the device is while it is in front."
+
+# No simulated position before the launch, so the first one the self-test sets is a change it sees.
+before_launch() { xcrun simctl location "$DEVICE" clear; }
 
 # What the self-test asks the user to do: another app in front (Settings), the gallery launched
-# again (the same process comes back), and the notifications alert answered through XCUITest.
+# again (the same process comes back), the notifications alert answered through XCUITest, and
+# the device moved (`geo <lat>,<lon>`, #118).
 drive() {
   case "$1" in
     home) xcrun simctl launch "$DEVICE" com.apple.Preferences ;;
     front) xcrun simctl launch "$DEVICE" "$BUNDLE_ID" ;;
+    geo\ *) xcrun simctl location "$DEVICE" set "${1#geo }" ;;
+    wait\ *) sleep "${1#wait }" ;;
     deny | allow) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "$1" ;;
     *) echo "unknown DRIVE action: $1" ;;
   esac

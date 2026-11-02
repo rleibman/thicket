@@ -62,14 +62,14 @@ most of them, which is why they come first.
 | **Secure storage** (tokens) | `Secrets`: get/set/delete a string | Android Keystore-wrapped value | Keychain, the app's own (built, #108; the host needs keychain entitlements, on the simulator too) | Keychain (built, #108): the data-protection keychain when entitled, else the login keychain, whose items an unsigned build cannot read after a rebuild | libsecret (Secret Service), optional dependency |
 | **SQLite** | plain JDBC; `Sqlite.open(name): java.sql.Connection` | Thicket's JDBC driver over `android.database.sqlite` | `scala-native-jdbc-sqlite` | same | same |
 | **Lifecycle** | `AppLifecycle.state: Signal[Foreground \| Background]` and an `onTerminate` hook | **built**: `ThicketActivity`'s `onStart`/`onStop`, a rotation not counted; terminate when the last one finishes | **built** (#114): a scene's `willEnterForeground` to the last `didEnterBackground`; `willTerminateNotification`, which iOS rarely sends | **built** (#114): `NSApp.occlusionState` (hidden, minimised, covered, locked are background); `willTerminateNotification` | **built**: the window shown — mapped, not minimised or suspended — not ~~`is-active`~~, which is focus; `GApplication` shutdown |
-| **Permissions** | `Permissions.request(Permission.Location)` → `Granted \| Denied \| Restricted` | **built**: `requestPermissions` + manifest; an undeclared one throws | **built** (#114): `AVCaptureDevice`, `UNUserNotificationCenter`; a missing usage string throws; location with #118 | **built** (#114): the same; notifications need an app bundle | **built**: always `Granted`; xdg-desktop-portal asks for location and camera when they are used |
+| **Permissions** | `Permissions.request(Permission.Location)` → `Granted \| Denied \| Restricted` | **built**: `requestPermissions` + manifest; an undeclared one throws | **built** (#114): `AVCaptureDevice`, `UNUserNotificationCenter`; a missing usage string throws; location (#118) `requestWhenInUseAuthorization`, answered by the delegate | **built** (#114): the same; notifications need an app bundle | **built**: always `Granted`; xdg-desktop-portal asks for location and camera when they are used |
 | **Open URL, share, clipboard** | `Link` exists; add `Share.text/file`, `Clipboard.get/set` | `ACTION_SEND`, `ClipboardManager` | `UIActivityViewController`, `UIPasteboard` | `NSSharingServicePicker`, `NSPasteboard` | `GdkClipboard`; share is n/a |
 
 **Tier 2: the hardware.**
 
 | Service | Shape (proposal) | Android | iOS | macOS | GTK |
 |---|---|---|---|---|---|
-| **Location** | `Location.updates(accuracy): Signal[Option[Fix]]`, scoped to an `Owner`; `Location.current` one-shot | `LocationManager` (framework, not Play Services; §16.9) | `CLLocationManager` | `CLLocationManager` | GeoClue2 over D-Bus via GIO, where installed; otherwise `Unavailable` |
+| **Location** | `Location.updates(accuracy): Signal[Option[Fix]]`, scoped to an `Owner`; `Location.current` one-shot | `LocationManager` (framework, not Play Services; §16.9) | **built** (#118): `CLLocationManager`, its delegate in `thicket-device-apple`'s Swift library | `Location.unavailable` for now (decision 7) | GeoClue2 over D-Bus via GIO, where installed; otherwise `Unavailable` |
 | **Motion** | `Motion.acceleration`, `.rotationRate`, `.attitude`: `Signal[Option[Vec3]]` at a requested rate | `SensorManager` | `CMMotionManager` | none (no motion hardware): `Unavailable` | iio-sensor-proxy over D-Bus on convertibles, else `Unavailable` |
 | **Camera: capture** | `Camera.capturePhoto(): Future/ZIO[Option[Path]]`, the platform's own camera UI | `ACTION_IMAGE_CAPTURE` intent writing to a `MediaStore` URI (`FileProvider` is AndroidX) | `UIImagePickerController` (camera) | n/a (no system camera UI): `Unavailable` | n/a: `Unavailable` (portal camera is a PipeWire stream, i.e. preview, not capture) |
 | **Photo picker** | `Photos.pick(limit): …[Seq[Path]]` | Android photo picker (`ACTION_PICK_IMAGES`, API 33+; `ACTION_GET_CONTENT` below) | `PHPickerViewController` | `NSOpenPanel` filtered to images | `GtkFileDialog` filtered to images |
@@ -318,7 +318,7 @@ this means many modules. Names follow the published ones:
 | storage: directories, preferences | `thicket-storage` | `-android`, `-apple`, `-gtk` |
 | secrets | `thicket-secrets` | `-android` (Keystore), `-apple` (Keychain), `-gtk` (libsecret) |
 | SQLite | `thicket-sqlite` (`Sqlite.open`; `java.sql` is the API) | `thicket-sqlite-android` (a JDBC driver); Native uses `scala-native-jdbc-sqlite` |
-| location | `thicket-location` (built) | `-android` (built), `-apple` (Mac issue); GTK and macOS use `Location.unavailable` |
+| location | `thicket-location` (built) | `-android` (built), `-apple` (built, iOS; #118); GTK and macOS use `Location.unavailable` |
 | motion | `thicket-motion` (built) | `-android` (built), `-ios` (Mac issue); GTK and macOS use `Motion.unavailable` |
 | clipboard | `thicket-clipboard` (built) | `-gtk`, `-android`, `-apple` (built) |
 | haptics | `thicket-haptics` (built) | `-android`, `-apple` (built); GTK uses `Haptics.none` |
@@ -425,7 +425,11 @@ Every service gets a gallery section and self-test checks on every host where it
      system's dialog (`build.sh` taps them), an undeclared permission, and Back.
 4. **Location,** then **motion**, each with emulator-injected self-tests. *Location done on
    Android, and `Unavailable` on GTK, 2026-10-30 (`modules/location/README.md`); motion the
-   same day (`modules/motion/README.md`). Apple's halves are Mac issues.*
+   same day (`modules/motion/README.md`). Apple's halves are Mac issues. *Location on iOS done
+   2026-11-01 (#118): `thicket-location-apple` over `CLLocationManager`; the simulator is moved
+   with `simctl location set`, and the listeners are counted as on Android, since iOS suspends a
+   background app (measured: with the background stop removed, the on-screen check still
+   passed and the count failed).*
    - Both use `thicket-device`'s `WhileInFront`: start while the owner lives and the app is in
      front, stop in the background, try again on each return.
    - `Location(provider, lifecycle)` is shared: a platform supplies a `LocationProvider`, and

@@ -68,9 +68,9 @@ object AppleLifecycle extends AppLifecycle {
 
 }
 
-/** Permissions on macOS and iOS, each through its own service's API: `AVCaptureDevice` for the camera and the
-  * microphone, `UNUserNotificationCenter` for notifications. Location arrives with `thicket-location-apple` (#118);
-  * until then asking about it throws `UnsupportedOperationException`.
+/** Permissions on macOS and iOS, each through its own service's API: `CLLocationManager` for location (when in use,
+  * `requestWhenInUseAuthorization`; #118), `AVCaptureDevice` for the camera and the microphone,
+  * `UNUserNotificationCenter` for notifications.
   *
   * Apple answers `Restricted` where a parental control or a device policy forbids it, and asks only once: after "Don't
   * Allow", a request answers `Denied` at once with no dialog, and only the Settings app can change it. Not yet asked
@@ -78,8 +78,10 @@ object AppleLifecycle extends AppLifecycle {
   *
   * What the app must declare is checked first, and a missing declaration throws `IllegalStateException` naming it,
   * rather than answering `Denied`: iOS **terminates** an app that asks for the camera or the microphone with no
-  * `NSCameraUsageDescription` / `NSMicrophoneUsageDescription` in its `Info.plist`, and `UNUserNotificationCenter`
-  * raises for a process that is not in an app bundle (an executable run on its own, as the macOS gallery is).
+  * `NSCameraUsageDescription` / `NSMicrophoneUsageDescription` in its `Info.plist`, ignores a location request with no
+  * `NSLocationWhenInUseUsageDescription` (macOS: `NSLocationUsageDescription`) and terminates the app when it then uses
+  * location, and `UNUserNotificationCenter` raises for a process that is not in an app bundle (an executable run on its
+  * own, as the macOS gallery is).
   */
 object ApplePermissions extends Permissions {
 
@@ -100,7 +102,7 @@ object ApplePermissions extends Permissions {
       case 2     => PermissionStatus.Restricted
       case 1 | 3 => PermissionStatus.Denied
       case _     =>
-        throw UnsupportedOperationException(s"$p is not supported by thicket-device-apple yet (location: #118)")
+        throw UnsupportedOperationException(s"$p is not supported by thicket-device-apple")
     }
 
   def status(p: Permission): PermissionStatus = {
@@ -110,7 +112,7 @@ object ApplePermissions extends Permissions {
 
   def request(p: Permission)(onResult: PermissionStatus => Unit): Unit = {
     checked(p)
-    // Throws now, not from inside the callback, for a permission this build cannot ask for.
+    // Throws now, not from inside the callback, for a permission this library cannot ask for.
     val _ = status(p)
     queue.request(p, onResult)
   }
@@ -163,6 +165,11 @@ object AppleDevice {
       * alert, and would pass a check of "Don't Allow" without one.
       */
     def notYetAsked(p: Permission): Boolean = DeviceShim.thk_dev_permission_status(p.ordinal) == 3
+
+    /** How many location listeners `libthicketdevice.a` has (`thicket-location-apple`, #118): `CLLocationManager` is
+      * updating while this is not 0.
+      */
+    def locationListeners: Int = DeviceShim.thk_dev_test_location_listeners()
 
   }
 

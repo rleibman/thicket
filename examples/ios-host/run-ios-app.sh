@@ -24,6 +24,8 @@
 # NSMicrophoneUsageDescription), FRESH_INSTALL=1 (uninstall first, which also forgets the
 # notifications answer), PRIVACY_GRANT (simctl privacy services granted before the launch), and a
 # function `drive <action>`, called once for each `[gallery] DRIVE <action>` line the app prints.
+# For location (#118): a function `before_launch`, run after the install and the grants (the
+# gallery clears the simulated position there).
 set -euo pipefail
 
 : "${APP_NAME:?}" "${BUNDLE_ID:?}" "${ARCHIVE:?}" "${SWIFT_LIB:?}" "${RUN_ENV:?}" "${DEVICE:?}"
@@ -107,6 +109,7 @@ xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
 if [ "${FRESH_INSTALL:-0}" = 1 ]; then xcrun simctl uninstall "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true; fi
 xcrun simctl install "$DEVICE" "$APP"
 for service in ${PRIVACY_GRANT:-}; do xcrun simctl privacy "$DEVICE" grant "$service" "$BUNDLE_ID"; done
+if declare -F before_launch >/dev/null; then before_launch; fi
 
 # SIMCTL_CHILD_ passes an environment variable through to the app, which is how a self-test
 # is switched on.

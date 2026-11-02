@@ -41,6 +41,24 @@ int32_t thk_dev_permission_status(int32_t permission);
    `answered` with the resulting status, always later, on the main thread. */
 void thk_dev_permission_request(int32_t permission, thk_dev_int_cb answered, int64_t ctx);
 
+/* --- location ---------------------------------------------------------------- */
+/* CLLocationManager, for thicket-location-apple (#118). */
+/* Whether positions can be had now: 0 yes, 1 not yet asked or denied (needs the permission),
+   2 location services off in Settings, 3 restricted. CLLocationManager's authorisation, and
+   locationServicesEnabled once that allows it (#118). */
+int32_t thk_dev_location_availability(void);
+/* Adds a listener and returns its id: `fixed` is called on the main thread for each position,
+   which thk_dev_location_fix(0, ...) reads from inside the call. The manager updates while any
+   listener is left, kCLLocationAccuracyBest if one is `fine` (1), else ...Kilometer. */
+int64_t thk_dev_location_start(int32_t fine, thk_dev_void_cb fixed, int64_t ctx);
+/* Removes a listener; the last one gone, stopUpdatingLocation. An unknown id is ignored. */
+void thk_dev_location_stop(int64_t id);
+/* A position, written out: `which` 0 the one being delivered, 1 the manager's last known one.
+   Returns 0, writing nothing, when there is none. NaN for an accuracy or an altitude the
+   platform does not give; the altitude is above the WGS 84 ellipsoid. */
+int32_t thk_dev_location_fix(int32_t which, double *latitude, double *longitude, double *accuracy,
+                             double *altitude, double *time_millis);
+
 /* --- testing ----------------------------------------------------------------- */
 /* For self-tests: what a user would do. */
 /* macOS: hides (1) or unhides (0) the app, as Cmd-H does. Returns 1, or 0 on iOS, where an
@@ -51,6 +69,8 @@ int32_t thk_dev_test_miniaturize(int32_t miniaturized);
 /* macOS: 1 while the login session's screen is locked, which occludes every window, so the
    app is off screen whatever it does. 0 otherwise, and always on iOS. */
 int32_t thk_dev_test_screen_locked(void);
+/* How many location listeners the library has: the manager is updating while it is not 0. */
+int32_t thk_dev_test_location_listeners(void);
 /* macOS: NSApp.terminate, the real path; the process exits after the will-terminate
    observers run. iOS: posts UIApplication.willTerminateNotification, since an app may not
    end itself and simctl's terminate kills it without one. */

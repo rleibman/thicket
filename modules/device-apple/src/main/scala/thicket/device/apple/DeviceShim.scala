@@ -11,7 +11,7 @@ import scala.scalanative.unsafe.*
   * Every callback arrives on the main thread; wrap it in `GcState.guarded`.
   */
 @extern
-private[apple] object DeviceShim {
+private[thicket] object DeviceShim {
 
   type VoidCb = CFuncPtr1[Long, Unit]
   type IntCb = CFuncPtr2[Long, CInt, Unit]
@@ -22,8 +22,13 @@ private[apple] object DeviceShim {
   @blocking
   def thk_dev_permission_status(permission: CInt): CInt = extern
   def thk_dev_permission_request(permission: CInt, answered: IntCb, ctx: Long): Unit = extern
+  def thk_dev_location_availability(): CInt = extern
+  def thk_dev_location_start(fine: CInt, fixed: VoidCb, ctx: Long): Long = extern
+  def thk_dev_location_stop(id: Long): Unit = extern
+  def thk_dev_location_fix(which: CInt, latitude: Ptr[CDouble], longitude: Ptr[CDouble], accuracy: Ptr[CDouble], altitude: Ptr[CDouble], time_millis: Ptr[CDouble]): CInt = extern
   def thk_dev_test_hide(hidden: CInt): CInt = extern
   def thk_dev_test_miniaturize(miniaturized: CInt): CInt = extern
   def thk_dev_test_screen_locked(): CInt = extern
+  def thk_dev_test_location_listeners(): CInt = extern
   def thk_dev_test_terminate(): Unit = extern
 }
