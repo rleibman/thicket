@@ -20,6 +20,8 @@ import scala.scalanative.unsafe.exported
 import thicket.core.GcState
 import thicket.device.apple.AppleDevice
 import thicket.motion.ios.{IosMotion, IosMotionProvider}
+import thicket.clipboard.apple.AppleClipboard
+import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.sqlite.NativeSqlite
@@ -71,7 +73,9 @@ object GalleryIos {
               NativeSqlite.driver,
               () => AppleSecrets.open(bundleId),
               device = Some(AppleDevice()),
-              motion = Some(IosMotion())
+              motion = Some(IosMotion()),
+              clipboard = Some(AppleClipboard()),
+              haptics = Some(AppleHaptics())
             )
           )
         )

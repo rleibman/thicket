@@ -18,6 +18,8 @@ package example.gallery
 
 import thicket.device.apple.AppleDevice
 import thicket.motion.Motion
+import thicket.clipboard.apple.AppleClipboard
+import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.sqlite.NativeSqlite
@@ -50,7 +52,9 @@ object GalleryMac {
             () => AppleSecrets.open(bundleId),
             device = Some(AppleDevice()),
             // No CMMotionManager on macOS (docs/16 §16.9, decision 7), as on GTK.
-            motion = Some(Motion.unavailable(GalleryMotionChecks.noDesktopMotion))
+            motion = Some(Motion.unavailable(GalleryMotionChecks.noDesktopMotion)),
+            clipboard = Some(AppleClipboard()),
+            haptics = Some(AppleHaptics())
           )
         )
       // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise

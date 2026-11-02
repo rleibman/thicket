@@ -797,6 +797,26 @@ lazy val cameraAndroid = project
   .dependsOn(camera.jvm, rendererAndroid)
   .settings(commonSettings, name := "thicket-camera-android", scalacOptions ++= Seq("-release", "17"))
 
+/** The clipboard on macOS and iOS: `NSPasteboard` and `UIPasteboard` (#123), through a small C helper that Scala
+  * Native's own clang compiles (`resources/scala-native/thicket_pasteboard.c`) and that sends its few Objective-C
+  * messages through the runtime. No Swift. Depends on `rendererApple` for `postToUi`, as `clipboardGtk` does on its
+  * renderer. In `platforms`: linking needs Xcode.
+  */
+lazy val clipboardApple = project
+  .in(file("modules/clipboard-apple"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(clipboard.native, rendererApple)
+  .settings(commonSettings, name := "thicket-clipboard-apple")
+
+/** Haptics on macOS and iOS (#123): `UIImpactFeedbackGenerator` and `UISelectionFeedbackGenerator`, and
+  * `NSHapticFeedbackManager` for a Force Touch trackpad, through a C helper as `clipboardApple`'s. Needs no renderer.
+  */
+lazy val hapticsApple = project
+  .in(file("modules/haptics-apple"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(haptics.native)
+  .settings(commonSettings, name := "thicket-haptics-apple")
+
 /** Android renderer. Plain JVM Scala: R8 dexes it and ART runs it (S2).
   *
   * `android.jar` arrives through sbt's unmanaged `lib/` convention because sbt 2 cannot put a `File` on a classpath —
@@ -966,7 +986,7 @@ lazy val galleryMacos = project
   .in(file("examples/gallery/macos"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.macos.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple)
+  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, clipboardApple, hapticsApple)
   .settings(commonSettings)
   .settings(appleNativeSettings)
   .settings(galleryAppleSharedSources)
@@ -985,7 +1005,7 @@ lazy val galleryIos = project
   .in(file("examples/gallery/ios"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.ios.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, motionIos)
+  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, motionIos, clipboardApple, hapticsApple)
   .settings(commonSettings)
   .settings(iosNativeSettings)
   .settings(galleryAppleSharedSources)
@@ -1164,6 +1184,8 @@ lazy val platforms = project
     pickersGtk,
     pickersAndroid,
     cameraAndroid,
+    clipboardApple,
+    hapticsApple,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,
