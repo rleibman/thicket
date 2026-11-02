@@ -1,9 +1,9 @@
 # 17. Live camera preview — a design for approval
 
-Status: **proposed, 2026-11-01. Nothing here is built.** `docs/16` §16.3 puts the live camera
+Status: **approved, 2026-11-01; not built yet.** `docs/16` §16.3 puts the live camera
 preview first in tier 3 ("each its own design"), and the owner said yes to tier 3 on
-2026-11-01. This is that design. It ends with the questions the owner should decide before
-any code is written (§17.8).
+2026-11-01. This is that design. The owner answered §17.8's questions the same day, taking
+every recommendation (decision log, 2026-11-01).
 
 ## 17.1 What it is
 
@@ -22,7 +22,7 @@ Column(
 preview.availability                                // Available | NeedsPermission(Camera) | Unavailable
 ```
 
-## 17.2 v1 scope (proposed)
+## 17.2 v1 scope (agreed 2026-11-01)
 
 - **In:** the preview, front or back camera, capture a still photo from it (a JPEG `Path` in
   the cache, as every capture so far), the lifecycle (§17.5), the permission.
@@ -30,7 +30,7 @@ preview.availability                                // Available | NeedsPermissi
   Vision, which are platform libraries of their own), zoom, focus points, torch, exposure. Each
   is an addition to the handle later, not a change to it.
 
-## 17.3 The main choice: how a widget reaches platform code (owner's decision)
+## 17.3 The main choice: how a widget reaches platform code (decided: the embedding point)
 
 Every widget so far is a `WidgetKind` (`renderer-api`), and every renderer handles every kind
 (`docs/12` §12.10's gallery rule). A camera preview as one more kind would put Camera2 in
@@ -99,10 +99,13 @@ The largest piece in the plan (`docs/16` §16.3 says so). Proposed order, each i
 1. The embedding point (§17.3) on GTK and Android, with the gallery's trivial platform view;
    Apple as a Mac issue.
 2. `thicket-camera-preview` and `-android`, measured on the emulator.
-3. `-gtk` (if §17.8.2 says so).
-4. `-apple`, the Mac's.
+3. `-apple`, the Mac's (iOS and macOS).
+4. `-gtk`, after Android and Apple (§17.8.2).
 
-## 17.8 Questions for the owner
+## 17.8 Questions for the owner — answered 2026-11-01
+
+The owner took every recommendation: (1) the embedding point; (2) `Unavailable` on GTK first;
+(3) build macOS; (4) so no virtual camera yet; (5) v1 scope as proposed. The questions as asked:
 
 1. **The embedding point (§17.3), or a built-in `WidgetKind`?** Recommended: the embedding point.
 2. **GTK: build the GStreamer/PipeWire preview, or `Unavailable` on the desktop for now?** It

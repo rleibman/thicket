@@ -72,6 +72,19 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-01 — **The live camera preview: the owner took every recommendation in
+  `docs/17-camera-preview.md` §17.8.**
+  1. **An embedding point, not a built-in `WidgetKind`:** `Element.Platform` in `core`, handled
+     generically by each renderer; the preview is modules of its own (`thicket-camera-preview`,
+     `-android`, `-apple`, later `-gtk`), so only an app that shows one links a camera stack.
+  2. **GTK: `Unavailable` first.** The GStreamer/PipeWire preview comes after Android and Apple.
+  3. **macOS: build it**, with the Mac's camera, from the iOS AVFoundation code.
+  4. **No virtual camera on CI for now:** it was only needed if (2) built the GTK preview.
+  5. **v1 scope:** the preview, front/back facing, and a still capture; no video, frame
+     access, zoom, focus, torch or exposure.
+  - **Order** (§17.7): the embedding point on GTK and Android (Apple as a Mac issue), then
+    `thicket-camera-preview` and `-android`, then `-apple` (the Mac's), then `-gtk`.
+
 - 2026-11-01 — **Share: `thicket-share` and `-android`, with Thicket's own file provider**
   (docs/16 §16.10 item 5).
   - **Owner's decision:** files are handed to other apps through a Thicket `ContentProvider`

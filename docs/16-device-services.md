@@ -463,5 +463,5 @@ Every service gets a gallery section and self-test checks on every host where it
      manifest. The gallery is its own share target, and the share sheet's own read of the file
      shows the grant works.
 6. **Tier 3** as separate designs, live camera preview first if wanted. *The owner wants tier 3
-   (2026-11-01); the camera preview's design is `docs/17-camera-preview.md`, proposed, with its
-   questions for the owner in §17.8.*
+   (2026-11-01); the camera preview's design is `docs/17-camera-preview.md`, approved with every
+   recommendation (2026-11-01); the embedding point is next.*
