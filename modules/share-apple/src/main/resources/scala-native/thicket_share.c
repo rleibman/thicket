@@ -243,7 +243,7 @@ static id shownController(void) {
 /* For a self-test: 1 when the share sheet is up; its class name in buf. */
 int thk_share_showing(char *buf, long long cap) {
   id vc = topController();
-  if (cap > 0) snprintf(buf, (size_t)cap, "%s", vc ? class_getName(object_getClass(vc)) : "");
+  if (cap > 0) snprintf(buf, (size_t)cap, "%s", vc ? class_getName((Class)send0(vc, "class")) : "");
   return isKind(vc, "UIActivityViewController") ? 1 : 0;
 }
 
@@ -295,19 +295,23 @@ static char proposed[2048] = "";
 static int outcome = -1;
 
 /* sharingServicePicker:sharingServicesForItems:proposedSharingServices: — keeps every service the
- * system proposes, and notes their titles. */
+ * system proposes, and notes their titles. AppKit asks more than once per picker (measured on macOS
+ * 27: twice, with 5 then 0 services for a text, 6 then 9 for a file), so the titles accumulate. */
 static id delegateServices(id self, SEL cmd, id p, id items, id services) {
   (void)self;
   (void)cmd;
-  (void)p;
   (void)items;
-  proposed[0] = 0;
+  if (p != picker) return services; /* an earlier picker's, late */
   long n = services ? sendLong(services, "count") : 0;
   for (long i = 0; i < n; i++) {
-    char title[256];
+    char title[256], line[260];
     copyOut(send0(at(services, i), "title"), title, sizeof title);
+    snprintf(line, sizeof line, "\n%s\n", title);
     size_t used = strlen(proposed);
-    snprintf(proposed + used, sizeof proposed - used, "%s%s", used ? "\n" : "", title);
+    char padded[sizeof proposed + 2];
+    snprintf(padded, sizeof padded, "\n%s\n", proposed);
+    if (title[0] && !strstr(padded, line))
+      snprintf(proposed + used, sizeof proposed - used, "%s%s", used ? "\n" : "", title);
   }
   return services;
 }
@@ -316,8 +320,7 @@ static id delegateServices(id self, SEL cmd, id p, id items, id services) {
 static void delegateChose(id self, SEL cmd, id p, id service) {
   (void)self;
   (void)cmd;
-  (void)p;
-  outcome = service ? 1 : 0;
+  if (p == picker) outcome = service ? 1 : 0;
 }
 
 static id pickerDelegate(void) {
@@ -418,10 +421,11 @@ int thk_share_showing(char *buf, long long cap) {
   for (long i = 0; i < n; i++) {
     id w = at(windows, i);
     id content = send0(w, "contentView");
-    const char *wc = class_getName(object_getClass(w));
+    /* -class, not object_getClass: AppKit observes these windows, and KVO's subclass is the real one. */
+    const char *wc = class_getName((Class)send0(w, "class"));
     if (!sendBool(w, "isVisible") || !strstr(wc, "Popover") || !content) continue;
     if (!isKind(content, "NSRemoteView")) continue;
-    if (count++ == 0 && cap > 0) snprintf(buf, (size_t)cap, "%s/%s", wc, class_getName(object_getClass(content)));
+    if (count++ == 0 && cap > 0) snprintf(buf, (size_t)cap, "%s/%s", wc, class_getName((Class)send0(content, "class")));
   }
   return count;
 }

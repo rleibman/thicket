@@ -105,7 +105,8 @@ object GalleryShareChecks {
   ): Unit = {
     val before = AppleShare.testing.shownCount
     val clicked = click(button)
-    eventually(5000)(up) { ms =>
+    // On macOS the picker's delegate is offered the services on a later turn.
+    eventually(5000)(up && (ios || AppleShare.testing.proposed._1.nonEmpty)) { ms =>
       val (shown, what) = AppleShare.testing.showing
       println(s"[gallery] measured: \"$button\" -> the share sheet up in $ms ms ($what)")
       check(
@@ -134,7 +135,8 @@ object GalleryShareChecks {
     k: () => Unit
   ): Unit = {
     val dismissed = AppleShare.testing.dismiss()
-    eventually(5000)(!up) { ms =>
+    // On macOS the delegate hears the picker close on a later turn.
+    eventually(5000)(!up && (ios || AppleShare.testing.proposed._2.isDefined)) { ms =>
       val (_, outcome) = AppleShare.testing.proposed
       println(s"[gallery] measured: the $what's sheet down in $ms ms after dismissing")
       check(
