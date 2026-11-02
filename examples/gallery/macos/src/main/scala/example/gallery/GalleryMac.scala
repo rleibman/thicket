@@ -16,6 +16,7 @@
 
 package example.gallery
 
+import thicket.device.apple.AppleDevice
 import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
@@ -47,6 +48,7 @@ object GalleryMac {
           storage,
           NativeSqlite.driver,
           () => AppleSecrets.open(bundleId),
+          device = Some(AppleDevice()),
           clipboard = Some(AppleClipboard()),
           haptics = Some(AppleHaptics())
         )

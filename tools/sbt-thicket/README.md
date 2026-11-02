@@ -64,6 +64,9 @@ lazy val app = project.in(file(".")).enablePlugins(ThicketIosPlugin)   // iOS: a
   nothing. On iOS the host's link takes `ios-sim/libthickethttp.a`. Not yet run by a
   template outside the repository: the in-repo self-test (`examples/http`) links the
   library by path with the same `appleHttp` flags.
+- **`thicketDeviceApple`** (#114): the same for `thicket-device-apple` (`libthicketdevice.a`,
+  `include/thicket_device.h`), linked on macOS through `ThicketNativeFlags.appleDevice`. Not
+  yet run by a template either: the gallery links it by path with those flags.
 
 Both were first run by `bin/verify-getting-started-apple.sh`, which publishes locally, copies
 the two templates outside the repository and builds and runs them: the macOS app owns a window

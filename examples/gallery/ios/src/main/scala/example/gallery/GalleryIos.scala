@@ -18,6 +18,7 @@ package example.gallery
 
 import scala.scalanative.unsafe.exported
 import thicket.core.GcState
+import thicket.device.apple.AppleDevice
 import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
@@ -64,6 +65,7 @@ object GalleryIos {
               storage,
               NativeSqlite.driver,
               () => AppleSecrets.open(bundleId),
+              device = Some(AppleDevice()),
               clipboard = Some(AppleClipboard()),
               haptics = Some(AppleHaptics())
             )

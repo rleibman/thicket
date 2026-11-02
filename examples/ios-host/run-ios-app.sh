@@ -19,6 +19,11 @@
 # Optional: SWIFT_INCLUDE (a -I for the bridging header), EXTRA_LINK (e.g. -lsqlite3),
 # WAIT_SECONDS (default 120), SCREENSHOT=1, KEEP_UNSTRIPPED=1, and a function
 # `bundle_assets <app dir>` defined before sourcing.
+# For the device checks (#114): EXTRA_LIBS (more Swift static libraries, e.g.
+# libthicketdevice.a), USAGE_STRINGS (lines of "Key=text" added to the Info.plist, e.g.
+# NSMicrophoneUsageDescription), FRESH_INSTALL=1 (uninstall first, which also forgets the
+# notifications answer), PRIVACY_GRANT (simctl privacy services granted before the launch), and a
+# function `drive <action>`, called once for each `[gallery] DRIVE <action>` line the app prints.
 set -euo pipefail
 
 : "${APP_NAME:?}" "${BUNDLE_ID:?}" "${ARCHIVE:?}" "${SWIFT_LIB:?}" "${RUN_ENV:?}" "${DEVICE:?}"
@@ -65,13 +70,19 @@ swiftc \
   -import-objc-header Sources/Thicket-Bridging-Header.h \
   ${flags[@]+"${flags[@]}"} \
   Sources/Host.swift \
-  "$SWIFT_LIB" "$ARCHIVE" \
+  "$SWIFT_LIB" ${EXTRA_LIBS:-} "$ARCHIVE" \
   ${EXTRA_LINK:-} \
   -o "$APP/$APP_NAME"
 
 # One Info.plist for every example — a UIScene manifest, without which iOS 27 will not launch
 # the app (S3) — with only the names filled in.
 sed -e "s/@APP_NAME@/$APP_NAME/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" "$HOST_DIR/Info.plist.in" >"$APP/Info.plist"
+# A usage string the app asks for: without it iOS terminates an app that asks (thicket-device-apple
+# throws first, naming the key).
+while IFS= read -r usage; do
+  [ -n "$usage" ] || continue
+  /usr/libexec/PlistBuddy -c "Add :${usage%%=*} string ${usage#*=}" "$APP/Info.plist"
+done <<<"${USAGE_STRINGS:-}"
 if declare -F bundle_assets >/dev/null; then bundle_assets "$APP"; fi
 
 echo "RESULT app_unstripped_bytes=$(stat -f%z "$APP/$APP_NAME")"
@@ -87,7 +98,15 @@ codesign --force --sign - "$APP"
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null 2>&1 || true
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+# Uninstalling forgets the notifications answer, but not on a just-booted simulator: there a
+# "Don't Allow" from before the boot survived the uninstall and reinstall in 7 of 9 tries (0 s,
+# 10 s or 30 s after the boot, or after launching Settings or the app first). Uninstalled in the
+# boot it was given in, it was forgotten every time (9 tries), across a later reboot too. So a
+# fresh install also uninstalls at the end of the run, below, and verify-apple's reboots do no
+# harm. (#114)
+if [ "${FRESH_INSTALL:-0}" = 1 ]; then xcrun simctl uninstall "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true; fi
 xcrun simctl install "$DEVICE" "$APP"
+for service in ${PRIVACY_GRANT:-}; do xcrun simctl privacy "$DEVICE" grant "$service" "$BUNDLE_ID"; done
 
 # SIMCTL_CHILD_ passes an environment variable through to the app, which is how a self-test
 # is switched on.
@@ -99,8 +118,20 @@ LOG=build/run.log
 env "SIMCTL_CHILD_$RUN_ENV" xcrun simctl launch --console-pty "$DEVICE" "$BUNDLE_ID" >"$LOG" 2>&1 &
 LAUNCHER=$!
 # The verdict line ends the wait, so a passing run is no slower for a long limit.
+# Each DRIVE line is acted on once, in order, by the app's own `drive`.
+driven=0
 for _ in $(seq 1 "${WAIT_SECONDS:-120}"); do
   grep -q "ALL CHECKS PASSED\|CHECK(S) FAILED" "$LOG" 2>/dev/null && break
+  if declare -F drive >/dev/null; then
+    lines=$(grep -a "\[gallery\] DRIVE " "$LOG" 2>/dev/null | tr -d "\r" | sed "s/.*DRIVE //" || true)
+    total=$(printf "%s" "$lines" | grep -c . || true)
+    while [ "$driven" -lt "$total" ]; do
+      driven=$((driven + 1))
+      action=$(printf "%s\n" "$lines" | sed -n "${driven}p")
+      echo "=== DRIVE $action ==="
+      drive "$action" || { echo "=== DRIVE $action failed ==="; drive_failed=1; }
+    done
+  fi
   sleep 1
 done
 
@@ -109,8 +140,11 @@ if [ "${SCREENSHOT:-0}" = 1 ]; then
 fi
 kill "$LAUNCHER" 2>/dev/null || true
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+if [ "${FRESH_INSTALL:-0}" = 1 ]; then xcrun simctl uninstall "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true; fi
 
 echo "=== app output ==="
 cat "$LOG"
 echo "=== end ==="
+# A DRIVE that failed (no alert to answer, say) fails the run, whatever the app concluded.
+if [ "${drive_failed:-0}" = 1 ]; then echo "a DRIVE action failed"; exit 1; fi
 grep -q "ALL CHECKS PASSED" "$LOG"

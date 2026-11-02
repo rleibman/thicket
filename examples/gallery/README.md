@@ -176,7 +176,7 @@ self-test also runs `examples/http`'s HTTP checks over `thicket-http-android`, a
 others: `build.sh` starts `examples/http/server.py` on this machine and `adb reverse`s its
 port, and the app's network security config allows cleartext to loopback only.
 
-The Device section (GTK and Android) shows the app's lifecycle, the number of times it came
+The Device section (every host) shows the app's lifecycle, the number of times it came
 back to the front, and the notifications permission, with a button to ask for it. On GTK the
 self-test hides and shows the window, and checks the terminate hook once the main loop has
 ended. On Android it can't press Home or answer the system's dialog itself, so it asks
@@ -189,6 +189,16 @@ ended. On Android it can't press Home or answer the system's dialog itself, so i
 
 `build.sh` revokes `POST_NOTIFICATIONS` before the run, so the dialog appears each time.
 After the verdict it presses Back and looks for the terminate hook's line.
+
+On macOS the self-test hides and unhides the app and minimises and restores its window through
+AppKit, and ends with `NSApp.terminate`: the terminate hook prints the verdict. With the Mac's
+screen locked every window is occluded, so it skips those, saying so. The gallery is a plain
+executable, so asking for notifications throws (no app bundle). On iOS `ios-app/build-app.sh`
+is the user, through `examples/ios-host/run-ios-app.sh`'s `drive`: `home` launches Settings
+over the gallery, `front` launches the gallery again (the same process comes back), and `deny`
+answers the alert through an XCUITest (`examples/ios-host/tapper`). It installs afresh and uninstalls at the end (a
+just-booted simulator kept the last answer through an uninstall), so the alert is shown, and grants the microphone with `simctl privacy`. The terminate hook runs on a
+posted `willTerminateNotification`.
 
 The Location section shows whether positions can be had and the latest one, with "Use my
 location" to ask for the permission. On GTK it says location is unavailable on the desktop.

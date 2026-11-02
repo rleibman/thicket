@@ -64,7 +64,9 @@ object Parse {
     "sui_bool_cb"     -> CType.BoolCb,
     "sui_row_cb"      -> CType.RowCb,
     "sui_value_cb"    -> CType.ValueCb,
-    "sui_int_cb"      -> CType.IntCb
+    "sui_int_cb"      -> CType.IntCb,
+    "thk_dev_void_cb" -> CType.VoidCb,
+    "thk_dev_int_cb"  -> CType.IntCb
   )
 
   /** Splits `const char *title` into its type and drops the parameter name. C puts the `*` with the name, so the type
@@ -102,6 +104,8 @@ object Parse {
           val args = splitArgs(argsRaw).map(cParamType)
           if ret.isDefined && args.forall(_.isDefined) then decls += Decl(name, ret.get, args.flatten)
           else unparsed += line
+        // The callback types a header defines for itself (thicket_device.h), not functions.
+        case l if l.trim.startsWith("typedef")                                    => ()
         case l if l.contains(s"${prefix}_") && l.contains("(") && l.endsWith(";") => unparsed += l
         case _                                                                    => ()
       }
@@ -124,7 +128,9 @@ object Parse {
     "sui_bool_cb"                  -> CType.BoolCb,
     "sui_row_cb"                   -> CType.RowCb,
     "sui_value_cb"                 -> CType.ValueCb,
-    "sui_int_cb"                   -> CType.IntCb
+    "sui_int_cb"                   -> CType.IntCb,
+    "thk_dev_void_cb"              -> CType.VoidCb,
+    "thk_dev_int_cb"               -> CType.IntCb
   )
 
   /** A trailing `?` is Swift's optional, which is the same C pointer — `sui_get_text` returns `UnsafePointer<CChar>?`

@@ -72,6 +72,63 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-10-30 — **Apple lifecycle and permissions: `thicket-device-apple`, a Swift library of
+  its own; iOS foreground is the scene's foreground, not its activation; macOS is the occlusion
+  state** (#114, docs/16 §16.10 item 3).
+  - **Swift in the jar, not a C helper**, like `thicket-http-apple`: block-based
+    `NotificationCenter` observers, completion-block permission APIs, and #118's
+    `CLLocationManagerDelegate` to come. `libthicketdevice.a` (43 KB macOS, 46 KB simulator);
+    the ABI is `DeviceAbi` (`thk_dev_*`, 9 functions) with `DeviceConsistencySpec` (7 tests).
+    Unlike HTTP it pushes: every callback is on the main thread (the answers are moved there),
+    wrapped in `GcState.guarded`.
+  - **iOS:** `Foreground` from a scene's `willEnterForeground` to the last `didEnterBackground`.
+    Measured in a probe on the iOS 27 simulator: the notifications alert did not deactivate the
+    scene at all (no `willDeactivate` until after it was answered), and a headless simulator
+    (no Simulator.app) never activated a scene, so activation would have read `Background` for
+    an app on screen. `simctl terminate` sends no `willTerminate`.
+  - **macOS:** `NSApplication.didChangeOcclusionStateNotification`, `NSApp.occlusionState`. One
+    notification for hide (35 ms), minimise (~0.6 s, the animation), order-out and covered, in a
+    probe. A locked screen occludes everything: `Background`, correctly, and nothing an app does
+    changes it.
+  - **Permissions:** `AVCaptureDevice` (camera, microphone), `UNUserNotificationCenter`
+    (provisional counts as `Granted`); not yet asked reads `Denied`; `Restricted` is real. A
+    missing `NSCameraUsageDescription` / `NSMicrophoneUsageDescription` throws
+    `IllegalStateException` naming it (iOS would terminate the app), and so do notifications
+    outside an app bundle (`UNUserNotificationCenter` raises there). Location throws
+    `UnsupportedOperationException` until #118 adds it to the same library.
+  - **Answering the alert in a self-test needs XCUITest.** `simctl` has no tap, `simctl privacy`
+    has no notifications service, a logic test may not use `XCUIApplication` ("Device is not
+    configured for UI testing"), and System Events has no assistive access here (-1719). A
+    UI-testing bundle with no target app (`examples/ios-host/tapper`, a hand-written 150-line
+    `project.pbxproj`) taps SpringBoard's button: ~8 s a tap with `test-without-building`.
+    `run-ios-app.sh` gains `drive` (for `[gallery] DRIVE` lines, as on Android),
+    `EXTRA_LIBS`, `USAGE_STRINGS`, `FRESH_INSTALL` and `PRIVACY_GRANT`.
+  - **Measured.** iOS gallery **191** (179 + 12) on "iPhone 17e": Settings over the app →
+    `Background` 4.0–4.6 s after the DRIVE line, relaunch → `Foreground` 0.6–1.3 s, "Don't Allow" →
+    `Denied` 6–16 s (the XCUITest's launch; its first build included), asked again → `Denied`
+    at once, no alert;
+    microphone (granted by `simctl privacy`) → `Granted`; the terminate hook on a posted
+    `willTerminateNotification`. macOS gallery **195** (185 + 10), twice per
+    `verify-apple.sh`: hidden → `Background` 49 ms, unhidden → `Foreground` 33 ms, minimised →
+    595 ms, restored → 528 ms; the terminate hook runs from a real `NSApp.terminate` and prints
+    the verdict. With the screen locked (as it was for most of this work) every window is
+    occluded: the lifecycle checks are skipped, saying so, and the gallery passes **191**
+    (185 + 6).
+  - **`bin/verify-apple.sh "iPhone 17e"`: 17/17 steps** (a new `shim-device` step; `abi` runs
+    `DeviceConsistencySpec`), on `9cff276`.
+  - **Found on the way: a vacuous pass.** The first full `verify-apple.sh` passed while the
+    alert was never shown: on a just-booted simulator, uninstalling did not forget an earlier
+    "Don't Allow" (7 of 9 tries, 30 s after the boot included), so the request
+    answered `Denied` in 17 ms and the tap failed unnoticed. Now the self-test checks the
+    permission is not yet asked (`AppleDevice.testing.notYetAsked`; the API reads both as
+    `Denied`), a failed DRIVE fails the run, a fresh install also uninstalls at the end of the run (in the
+    same boot that always worked, 9 of 9), and the
+    tapper skips xcodebuild's failure sysdiagnose (which held a failed tap for 10 min).
+  - **Controls**, each restored: iOS without the `didEnterBackground` observer, the app is
+    suspended unseen and the run ends with no verdict; without `willEnterForeground`, 2 fail;
+    answers not delivered, 3 fail; no will-terminate observer, 1 fails; no usage-string check,
+    1 fails (`Success(Denied)`). macOS without the will-terminate observer, no verdict; without the occlusion observer, 4 fail.
+
 - 2026-11-01 — **The live camera preview: the owner took every recommendation in
   `docs/17-camera-preview.md` §17.8.**
   1. **An embedding point, not a built-in `WidgetKind`:** `Element.Platform` in `core`, handled

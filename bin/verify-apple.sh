@@ -16,6 +16,7 @@
 #   toolchain      xcrun swiftc / xcodebuild versions, recorded with the result
 #   shim-macos     compile Shim+AppKit.swift (build-shim.sh macos)
 #   shim-ios       compile Shim+UIKit.swift  (build-shim.sh ios-sim)
+#   shim-device    compile thicket-device-apple's Swift library, macOS and simulator (#114)
 #   abi            shim-gen's consistency checks: ABI, C header, Scala externs, both shims
 #   secrets        thicket-secrets-apple's tests against the real Keychain (#108): conformance, isolation
 #   link           sbt nativeLink for the six Apple apps, after deleting their old outputs
@@ -23,8 +24,9 @@
 #                  after each, pbpaste must read its last copy (the user's text is put back)
 #   macos-todo     THICKET_SELFTEST=1 todo-macos
 #   macos-lazy     THICKET_LAZYTEST=1 todo-macos: 10 000 rows, virtualised and freed
-#   ios-gallery    the gallery on the simulator (examples/gallery/ios/ios-app/build-app.sh), then
-#                  simctl pbpaste must read its last copy
+#   ios-gallery    the gallery on the simulator (examples/gallery/ios/ios-app/build-app.sh): it
+#                  opens Settings over the gallery and answers its notifications alert through an
+#                  XCUITest (examples/ios-host/tapper); then simctl pbpaste must read its last copy
 #   ios-todo       the todo app on the simulator (examples/todo-apple/ios/ios-app/build-app.sh)
 #   ios-lazy       the 10 000-row probe on the simulator
 #   fit            ContentFit measured on both toolkits (shim/run-fit-harness.sh)
@@ -180,6 +182,7 @@ sbt shutdown >/dev/null 2>&1 || true
 run toolchain sh -c 'sw_vers; xcodebuild -version; xcrun swiftc --version'
 run shim-macos modules/renderer-apple/shim/build-shim.sh macos
 run shim-ios modules/renderer-apple/shim/build-shim.sh ios-sim
+run shim-device sh -c 'modules/device-apple/shim/build-shim.sh macos && modules/device-apple/shim/build-shim.sh ios-sim'
 run abi sbt --error shimGen/testFull
 run secrets sbt --error secretsApple/testFull
 run link link_all
