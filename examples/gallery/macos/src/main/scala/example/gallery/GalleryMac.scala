@@ -23,6 +23,7 @@ import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
+import thicket.share.apple.AppleShare
 import thicket.sqlite.NativeSqlite
 import thicket.storage.apple.AppleStorage
 
@@ -57,7 +58,9 @@ object GalleryMac {
             // No CMMotionManager on macOS (docs/16 §16.9, decision 7), as on GTK.
             motion = Some(Motion.unavailable(GalleryMotionChecks.noDesktopMotion)),
             clipboard = Some(AppleClipboard()),
-            haptics = Some(AppleHaptics())
+            haptics = Some(AppleHaptics()),
+            // The share sheet (#134): a file is shared as a copy under the cache directory.
+            share = Some(AppleShare(storage.dirs.cache))
           )
         )
       // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise
