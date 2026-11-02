@@ -470,7 +470,11 @@ Every service gets a gallery section and self-test checks on every host where it
      text and files through the chooser. Files are served by Thicket's own `ContentProvider`
      (owner's decision 2026-11-01: not AndroidX's `FileProvider`), which the app declares in its
      manifest. The gallery is its own share target, and the share sheet's own read of the file
-     shows the grant works.
+     shows the grant works. *Apple done 2026-11-02 (#134): `thicket-share-apple`, a C helper (no
+     Swift; the subject through a `UIActivityItemSource` class made at run time). On iOS an
+     XCUITest taps "Copy" in the `UIActivityViewController` and `simctl pbpaste` reads the text;
+     on macOS the `NSSharingServicePicker` popover is found, its offered services read and it is
+     closed, but no service can be driven (its list is drawn out of process).*
 6. **Tier 3** as separate designs, live camera preview first if wanted. *The owner wants tier 3
    (2026-11-01); the camera preview's design is `docs/17-camera-preview.md`, approved with every
    recommendation (2026-11-01); the embedding point is next.*
