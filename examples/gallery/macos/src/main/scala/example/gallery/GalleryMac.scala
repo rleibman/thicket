@@ -17,6 +17,7 @@
 package example.gallery
 
 import thicket.device.apple.AppleDevice
+import thicket.location.Location
 import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
@@ -43,16 +44,19 @@ object GalleryMac {
       val storage = AppleStorage(bundleId)
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then
         AppleApp.postToUi(() => GallerySelfTest.run(Some(storage), bundleId, svgWhereDecoded = true))
-      val services = Some(
-        Services(
-          storage,
-          NativeSqlite.driver,
-          () => AppleSecrets.open(bundleId),
-          device = Some(AppleDevice()),
-          clipboard = Some(AppleClipboard()),
-          haptics = Some(AppleHaptics())
+      val services =
+        Some(
+          Services(
+            storage,
+            NativeSqlite.driver,
+            () => AppleSecrets.open(bundleId),
+            device = Some(AppleDevice()),
+            // No location service on the desktop yet (docs/16 §16.9, decision 7), as on GTK.
+            location = Some(Location.unavailable(GalleryLocationChecks.noLocation)),
+            clipboard = Some(AppleClipboard()),
+            haptics = Some(AppleHaptics())
+          )
         )
-      )
       // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise
       // (#85). Asked of the decoder, not the OS version: on macOS 13, the shim's minimum, NSImage
       // is not reported to take SVG, and an image view given bytes it cannot decode is an empty

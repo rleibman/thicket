@@ -318,7 +318,7 @@ import scala.scalanative.unsafe.*
   * Every callback arrives on the main thread; wrap it in `GcState.guarded`.
   */
 @extern
-private[apple] object DeviceShim {
+private[thicket] object DeviceShim {
 
   type VoidCb = CFuncPtr1[Long, Unit]
   type IntCb = CFuncPtr2[Long, CInt, Unit]

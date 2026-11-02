@@ -83,6 +83,48 @@ object DeviceAbi {
     )
   )
 
+  private val out = (n: String) => Abi.p(n, OutF64)
+
+  val location: List[Fn] = List(
+    Fn(
+      "thk_dev_location_availability",
+      I32,
+      Nil,
+      doc = "Whether positions can be had now: 0 yes, 1 not yet asked or denied (needs the permission),\n" +
+        "   2 location services off in Settings, 3 restricted. CLLocationManager's authorisation, and\n" +
+        "   locationServicesEnabled once that allows it (#118)."
+    ),
+    Fn(
+      "thk_dev_location_start",
+      I64,
+      List(Abi.p("fine", I32), Abi.p("fixed", VoidCb), Abi.p("ctx", I64)),
+      doc = "Adds a listener and returns its id: `fixed` is called on the main thread for each position,\n" +
+        "   which thk_dev_location_fix(0, ...) reads from inside the call. The manager updates while any\n" +
+        "   listener is left, kCLLocationAccuracyBest if one is `fine` (1), else ...Kilometer."
+    ),
+    Fn(
+      "thk_dev_location_stop",
+      Void,
+      List(Abi.p("id", I64)),
+      doc = "Removes a listener; the last one gone, stopUpdatingLocation. An unknown id is ignored."
+    ),
+    Fn(
+      "thk_dev_location_fix",
+      I32,
+      List(
+        Abi.p("which", I32),
+        out("latitude"),
+        out("longitude"),
+        out("accuracy"),
+        out("altitude"),
+        out("time_millis")
+      ),
+      doc = "A position, written out: `which` 0 the one being delivered, 1 the manager's last known one.\n" +
+        "   Returns 0, writing nothing, when there is none. NaN for an accuracy or an altitude the\n" +
+        "   platform does not give; the altitude is above the WGS 84 ellipsoid."
+    )
+  )
+
   val testing: List[Fn] = List(
     Fn(
       "thk_dev_test_hide",
@@ -105,6 +147,12 @@ object DeviceAbi {
         "   app is off screen whatever it does. 0 otherwise, and always on iOS."
     ),
     Fn(
+      "thk_dev_test_location_listeners",
+      I32,
+      Nil,
+      doc = "How many location listeners the library has: the manager is updating while it is not 0."
+    ),
+    Fn(
       "thk_dev_test_terminate",
       Void,
       Nil,
@@ -117,6 +165,7 @@ object DeviceAbi {
   val groups: List[Group] = List(
     Group("lifecycle", lifecycle),
     Group("permissions", permissions),
+    Group("location", location, doc = "CLLocationManager, for thicket-location-apple (#118)."),
     Group("testing", testing, doc = "For self-tests: what a user would do.")
   )
 

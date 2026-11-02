@@ -206,6 +206,10 @@ On Android, `build.sh` installs with location granted, and the self-test sends o
 front, then one in the background, and checks that only the first reaches the section until
 the app is back. Android throttles background location by itself, so the self-test also
 counts Thicket's listeners on the real provider: one in front, none in the background.
+On iOS (#118) the same, on the simulator: `build-app.sh` grants location with `simctl privacy`
+and moves it with `simctl location set` (`DRIVE geo`), and the count is both the wrapping
+provider's and `libthicketdevice.a`'s, since iOS suspends a background app. macOS says, as
+GTK does, that location is unavailable on the desktop.
 
 The Motion section shows which sensors the device has, and each one's latest reading. On GTK
 it says the desktop has none. On Android the self-test sets the emulator's acceleration and

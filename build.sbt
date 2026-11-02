@@ -665,6 +665,16 @@ lazy val locationAndroid = project
   .dependsOn(location.jvm, deviceAndroid)
   .settings(commonSettings, name := "thicket-location-android", scalacOptions ++= Seq("-release", "17"))
 
+/** Location on iOS, from `CLLocationManager` (#118). Scala only: the manager and its delegate are in
+  * `thicket-device-apple`'s Swift library, beside the location permission, which needs the same delegate. macOS uses
+  * `Location.unavailable` (`docs/16` §16.9, decision 7). In `platforms`; only a Mac links it.
+  */
+lazy val locationApple = project
+  .in(file("modules/location-apple"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(location.native, deviceApple)
+  .settings(commonSettings, name := "thicket-location-apple", publish / skip := !isMac)
+
 /** The motion sensors (`docs/16` §16.3, §16.10 item 4): `Motion`'s acceleration, rotation rate and attitude, run only
   * while the app is in front, and a fake provider for tests. GTK and macOS use `Motion.unavailable`.
   */
@@ -980,7 +990,7 @@ lazy val galleryMacos = project
   .in(file("examples/gallery/macos"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.macos.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, clipboardApple, hapticsApple)
+  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, locationApple, clipboardApple, hapticsApple)
   .settings(commonSettings)
   .settings(appleNativeSettings)
   .settings(galleryAppleSharedSources)
@@ -999,7 +1009,7 @@ lazy val galleryIos = project
   .in(file("examples/gallery/ios"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.ios.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, clipboardApple, hapticsApple)
+  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, locationApple, clipboardApple, hapticsApple)
   .settings(commonSettings)
   .settings(iosNativeSettings)
   .settings(galleryAppleSharedSources)
@@ -1170,6 +1180,7 @@ lazy val platforms = project
     deviceAndroid,
     deviceApple,
     locationAndroid,
+    locationApple,
     motionAndroid,
     clipboardGtk,
     clipboardAndroid,

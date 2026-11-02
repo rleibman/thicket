@@ -72,6 +72,79 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-01 — **The live camera preview: the owner took every recommendation in
+  `docs/17-camera-preview.md` §17.8.**
+  1. **An embedding point, not a built-in `WidgetKind`:** `Element.Platform` in `core`, handled
+     generically by each renderer; the preview is modules of its own (`thicket-camera-preview`,
+     `-android`, `-apple`, later `-gtk`), so only an app that shows one links a camera stack.
+  2. **GTK: `Unavailable` first.** The GStreamer/PipeWire preview comes after Android and Apple.
+  3. **macOS: build it**, with the Mac's camera, from the iOS AVFoundation code.
+  4. **No virtual camera on CI for now:** it was only needed if (2) built the GTK preview.
+  5. **v1 scope:** the preview, front/back facing, and a still capture; no video, frame
+     access, zoom, focus, torch or exposure.
+  - **Order** (§17.7): the embedding point on GTK and Android (Apple as a Mac issue), then
+    `thicket-camera-preview` and `-android`, then `-apple` (the Mac's), then `-gtk`.
+
+- 2026-11-01 — **Apple location: `thicket-location-apple` over `CLLocationManager` on iOS,
+  Scala only; the manager and its delegate live in `thicket-device-apple`'s Swift library;
+  macOS stays `Location.unavailable`** (#118, docs/16 §16.10 item 4).
+  - **Why in `libthicketdevice.a`, not a library of its own:** the location permission needs
+    the same manager and delegate. `requestWhenInUseAuthorization` has no completion block;
+    its answer is the delegate's `locationManagerDidChangeAuthorization`. Two Swift libraries
+    would each need a manager and would have to agree on who answers. So `DeviceAbi` gains a
+    `location` group (`thk_dev_location_availability`, `_start`, `_stop`, `_fix`) and
+    `thk_dev_test_location_listeners` (14 functions in all). `thicket-location-apple` is
+    Scala over those, and the generated `DeviceShim` is `private[thicket]` rather than
+    `private[apple]` so it can call them. The cost: every app with `thicket-device-apple`
+    links CoreLocation, which Swift autolinks. `libthicketdevice.a` went from 43 to 91 KB
+    (macOS) and from 46 to 92 KB (simulator). The stripped iOS gallery is 12 958 952 bytes.
+  - **No struct crosses the boundary.** A position is a `void(ctx)` callback, and inside it
+    Scala reads the fix through five `double *` out-parameters (`thk_dev_location_fix(0, …)`).
+    `last` is the same call with 1, which reads `manager.location`. NaN means no accuracy or
+    no altitude. The altitude is `ellipsoidalAltitude`, as `Fix` documents (WGS 84), not
+    `altitude` (mean sea level). The library keeps a listener table. It updates while the
+    table is not empty, at `kCLLocationAccuracyBest` if any listener is `Fine`, otherwise at
+    `…Kilometer`.
+  - **Permission:** code 0 joins `status`, `missing` and `request`. A missing
+    `NSLocationWhenInUseUsageDescription` (macOS: `NSLocationUsageDescription`) throws
+    `IllegalStateException` naming the key. `availability` asks for that key first, so it
+    throws too, as on Android. `locationServicesEnabled()` is called only once the
+    authorisation allows location, because Apple warns that it can block the main thread.
+  - **iOS suspends a background app**, so the self-test cannot wait there. A 3 s timer set
+    after `didEnterBackground` never fired, and the first two runs timed out on it. The app
+    now prints `DRIVE geo …`, `DRIVE wait 3` and `DRIVE front` together. It records what the
+    section showed while it was away and checks that afterwards. `run-ios-app.sh` gains a
+    `before_launch` hook, which the gallery uses to `simctl location clear`. The location is
+    granted with `PRIVACY_GRANT="microphone location"`. `WAIT_SECONDS` is now 360, up from
+    240, which the first run ran past.
+  - **Measured** on "iPhone Air" (iOS 27 simulator). The iOS gallery passes **199** checks
+    (191 + 8, the Location section). A position from `simctl location set` reached the screen
+    2.0–2.6 s after the DRIVE line (6 runs). Back in front, the new position showed 3.5–3.8 s
+    after the DRIVE lines (the 3 s wait included). In front, 1 listener counted through the
+    wrapping provider and 2 in the library (the gallery's and the probe's). In the
+    background, 0 and 0. After the probe's owner was disposed, 0 and 1.
+    `request(Location)` with the grant already given answers `Granted` on a later turn. The
+    Device section's location check is flipped, and the count stays the same: iOS
+    `Granted`, macOS throws naming `NSLocationUsageDescription`. The macOS gallery passes
+    **192** with the screen locked (191 + 1: the section says location is unavailable, and
+    "Use my location" changes nothing). Unlocked it would be 196 (195 + 1); that was not
+    measured.
+  - **`bin/verify-apple.sh "iPhone Air"`: 17/17 steps** on `2e2d61a`. Two earlier full runs
+    failed `ios-gallery` on the notifications flake described below, and the first of them
+    also failed `getting-started` ("the macOS app has no window") while the machine was under
+    load (`shim-ios` took 941 s).
+  - **Control:** with `WhileInFront`'s background stop removed, exactly 1 check fails ("in
+    the background, Thicket stops listening": 1 counted, 2 in the library). "A position set
+    in the background did not reach the section" still passes, as on Android. Restored.
+  - **Found on the way, #114's and not fixed here:** on a just-booted simulator,
+    `UNUserNotificationCenter.getNotificationSettings` sometimes takes longer than
+    `notificationStatus()`'s 5 s cap. Probed: `notYetAsked` returned false in 5002 ms on 3 of
+    7 fresh boots, and in 1–1349 ms on the others. It does the same with no `CLLocationManager`
+    in the app at all (1 of 3 boots). The timeout reads as `Denied`, so "notifications start
+    not yet asked" fails. Twice the request's completion never came either. That left the
+    one-at-a-time `PermissionQueue` stuck, so the location request waiting behind it failed
+    too. It may also be what #114 read as "uninstalling did not forget an earlier Don't Allow".
+
 - 2026-10-30 — **Apple lifecycle and permissions: `thicket-device-apple`, a Swift library of
   its own; iOS foreground is the scene's foreground, not its activation; macOS is the occlusion
   state** (#114, docs/16 §16.10 item 3).
