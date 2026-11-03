@@ -41,7 +41,7 @@ object CameraAbi {
       I32,
       Nil,
       doc = "1 if UIImagePickerController.isSourceTypeAvailable(.camera): the device has a camera\n" +
-        "   the picker can use. 0 otherwise, and on the simulator, which has none."
+        "   the picker can use. 0 otherwise (including on devices/simulators without camera support)."
     ),
     Fn(
       "thk_cam_capture",
