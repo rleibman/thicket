@@ -18,6 +18,8 @@ import XCTest
 
 final class TapperUITests: XCTestCase {
   func testAnswerTheAlert() throws {
+    // A failed step ends the test, so no "[tapper] tapped" line follows it.
+    continueAfterFailure = false
     let env = ProcessInfo.processInfo.environment
     let what = env["TAP"] ?? "allow"
     if what == "deny" || what == "allow" {
@@ -58,8 +60,23 @@ final class TapperUITests: XCTestCase {
         local.tap()
       }
       XCTAssertTrue(there.waitForExistence(timeout: 10), "no \(what == "document" ? name : "Save") in 10 s")
-      there.tap()
-      print("[tapper] tapped \(what == "document" ? name : "Save")")
+      if what == "export" {
+        // Tapped while "On My iPhone" is still sliding in, Save is ignored (measured, #125): wait
+        // for its contents, and tap again while the browser is still up.
+        _ = app.cells.firstMatch.waitForExistence(timeout: 10)
+        sleep(1)
+        var taps = 0
+        while save.exists && taps < 4 {
+          save.tap()
+          taps += 1
+          sleep(2)
+        }
+        XCTAssertFalse(save.exists, "Save is still there after \(taps) taps")
+        print("[tapper] tapped Save (\(taps) taps)")
+      } else {
+        there.tap()
+        print("[tapper] tapped \(name)")
+      }
     default:
       XCTFail("unknown TAP: \(what)")
       return
