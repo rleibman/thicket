@@ -72,6 +72,35 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-02 — **The embedding point: `WidgetKind.Platform`, `Prop.View`, built on GTK and
+  Android** (`docs/17` §17.3, step 1 of §17.7; the Apple half is #145).
+  - **Shape:** `trait PlatformView { def description: String }` in `renderer-api`, and
+    `dsl.Platform(view | Signal[view])` in `core`. Each renderer extends the trait with how it
+    makes the native view: `GtkPlatformView.create(): Ptr[GtkWidget]`,
+    `AndroidPlatformView.create(context): View`, each with a `release` that defaults to doing
+    nothing. A module that provides a view (the camera preview next) implements the traits for
+    the platforms it supports; the renderers know nothing of it. No registry: the view itself is
+    the factory the renderer asks, which is all §17.3's "a factory the platform module
+    registered" needs.
+  - **Generic handling:** the handle is a container (`GtkBox`, `FrameLayout`) holding the one
+    native view, so a changed view replaces the child and the handle stays. `release` runs
+    while the native view is still alive and in its parent, then it is removed. The table that
+    tracks it is one of each renderer's per-handle tables, so it is swept on `destroy` and
+    counted by the self-tests' leak checks.
+  - **A view with nothing for the renderer** shows `<description>: not available on GTK` (or
+    Android), as a service's `Unavailable` does. **Apple** maps the kind to a label and shows
+    `… not available on AppKit/UIKit yet` for every view until the shims can host one (#145).
+  - **Measured.** `PlatformSpec` 2/2 (core 172). GTK gallery **144** (138 + 6: the section's
+    heading and 5 checks), todo 69, under a headless `gnome-shell` (the desktop was locked).
+    Android gallery **95** (90 + 5) on `s2test`. The host makes a `GtkLabel` / `TextView` itself;
+    the checks find that very widget in the window, then replace it and find the old one was
+    released while alive (GTK reads its text in `release`, Android its parent) and the
+    renderer's table count unchanged.
+  - **Falsified.** Skipping `release`, or calling it after the removal, fails "released while
+    still alive" on both (GTK also logs `Gtk-CRITICAL … GTK_IS_WIDGET`); an empty "not
+    available" label fails "says so" on both; a `Platform` that ignores its signal fails
+    `PlatformSpec`'s second test.
+
 - 2026-11-02 — **Apple camera capture: `thicket-camera-apple` over `UIImagePickerController` on
   iOS, a Swift library of its own; macOS `Camera.unavailable`; the iOS 27 simulator has a
   camera screen whose shutter takes nothing** (#129, docs/16 §16.10 item 5).

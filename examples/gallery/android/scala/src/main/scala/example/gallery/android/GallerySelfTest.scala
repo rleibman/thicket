@@ -70,6 +70,7 @@ object GallerySelfTest {
   private val Tag = "thicket"
   private val Delay = 150L
   private var failures = 0
+  private var platformEntries = 0
   private val main = Handler(Looper.getMainLooper)
 
   private def check(
@@ -206,6 +207,48 @@ object GallerySelfTest {
             "a ZIO effect's result reached the screen through UiThread",
             texts.contains(Gallery.effectResult),
             texts.filter(_.startsWith("Load")).toString
+          )
+        },
+        // The embedding point (docs/17 §17.3): the TextView the host's view made is the one on screen, a view Android
+        // has nothing for says so, and replacing the view releases the old one before it is removed.
+        () => {
+          def onScreen(v: View) = findAll(screen)(_ eq v).nonEmpty
+          val first = NativeLabel.made.headOption
+          check(
+            "Platform: the TextView the host's view made is on screen, with its text",
+            NativeLabel.made.length == 1 && first.exists(v =>
+              onScreen(v) && allTexts(v) == List(Gallery.nativeLabelText(1))
+            ),
+            s"made ${NativeLabel.made.length}; on screen ${first.map(onScreen)}; texts ${first.map(allTexts)}"
+          )
+          val nowhere = s"${Gallery.nowhere.description}: not available on Android"
+          check(
+            "Platform: a view Android has nothing for says so",
+            texts.contains(nowhere),
+            texts.filter(_.contains("not available")).toString
+          )
+          platformEntries = activity.renderer0.tableEntries
+          click("Make the native view again")
+        },
+        () => {
+          val first = NativeLabel.made.headOption
+          val second = NativeLabel.made.lift(1)
+          check(
+            "Platform: a new view makes a new TextView, in the old one's place",
+            NativeLabel.made.length == 2 && second.exists(v =>
+              findAll(screen)(_ eq v).nonEmpty && allTexts(v) == List(Gallery.nativeLabelText(2))
+            ) && !texts.contains(Gallery.nativeLabelText(1)),
+            s"made ${NativeLabel.made.length}; texts ${texts.filter(_.startsWith("A native"))}"
+          )
+          check(
+            "Platform: and the old view was released while still in the layout, then removed",
+            NativeLabel.released.toList == first.toList.map(_ -> true) && first.forall(_.getParent == null),
+            s"released ${NativeLabel.released.map(_._2)}; old parent now ${first.map(_.getParent)}"
+          )
+          check(
+            "Platform: replacing the view leaves the renderer's tables as they were",
+            activity.renderer0.tableEntries == platformEntries,
+            s"$platformEntries before, ${activity.renderer0.tableEntries} after"
           )
         },
         // Device services (docs/16): SharedPreferences, the app's internal directories, and SQLite through

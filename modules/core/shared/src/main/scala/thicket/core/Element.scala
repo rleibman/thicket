@@ -27,6 +27,7 @@ import thicket.renderer.{
   ImageSource,
   MenuItem,
   Orientation,
+  PlatformView,
   Prop,
   Rgb as RRgb,
   TextRole,
@@ -173,6 +174,20 @@ object dsl {
 
   /** A hairline rule, drawn at the platform's own weight and colour. */
   def Divider(): Element = Widget(WidgetKind.Divider, Nil, Nil)
+
+  /** A view the platform's own code makes: a camera preview, later a map or a web view (`docs/17` §17.3). `view` comes
+    * from the module that provides it and says how each renderer makes its native widget; a renderer it has nothing for
+    * shows its `description` and that it is not available there. A signal swaps the view, releasing the old one.
+    *
+    * It is laid out as a leaf: `.grow` gives it the room its siblings leave, as for an `Image`.
+    */
+  def Platform(view: PlatformView | Signal[PlatformView]): Element = {
+    val attr = view match {
+      case s: Signal[PlatformView] @unchecked => Reactive(s, Prop.View(_))
+      case v: PlatformView                    => Static(Prop.View(v))
+    }
+    Widget(WidgetKind.Platform, Seq(attr), Nil)
+  }
 
   /** A picture from local data.
     *

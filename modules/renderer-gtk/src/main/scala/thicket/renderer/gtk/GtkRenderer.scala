@@ -272,6 +272,9 @@ final class GtkRenderer extends Renderer {
         case WidgetKind.TabView => tabs.createTabView()
         case WidgetKind.Tab     => tabs.createTab()
 
+        // A box holding the view's own widget; the widget comes with Prop.View.
+        case WidgetKind.Platform => platformViews.create()
+
         case WidgetKind.DatePicker =>
           val button = gtk_menu_button_new()
           val calendar = gtk_calendar_new()
@@ -434,6 +437,8 @@ final class GtkRenderer extends Renderer {
             if sw then Handles.connect(handle, "notify::active", Handles.notifiedPtr, id)
             else Handles.connect(handle, "toggled", Handles.changedPtr, id)
         }
+
+      case Prop.View(view) => platformViews.setView(handle, view)
 
       case Prop.SafeArea(_) =>
         // Nothing to do, and that is the correct answer rather than a gap. GTK4 has no
@@ -1034,6 +1039,8 @@ final class GtkRenderer extends Renderer {
   /** TabView and Tab, kept in their own class; see `GtkTabs`. */
   private val tabs = GtkTabs(suppress)
 
+  private val platformViews = GtkPlatformViews(perHandle)
+
   def insertAfter(
     parent: Handle,
     child:  Handle,
@@ -1185,6 +1192,8 @@ final class GtkRenderer extends Renderer {
     // goes — GTK4 frees a widget's children with it, and the popover is not in the child
     // list the box knows about.
     menuPopover.get(handle).foreach(gtk_widget_unparent)
+    // The view's own release runs while its widget is still alive: unparenting the box frees it.
+    platformViews.destroy(handle)
 
     // GTK4: a widget is owned by its parent, and unparenting drops that reference, which
     // frees it. `g_object_unref` here is wrong — GTK says so out loud: "has a parent GtkBox

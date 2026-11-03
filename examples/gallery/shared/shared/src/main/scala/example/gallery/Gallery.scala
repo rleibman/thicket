@@ -28,6 +28,7 @@ import thicket.renderer.{
   ImageSource,
   MenuItem,
   Orientation,
+  PlatformView,
   TextRole
 }
 import example.gallery.buildinfo.BuildInfo
@@ -78,6 +79,8 @@ object Gallery {
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
+    // Which native label the Platform section shows: each new number is a new view, so the old one is released.
+    val nativeView: Var[Int] = Var(1)
 
     /** The big list's data. A `Var`, not a constant: a list whose data never changes cannot show that a renderer
       * re-binds the rows it is showing when it does (review 2026-10-20, P1-3).
@@ -119,6 +122,19 @@ object Gallery {
   /** Where the gallery's links go. On the object so the self-test can say what should have opened. */
   val repoUrl:    String = "https://github.com/rleibman/thicket"
   val licenceUrl: String = "https://www.apache.org/licenses/LICENSE-2.0"
+
+  /** The text of the native label the host's view makes for the Platform section, the `n`th time. */
+  def nativeLabelText(n: Int): String = s"A native label, made by the host ($n)"
+
+  /** The Platform section's view on a host that has none: each renderer shows that it is not available. */
+  val noNativeLabel: PlatformView = new PlatformView {
+    val description = "A native label"
+  }
+
+  /** A view no renderer has, so every platform shows its own "not available" for it. */
+  val nowhere: PlatformView = new PlatformView {
+    val description = "A view for no platform"
+  }
 
   /** The message of the exception the "Throw from a handler" button raises, so a self-test can tell it apart. */
   val deliberate: String = "deliberate, from the gallery's Errors section"
@@ -168,17 +184,18 @@ object Gallery {
   val effectResult: String = "Loaded 42, on the UI thread"
 
   def screen(
-    model:    Model,
-    loaded:   Signal[RemoteData[Nothing, String]],
-    logoFile: String,
-    logo:     Array[Byte],
-    storage:  Option[StorageDemo] = None,
-    device:   Option[DeviceDemo] = None,
-    location: Option[LocationDemo] = None,
-    motion:   Option[MotionDemo] = None,
-    clip:     Option[ClipboardDemo] = None,
-    pickers:  Option[PickersDemo] = None,
-    sharing:  Option[ShareDemo] = None
+    model:      Model,
+    loaded:     Signal[RemoteData[Nothing, String]],
+    logoFile:   String,
+    logo:       Array[Byte],
+    storage:    Option[StorageDemo] = None,
+    device:     Option[DeviceDemo] = None,
+    location:   Option[LocationDemo] = None,
+    motion:     Option[MotionDemo] = None,
+    clip:       Option[ClipboardDemo] = None,
+    pickers:    Option[PickersDemo] = None,
+    sharing:    Option[ShareDemo] = None,
+    nativeView: String => PlatformView = _ => Gallery.noNativeLabel
   ): Screen =
     Screen(
       title = "Thicket gallery",
@@ -414,6 +431,13 @@ object Gallery {
               emphasis = Emphasis.Secondary
             )
           ),
+          // The embedding point (docs/17 §17.3): a view the host's own code makes, sized and released by the renderer.
+          // The host makes a native label; the button replaces it, which releases the old one.
+          section("Platform — a view the platform's own code makes")(
+            Platform(model.nativeView.map(n => nativeView(Gallery.nativeLabelText(n)))),
+            Button("Make the native view again")(model.nativeView.update(_ + 1)),
+            Platform(Gallery.nowhere)
+          ),
           // Proof that BuildInfo is wired, not just generated: this is `galleryShared`'s own
           // object, in its own package, carrying the git-derived version. Each module has
           // one, so a bug report from any platform can name the commit it was built from.
@@ -640,9 +664,10 @@ object Gallery {
     * draw, and in the device services they have.
     */
   def app(
-    logoFile: String = logo,
-    logo:     Array[Byte] = Array.emptyByteArray,
-    services: Option[Services] = None
+    logoFile:   String = logo,
+    logo:       Array[Byte] = Array.emptyByteArray,
+    services:   Option[Services] = None,
+    nativeView: String => PlatformView = _ => noNativeLabel
   )(using Owner
   ): AppRoot = {
     val bytes = if logo.nonEmpty then logo else logoBytes(logoFile)
@@ -679,7 +704,8 @@ object Gallery {
     currentNav = Some(nav)
     NavHost(nav) {
       case Route.Catalogue =>
-        val s = screen(model, loaded, logoFile, bytes, storage, device, location, motion, clip, pickers, sharing)
+        val s =
+          screen(model, loaded, logoFile, bytes, storage, device, location, motion, clip, pickers, sharing, nativeView)
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }
