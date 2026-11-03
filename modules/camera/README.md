@@ -7,12 +7,14 @@ the app gets the photo. The plan is in `docs/16-device-services.md`, §16.3 and 
 |---|---|---|
 | `thicket-camera` | JVM, Native | the API: `Camera`; `Camera.unavailable(reason)`; `testing.FakeCamera` |
 | `thicket-camera-android` | Android 10+ | the camera app's `ACTION_IMAGE_CAPTURE` |
+| `thicket-camera-apple` | iOS | `UIImagePickerController` with `sourceType = .camera`, through a Swift library of its own (`libthicketcamera.a`, in the jar) |
 
 GTK and macOS have no camera screen to take a photo with (the portal's camera is a live
-stream, not a capture): use `Camera.unavailable(reason)`. The iOS half is a Mac issue.
+stream, not a capture; decision 7 for the Mac): use `Camera.unavailable(reason)`.
 
 ```scala
-val camera = AndroidCamera(this)          // in createApp; on GTK, Camera.unavailable("…")
+val camera = AndroidCamera(this)          // in createApp; on GTK and macOS, Camera.unavailable("…")
+val camera = AppleCamera(storage.dirs.cache)   // iOS, inside AppleApp.run
 Button("Take a photo")(camera.capturePhoto(_.foreach(attach)))
 ```
 
@@ -26,6 +28,16 @@ Button("Take a photo")(camera.capturePhoto(_.foreach(attach)))
   - **Android 10+.** Before that, a MediaStore entry needs storage permission: `Unavailable`.
   - **`CAMERA` permission** is not needed. But an app that declares it (for its own preview,
     say) must have it granted, or Android refuses the camera screen: `NeedsPermission(Camera)`.
+
+- **iOS** (#129): the picker's `.originalImage`, written as a JPEG at quality 0.9 to a file of
+  the library's own in `NSTemporaryDirectory()`, then copied into the cache through
+  `PickedFiles` and deleted. The app's `Info.plist` needs **`NSCameraUsageDescription`**, or
+  iOS terminates the app when the camera opens: `availability` throws `IllegalStateException`
+  naming it, as Android does for an undeclared permission. Then `Unavailable("This device has
+  no camera")` when `isSourceTypeAvailable(.camera)` is false, `NeedsPermission(Camera)` while
+  `AVCaptureDevice`'s answer for video is not yet given or denied (`thicket-device-apple`'s
+  `Permissions.request(Camera)` asks), `Unavailable` where it is restricted. The iOS host's
+  final link takes `ios-sim/libthicketcamera.a` and `thicket-device-apple`'s library.
 
 ## How it is checked
 

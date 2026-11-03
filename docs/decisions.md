@@ -72,6 +72,61 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-02 — **Apple camera capture: `thicket-camera-apple` over `UIImagePickerController` on
+  iOS, a Swift library of its own; macOS `Camera.unavailable`; the iOS 27 simulator has a
+  camera screen whose shutter takes nothing** (#129, docs/16 §16.10 item 5).
+  - **Swift, not Scala over the Objective-C runtime:** the picker answers through a delegate,
+    and `UIImagePickerControllerDelegate` is an Objective-C protocol, so conforming needs an
+    Objective-C class (`objc_allocateClassPair`, hand-written IMPs, `class_addProtocol` and
+    `objc_msgSend` casts from Scala Native, checked by no compiler); the answer also reads a
+    `UIImage` and calls `jpegData(compressionQuality: 0.9)`. `libthicketcamera.a` is 57 144
+    bytes, **simulator only** (UIKit). Its own module and jar, so an app that takes no photos
+    links none of it. The ABI is `CameraAbi` (`thk_cam_*`, 3 functions, a `thk_cam_text_cb`)
+    with `CameraConsistencySpec` (7 tests; `shimGen` 44). `ThicketIosPlugin` unpacks it
+    (`thicketCameraApple`), `verify-apple.sh` gains a `shim-camera` step.
+  - **No bytes cross the boundary.** The library writes the JPEG to a file of its own in
+    `NSTemporaryDirectory()` and answers its path; Scala copies it into the app's cache through
+    `PickedFiles` on a thread of its own, deletes it, and answers on the UI thread. Cancel answers
+    `None`; one request at a time (a second answers `None` and the picker stays up).
+  - **`availability`**: `NSCameraUsageDescription` first, through `ApplePermissions` (missing:
+    `IllegalStateException` naming it, also where no camera would ever open, so a simulator run
+    finds it); then `Unavailable("This device has no camera")` if `isSourceTypeAvailable(.camera)`
+    is false; then `NeedsPermission(Camera)` while not yet asked or denied, `Unavailable` where
+    restricted. `AppleCamera(cache)` takes the cache directory (the gallery passes
+    `AppleStorage.dirs.cache`), so it needs no storage dependency.
+  - **The issue said the simulator has no camera. Measured, it has one:** on the iOS 27
+    simulator ("iPhone Air", Xcode 27.0) `isSourceTypeAvailable(.camera)` is true and the picker
+    shows a grey simulated frame. Its shutter ("Take Picture", tapped through XCUITest) takes
+    nothing: no review screen and no delegate call in 60 s (5 runs) or 300 s (2 runs). So the
+    gallery's iOS checks are: ready (granted by `simctl privacy`), the screen up, a second request
+    answering `None` with the first still up, the X (`Dismiss`) answering `None` (6.3–9.7 s after
+    the DRIVE line, the tapper's start included), and after the shutter, no answer and the screen
+    still up, then the X again. **The capture path — JPEG `FF D8 FF` in the cache, the temporary
+    file gone — is written and checked in the self-test but unmeasured: no device.** The path
+    for a camera-less device (`Unavailable` with the reason, "Take a photo" presenting nothing)
+    is checked in code and unmeasured too.
+  - **The gallery's iOS build now declares and grants the camera**, so the Device section's
+    camera check is flipped (the count stays): iOS `Granted`; macOS still throws naming
+    `NSCameraUsageDescription` (a plain executable, no `Info.plist`). The Pickers section shows
+    the camera alone where the host has no pickers yet (`PickersDemo.NoPickers`, Apple until #125).
+    `WAIT_SECONDS` 480, up from 360: the shutter is given 60 s.
+  - **The tapper's Tear Down took 300 s on Xcode 27.** Measured: 301.9 s and 304.0 s after taps
+    made in 1–3 s, with and without other simulators busy. Every later DRIVE line waited behind
+    it, which failed #118's location checks (30 s waits) in 3 of 3 runs. `tap.sh` now stops
+    xcodebuild by its PID once the test prints `[tapper] done` (or `failed`); afterwards "Don't
+    Allow" was answered 6.3 s after its DRIVE line and the location checks passed. The tapper
+    also gains `app <bundle id> <label>|?<label>…`: an app's own buttons, `?` for optional.
+  - **Measured:** `bin/verify-apple.sh "iPhone Air"` **19/19 steps** on `d1e524b`: iOS gallery
+    **213**, macOS gallery **197** twice with the screen locked (+ 1, "the camera says the desktop
+    has none to take a photo with"). Before it, two full iOS runs on a fresh boot failed only
+    #114's "notifications start not yet asked" (known flake); one warm re-run was cut short when
+    "iPhone Air" was shut down by something outside this work ("Unable to lookup in current
+    state: Shutting Down"); after `simctl privacy reset all` of the gallery, the warm run passed.
+  - **Control:** with a cancel's answer not delivered (Scala dropping an empty path), "closing the
+    camera screen with its X answers no photo" fails (`None; presented false`, after 300 s).
+    Restored. The control the issue proposed (availability ignoring `isSourceTypeAvailable`)
+    cannot fail on a simulator that has a camera, so it was not run.
+
 - 2026-11-02 — **Apple pickers: `thicket-pickers-apple`, a Swift library of its own, over
   `PHPickerViewController` and `UIDocumentPickerViewController` (iOS) and `NSOpenPanel` /
   `NSSavePanel` sheets (macOS)** (#125, docs/16 §16.10 item 5). Both galleries pass

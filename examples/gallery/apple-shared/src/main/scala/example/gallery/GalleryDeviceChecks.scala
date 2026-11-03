@@ -83,12 +83,20 @@ object GalleryDeviceChecks {
           lc == expected && onScreen(DeviceDemo.stateLabel(expected)) && onScreen(DeviceDemo.returnsLabel(0)),
           s"$lc; " + texts().filter(t => t.startsWith("The app") || t.startsWith("Back"))
         )
+        // #129: iOS declares NSCameraUsageDescription for the camera in the Pickers section, and the build script grants
+        // it with simctl privacy. The macOS gallery is a plain executable with no Info.plist to declare it in.
         val camera = Try(ApplePermissions.status(Permission.Camera))
         check(
-          "a permission whose Info.plist usage string is missing throws, naming the key, instead of answering Denied",
-          camera.failed.toOption.exists(e =>
-            e.isInstanceOf[IllegalStateException] && e.getMessage.contains("NSCameraUsageDescription")
-          ),
+          if ios then "the camera, declared in the Info.plist and granted by simctl privacy, is Granted"
+          else
+            "a permission whose Info.plist usage string is missing throws, naming the key, instead of answering Denied"
+          ,
+          if ios then camera.toOption.contains(PermissionStatus.Granted)
+          else
+            camera.failed.toOption.exists(e =>
+              e.isInstanceOf[IllegalStateException] && e.getMessage.contains("NSCameraUsageDescription")
+            )
+          ,
           camera.toString
         )
         // #118: iOS has NSLocationWhenInUseUsageDescription and the build script's grant; the macOS gallery is a
