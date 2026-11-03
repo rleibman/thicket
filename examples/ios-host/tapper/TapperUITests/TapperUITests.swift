@@ -27,7 +27,7 @@ final class TapperUITests: XCTestCase {
       XCTAssertTrue(button.waitForExistence(timeout: 20), "no \"\(label)\" button appeared in 20 s")
       button.tap()
       print("[tapper] tapped \(label)")
-      return
+      done()
     }
     let app = XCUIApplication(bundleIdentifier: env["APP"] ?? "")
     switch what {
@@ -64,8 +64,13 @@ final class TapperUITests: XCTestCase {
       XCTFail("unknown TAP: \(what)")
       return
     }
-    // Done. Ended here because a test that touched an app takes 300 s to tear down (measured,
-    // #125); tap.sh reads the "[tapper] tapped" line, not xcodebuild's verdict.
+    done()
+  }
+
+  /// Ends the run here: a UI test that touched an app, SpringBoard included, took 300 s to tear
+  /// down on Xcode 27 (measured, #125), which held up every DRIVE line after it. tap.sh reads the
+  /// "[tapper] tapped" line, not xcodebuild's verdict.
+  private func done() -> Never {
     fflush(stdout)
     exit(0)
   }

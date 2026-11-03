@@ -144,8 +144,21 @@ private func typeNames(_ types: [UTType]) -> String {
       .compactMap { $0 as? UIWindowScene }
       .flatMap(\.windows)
     var vc = (windows.first { $0.isKeyWindow } ?? windows.first)?.rootViewController
-    while let presented = vc?.presentedViewController { vc = presented }
+    // A picker still being dismissed is no place to present the next one from.
+    while let presented = vc?.presentedViewController, !presented.isBeingDismissed { vc = presented }
     return vc
+  }
+
+  /// Presents `picker` once no transition is running over `over`. A request made while the last
+  /// picker is still animating away is otherwise dropped by UIKit, silently, with no picker shown
+  /// and no callback (measured, #125: "Pick a photo" pressed again right after a pick).
+  private func show(_ picker: UIViewController, over: UIViewController, attempts: Int = 100) {
+    let busy = over.transitionCoordinator != nil || over.presentedViewController?.isBeingDismissed == true
+    if busy && attempts > 0 {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { show(picker, over: over, attempts: attempts - 1) }
+    } else {
+      over.present(picker, animated: true)
+    }
   }
 
   /// The delegate of every picker: one object, since only one picker is up at a time.
@@ -207,7 +220,7 @@ private func typeNames(_ types: [UTType]) -> String {
     current = request
     shown += 1
     picker.presentationController?.delegate = delegate
-    over.present(picker, animated: true)
+    show(picker, over: over)
     return 1
   }
 
