@@ -123,7 +123,6 @@ object Gallery {
   val repoUrl:    String = "https://github.com/rleibman/thicket"
   val licenceUrl: String = "https://www.apache.org/licenses/LICENSE-2.0"
 
-  /** The message of the exception the "Throw from a handler" button raises, so a self-test can tell it apart. */
   /** The text of the native label the host's view makes for the Platform section, the `n`th time. */
   def nativeLabelText(n: Int): String = s"A native label, made by the host ($n)"
 
@@ -137,6 +136,7 @@ object Gallery {
     val description = "A view for no platform"
   }
 
+  /** The message of the exception the "Throw from a handler" button raises, so a self-test can tell it apart. */
   val deliberate: String = "deliberate, from the gallery's Errors section"
 
   /** The logo, as a file and as the bytes of that file. A host with no filesystem path to it — an APK — passes the
