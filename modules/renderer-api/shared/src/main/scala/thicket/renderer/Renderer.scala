@@ -254,6 +254,17 @@ enum WidgetKind {
     */
   case Tab
 
+  /** A view the platform's own code makes, which no other kind describes: a camera preview, later a map or a web view
+    * (`docs/17` §17.3, the owner's decision 2026-11-01). The view is [[Prop.View]]: a [[PlatformView]] that the
+    * renderer asks for its native widget, so the renderer itself knows nothing of cameras and an app links a camera
+    * stack only when it shows one. Laid out like any leaf, released with its owner.
+    *
+    * A renderer handles this kind once, generically, inside a container of its own (a `GtkBox`, a `FrameLayout`), so a
+    * changed view replaces the child and nothing else. A `PlatformView` that has nothing for this renderer shows a
+    * label saying so, as a service's `Unavailable` does, rather than nothing.
+    */
+  case Platform
+
   /** Whether this kind is *presented over* the app rather than placed in the tree.
     *
     * A framework-level fact rather than a per-renderer one: an alert is not a child of anything on any of the four
@@ -484,6 +495,23 @@ enum Prop {
     * insets here is the right answer honestly arrived at.
     */
   case SafeArea(edges: Set[Edge])
+
+  /** The view a [[WidgetKind.Platform]] shows. Changing it releases the old native view and makes the new one. */
+  case View(view: PlatformView)
+
+}
+
+/** A native view from outside the renderers, for [[WidgetKind.Platform]] (`docs/17` §17.3).
+  *
+  * Each renderer has its own extension of this trait that says how to make the native widget — a `GtkPlatformView`
+  * makes a `GtkWidget*`, an `AndroidPlatformView` an Android `View` — and a module that provides a view (a camera
+  * preview, say) implements the ones for the platforms it supports. A renderer given a view that does not extend its
+  * own trait shows [[description]] and that it is not available there.
+  */
+trait PlatformView {
+
+  /** What the view is, in a few words: shown where the platform has no such view, and read by tests. */
+  def description: String
 
 }
 

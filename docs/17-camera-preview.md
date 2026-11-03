@@ -1,6 +1,8 @@
 # 17. Live camera preview — a design for approval
 
-Status: **approved, 2026-11-01; not built yet.** `docs/16` §16.3 puts the live camera
+Status: **approved, 2026-11-01; step 1 of §17.7, the embedding point, built on GTK and
+Android 2026-11-02** (`WidgetKind.Platform`, `Prop.View`, `GtkPlatformView`,
+`AndroidPlatformView`; the Apple half is #145). **The preview itself is not built yet.** `docs/16` §16.3 puts the live camera
 preview first in tier 3 ("each its own design"), and the owner said yes to tier 3 on
 2026-11-01. This is that design. The owner answered §17.8's questions the same day, taking
 every recommendation (decision log, 2026-11-01).
@@ -97,7 +99,7 @@ the device says otherwise.
 The largest piece in the plan (`docs/16` §16.3 says so). Proposed order, each its own PR:
 
 1. The embedding point (§17.3) on GTK and Android, with the gallery's trivial platform view;
-   Apple as a Mac issue.
+   Apple as a Mac issue. *Done on GTK and Android, 2026-11-02 (decision log).*
 2. `thicket-camera-preview` and `-android`, measured on the emulator.
 3. `-apple`, the Mac's (iOS and macOS).
 4. `-gtk`, after Android and Apple (§17.8.2).

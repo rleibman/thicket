@@ -193,6 +193,9 @@ final class AndroidRenderer(context: Context) extends Renderer {
       case WidgetKind.TabView => tabs.createTabView()
       case WidgetKind.Tab     => tabs.createTab()
 
+      // A FrameLayout holding the view's own View; the view comes with Prop.View.
+      case WidgetKind.Platform => platformViews.create()
+
       // An ImageButton on the borderless ripple: Android's icon button, as in a toolbar.
       case WidgetKind.IconButton =>
         val b = ImageButton(context)
@@ -516,6 +519,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
             }
           case _ => ()
         }
+
+      case Prop.View(view) => platformViews.setView(handle, view)
 
       case Prop.SafeArea(edges) =>
         // The framework's version of what the demo's Activity used to do by hand (docs/05
@@ -880,6 +885,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
   /** TabView and Tab, kept in their own class; see `AndroidTabs`. */
   lazy private val tabs = AndroidTabs(context, dp, colourAttr, iconDrawable)
 
+  private val platformViews = AndroidPlatformViews(context, perView)
+
   /** A curated icon from the bundled Material Symbols artwork, in the theme's control colour; a platform icon from the
     * app's own drawables, by name.
     */
@@ -1110,6 +1117,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
   def destroy(handle: Handle): Unit = {
     // A Tab is in its TabView's content area and has an item in its bar; both go.
     tabs.destroy(handle)
+    // A Platform view's own release runs while it is still in the layout.
+    platformViews.destroy(handle)
     handle.getParent match {
       // A LazyColumn's row: the ListView owns its children and recycles them, and refuses
       // removeView outright — so disposing a list page used to throw from here (found by the

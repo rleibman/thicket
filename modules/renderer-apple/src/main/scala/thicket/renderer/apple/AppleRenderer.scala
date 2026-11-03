@@ -152,6 +152,9 @@ final class AppleRenderer extends Renderer {
       // An NSTabViewController / a UITabBarController, and one item each (#69).
       case WidgetKind.TabView => ShimKind.TabView
       case WidgetKind.Tab     => ShimKind.Tab
+      // The embedding point (docs/17 §17.3) needs the shims to host a view made outside them, which is the Mac's
+      // half: until then a Platform widget is a label saying so (Prop.View), as on a platform the view has nothing for.
+      case WidgetKind.Platform => ShimKind.Label
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
@@ -340,6 +343,9 @@ final class AppleRenderer extends Renderer {
       case Prop.AccessibleLabel(t) => Zone(Shim.sui_set_accessible_label(handle, toCString(t)))
 
       case Prop.OpenUrl(url) => Zone(Shim.sui_set_open_url(handle, toCString(url)))
+
+      case Prop.View(view) =>
+        Zone(Shim.sui_set_text(handle, toCString(s"${view.description}: not available on $toolkitName yet")))
 
       case Prop.StackAlignment(h, v) => Shim.sui_set_stack_alignment(handle, alignCode(h), alignCode(v))
 

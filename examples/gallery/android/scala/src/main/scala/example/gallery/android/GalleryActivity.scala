@@ -16,7 +16,10 @@
 
 package example.gallery.android
 
+import _root_.android.content.Context
 import _root_.android.os.Bundle
+import _root_.android.view.View
+import _root_.android.widget.TextView
 import example.gallery.{Gallery, Services}
 import thicket.core.AppRoot
 import thicket.device.android.AndroidDevice
@@ -27,7 +30,8 @@ import thicket.haptics.android.AndroidHaptics
 import thicket.pickers.android.AndroidPickers
 import thicket.camera.android.AndroidCamera
 import thicket.share.android.AndroidShare
-import thicket.renderer.android.ThicketActivity
+import thicket.renderer.android.{AndroidPlatformView, ThicketActivity}
+import scala.collection.mutable
 import thicket.signals.Owner
 import thicket.sqlite.android.AndroidSqlite
 import thicket.secrets.android.AndroidSecrets
@@ -63,7 +67,8 @@ class GalleryActivity extends ThicketActivity {
           camera = Some(AndroidCamera(this)),
           share = Some(AndroidShare(this))
         )
-      )
+      ),
+      nativeView = NativeLabel(_)
     )
 
   override protected def started(): Unit =
@@ -78,5 +83,32 @@ class GalleryActivity extends ThicketActivity {
       try in.readAllBytes()
       finally in.close()
     } catch { case _: java.io.IOException => Array.emptyByteArray }
+
+}
+
+/** The Platform section's view on Android: a plain `TextView`, made here, outside the renderer, as a camera preview's
+  * module would make its view (docs/17 §17.3). It records what it made and what it was told to release, for
+  * [[GallerySelfTest]].
+  */
+final class NativeLabel(text: String) extends AndroidPlatformView {
+
+  val description = "A native label"
+
+  def create(context: Context): View = {
+    val v = TextView(context)
+    v.setText(text)
+    NativeLabel.made += v
+    v
+  }
+
+  /** Records whether the view was still in the layout: the renderer must release it before removing it. */
+  override def release(view: View): Unit = NativeLabel.released += (view -> (view.getParent != null))
+
+}
+
+object NativeLabel {
+
+  val made = mutable.ArrayBuffer.empty[View]
+  val released = mutable.ArrayBuffer.empty[(View, Boolean)]
 
 }

@@ -32,11 +32,11 @@ import thicket.secrets.testing.SecretsConformance
 import thicket.storage.gtk.GtkStorage
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable
-import scala.scalanative.unsafe.Ptr
-import sn.gnome.gtk4.internal.GtkWidget
+import scala.scalanative.unsafe.{Ptr, Zone, toCString}
+import sn.gnome.gtk4.internal.{GtkWidget, gtk_label_new}
 import thicket.core.GcState
 import thicket.renderer.Icon
-import thicket.renderer.gtk.{GtkApp, GtkIcons, GtkInspect}
+import thicket.renderer.gtk.{GtkApp, GtkIcons, GtkInspect, GtkPlatformView}
 import thicket.signals.ErrorSink
 
 /** The gallery on GTK4.
@@ -96,6 +96,7 @@ object GalleryGtk {
       "ForEach — keyed, with a context menu on each row",
       "Provide — a theme scoped to one subtree",
       "SafeArea — a prop, because no toolkit models it as a widget",
+      "Platform — a view the platform's own code makes",
       "BuildInfo — this module's own, from git",
       "Errors — a handler that throws is reported, and the app carries on",
       "Effects — a ZIO effect, its result posted back to the UI thread",
@@ -520,10 +521,80 @@ object GalleryGtk {
       s"${GtkInspect.cssParseErrors} CSS parse errors"
     )
 
+    platformChecks(root)
     storageChecks(root)(
       deviceChecks(root)(
         locationChecks(root)(motionChecks(root)(clipboardChecks(root)(pickerChecks(root)(presentedAndNav(root)))))
       )
+    )
+  }
+
+  /** The Platform section's view on GTK: a plain `GtkLabel`, made here, outside the renderer, as a camera preview's
+    * module would make its widget (docs/17 §17.3). It records what it made and what it was told to release.
+    */
+  final private class NativeLabel(text: String) extends GtkPlatformView {
+
+    val description = "A native label"
+
+    def create(): Ptr[GtkWidget] = {
+      val w = Zone(gtk_label_new(toCString(text)))
+      NativeLabel.made += w
+      w
+    }
+
+    /** Reads the label's text back: the renderer must release the widget while it is still alive. */
+    override def release(widget: Ptr[GtkWidget]): Unit =
+      NativeLabel.released += (widget -> GtkInspect.allTexts(widget))
+
+  }
+
+  private object NativeLabel {
+
+    val made = mutable.ArrayBuffer.empty[Ptr[GtkWidget]]
+    val released = mutable.ArrayBuffer.empty[(Ptr[GtkWidget], List[String])]
+
+  }
+
+  /** The embedding point (docs/17 §17.3): the widget the host's view made is the one in the window, a view GTK has
+    * nothing for says so, and replacing the view releases the old widget before it goes.
+    */
+  private def platformChecks(root: Ptr[GtkWidget]): Unit = {
+    def inWindow(w: Ptr[GtkWidget]) = GtkInspect.findAll(root)(_ == w).nonEmpty
+    val first = NativeLabel.made.headOption
+    check(
+      "Platform: the GtkLabel the host's view made is in the window, with its text",
+      NativeLabel.made.length == 1 && first.exists(w =>
+        inWindow(w) && GtkInspect.isLabel(w) && GtkInspect.allTexts(w) == List(Gallery.nativeLabelText(1))
+      ),
+      s"made ${NativeLabel.made.length}; in the window ${first.map(inWindow)}; texts ${first.map(GtkInspect.allTexts)}"
+    )
+    val nowhere = s"${Gallery.nowhere.description}: not available on GTK"
+    check(
+      "Platform: a view GTK has nothing for says so",
+      GtkInspect.allTexts(root).contains(nowhere),
+      GtkInspect.allTexts(root).filter(_.contains("not available")).toString
+    )
+    val entries = GtkInspect.rendererEntries
+    GtkInspect
+      .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Make the native view again"))
+      .headOption.foreach(GtkInspect.click)
+    val second = NativeLabel.made.lift(1)
+    check(
+      "Platform: a new view makes a new widget, in the old one's place",
+      NativeLabel.made.length == 2 && second.exists(w =>
+        inWindow(w) && GtkInspect.allTexts(w) == List(Gallery.nativeLabelText(2))
+      ) && !GtkInspect.allTexts(root).contains(Gallery.nativeLabelText(1)),
+      s"made ${NativeLabel.made.length}; texts ${GtkInspect.allTexts(root).filter(_.startsWith("A native"))}"
+    )
+    check(
+      "Platform: and the old widget was released, while it was still alive",
+      NativeLabel.released.toList == first.toList.map(_ -> List(Gallery.nativeLabelText(1))),
+      s"released ${NativeLabel.released.map(_._2)}"
+    )
+    check(
+      "Platform: replacing the view leaves the renderer's tables as they were",
+      GtkInspect.rendererEntries == entries,
+      s"$entries before, ${GtkInspect.rendererEntries} after"
     )
   }
 
@@ -1187,7 +1258,8 @@ object GalleryGtk {
             camera = Some(Camera.unavailable(noCamera)),
             share = Some(Share.unavailable(noShare))
           )
-        )
+        ),
+        nativeView = NativeLabel(_)
       )
     }
     sys.exit(if sys.env.contains("THICKET_GALLERY_SELFTEST") then verdict() else status)

@@ -166,7 +166,11 @@ tappable `Row`, the screen's `Scroll` with both padding and `.safeArea()`, a pad
 `Scroll` inside it whose child can be replaced by a taller one, keyed `ForEach`, virtualised `LazyColumn` whose first row
 can be deleted and renamed, a per-row `ContextMenu`, subtree theming with `Provide`, a
 handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet`), toolbar
-`Action`s, a navigation push, a `TabView` with a tab inserted in the middle, and storage: a
+`Action`s, a navigation push, a `TabView` with a tab inserted in the middle, a `Platform` view
+(`docs/17` §17.3) that the host makes itself — a `GtkLabel`, a `TextView` — and replaces,
+the self-test checking the host's own widget is the one on screen and was released while
+still alive, beside one that no platform has and says so (Apple shows that label for both
+until its half is built), and storage: a
 launch counter in preferences and notes in SQLite, written on a worker thread, with the JDBC
 conformance checks run against the platform's driver (GTK, Android, macOS and iOS),
 Magnum's checks on GTK, macOS and iOS, and a secret in the platform's secure store, kept from
