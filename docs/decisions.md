@@ -115,6 +115,12 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     document not in the cache); iOS fails the same 2: the photo is handed back from
     PhotosUI's temporary directory, and the document from the app's `Inbox`, already deleted at
     its release (`NoSuchFileException`). Restored, both pass.
+  - **`bin/verify-apple.sh "iPhone 17e"`** on f861be4: 17/19 steps (`shim-pickers` new). The
+    two failures were `ios-gallery`, the known fresh-boot trap (#114's "notifications start
+    Denied, not yet asked" failed, so no alert came for "Don't Allow", 4 FAIL; its 11 picker checks
+    passed), and `ios-todo` (4 FAIL: a sheet and an alert not reported on screen; the todo app
+    links no pickers). Re-run alone on the warm simulator: iOS gallery **218**, all passed; iOS
+    todo **83**, all passed. The macOS gallery passed both runs (stored, then kept).
 
 - 2026-11-01 — **The live camera preview: the owner took every recommendation in
   `docs/17-camera-preview.md` §17.8.**
