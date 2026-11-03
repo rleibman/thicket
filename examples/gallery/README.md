@@ -249,7 +249,10 @@ target ("Thicket gallery inbox", `ShareTargetActivity`): `build.sh` taps it in t
 chooser (`DRIVE share-pick`), and it reads what it was given, the file through the URI
 Thicket's provider served. The inbox is the gallery itself, which needs no grant, so the
 self-test also requires the share sheet, another app, to have read the file through it. On
-GTK the section says there is no share sheet.
+GTK the section says there is no share sheet. On macOS the self-test finds the picker's popover,
+reads the services it was offered and closes it; on iOS it finds the `UIActivityViewController`,
+asks its item for the text and subject, and has an XCUITest tap "Copy" in it (`DRIVE share-copy`),
+after which `simctl pbpaste` must read the shared text (#134).
 
 When the desktop is locked, GNOME suspends every window and the Device section's foreground
 check fails. A private headless shell avoids that:

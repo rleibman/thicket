@@ -25,6 +25,7 @@ import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
+import thicket.share.apple.AppleShare
 import thicket.sqlite.NativeSqlite
 import thicket.storage.apple.AppleStorage
 
@@ -78,7 +79,9 @@ object GalleryIos {
               location = Some(AppleLocation()),
               motion = Some(IosMotion()),
               clipboard = Some(AppleClipboard()),
-              haptics = Some(AppleHaptics())
+              haptics = Some(AppleHaptics()),
+              // The share sheet (#134): a file is shared as a copy under the cache directory.
+              share = Some(AppleShare(storage.dirs.cache))
             )
           )
         )
