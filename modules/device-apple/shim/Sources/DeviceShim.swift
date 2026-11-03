@@ -34,6 +34,11 @@ private let granted: Int32 = 0
 private let denied: Int32 = 1
 private let restricted: Int32 = 2
 private let notDetermined: Int32 = 3
+/// UserNotifications did not answer in time. Not an answer: `ApplePermissions.status` reports it
+/// as Denied, and a self-test asks again (#128). Right after a simulator boots, the first
+/// settings read took longer than 5 s on 3 of 7 boots (measured in #118), and reading that as
+/// Denied failed "notifications start not yet asked" on every Apple CI run that rebooted first.
+private let unknown: Int32 = 4
 private let unsupported: Int32 = -1
 
 // MARK: - lifecycle
@@ -156,7 +161,7 @@ private func notificationStatus() -> Int32 {
     status = s.authorizationStatus
     done.signal()
   }
-  if done.wait(timeout: .now() + 5) == .timedOut { return denied }
+  if done.wait(timeout: .now() + 5) == .timedOut { return unknown }
   switch status {
   case .authorized, .provisional: return granted
   case .denied: return denied
