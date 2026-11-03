@@ -871,6 +871,17 @@ lazy val clipboardApple = project
   .dependsOn(clipboard.native, rendererApple)
   .settings(commonSettings, name := "thicket-clipboard-apple")
 
+/** Share on macOS and iOS (#134): `NSSharingServicePicker` and `UIActivityViewController`, through a C helper as
+  * `clipboardApple`'s (`resources/scala-native/thicket_share.c`); the text's subject goes through a
+  * `UIActivityItemSource` class the helper makes at run time, so there is no Swift. Files are shared as copies, through
+  * `thicket-share`'s `SharedFiles`. Needs no renderer. In `platforms`: linking needs Xcode.
+  */
+lazy val shareApple = project
+  .in(file("modules/share-apple"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, ScalaNativePlugin)
+  .dependsOn(share.native)
+  .settings(commonSettings, name := "thicket-share-apple")
+
 /** Haptics on macOS and iOS (#123): `UIImpactFeedbackGenerator` and `UISelectionFeedbackGenerator`, and
   * `NSHapticFeedbackManager` for a Force Touch trackpad, through a C helper as `clipboardApple`'s. Needs no renderer.
   */
@@ -1051,7 +1062,7 @@ lazy val galleryMacos = project
   .in(file("examples/gallery/macos"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.macos.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, locationApple, clipboardApple, hapticsApple, pickersApple)
+  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, locationApple, clipboardApple, hapticsApple, shareApple, pickersApple)
   .settings(commonSettings)
   .settings(appleNativeSettings)
   .settings(galleryAppleSharedSources)
@@ -1074,7 +1085,7 @@ lazy val galleryIos = project
   .in(file("examples/gallery/ios"))
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin, ScalaNativePlugin)
   .settings(thicketBuildInfo("example.gallery.ios.buildinfo"))
-  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, locationApple, motionIos, clipboardApple, hapticsApple, pickersApple)
+  .dependsOn(rendererApple, galleryShared.native, storageApple, secretsApple, deviceApple, locationApple, motionIos, clipboardApple, hapticsApple, shareApple, pickersApple)
   .settings(commonSettings)
   .settings(iosNativeSettings)
   .settings(galleryAppleSharedSources)
@@ -1258,6 +1269,7 @@ lazy val platforms = project
     shareAndroid,
     clipboardApple,
     hapticsApple,
+    shareApple,
     examplesShared.jvm,
     examplesShared.native,
     counterGtk,

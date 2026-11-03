@@ -71,6 +71,7 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-storage-apple_native0.5_3` | app directories and preferences on macOS and iOS (`thicket-storage` comes with it); no Swift |
 | `net.leibman:thicket-secrets-apple_native0.5_3` | tokens and passwords in the Keychain on macOS and iOS (`thicket-secrets` comes with it); no Swift, and it links Security itself. An iOS app needs keychain entitlements, on the simulator too (`modules/secrets/README.md`) |
 | `net.leibman:thicket-clipboard-apple_native0.5_3` | text on the general pasteboard, `NSPasteboard` / `UIPasteboard` (`thicket-clipboard` and the Apple renderer come with it); no Swift, and it links UIKit or AppKit itself |
+| `net.leibman:thicket-share-apple_native0.5_3` | the share sheet on macOS and iOS, `NSSharingServicePicker` / `UIActivityViewController` (`thicket-share` comes with it); no Swift, and it links UIKit or AppKit itself |
 | `net.leibman:thicket-haptics-apple_native0.5_3` | haptic taps: iOS's feedback generators, macOS's `NSHapticFeedbackManager` (`thicket-haptics` comes with it); no Swift |
 | `net.leibman:thicket-http-apple_native0.5_3` | an sttp `SyncBackend` over `URLSession`, for iOS (no libcurl there), with its own Swift library inside the jar |
 | `net.leibman:thicket-http-gtk_native0.5_3` | an sttp `SyncBackend` over libcurl, in place of sttp's `CurlBackend`; libcurl is loaded at run time, so no `-dev` package |
@@ -179,4 +180,4 @@ renderers and the platform modules that are not in `root`: `thicket-http-apple`,
 `thicket-location-android`, `thicket-location-apple`, `thicket-motion-android`, `thicket-motion-ios`, `thicket-clipboard-gtk`,
 `thicket-clipboard-android`, `thicket-clipboard-apple`, `thicket-haptics-android`,
 `thicket-haptics-apple`, `thicket-pickers-gtk`, `thicket-pickers-android`, `thicket-pickers-apple`,
-`thicket-camera-android` and `thicket-share-android`.
+`thicket-camera-android`, `thicket-share-android` and `thicket-share-apple`.

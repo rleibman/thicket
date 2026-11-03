@@ -1,4 +1,4 @@
-// Answers system UI on the simulator, as a user would (#114, #125). The iOS self-tests ask for
+// Answers system UI on the simulator, as a user would (#114, #125, #134). The iOS self-tests ask for
 // it with `[gallery] DRIVE <action>` lines, and run-ios-app.sh's `drive` runs this UI test
 // through tap.sh with TEST_RUNNER_TAP=<what>. Nothing else can: simctl has no tap, `simctl
 // privacy` has no notifications service, and a logic test may not use XCUIApplication
@@ -10,6 +10,8 @@
 //   document       the file named TEST_RUNNER_FILE in Files' "On My iPhone", in the app's
 //                  UIDocumentPickerViewController (#125)
 //   export         Save in "On My iPhone", in the app's exporting document picker (#125)
+//   <bundle id>|<label>  the cell so labelled in that app, brought to the front: the share
+//                  sheet's "Copy" (#134)
 //
 // A UI-testing bundle with no target application: it reaches SpringBoard, or the app named by
 // TEST_RUNNER_APP, by bundle id. The pickers are other processes' (PhotosUI's, the document
@@ -22,6 +24,23 @@ final class TapperUITests: XCTestCase {
     continueAfterFailure = false
     let env = ProcessInfo.processInfo.environment
     let what = env["TAP"] ?? "allow"
+    // "<bundle id>|<label>": brings that app to the front and taps the element with that label, in
+    // whatever the app shows — the share sheet's "Copy", for one (#134). The runner itself comes to
+    // the front when it starts, so the app is activated first; activating does not relaunch it.
+    if let bar = what.firstIndex(of: "|") {
+      let app = XCUIApplication(bundleIdentifier: String(what[..<bar]))
+      let label = String(what[what.index(after: bar)...])
+      app.activate()
+      // A cell: the share sheet's actions are cells ('actionGroupCell'), and an app's own button of the
+      // same name — the gallery has a "Copy" — would otherwise match first.
+      let element = app.cells.matching(NSPredicate(format: "label == %@", label)).firstMatch
+      XCTAssertTrue(element.waitForExistence(timeout: 20), "no \"\(label)\" appeared in 20 s")
+      // At its centre, not element.tap(): that looks the cell up again after the tap, and the sheet
+      // the tap closed has taken it away, which fails the test (measured, the first run).
+      element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+      print("[tapper] tapped \(label) in \(what[..<bar])")
+      done()
+    }
     if what == "deny" || what == "allow" {
       // The apostrophe is U+2019, as SpringBoard writes it.
       let label = what == "deny" ? "Don\u{2019}t Allow" : "Allow"

@@ -88,9 +88,24 @@ check_saved() {
   echo "-- saved: $f ($(stat -f%z "$f") bytes), the gallery's text"
 }
 
+# The Share section (#134): "Copy" tapped in the gallery's share sheet through XCUITest, then the
+# simulator's pasteboard read from outside the app, which must hold the text the gallery shared.
+share_copy() {
+  "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "$BUNDLE_ID|Copy" || return 1
+  local got=""
+  for _ in 1 2 3 4 5; do
+    got=$(xcrun simctl pbpaste "$DEVICE" 2>/dev/null || true)
+    [ "$got" = "$1" ] && break
+    sleep 1
+  done
+  echo "-- after \"Copy\" in the share sheet, simctl pbpaste reads \"$got\"; the gallery shared \"$1\""
+  [ "$got" = "$1" ]
+}
+
 # What the self-test asks the user to do: another app in front (Settings), the gallery launched
 # again (the same process comes back), the notifications alert answered through XCUITest, the
-# device moved (`geo <lat>,<lon>`, #118), and the pickers answered through XCUITest (#125).
+# device moved (`geo <lat>,<lon>`, #118), the pickers answered through XCUITest (#125), and
+# "Copy" in the share sheet (`share-copy <text>`, #134).
 drive() {
   case "$1" in
     home) xcrun simctl launch "$DEVICE" com.apple.Preferences ;;
@@ -102,6 +117,7 @@ drive() {
     cancel-photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" cancel "$BUNDLE_ID" ;;
     pick-document) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" document "$BUNDLE_ID" thicket-test ;;
     save-document) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" export "$BUNDLE_ID" && check_saved ;;
+    share-copy\ *) share_copy "${1#share-copy }" ;;
     *) echo "unknown DRIVE action: $1" ;;
   esac
 }
