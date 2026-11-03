@@ -67,6 +67,7 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-camera_3` / `_native0.5_3`, `thicket-camera-android_3` | taking a photo with the camera app; on GTK, `Camera.unavailable` from `thicket-camera` |
 | `net.leibman:thicket-camera-apple_native0.5_3` | taking a photo on iOS with `UIImagePickerController`, with its own Swift library inside the jar (`ios-sim/libthicketcamera.a`); the app's `Info.plist` needs `NSCameraUsageDescription`; on macOS, `Camera.unavailable` from `thicket-camera` |
 | `net.leibman:thicket-share_3` / `_native0.5_3`, `thicket-share-android_3` | the share sheet; on Android the app declares `ThicketFileProvider`; on GTK, `Share.unavailable` |
+| `net.leibman:thicket-camera-preview_3` / `_native0.5_3`, `thicket-camera-preview-android_3` | a live camera preview in the app's layout (`docs/17`): Camera2 on Android, the app declaring `CAMERA`; elsewhere, `CameraPreview.unavailable` from `thicket-camera-preview` |
 | `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
 | `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
 | `net.leibman:thicket-storage-apple_native0.5_3` | app directories and preferences on macOS and iOS (`thicket-storage` comes with it); no Swift |
@@ -181,4 +182,5 @@ renderers and the platform modules that are not in `root`: `thicket-http-apple`,
 `thicket-location-android`, `thicket-location-apple`, `thicket-motion-android`, `thicket-motion-ios`, `thicket-clipboard-gtk`,
 `thicket-clipboard-android`, `thicket-clipboard-apple`, `thicket-haptics-android`,
 `thicket-haptics-apple`, `thicket-pickers-gtk`, `thicket-pickers-android`, `thicket-pickers-apple`,
-`thicket-camera-android`, `thicket-camera-apple`, `thicket-share-android` and `thicket-share-apple`.
+`thicket-camera-android`, `thicket-camera-apple`, `thicket-share-android`, `thicket-share-apple` and
+`thicket-camera-preview-android`.

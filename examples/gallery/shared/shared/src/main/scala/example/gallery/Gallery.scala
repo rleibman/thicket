@@ -195,6 +195,7 @@ object Gallery {
     clip:       Option[ClipboardDemo] = None,
     pickers:    Option[PickersDemo] = None,
     sharing:    Option[ShareDemo] = None,
+    preview:    Option[CameraPreviewDemo] = None,
     nativeView: String => PlatformView = _ => Gallery.noNativeLabel
   ): Screen =
     Screen(
@@ -578,6 +579,22 @@ object Gallery {
                 )
             }
           ),
+          // A live preview in the app's own layout (docs/17), through the embedding point. Android's is Camera2.
+          section("Camera preview — live, in the app's own layout")(
+            preview match {
+              case None       => Label("No camera preview on this platform yet", emphasis = Emphasis.Secondary)
+              case Some(demo) =>
+                Column(spacing = 8)(
+                  Label(demo.status),
+                  demo.preview.view(),
+                  Row(spacing = 8)(
+                    Button("Take from the preview")(demo.take()),
+                    Button("Flip the camera")(demo.flip())
+                  ),
+                  Label(demo.lastPhoto.map(CameraPreviewDemo.photoLabel))
+                )
+            }
+          ),
           section("Presented — Sheet and Alert are shown over the app, never inserted")(
             Row(spacing = 8)(
               Button("Open sheet")(model.sheet.set(true)),
@@ -660,6 +677,9 @@ object Gallery {
   /** The running app's share demo, for a host's self-test. */
   var currentShare: Option[ShareDemo] = None
 
+  /** The running app's camera preview demo, for a host's self-test. */
+  var currentPreview: Option[CameraPreviewDemo] = None
+
   /** The whole app, for a host to mount. Hosts differ only in how they start, in which logo file their platform can
     * draw, and in the device services they have.
     */
@@ -698,6 +718,8 @@ object Gallery {
     currentPickers = pickers
     val sharing = services.flatMap(s => s.share.map(ShareDemo(_, s.storage.dirs.temp)))
     currentShare = sharing
+    val preview = services.flatMap(_.cameraPreview).map(CameraPreviewDemo(_))
+    currentPreview = preview
     given UiRuntime[Any] = UiRuntime.default
     val loaded = ZIO.succeed(effectResult).asSignal
     val nav = Nav(Route.Catalogue)
@@ -705,7 +727,21 @@ object Gallery {
     NavHost(nav) {
       case Route.Catalogue =>
         val s =
-          screen(model, loaded, logoFile, bytes, storage, device, location, motion, clip, pickers, sharing, nativeView)
+          screen(
+            model,
+            loaded,
+            logoFile,
+            bytes,
+            storage,
+            device,
+            location,
+            motion,
+            clip,
+            pickers,
+            sharing,
+            preview,
+            nativeView
+          )
         s.copy(actions = s.actions :+ Action("Big list")(nav.push(Route.Big)))
       case Route.Big => listScreen(model)
     }

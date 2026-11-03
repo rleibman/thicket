@@ -275,6 +275,14 @@ reads the services it was offered and closes it; on iOS it finds the `UIActivity
 asks its item for the text and subject, and has an XCUITest tap "Copy" in it (`DRIVE share-copy`),
 after which `simctl pbpaste` must read the shared text (#134).
 
+The Camera preview section (`docs/17`) shows a live preview with "Take from the preview" and
+"Flip the camera". On Android it is Camera2 on the emulator's back camera (the gallery declares
+`CAMERA`, which `install -g` grants): the self-test brings it on screen, waits for frames, checks
+the picture is not blank, takes a JPEG of the session's size, sends the app Home and back
+(`DRIVE home`, `DRIVE front`) to see the camera closed by the preview's own lifecycle and opened
+again, then flips to the front camera `s2test` does not have, which must say so. On GTK the
+section shows `CameraPreview.unavailable`; on Apple it says there is none yet (#148).
+
 When the desktop is locked, GNOME suspends every window and the Device section's foreground
 check fails. A private headless shell avoids that:
 `dbus-run-session -- gnome-shell --headless --wayland --no-x11 --virtual-monitor 1024x768 --wayland-display thicket-headless &`,
