@@ -30,14 +30,16 @@ EXTRA_LINK=-lsqlite3
 # The same THICKET_GALLERY_SELFTEST the macOS example reads. Up to 8 min (#78, #114, #118, #125): the
 # gallery times 1 000 vs 2 000 children, and the pickers' four taps take about 15 s each.
 RUN_ENV=THICKET_GALLERY_SELFTEST=1
-WAIT_SECONDS=480
+# 480 since #129: the camera gives its shutter 60 s to bring a photo back, and the simulator's never does.
+# 600 with the pickers and the camera together (not measured yet; each alone fit in 480).
+WAIT_SECONDS=600
 SCREENSHOT=1
 KEEP_UNSTRIPPED=1
 
 # The Device section (#114): thicket-device-apple's Swift library; a fresh install, so the
 # notifications alert is shown (uninstalling forgets the answer); the microphone granted with
-# simctl privacy and its usage string, so asking answers Granted with no alert. Camera's usage
-# string is left out on purpose: the self-test checks that asking without it throws, naming it.
+# simctl privacy and its usage string, so asking answers Granted with no alert. (The camera's
+# usage string was left out until #129; the macOS gallery still checks that it throws without it.)
 DEVICE_LIB="$REPO/modules/device-apple/shim/build-ios/libthicketdevice.a"
 [ -f "$DEVICE_LIB" ] || { echo "Missing $DEVICE_LIB — run modules/device-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
 # The Motion section (#120): thicket-motion-ios's Swift library, over CMMotionManager.
@@ -46,12 +48,19 @@ MOTION_LIB="$REPO/modules/motion-ios/shim/build-ios/libthicketmotion.a"
 # The Pickers section (#125): thicket-pickers-apple's Swift library.
 PICKERS_LIB="$REPO/modules/pickers-apple/shim/build-ios/libthicketpickers.a"
 [ -f "$PICKERS_LIB" ] || { echo "Missing $PICKERS_LIB — run modules/pickers-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
-EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB $PICKERS_LIB"
+# The camera in the Pickers section (#129): thicket-camera-apple's Swift library, over
+# UIImagePickerController, and the camera's usage string, without which iOS terminates the app
+# when the camera opens (AppleCamera throws, naming it, instead). Granted below: the iOS 27
+# simulator has a camera (a simulated grey frame), so the photo is taken through its screen.
+CAMERA_LIB="$REPO/modules/camera-apple/shim/build-ios/libthicketcamera.a"
+[ -f "$CAMERA_LIB" ] || { echo "Missing $CAMERA_LIB — run modules/camera-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
+EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB $PICKERS_LIB $CAMERA_LIB"
 FRESH_INSTALL=1
 # Location (#118) granted too, with its usage string, without which iOS ignores the request.
-PRIVACY_GRANT="microphone location"
+PRIVACY_GRANT="microphone location camera"
 USAGE_STRINGS="NSMicrophoneUsageDescription=The gallery checks that a granted permission answers Granted.
-NSLocationWhenInUseUsageDescription=The gallery shows where the device is while it is in front."
+NSLocationWhenInUseUsageDescription=The gallery shows where the device is while it is in front.
+NSCameraUsageDescription=The gallery takes a photo with the camera screen."
 
 # Files' "On My iPhone": the Files app's local storage, where the document picker opens the test
 # document and saves the gallery's (#125).
@@ -104,7 +113,8 @@ share_copy() {
 
 # What the self-test asks the user to do: another app in front (Settings), the gallery launched
 # again (the same process comes back), the notifications alert answered through XCUITest, the
-# device moved (`geo <lat>,<lon>`, #118), the pickers answered through XCUITest (#125), and
+# device moved (`geo <lat>,<lon>`, #118), the pickers answered through XCUITest (#125), the camera
+# screen's buttons through XCUITest (#129), and
 # "Copy" in the share sheet (`share-copy <text>`, #134).
 drive() {
   case "$1" in
@@ -117,6 +127,10 @@ drive() {
     cancel-photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" cancel "$BUNDLE_ID" ;;
     pick-document) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" document "$BUNDLE_ID" thicket-test ;;
     save-document) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" export "$BUNDLE_ID" && check_saved ;;
+    # The camera screen (#129): the shutter, then "Use Photo" if a review screen comes up (the
+    # simulator's shutter takes nothing, so none does); or its X.
+    photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Take Picture|?Use Photo" ;;
+    cancel) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Dismiss" ;;
     share-copy\ *) share_copy "${1#share-copy }" ;;
     *) echo "unknown DRIVE action: $1" ;;
   esac

@@ -17,6 +17,7 @@
 package example.gallery
 
 import scala.scalanative.unsafe.exported
+import thicket.camera.apple.AppleCamera
 import thicket.core.GcState
 import thicket.device.apple.AppleDevice
 import thicket.location.apple.AppleLocation
@@ -28,7 +29,7 @@ import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.share.apple.AppleShare
 import thicket.sqlite.NativeSqlite
-import thicket.storage.apple.AppleStorage
+import thicket.storage.apple.{AppleDirs, AppleStorage}
 
 /** The gallery on iOS (UIKit) — the same tree, the same renderer, a different entry shape.
   *
@@ -56,6 +57,8 @@ object GalleryIos {
       // anyway so the two Apple hosts differ in nothing but their entry shape.
       AppleApp.run("Thicket gallery", 520, 760) {
         val storage = AppleStorage(bundleId)
+        // UIImagePickerController (#129): photos are copied into the app's cache.
+        val camera = AppleCamera(storage.dirs.cache)
         // PHPickerViewController and UIDocumentPickerViewController (#125).
         val pickers = ApplePickers(storage.dirs.cache)
         if sys.env.contains("THICKET_GALLERY_SELFTEST") then
@@ -64,6 +67,29 @@ object GalleryIos {
               Some(storage),
               bundleId,
               motion = Some(IosMotionProvider -> IosMotionProvider.testing.active),
+              camera = Some(
+                GalleryCameraChecks
+                  .Probe(
+                    () => camera.availability,
+                    () => AppleCamera.sourceAvailable,
+                    () => AppleCamera.testing.presented,
+                    camera.capturePhoto,
+                    storage.dirs.cache,
+                    // Where the library writes its JPEG: NSTemporaryDirectory(), the container's tmp.
+                    () => {
+                      val tmp = java.nio.file.Paths.get(AppleDirs.userTemp())
+                      if !java.nio.file.Files.isDirectory(tmp) then Nil
+                      else {
+                        val s = java.nio.file.Files.list(tmp)
+                        try
+                          s.toArray.toList
+                            .collect { case p: java.nio.file.Path => p }
+                            .filter(_.getFileName.toString.startsWith("thicket-camera-"))
+                        finally s.close()
+                      }
+                    }
+                  )
+              ),
               pickers = Some(pickers -> true)
             )
           }
@@ -82,6 +108,7 @@ object GalleryIos {
               // CLLocationManager (#118), listened to while the app is in front.
               location = Some(AppleLocation()),
               motion = Some(IosMotion()),
+              camera = Some(camera),
               clipboard = Some(AppleClipboard()),
               haptics = Some(AppleHaptics()),
               pickers = Some(pickers.photos -> pickers.documents),

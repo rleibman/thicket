@@ -35,6 +35,9 @@ final class PickersDemo(
   val taken:    Var[String] =
     Var(camera.fold(PickersDemo.noCamera)(c => PickersDemo.cameraLabel(c.availability)))
 
+  /** Whether the host gave real pickers, or only a camera ([[PickersDemo.NoPickers]]). */
+  val hasPickers: Boolean = !(photos eq PickersDemo.NoPickers)
+
   /** What the latest photo taken answered, for a self-test. */
   var lastTaken: Option[Option[Path]] = None
 
@@ -78,6 +81,32 @@ object PickersDemo {
     paths.headOption.fold(s"$what: cancelled")(p => s"$what: ${p.getFileName} (${Files.size(p)} bytes)")
 
   val notSaved: String = "Saved: nothing yet"
+
+  /** For a host with a camera but no pickers yet (macOS and iOS, #129, until #125): never available, and the section
+    * shows only the camera.
+    */
+  object NoPickers extends Photos with Documents {
+
+    val availability: Availability = Availability.Unavailable("not on this platform yet")
+
+    def pick(limit: Int)(onResult: Seq[Path] => Unit): Unit = onResult(Nil)
+
+    def open(
+      mimeTypes: Seq[String],
+      multiple:  Boolean
+    )(
+      onResult: Seq[Path] => Unit
+    ): Unit = onResult(Nil)
+
+    def save(
+      name:     String,
+      mimeType: String,
+      bytes:    Array[Byte]
+    )(
+      onResult: Option[String] => Unit
+    ): Unit = onResult(None)
+
+  }
 
   val noCamera: String = "Camera: not on this platform yet"
 

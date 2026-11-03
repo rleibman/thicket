@@ -543,7 +543,13 @@ object Gallery {
           // The system's pickers (docs/16 §16.10 item 5): each picked file comes back as a copy in the app's cache.
           section("Pickers and the camera — a photo, a document, saving one, and taking a photo")(
             pickers match {
-              case None       => Label("No pickers on this platform yet", emphasis = Emphasis.Secondary)
+              case None => Label("No pickers on this platform yet", emphasis = Emphasis.Secondary)
+              case Some(demo) if !demo.hasPickers =>
+                Column(spacing = 8)(
+                  Label("No pickers on this platform yet", emphasis = Emphasis.Secondary),
+                  Button("Take a photo")(demo.takePhoto()),
+                  Label(demo.taken)
+                )
               case Some(demo) =>
                 Column(spacing = 8)(
                   Button("Pick a photo")(demo.pickPhoto()),
@@ -680,12 +686,14 @@ object Gallery {
     currentClipboard = clip
     val pickers =
       services.flatMap(s =>
-        s.pickers.map(
-          (
-            photos,
-            documents
-          ) => PickersDemo(photos, documents, s.camera)
-        )
+        // A camera without pickers (Apple, #129) still gets the section, with the camera alone.
+        s.pickers
+          .orElse(s.camera.map(_ => (PickersDemo.NoPickers, PickersDemo.NoPickers))).map(
+            (
+              photos,
+              documents
+            ) => PickersDemo(photos, documents, s.camera)
+          )
       )
     currentPickers = pickers
     val sharing = services.flatMap(s => s.share.map(ShareDemo(_, s.storage.dirs.temp)))

@@ -68,6 +68,7 @@ object Parse {
     "thk_dev_void_cb" -> CType.VoidCb,
     "thk_dev_int_cb"  -> CType.IntCb,
     "thk_mot_vec3_cb" -> CType.Vec3Cb,
+    "thk_cam_text_cb" -> CType.TextCb,
     "thk_pick_int_cb" -> CType.IntCb
   )
 
@@ -134,6 +135,7 @@ object Parse {
     "thk_dev_void_cb"              -> CType.VoidCb,
     "thk_dev_int_cb"               -> CType.IntCb,
     "thk_mot_vec3_cb"              -> CType.Vec3Cb,
+    "thk_cam_text_cb"              -> CType.TextCb,
     "thk_pick_int_cb"              -> CType.IntCb
   )
 

@@ -1,4 +1,4 @@
-// Answers system UI on the simulator, as a user would (#114, #125, #134). The iOS self-tests ask for
+// Answers system UI on the simulator, as a user would (#114, #125, #129, #134). The iOS self-tests ask for
 // it with `[gallery] DRIVE <action>` lines, and run-ios-app.sh's `drive` runs this UI test
 // through tap.sh with TEST_RUNNER_TAP=<what>. Nothing else can: simctl has no tap, `simctl
 // privacy` has no notifications service, and a logic test may not use XCUIApplication
@@ -12,6 +12,11 @@
 //   export         Save in "On My iPhone", in the app's exporting document picker (#125)
 //   <bundle id>|<label>  the cell so labelled in that app, brought to the front: the share
 //                  sheet's "Copy" (#134)
+//   app <bundle id> <label>|<label>…  each of that app's buttons in turn: the camera screen's
+//                  shutter, then "Use Photo" (#129). "?label" is tapped only if it comes up in 10 s.
+//
+// Every form prints "[tapper] done" once its taps are made, or "[tapper] failed"; tap.sh reads
+// those, not xcodebuild's verdict (XCTest's tear-down takes 300 s, see tap.sh).
 //
 // A UI-testing bundle with no target application: it reaches SpringBoard, or the app named by
 // TEST_RUNNER_APP, by bundle id. The pickers are other processes' (PhotosUI's, the document
@@ -20,10 +25,37 @@ import XCTest
 
 final class TapperUITests: XCTestCase {
   func testAnswerTheAlert() throws {
-    // A failed step ends the test, so no "[tapper] tapped" line follows it.
+    // A failed step ends the test, so no "[tapper] done" line follows it.
     continueAfterFailure = false
     let env = ProcessInfo.processInfo.environment
     let what = env["TAP"] ?? "allow"
+    // Before the '|' form: "app …" has '|' between its labels.
+    if what.hasPrefix("app ") {
+      let parts = what.split(separator: " ", maxSplits: 2).map(String.init)
+      XCTAssertEqual(parts.count, 3, "want \"app <bundle id> <label>|<label>…\", got \"\(what)\"")
+      let app = XCUIApplication(bundleIdentifier: parts[1])
+      for wanted in parts[2].split(separator: "|").map(String.init) {
+        // "?label": tapped if it comes up within 10 s, skipped otherwise.
+        let optional = wanted.hasPrefix("?")
+        let label = optional ? String(wanted.dropFirst()) : wanted
+        let button = app.buttons[label]
+        if optional && !button.waitForExistence(timeout: 10) {
+          print("[tapper] no \(label), which was optional")
+          continue
+        }
+        guard button.waitForExistence(timeout: 20) else {
+          let there = app.buttons.allElementsBoundByIndex.map { $0.label }
+          print("[tapper] no \(label); buttons: \(there)")
+          print("[tapper] failed")
+          XCTFail("no \"\(label)\" button appeared in 20 s; there were \(there)")
+          return
+        }
+        button.tap()
+        print("[tapper] tapped \(label)")
+      }
+      print("[tapper] done")
+      return
+    }
     // "<bundle id>|<label>": brings that app to the front and taps the element with that label, in
     // whatever the app shows — the share sheet's "Copy", for one (#134). The runner itself comes to
     // the front when it starts, so the app is activated first; activating does not relaunch it.
@@ -107,6 +139,7 @@ final class TapperUITests: XCTestCase {
   /// down on Xcode 27 (measured, #125), which held up every DRIVE line after it. tap.sh reads the
   /// "[tapper] tapped" line, not xcodebuild's verdict.
   private func done() -> Never {
+    print("[tapper] done")
     fflush(stdout)
     exit(0)
   }

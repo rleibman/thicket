@@ -16,6 +16,7 @@
 
 package example.gallery
 
+import thicket.camera.Camera
 import thicket.device.apple.AppleDevice
 import thicket.location.Location
 import thicket.motion.Motion
@@ -62,6 +63,8 @@ object GalleryMac {
             location = Some(Location.unavailable(GalleryLocationChecks.noLocation)),
             // No CMMotionManager on macOS (docs/16 §16.9, decision 7), as on GTK.
             motion = Some(Motion.unavailable(GalleryMotionChecks.noDesktopMotion)),
+            // No camera screen on the desktop (docs/16 §16.3, decision 7), as on GTK.
+            camera = Some(Camera.unavailable(GalleryCameraChecks.noDesktopCamera)),
             clipboard = Some(AppleClipboard()),
             haptics = Some(AppleHaptics()),
             pickers = Some(pickers.photos -> pickers.documents),
