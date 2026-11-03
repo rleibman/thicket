@@ -1068,9 +1068,7 @@ lazy val galleryAndroid = project
     clipboardAndroid,
     hapticsAndroid,
     pickersAndroid,
-    pickersApple,
     cameraAndroid,
-    cameraApple,
     shareAndroid,
     httpChecks.jvm,
     httpAndroid
