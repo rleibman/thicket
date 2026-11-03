@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Answer system UI on a simulator, as a user would (#114, #129, #134).
+# Answer system UI on a simulator, as a user would (#114, #125, #129, #134).
 #
 #   examples/ios-host/tapper/tap.sh <device> deny|allow
+#   examples/ios-host/tapper/tap.sh <device> photo|cancel|export <bundle id>   (#125)
+#   examples/ios-host/tapper/tap.sh <device> document <bundle id> <file name>   (#125)
 #   examples/ios-host/tapper/tap.sh <device> "app <bundle id> <label>|<label>…"   (#129)
 #   examples/ios-host/tapper/tap.sh <device> '<bundle id>|<label>'   (#134)
 #
 # Runs TapperUITests, an XCUITest with no target application, which taps SpringBoard's button;
+# given photo, cancel, document or export, the picker the app with <bundle id> shows (#125);
 # given "app …", that app's buttons in turn (the camera screen's, #129); given '<bundle id>|<label>',
 # brings that app to the front and taps the cell so labelled (the share sheet's "Copy", #134).
 # The first run builds it (into build/, about 20 s); later runs reuse the build and take ~8 s,
@@ -14,7 +17,9 @@
 # for up to 10 min, and without XCTest's tear-down (below).
 set -euo pipefail
 DEVICE="${1:?device}"
-WHAT="${2:?deny|allow|app <bundle id> <labels>|<bundle id>|<label>}"
+WHAT="${2:?deny|allow|photo|cancel|document|export|app <bundle id> <labels>|<bundle id>|<label>}"
+APP_ID="${3:-}"
+FILE_NAME="${4:-}"
 cd "$(dirname "$0")"
 
 # xcodebuild wants an id or an unambiguous name; take the booted device of that name.
@@ -24,10 +29,11 @@ UDID=$(xcrun simctl list devices booted | grep -F "    $DEVICE (" | head -1 | se
 mkdir -p build
 action=test-without-building
 [ -d build/Build/Products ] || action=test
-# Built again when the test has changed since: an older build lacks the newer TAP forms (#129, #134).
+# Built again when the test has changed since: an older build lacks the newer TAP forms (#125, #129, #134).
 [ -z "$(find TapperUITests -newer build/Build/Products -name '*.swift' 2>/dev/null)" ] || action=test
 : >build/tap.log
-TEST_RUNNER_TAP="$WHAT" xcodebuild "$action" -project Tapper.xcodeproj -scheme TapperUITests \
+TEST_RUNNER_TAP="$WHAT" TEST_RUNNER_APP="$APP_ID" TEST_RUNNER_FILE="$FILE_NAME" \
+  xcodebuild "$action" -project Tapper.xcodeproj -scheme TapperUITests \
   -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath build \
   -collect-test-diagnostics never >build/tap.log 2>&1 &
 xb=$!

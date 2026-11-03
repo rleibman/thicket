@@ -322,7 +322,7 @@ this means many modules. Names follow the published ones:
 | motion | `thicket-motion` (built) | `-android` (built), `-ios` (built, #120); GTK and macOS use `Motion.unavailable` |
 | clipboard | `thicket-clipboard` (built) | `-gtk`, `-android`, `-apple` (built) |
 | haptics | `thicket-haptics` (built) | `-android`, `-apple` (built); GTK uses `Haptics.none` |
-| pickers: photos, documents | `thicket-pickers` (built; `Documents`, not `Files`) | `-gtk`, `-android` (built); `-apple` (Mac issue) |
+| pickers: photos, documents | `thicket-pickers` (built; `Documents`, not `Files`) | `-gtk`, `-android` (built); `-apple` (built, #125) |
 | camera capture | `thicket-camera` (built) | `-android` (built), `-apple` (built, iOS; #129); GTK and macOS use `Camera.unavailable` |
 | share | `thicket-share` (built) | `-android` (built; Thicket's own `ThicketFileProvider`, declared in the app's manifest), `-apple` (Mac issue); GTK uses `Share.unavailable` |
 
@@ -462,6 +462,12 @@ Every service gets a gallery section and self-test checks on every host where it
      and `Documents.open`/`save`, driven in the real system UI. `build.sh` taps the Android
      photo picker and documents UI; the GTK self-test answers the file chooser in-process
      (`GDK_DEBUG=no-portals`).
+   - *Pickers on Apple, 2026-11-02 (#125):* `thicket-pickers-apple`, a Swift library of its
+     own: `PHPickerViewController` and `UIDocumentPickerViewController` on iOS, `NSOpenPanel` and
+     `NSSavePanel` sheets on macOS, each file copied through `PickedFiles`. The iOS gallery's
+     pickers are tapped by the XCUITest tapper. On macOS 27 the panels are out of process and
+     their OK cannot be pressed from the app, so the self-test answers an accept through the
+     panel's own completion with a known file; the sheet and its cancel are the real panel's.
    - *Camera capture done on Android, `Unavailable` on GTK, 2026-10-30
      (`modules/camera/README.md`):* the camera app writes to a MediaStore entry Thicket makes,
      and the photo is copied into the cache and the entry deleted. Android 10+. `build.sh`

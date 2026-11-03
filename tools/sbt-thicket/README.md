@@ -71,6 +71,10 @@ lazy val app = project.in(file(".")).enablePlugins(ThicketIosPlugin)   // iOS: a
   (`ios-sim/libthicketmotion.a`, `include/thicket_motion.h`); the host's link takes the
   library. macOS has no `CMMotionManager` and uses `Motion.unavailable`. Not yet run by a
   template: the iOS gallery links it by path.
+- **`thicketPickersApple`** (#125): both plugins, for `thicket-pickers-apple`
+  (`libthicketpickers.a`, `include/thicket_pickers.h`), linked on macOS through
+  `ThicketNativeFlags.applePickers`; on iOS the host's link takes `ios-sim/libthicketpickers.a`.
+  Not yet run by a template: the galleries link it by path.
 - **`thicketCameraApple`** (#129): the same, `ThicketIosPlugin` only, for `thicket-camera-apple`
   (`ios-sim/libthicketcamera.a`, `include/thicket_camera.h`). macOS has no camera screen and
   uses `Camera.unavailable`. Not yet run by a template: the iOS gallery links it by path.

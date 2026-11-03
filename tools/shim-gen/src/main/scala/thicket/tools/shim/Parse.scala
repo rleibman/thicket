@@ -68,7 +68,8 @@ object Parse {
     "thk_dev_void_cb" -> CType.VoidCb,
     "thk_dev_int_cb"  -> CType.IntCb,
     "thk_mot_vec3_cb" -> CType.Vec3Cb,
-    "thk_cam_text_cb" -> CType.TextCb
+    "thk_cam_text_cb" -> CType.TextCb,
+    "thk_pick_int_cb" -> CType.IntCb
   )
 
   /** Splits `const char *title` into its type and drops the parameter name. C puts the `*` with the name, so the type
@@ -134,7 +135,8 @@ object Parse {
     "thk_dev_void_cb"              -> CType.VoidCb,
     "thk_dev_int_cb"               -> CType.IntCb,
     "thk_mot_vec3_cb"              -> CType.Vec3Cb,
-    "thk_cam_text_cb"              -> CType.TextCb
+    "thk_cam_text_cb"              -> CType.TextCb,
+    "thk_pick_int_cb"              -> CType.IntCb
   )
 
   /** A trailing `?` is Swift's optional, which is the same C pointer — `sui_get_text` returns `UnsafePointer<CChar>?`

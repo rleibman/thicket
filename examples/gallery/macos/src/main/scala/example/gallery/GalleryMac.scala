@@ -22,6 +22,7 @@ import thicket.location.Location
 import thicket.motion.Motion
 import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
+import thicket.pickers.apple.ApplePickers
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.share.apple.AppleShare
@@ -45,8 +46,12 @@ object GalleryMac {
     AppleApp.run("Thicket gallery", 520, 760) {
       // Same switch as the GTK host, so one command shape checks any platform.
       val storage = AppleStorage(bundleId)
+      // NSOpenPanel and NSSavePanel, as sheets on the gallery's window (#125).
+      val pickers = ApplePickers(storage.dirs.cache)
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then
-        AppleApp.postToUi(() => GallerySelfTest.run(Some(storage), bundleId, svgWhereDecoded = true))
+        AppleApp.postToUi(() =>
+          GallerySelfTest.run(Some(storage), bundleId, svgWhereDecoded = true, pickers = Some(pickers -> false))
+        )
       val services =
         Some(
           Services(
@@ -62,6 +67,7 @@ object GalleryMac {
             camera = Some(Camera.unavailable(GalleryCameraChecks.noDesktopCamera)),
             clipboard = Some(AppleClipboard()),
             haptics = Some(AppleHaptics()),
+            pickers = Some(pickers.photos -> pickers.documents),
             // The share sheet (#134): a file is shared as a copy under the cache directory.
             share = Some(AppleShare(storage.dirs.cache))
           )

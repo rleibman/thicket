@@ -26,6 +26,7 @@ import thicket.core.dsl.*
 import thicket.renderer.{Alignment, CalendarDate, ContentFit, Icon, Prop, WidgetKind}
 import thicket.renderer.apple.{AppleApp, AppleIcons, AppleInspect, Handles, Shim, ShimKind}
 import thicket.motion.{MotionProvider, Sensor}
+import thicket.pickers.apple.ApplePickers
 import thicket.secrets.apple.AppleSecrets
 import thicket.secrets.testing.SecretsConformance
 import thicket.signals.{ErrorSink, Owner}
@@ -88,6 +89,9 @@ object GallerySelfTest {
   /** Set by [[run]]: the iOS host's camera (#129); `None` on macOS. */
   private var camera: Option[GalleryCameraChecks.Probe] = None
 
+  /** Set by [[run]]: the host's pickers (#125), and whether they are iOS's, driven from outside. */
+  private var pickers: Option[(ApplePickers, Boolean)] = None
+
   /** Waits for the Effects section's ZIO result first, as the GTK host does, so the synchronous checks see it.
     *
     * `svgWhereDecoded`: the host promises the SVG logo wherever the platform's image class decodes it - the macOS host
@@ -98,13 +102,15 @@ object GallerySelfTest {
     bundleId:        String,
     svgWhereDecoded: Boolean = false,
     motion:          Option[(MotionProvider, Sensor => Boolean)] = None,
-    camera:          Option[GalleryCameraChecks.Probe] = None
+    camera:          Option[GalleryCameraChecks.Probe] = None,
+    pickers:         Option[(ApplePickers, Boolean)] = None
   ): Unit = {
     this.storage = storage
     this.bundleId = bundleId
     this.svgWhereDecoded = svgWhereDecoded
     this.motion = motion
     this.camera = camera
+    this.pickers = pickers
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
   }
 
@@ -249,7 +255,9 @@ object GallerySelfTest {
       deviceChecks(() =>
         locationChecks(() =>
           motionChecks(() =>
-            cameraChecks(() => shareChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+            cameraChecks(() =>
+              shareChecks(() => clipboardChecks(() => pickerChecks(() => sheet(all)(() => bigList(() => finish())))))
+            )
           )
         )
       )
@@ -293,6 +301,25 @@ object GallerySelfTest {
       () => AppleInspect.allTexts(AppleApp.rootHandle),
       camera
     )(next)
+
+  /** The pickers (#125), in [[GalleryPickerChecks]]. */
+  private def pickerChecks(next: () => Unit): Unit =
+    (pickers, storage) match {
+      case (Some((p, ios)), Some(s)) =>
+        val logo =
+          if ios then Paths.get(AppleApp.resourcePath(Gallery.logo)) else Paths.get(Gallery.logo).toAbsolutePath
+        GalleryPickerChecks.run(
+          checker,
+          label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
+          p,
+          s.dirs.cache,
+          logo,
+          ios
+        )(next)
+      case _ =>
+        check("the Apple host provides the pickers and storage", false, s"pickers $pickers; storage $storage")
+        next()
+    }
 
   /** The share sheet (#134), in [[GalleryShareChecks]]. Before the clipboard's: on iOS it taps "Copy" in the sheet, and
     * the clipboard's own last copy must be the pasteboard's text when the run ends (`bin/verify-apple.sh`).
