@@ -72,6 +72,20 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-02 — **Apple CI: a notifications read that times out is "no answer", not Denied**
+  (#128). Every failed `apple.yml` run since #132 merged (5 of 5 checked: 41391530485,
+  41390412068, 41374569722, 41374441105, 41374248305) failed one step, `ios-gallery`, on
+  "notifications start Denied, not yet asked". `bin/verify-apple.sh` reboots the simulator
+  before each iOS step. Right after a boot, `getNotificationSettings` can take longer than
+  `notificationStatus()`'s 5 s cap, and the cap read as `denied`. Now the shim answers 4,
+  "no answer within 5 s". `ApplePermissions.status` still reports it as `Denied`, so the API
+  is unchanged and the main thread waits no longer. `AppleDevice.testing.notYetAsked` asks
+  again, up to about 60 s, and logs the codes it saw. Measured from a cold boot (iPhone 18 Pro
+  Max, load average 166 with three agents building): `4,4,4,4,4,3` in 28.7 s, and the check
+  then passed. The "macOS app has no window" failures that opened #128 stopped with #113's
+  60 s window poll; getting-started has passed in every run since. The one `http-ios` that was
+  killed silently (run 41122835117) has not recurred.
+
 - 2026-11-01 — **The live camera preview: the owner took every recommendation in
   `docs/17-camera-preview.md` §17.8.**
   1. **An embedding point, not a built-in `WidgetKind`:** `Element.Platform` in `core`, handled
