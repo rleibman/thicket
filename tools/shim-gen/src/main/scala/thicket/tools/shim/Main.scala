@@ -21,7 +21,7 @@ import java.nio.file.{Files, Path, Paths}
 /** Writes the generated artefacts into the repository, or checks that they are current.
   *
   * {{{
-  * sbt shimGen/run                          # regenerate the renderer, http, device and motion headers and externs
+  * sbt shimGen/run                          # regenerate the renderer, http, device, motion and pickers headers and externs
   * sbt "shimGen/run --check"                # exit 1 if any differs from what Abi or HttpAbi generates
   * sbt "shimGen/run --scaffold <dir>"       # Swift @_cdecl signatures for a new shim, into <dir>
   * }}}
@@ -38,14 +38,16 @@ object Main {
 
   /** The generated files, as paths relative to the repository root. */
   val generated: List[(String, () => String)] = List(
-    "modules/renderer-apple/shim/include/thicket_apple.h"                       -> (() => Emit.cHeader()),
-    "modules/renderer-apple/src/main/scala/thicket/renderer/apple/Shim.scala"   -> (() => Emit.scalaExterns()),
-    "modules/http-apple/shim/include/thicket_http.h"                            -> (() => Emit.httpHeader()),
-    "modules/http-apple/src/main/scala/thicket/http/apple/HttpShim.scala"       -> (() => Emit.httpScalaExterns()),
-    "modules/device-apple/shim/include/thicket_device.h"                        -> (() => Emit.deviceHeader()),
-    "modules/device-apple/src/main/scala/thicket/device/apple/DeviceShim.scala" -> (() => Emit.deviceScalaExterns()),
-    "modules/motion-ios/shim/include/thicket_motion.h"                          -> (() => Emit.motionHeader()),
-    "modules/motion-ios/src/main/scala/thicket/motion/ios/MotionShim.scala"     -> (() => Emit.motionScalaExterns())
+    "modules/renderer-apple/shim/include/thicket_apple.h"                          -> (() => Emit.cHeader()),
+    "modules/renderer-apple/src/main/scala/thicket/renderer/apple/Shim.scala"      -> (() => Emit.scalaExterns()),
+    "modules/http-apple/shim/include/thicket_http.h"                               -> (() => Emit.httpHeader()),
+    "modules/http-apple/src/main/scala/thicket/http/apple/HttpShim.scala"          -> (() => Emit.httpScalaExterns()),
+    "modules/device-apple/shim/include/thicket_device.h"                           -> (() => Emit.deviceHeader()),
+    "modules/device-apple/src/main/scala/thicket/device/apple/DeviceShim.scala"    -> (() => Emit.deviceScalaExterns()),
+    "modules/motion-ios/shim/include/thicket_motion.h"                             -> (() => Emit.motionHeader()),
+    "modules/motion-ios/src/main/scala/thicket/motion/ios/MotionShim.scala"        -> (() => Emit.motionScalaExterns()),
+    "modules/pickers-apple/shim/include/thicket_pickers.h"                         -> (() => Emit.pickersHeader()),
+    "modules/pickers-apple/src/main/scala/thicket/pickers/apple/PickersShim.scala" -> (() => Emit.pickersScalaExterns())
   )
 
   private def root: Path = Paths.get(sys.props.getOrElse("thicket.root", ".")).toAbsolutePath.normalize
@@ -69,7 +71,7 @@ object Main {
               println(s"wrote     $rel")
             }
         }
-        println(s"${Abi.all.size} sui functions, ${Abi.kinds.size} kind codes, ${HttpAbi.all.size} thk_http functions, ${DeviceAbi.all.size} thk_dev functions, ${MotionAbi.all.size} thk_mot functions.")
+        println(s"${Abi.all.size} sui functions, ${Abi.kinds.size} kind codes, ${HttpAbi.all.size} thk_http functions, ${DeviceAbi.all.size} thk_dev functions, ${MotionAbi.all.size} thk_mot functions, ${PickersAbi.all.size} thk_pick functions.")
 
       case "--check" :: Nil =>
         val stale = generated.collect { case (rel, text) if !current(root.resolve(rel)).contains(text()) => rel }

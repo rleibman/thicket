@@ -27,10 +27,10 @@ APP_NAME=GalleryIos
 BUNDLE_ID=dev.thicket.galleryios
 SWIFT_INCLUDE="$REPO/modules/renderer-apple/shim/include"
 EXTRA_LINK=-lsqlite3
-# The same THICKET_GALLERY_SELFTEST the macOS example reads. Up to 6 min (#78, #114, #118): the gallery
-# times 1 000 vs 2 000 children.
+# The same THICKET_GALLERY_SELFTEST the macOS example reads. Up to 8 min (#78, #114, #118, #125): the
+# gallery times 1 000 vs 2 000 children, and the pickers' four taps take about 15 s each.
 RUN_ENV=THICKET_GALLERY_SELFTEST=1
-WAIT_SECONDS=360
+WAIT_SECONDS=480
 SCREENSHOT=1
 KEEP_UNSTRIPPED=1
 
@@ -43,15 +43,50 @@ DEVICE_LIB="$REPO/modules/device-apple/shim/build-ios/libthicketdevice.a"
 # The Motion section (#120): thicket-motion-ios's Swift library, over CMMotionManager.
 MOTION_LIB="$REPO/modules/motion-ios/shim/build-ios/libthicketmotion.a"
 [ -f "$MOTION_LIB" ] || { echo "Missing $MOTION_LIB — run modules/motion-ios/shim/build-shim.sh ios-sim" >&2; exit 1; }
-EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB"
+# The Pickers section (#125): thicket-pickers-apple's Swift library.
+PICKERS_LIB="$REPO/modules/pickers-apple/shim/build-ios/libthicketpickers.a"
+[ -f "$PICKERS_LIB" ] || { echo "Missing $PICKERS_LIB — run modules/pickers-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
+EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB $PICKERS_LIB"
 FRESH_INSTALL=1
 # Location (#118) granted too, with its usage string, without which iOS ignores the request.
 PRIVACY_GRANT="microphone location"
 USAGE_STRINGS="NSMicrophoneUsageDescription=The gallery checks that a granted permission answers Granted.
 NSLocationWhenInUseUsageDescription=The gallery shows where the device is while it is in front."
 
+# Files' "On My iPhone": the Files app's local storage, where the document picker opens the test
+# document and saves the gallery's (#125).
+on_my_iphone() {
+  local group
+  group=$(xcrun simctl get_app_container "$DEVICE" com.apple.DocumentsApp groups |
+    sed -n 's/^group\.com\.apple\.FileProvider\.LocalStorage[[:space:]]*//p')
+  [ -n "$group" ] || { echo "no Files local storage on $DEVICE" >&2; return 1; }
+  echo "$group/File Provider Storage"
+}
+
 # No simulated position before the launch, so the first one the self-test sets is a change it sees.
-before_launch() { xcrun simctl location "$DEVICE" clear; }
+# What the pickers pick (#125): the gallery's logo in the photo library, newest, so first in the
+# picker; a text file in "On My iPhone"; and no saved file left from an earlier run.
+before_launch() {
+  xcrun simctl location "$DEVICE" clear
+  xcrun simctl addmedia "$DEVICE" "$REPO/docs/assets/thicket-logo.png"
+  local files
+  files=$(on_my_iphone)
+  mkdir -p "$files"
+  printf 'a test document\n' >"$files/thicket-test.txt"
+  rm -f "$files/thicket-gallery.txt"
+}
+
+# The save's check, from outside the app: the file in "On My iPhone" holds the gallery's text.
+check_saved() {
+  local f
+  f="$(on_my_iphone)/thicket-gallery.txt"
+  for _ in $(seq 1 10); do [ -f "$f" ] && break; sleep 1; done
+  [ "$(cat "$f" 2>/dev/null)" = "Saved from the Thicket gallery" ] || {
+    echo "the saved file is not in On My iPhone with the gallery's text: $(ls -la "$f" 2>&1)"
+    return 1
+  }
+  echo "-- saved: $f ($(stat -f%z "$f") bytes), the gallery's text"
+}
 
 # The Share section (#134): "Copy" tapped in the gallery's share sheet through XCUITest, then the
 # simulator's pasteboard read from outside the app, which must hold the text the gallery shared.
@@ -69,7 +104,8 @@ share_copy() {
 
 # What the self-test asks the user to do: another app in front (Settings), the gallery launched
 # again (the same process comes back), the notifications alert answered through XCUITest, the
-# device moved (`geo <lat>,<lon>`, #118), and "Copy" in the share sheet (`share-copy <text>`, #134).
+# device moved (`geo <lat>,<lon>`, #118), the pickers answered through XCUITest (#125), and
+# "Copy" in the share sheet (`share-copy <text>`, #134).
 drive() {
   case "$1" in
     home) xcrun simctl launch "$DEVICE" com.apple.Preferences ;;
@@ -77,6 +113,10 @@ drive() {
     geo\ *) xcrun simctl location "$DEVICE" set "${1#geo }" ;;
     wait\ *) sleep "${1#wait }" ;;
     deny | allow) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "$1" ;;
+    pick-photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" photo "$BUNDLE_ID" ;;
+    cancel-photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" cancel "$BUNDLE_ID" ;;
+    pick-document) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" document "$BUNDLE_ID" thicket-test ;;
+    save-document) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" export "$BUNDLE_ID" && check_saved ;;
     share-copy\ *) share_copy "${1#share-copy }" ;;
     *) echo "unknown DRIVE action: $1" ;;
   esac

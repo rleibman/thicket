@@ -114,6 +114,17 @@ object SharedFlagsSpec extends ZIOSpecDefault {
           assert(c.linkingOptions.count(_ == "-rpath"))(equalTo(1))
         }
       ),
+      suite("applePickers (thicket-pickers-apple, #125)")(
+        test("on top of the renderer's and the device's flags, the library by path and name") {
+          val apple = ThicketNativeFlags.apple(new java.io.File("/l"), new java.io.File("/i"))(NativeConfig.empty)
+          val device = ThicketNativeFlags.appleDevice(new java.io.File("/device/lib"))(apple)
+          val c = ThicketNativeFlags.applePickers(new java.io.File("/pickers/lib"))(device)
+          assert(c.linkingOptions)(contains("-lthicketdevice")) &&
+          assert(c.linkingOptions)(contains("-L/pickers/lib")) &&
+          assert(c.linkingOptions)(contains("-lthicketpickers")) &&
+          assert(c.linkingOptions.count(_ == "-rpath"))(equalTo(1))
+        }
+      ),
       test("a missing package says which one and how to install it") {
         val e = scala.util.Try(ThicketNativeFlags.pkgConfig("--libs", Seq("thicket-no-such-package"))).failed.get
         assert(e.getMessage)(containsString("thicket-no-such-package")) &&
