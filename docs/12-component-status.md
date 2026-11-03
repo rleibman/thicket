@@ -390,8 +390,8 @@ Clipboard and haptics section's 3 included. The two together are not measured ye
 2026-11-01 (#118): iOS simulator **199** (191 + 8, the Location section, the listeners counted
 through a wrapping provider and in `libthicketdevice.a`), macOS **192** with the screen locked
 (191 + 1, location unavailable).
-2026-11-02 (#134): macOS **208**, the Share section's 8 included; iOS simulator ("iPhone 18 Pro")
-**216**, its 9 included.
+2026-11-02 (#134): macOS **208**, the Share section's 8 included (**204** with the screen locked,
+in `bin/verify-apple.sh`); iOS simulator ("iPhone 18 Pro") **216**, its 9 included.
 
 Four rules the migration established:
 
