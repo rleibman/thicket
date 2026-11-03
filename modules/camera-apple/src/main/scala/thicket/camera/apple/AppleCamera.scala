@@ -34,8 +34,8 @@ import thicket.pickers.PickedFiles
   *   - **`NSCameraUsageDescription`** must be in the app's `Info.plist`, or iOS terminates the app when the camera
   *     opens. Without it this throws `IllegalStateException` naming the key (through [[ApplePermissions]]), as Android
   *     does for an undeclared permission: on the simulator too, where no camera would ever open.
-  *   - `Unavailable` when `UIImagePickerController.isSourceTypeAvailable(.camera)` is false: **the simulator has no
-  *     camera**.
+  *   - `Unavailable` when `UIImagePickerController.isSourceTypeAvailable(.camera)` is false: the device reports no camera
+  *     the picker can use (some simulators report a camera but do not produce captures).
   *   - `NeedsPermission(Camera)` while `AVCaptureDevice`'s authorisation for video is not yet asked or denied
   *     (`ApplePermissions.request(Camera)` asks); `Unavailable` where it is restricted.
   *
