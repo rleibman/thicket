@@ -98,10 +98,11 @@ object ApplePermissions extends Permissions {
     p:    Permission
   ): PermissionStatus =
     code match {
-      case 0     => PermissionStatus.Granted
-      case 2     => PermissionStatus.Restricted
-      case 1 | 3 => PermissionStatus.Denied
-      case _     =>
+      case 0 => PermissionStatus.Granted
+      case 2 => PermissionStatus.Restricted
+      // 4: UserNotifications did not answer in time (#128). Not an answer, so not Granted.
+      case 1 | 3 | 4 => PermissionStatus.Denied
+      case _         =>
         throw UnsupportedOperationException(s"$p is not supported by thicket-device-apple")
     }
 
@@ -164,7 +165,19 @@ object AppleDevice {
       * refusal. A self-test needs the difference: a refusal left over from an earlier run answers at once, with no
       * alert, and would pass a check of "Don't Allow" without one.
       */
-    def notYetAsked(p: Permission): Boolean = DeviceShim.thk_dev_permission_status(p.ordinal) == 3
+    def notYetAsked(p: Permission): Boolean = {
+      // 4 is "UserNotifications did not answer in time": right after a simulator boots, its first settings read can
+      // take longer than the shim's 5 s (#128). That is no answer, so ask again, up to about 60 s, rather than read it
+      // as a refusal. Measured from a cold boot under heavy load: 4,4,4,4,4,3 in 28.7 s, so about 60 s is allowed.
+      val started = System.nanoTime()
+      var codes = List(DeviceShim.thk_dev_permission_status(p.ordinal))
+      while codes.head == 4 && codes.size < 12 do codes = DeviceShim.thk_dev_permission_status(p.ordinal) :: codes
+      println(
+        s"[device] $p status codes ${codes.reverse.mkString(",")} in ${(System.nanoTime() - started) / 1000000} ms " +
+          "(3 not yet asked, 1 denied, 4 no answer within 5 s)"
+      )
+      codes.head == 3
+    }
 
     /** How many location listeners `libthicketdevice.a` has (`thicket-location-apple`, #118): `CLLocationManager` is
       * updating while this is not 0.
