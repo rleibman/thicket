@@ -18,6 +18,7 @@
 #   shim-ios       compile Shim+UIKit.swift  (build-shim.sh ios-sim)
 #   shim-device    compile thicket-device-apple's Swift library, macOS and simulator (#114)
 #   shim-motion    compile thicket-motion-ios's Swift library, simulator only (#120)
+#   shim-pickers   compile thicket-pickers-apple's Swift library, macOS and simulator (#125)
 #   abi            shim-gen's consistency checks: ABI, C header, Scala externs, both shims
 #   secrets        thicket-secrets-apple's tests against the real Keychain (#108): conformance, isolation
 #   link           sbt nativeLink for the six Apple apps, after deleting their old outputs
@@ -27,7 +28,8 @@
 #   macos-lazy     THICKET_LAZYTEST=1 todo-macos: 10 000 rows, virtualised and freed
 #   ios-gallery    the gallery on the simulator (examples/gallery/ios/ios-app/build-app.sh): it
 #                  opens Settings over the gallery and answers its notifications alert through an
-#                  XCUITest (examples/ios-host/tapper); then simctl pbpaste must read its last copy
+#                  XCUITest (examples/ios-host/tapper), which also answers its photo picker, document
+#                  picker and save dialog (#125); then simctl pbpaste must read its last copy
 #   ios-todo       the todo app on the simulator (examples/todo-apple/ios/ios-app/build-app.sh)
 #   ios-lazy       the 10 000-row probe on the simulator
 #   fit            ContentFit measured on both toolkits (shim/run-fit-harness.sh)
@@ -185,6 +187,7 @@ run shim-macos modules/renderer-apple/shim/build-shim.sh macos
 run shim-ios modules/renderer-apple/shim/build-shim.sh ios-sim
 run shim-device sh -c 'modules/device-apple/shim/build-shim.sh macos && modules/device-apple/shim/build-shim.sh ios-sim'
 run shim-motion modules/motion-ios/shim/build-shim.sh ios-sim
+run shim-pickers sh -c 'modules/pickers-apple/shim/build-shim.sh macos && modules/pickers-apple/shim/build-shim.sh ios-sim'
 run abi sbt --error shimGen/testFull
 run secrets sbt --error secretsApple/testFull
 run link link_all

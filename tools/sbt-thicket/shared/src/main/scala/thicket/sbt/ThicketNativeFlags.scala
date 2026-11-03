@@ -130,6 +130,21 @@ object ThicketNativeFlags {
       )
     )
 
+  /** `thicket-pickers-apple`'s Swift library on macOS (#125): `libthicketpickers.a`. The object names AppKit and
+    * UniformTypeIdentifiers itself (Swift's autolink), so no framework flags; on top of [[apple]], as [[appleDevice]].
+    * Not needed on iOS, where the host's own link takes the archive.
+    *
+    * @param libDir
+    *   the directory holding `libthicketpickers.a`
+    */
+  def applePickers(libDir: File)(c: NativeConfig): NativeConfig =
+    c.withLinkingOptions(
+      c.linkingOptions ++ Seq(
+        "-L" + libDir.getAbsolutePath,
+        "-lthicketpickers"
+      )
+    )
+
   /** The iOS simulator variant. Three differences from the macOS one, each forced:
     *
     *   - `libraryStatic`, because the host owns `@main` (iOS 27 requires UIScene adoption, and a scene delegate cannot

@@ -23,6 +23,7 @@ import thicket.location.apple.AppleLocation
 import thicket.motion.ios.{IosMotion, IosMotionProvider}
 import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
+import thicket.pickers.apple.ApplePickers
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
 import thicket.share.apple.AppleShare
@@ -55,12 +56,15 @@ object GalleryIos {
       // anyway so the two Apple hosts differ in nothing but their entry shape.
       AppleApp.run("Thicket gallery", 520, 760) {
         val storage = AppleStorage(bundleId)
+        // PHPickerViewController and UIDocumentPickerViewController (#125).
+        val pickers = ApplePickers(storage.dirs.cache)
         if sys.env.contains("THICKET_GALLERY_SELFTEST") then
           AppleApp.postToUi { () =>
             GallerySelfTest.run(
               Some(storage),
               bundleId,
-              motion = Some(IosMotionProvider -> IosMotionProvider.testing.active)
+              motion = Some(IosMotionProvider -> IosMotionProvider.testing.active),
+              pickers = Some(pickers -> true)
             )
           }
         // The app's working directory is `/`, so `Gallery.logoBytes` — a repo-relative read —
@@ -80,6 +84,7 @@ object GalleryIos {
               motion = Some(IosMotion()),
               clipboard = Some(AppleClipboard()),
               haptics = Some(AppleHaptics()),
+              pickers = Some(pickers.photos -> pickers.documents),
               // The share sheet (#134): a file is shared as a copy under the cache directory.
               share = Some(AppleShare(storage.dirs.cache))
             )
