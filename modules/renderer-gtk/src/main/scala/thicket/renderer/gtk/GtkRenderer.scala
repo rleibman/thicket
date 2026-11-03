@@ -275,6 +275,16 @@ final class GtkRenderer extends Renderer {
         // A box holding the view's own widget; the widget comes with Prop.View.
         case WidgetKind.Platform => platformViews.create()
 
+        // GtkCheckButtons in a column, grouped: GTK's radio buttons. Built and grouped with the options, as the
+        // segmented control's toggle buttons are (`setSegments`).
+        case WidgetKind.RadioGroup => gtk_box_new(GtkOrientation.GTK_ORIENTATION_VERTICAL, 4)
+
+        // GNOME's stepper: a number entry with − and + beside it. Range, step and value arrive as props.
+        case WidgetKind.Stepper =>
+          val sb = gtk_spin_button_new_with_range(0.0, 100.0, 1.0)
+          gtk_spin_button_set_numeric(sb.asInstanceOf[Ptr[GtkSpinButton]], Handles.gbool(true))
+          sb
+
         case WidgetKind.DatePicker =>
           val button = gtk_menu_button_new()
           val calendar = gtk_calendar_new()
@@ -541,6 +551,41 @@ final class GtkRenderer extends Renderer {
               // rather than a signal of its own, so this needs the 3-argument trampoline.
               Handles.connect(handle, "notify::selected", Handles.notifiedPtr, id)
             }
+        }
+
+      case Prop.Range(min, max) if isStepper(handle) =>
+        suppress += handle
+        gtk_spin_button_set_range(handle.asInstanceOf[Ptr[GtkSpinButton]], min, max)
+        suppress -= handle
+
+      case Prop.Step(by) =>
+        if isStepper(handle) then {
+          val sb = handle.asInstanceOf[Ptr[GtkSpinButton]]
+          gtk_spin_button_set_increments(sb, by, by * 10)
+          gtk_spin_button_set_digits(sb, toGuint(Steps.digits(by)))
+        }
+
+      case Prop.Value(v) if isStepper(handle) =>
+        val sb = handle.asInstanceOf[Ptr[GtkSpinButton]]
+        // As for the slider: a write of the value the user just made would fight them.
+        if gtk_spin_button_get_value(sb) != v then {
+          suppress += handle
+          gtk_spin_button_set_value(sb, v)
+          suppress -= handle
+        }
+
+      case Prop.OnValueChange(f) if isStepper(handle) =>
+        valueIds.get(handle) match {
+          case Some(id) => Handles.replaceValued(id, s => f(s.toDouble))
+          case None     =>
+            val id = Handles.registerValued(s => f(s.toDouble))
+            valueIds(handle) = id
+            Handles.bindTextSource(
+              id,
+              () => gtk_spin_button_get_value(handle.asInstanceOf[Ptr[GtkSpinButton]]),
+              () => suppress.contains(handle)
+            )
+            Handles.connect(handle, "value-changed", Handles.changedPtr, id)
         }
 
       case Prop.Range(min, max) =>
@@ -886,7 +931,30 @@ final class GtkRenderer extends Renderer {
   private val segmentIndex = perHandle[Int]
   private val segmentChosen = perHandle[Int => Unit]
 
-  private def isSegmented(handle: Handle): Boolean = kinds.get(handle).contains(WidgetKind.SegmentedControl)
+  /** A SegmentedControl's toggle buttons and a RadioGroup's check buttons are the same thing to the renderer: a box of
+    * grouped buttons, one per option, with the selection kept here.
+    */
+  private def isSegmented(handle: Handle): Boolean =
+    kinds.get(handle).exists(k => k == WidgetKind.SegmentedControl || k == WidgetKind.RadioGroup)
+
+  private def isRadio(handle: Handle): Boolean = kinds.get(handle).contains(WidgetKind.RadioGroup)
+
+  private def isStepper(handle: Handle): Boolean = kinds.get(handle).contains(WidgetKind.Stepper)
+
+  private def choiceActive(
+    control: Handle,
+    b:       Ptr[GtkWidget]
+  ): Boolean =
+    if isRadio(control) then gtk_check_button_get_active(b.asInstanceOf[Ptr[GtkCheckButton]]).asInstanceOf[CInt] != 0
+    else gtk_toggle_button_get_active(b.asInstanceOf[Ptr[GtkToggleButton]]).asInstanceOf[CInt] != 0
+
+  private def setChoiceActive(
+    control: Handle,
+    b:       Ptr[GtkWidget],
+    on:      Boolean
+  ): Unit =
+    if isRadio(control) then gtk_check_button_set_active(b.asInstanceOf[Ptr[GtkCheckButton]], Handles.gbool(on))
+    else gtk_toggle_button_set_active(b.asInstanceOf[Ptr[GtkToggleButton]], Handles.gbool(on))
 
   private def setSegments(
     control: Handle,
@@ -898,14 +966,16 @@ final class GtkRenderer extends Renderer {
         label,
         i
       ) =>
-        val b = Zone(gtk_toggle_button_new_with_label(toCString(label)))
-        val toggle = b.asInstanceOf[Ptr[GtkToggleButton]]
+        val b = Zone(
+          if isRadio(control) then gtk_check_button_new_with_label(toCString(label))
+          else gtk_toggle_button_new_with_label(toCString(label))
+        )
         // Grouped to the first, which is what makes them mutually exclusive: GTK deactivates
         // the old one when a new one is pressed.
         val id = Handles.register { () =>
           // "toggled" fires for the button going off as well as the one coming on; only the
           // one coming on is a choice, and only when the user made it.
-          if gtk_toggle_button_get_active(toggle).asInstanceOf[CInt] != 0 && !suppress.contains(control) then {
+          if choiceActive(control, b) && !suppress.contains(control) then {
             segmentIndex(control) = i
             segmentChosen.get(control).foreach(_(i))
           }
@@ -923,7 +993,13 @@ final class GtkRenderer extends Renderer {
             b,
             _
           ) =>
-            gtk_toggle_button_set_group(b.asInstanceOf[Ptr[GtkToggleButton]], first.asInstanceOf[Ptr[GtkToggleButton]])
+            if isRadio(control) then
+              gtk_check_button_set_group(b.asInstanceOf[Ptr[GtkCheckButton]], first.asInstanceOf[Ptr[GtkCheckButton]])
+            else
+              gtk_toggle_button_set_group(
+                b.asInstanceOf[Ptr[GtkToggleButton]],
+                first.asInstanceOf[Ptr[GtkToggleButton]]
+              )
         }
     }
     built.foreach(
@@ -947,15 +1023,14 @@ final class GtkRenderer extends Renderer {
     // Writing `active` fires "toggled", which would report the app's own write back to it
     // as a user choice — and with a Var behind it, loop. Guarded as the switch is.
     suppress += control
-    if index >= 0 && index < buttons.length then
-      gtk_toggle_button_set_active(buttons(index)._1.asInstanceOf[Ptr[GtkToggleButton]], Handles.gbool(true))
+    if index >= 0 && index < buttons.length then setChoiceActive(control, buttons(index)._1, true)
     else
       // -1, or past the end: nothing chosen. A GTK toggle group allows none active.
       buttons.foreach(
         (
           b,
           _
-        ) => gtk_toggle_button_set_active(b.asInstanceOf[Ptr[GtkToggleButton]], Handles.gbool(false))
+        ) => setChoiceActive(control, b, false)
       )
     suppress -= control
   }

@@ -212,6 +212,16 @@ final class AndroidRenderer(context: Context) extends Renderer {
         g.setOrientation(LinearLayout.HORIZONTAL)
         g
 
+      // The same RadioGroup the segmented control is, in a column: Android's own radio buttons. Its props are the
+      // segmented control's (`handle.isInstanceOf[RadioGroup]`).
+      case WidgetKind.RadioGroup =>
+        val g = RadioGroup(context)
+        g.setOrientation(LinearLayout.VERTICAL)
+        g
+
+      // Android has no stepper (§12.2a): − / value / + from framework views.
+      case WidgetKind.Stepper => StepperView(context)
+
       case WidgetKind.Picker =>
         val s = Spinner(context)
         // simple_spinner_dropdown_item, not simple_spinner_item: the latter is the *closed*
@@ -496,9 +506,16 @@ final class AndroidRenderer(context: Context) extends Renderer {
       // A SeekBar is integral, so the renderer owns the conversion — it is the only side
       // that knows its own resolution. 1000 steps rather than 100 so a fraction does not
       // quantise visibly on a wide control.
+      case Prop.Step(by) =>
+        handle match {
+          case s: StepperView => s.setStep(by)
+          case _ => ()
+        }
+
       case Prop.Range(min, max) =>
         handle match {
-          case s: SeekBar =>
+          case s: StepperView => s.setRange(min, max)
+          case s: SeekBar     =>
             ranges(s) = (min, max)
             s.setMax(SliderSteps)
           case _ => ()
@@ -506,7 +523,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.Value(v) =>
         handle match {
-          case s: SeekBar =>
+          case s: StepperView => if s.value != v then s.setValue(v)
+          case s: SeekBar     =>
             val (min, max) = ranges.getOrElse(s, (0.0, 1.0))
             val span = if max - min == 0.0 then 1.0 else max - min
             val steps = (((v - min) / span) * SliderSteps).round.toInt
@@ -674,7 +692,8 @@ final class AndroidRenderer(context: Context) extends Renderer {
 
       case Prop.OnValueChange(f) =>
         handle match {
-          case s: SeekBar =>
+          case s: StepperView => s.setOnValueChange(v => appCallback(f(v)))
+          case s: SeekBar     =>
             s.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener {
               def onProgressChanged(
                 bar:      SeekBar,

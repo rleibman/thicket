@@ -72,6 +72,28 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-03 — **`RadioGroup` and `Stepper`, the last two v1 widgets, as §12.2a exceptions**
+  (owner's decision; Apple's own controls are #150).
+  - **Owner's decision:** build both, each platform's own control where it has one and a
+    construction where it has none, as `TabView` on Android; on iOS, `Radio` is a checkmark list.
+    This reverses only the "not in the catalogue" part of `docs/12` §12.2a; its reasons are why
+    each is built as it is.
+  - **`RadioGroup`, not `Radio`:** a group, because Android's exclusion is a container and GTK's
+    a pointer between siblings. It takes `Picker`'s props (an index, `-1` for none). GTK: grouped
+    `GtkCheckButton`s, sharing the segmented control's code; Android: a vertical `RadioGroup`,
+    which the segmented control already was.
+  - **`Stepper`** takes `Slider`'s props and a new `Prop.Step`. GTK: `GtkSpinButton`, its digits
+    from the step. Android has none: − / value / + from framework views, clamped, the bound's
+    button disabled. `thicket.renderer.Steps.format` shows a value to its step's precision, shared
+    so a renderer that draws the number agrees with one whose toolkit does.
+  - **Apple, until #150:** `RadioGroup` maps to the existing picker and `Stepper` to the slider,
+    with the same props, so the Apple galleries keep running; docs/12 says partial.
+  - **Measured.** `RadioStepperSpec` 4/4 on JVM, Native and JS (core 176). GTK gallery **150**
+    (144 + 6), todo 69; Android gallery **100** (95 + 5) on `s2test`.
+  - **Falsified.** Radio buttons ungrouped: "only it active" fails on GTK. No spin-button
+    digits: the precision check fails on GTK; on Android, the wrong precision fails it and no
+    clamp fails "stops at its maximum".
+
 - 2026-11-02 — **The embedding point: `WidgetKind.Platform`, `Prop.View`, built on GTK and
   Android** (`docs/17` §17.3, step 1 of §17.7; the Apple half is #145).
   - **Shape:** `trait PlatformView { def description: String }` in `renderer-api`, and
