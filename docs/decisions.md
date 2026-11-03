@@ -72,6 +72,50 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-02 — **Apple pickers: `thicket-pickers-apple`, a Swift library of its own, over
+  `PHPickerViewController` and `UIDocumentPickerViewController` (iOS) and `NSOpenPanel` /
+  `NSSavePanel` sheets (macOS)** (#125, docs/16 §16.10 item 5). Both galleries pass
+  `pickers = Some((photos, documents))`.
+  - **Swift, not a C helper** like `thicket-clipboard-apple`'s: the pickers answer through
+    delegate objects and completion blocks, which C cannot write without an Objective-C file,
+    and Scala Native compiles `.c` but not `.m`. Its own archive (`libthicketpickers.a`: 68 KB
+    macOS, 97 KB simulator) in its own jar, so an app without it links no PhotosUI. The ABI is
+    `PickersAbi` in `tools/shim-gen` (11 `thk_pick_*` functions, one callback type,
+    `thk_pick_int_cb`), checked by `PickersConsistencySpec` (shimGen 44, 7 new).
+  - **A picked file is a hold.** `file(ctx, hold)` comes on the main thread; Scala reads the
+    path, copies it through `PickedFiles` on a worker thread and calls `thk_pick_release` from
+    there. `PHPickerViewController`'s `loadFileRepresentation` file is deleted when its callback
+    returns, so that callback waits for the release: the copy is made inside it, as the owner's
+    decision asks, without a non-Scala thread entering Scala. `done(ctx, n)` follows the last
+    release. `save` writes the bytes to a staged file in the cache; iOS exports it
+    (`forExporting:asCopy: true`), macOS copies it where the panel answered; the staged file is
+    deleted after.
+  - **iOS drives the real pickers.** XCUITest reaches PhotosUI's grid and the document browser
+    through the app's accessibility tree, so the tapper (`examples/ios-host/tapper`) gains
+    `photo`, `cancel`, `document` and `export`; `build-app.sh` adds the logo with
+    `simctl addmedia` and a text file to Files' "On My iPhone", and reads the saved file back
+    from there. Found: a UI test that touched an app (SpringBoard too) took 300 s to tear down on
+    Xcode 27, which held up every later DRIVE line; the tapper now `exit(0)`s once it has tapped
+    and `tap.sh` reads its "tapped" line. And UIKit silently drops a picker presented while the
+    last one is still animating away (no picker, no callback); the library waits for the
+    transition.
+  - **macOS 27's panels are out of process**, even for an unsandboxed app: the panel's content
+    is an `NSRemoteView` of `com.apple.appkit.xpc.openAndSavePanelService`, `-[NSSavePanel ok:]`
+    raises "not implemented", and neither key events nor accessibility (untrusted) reach its
+    buttons from the app. `NSUseRemoteSavePanel=NO` gives an in-process `NSLocalOpenPanel`, but
+    only to a process with a bundle identifier (the unbundled gallery raises in `init`), and the
+    save panel stays remote. So the self-test checks the real sheet (types, `multiple`,
+    suggested name, `sheet=1`) and its own `cancel(_:)`, and answers an accept with
+    `ApplePickers.testing.choose`, which closes the panel and answers through its own completion
+    with a known file. **The panel's OK button is not exercised on macOS.**
+  - **Measured** (screen unlocked): macOS gallery **209** (196 + 13); iOS gallery on
+    "iPhone 17e" **218** (207 + 11), the photo copied into the cache 7.3 s after the tap (the
+    tapper's run included), the saved file 31 bytes in "On My iPhone". **Controls:** with
+    `PickedFiles`' copy removed (the original path handed back), macOS fails 2 checks (photo and
+    document not in the cache); iOS fails the same 2: the photo is handed back from
+    PhotosUI's temporary directory, and the document from the app's `Inbox`, already deleted at
+    its release (`NoSuchFileException`). Restored, both pass.
+
 - 2026-11-01 — **The live camera preview: the owner took every recommendation in
   `docs/17-camera-preview.md` §17.8.**
   1. **An embedding point, not a built-in `WidgetKind`:** `Element.Platform` in `core`, handled
