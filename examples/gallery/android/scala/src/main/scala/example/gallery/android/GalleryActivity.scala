@@ -98,6 +98,7 @@ final class NativeLabel(text: String) extends AndroidPlatformView {
     val v = TextView(context)
     v.setText(text)
     NativeLabel.made += v
+    if NativeLabel.made.length > 2 then NativeLabel.made.remove(0, NativeLabel.made.length - 2)
     v
   }
 
