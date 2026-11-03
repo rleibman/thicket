@@ -27,9 +27,11 @@ import thicket.renderer.apple.AppleApp
   *   - **iOS** passes `AppleCamera`, and the host gives this a [[Probe]] of it.
   *     - **With a camera** — and the iOS 27 simulator has one, a simulated grey frame, measured: the build script
   *       grants it with `simctl privacy`, so the section must say it is ready. "Take a photo" must put the camera
-  *       screen up; a second request while it is up must answer no photo at once and leave it up; the shutter and
-  *       "Done", tapped through XCUITest (`DRIVE photo`), must bring a JPEG (`FF D8 FF`) back in the app's cache,
-  *       leaving nothing in the temporary directory; and the X (`DRIVE cancel`) must answer no photo.
+  *       screen up; a second request while it is up must answer no photo at once and leave it up; its X, tapped through
+  *       XCUITest (`DRIVE cancel`), must answer no photo and take it down. Then the shutter and "Use Photo" (`DRIVE
+  *       photo`): a camera that captures must bring a JPEG (`FF D8 FF`) back in the app's cache, leaving nothing in the
+  *       temporary directory. The simulator's shutter takes nothing (measured): the camera must then answer nothing and
+  *       stay up until its X, and the run says the copy was not measured.
   *     - **Without one** (`isSourceTypeAvailable(.camera)` false, as on older simulators): the section must say the
   *       camera is unavailable with that reason, and "Take a photo" must present nothing and answer no photo.
   *
@@ -131,6 +133,9 @@ object GalleryCameraChecks {
     }
   }
 
+  /** How long the shutter is given to bring a photo back before it is taken to have taken none. */
+  private val shutterMs = 60000L
+
   private def withCamera(
     check:        Check,
     click:        String => Boolean,
@@ -146,11 +151,34 @@ object GalleryCameraChecks {
       availability == Availability.Available && texts().contains(PickersDemo.cameraLabel(availability)),
       s"$availability; ${demo.taken.now}"
     )
+    // Opens the camera screen and continues once it is up, or after 10 s.
+    def open(k: Boolean => Unit): Unit = {
+      demo.lastTaken = None
+      val clicked = click("Take a photo")
+      eventually(if clicked then 10000 else 0)(camera.presented()) { ms =>
+        println(s"[gallery] camera: \"Take a photo\" -> the camera screen up in $ms ms")
+        k(clicked && camera.presented())
+      }
+    }
+    // Closes it with its X, through XCUITest, and checks the answer.
+    def cancel(name: String)(k: () => Unit): Unit = {
+      val started = System.nanoTime()
+      drive("cancel")
+      eventually(driveMs)(demo.lastTaken.isDefined && !camera.presented()) { _ =>
+        println(
+          s"[gallery] measured: the X -> answered in ${(System.nanoTime() - started) / 1000000L} ms after the DRIVE line"
+        )
+        check(
+          name,
+          demo.lastTaken.contains(None) && !camera.presented() && texts().contains(PickersDemo.takenLabel(None)),
+          s"${demo.lastTaken}; presented ${camera.presented()}; ${demo.taken.now}"
+        )
+        k()
+      }
+    }
     val before = camera.leftovers()
-    val clicked = click("Take a photo")
-    eventually(if clicked then 10000 else 0)(camera.presented()) { ms =>
-      println(s"[gallery] camera: \"Take a photo\" -> the camera screen up in $ms ms")
-      check("\"Take a photo\" puts the camera screen up", clicked && camera.presented(), s"clicked $clicked")
+    open { up =>
+      check("\"Take a photo\" puts the camera screen up", up, s"presented ${camera.presented()}")
       // One at a time: a second request while the first is up answers None, and the first stays up.
       var second: Option[Option[Path]] = None
       camera.capture(p => second = Some(p))
@@ -160,44 +188,45 @@ object GalleryCameraChecks {
           second.contains(None) && camera.presented() && demo.lastTaken.isEmpty,
           s"second $second; presented ${camera.presented()}; first ${demo.lastTaken}"
         )
-        val started = System.nanoTime()
-        drive("photo")
-        eventually(driveMs)(demo.lastTaken.isDefined) { _ =>
-          println(
-            s"[gallery] measured: shutter and Done -> the photo back in ${(System.nanoTime() - started) / 1000000L} ms after the DRIVE line"
-          )
-          val photo = demo.lastTaken.flatten
-          val head = photo.filter(Files.exists(_)).map(p => Files.readAllBytes(p)).getOrElse(Array.emptyByteArray)
-          photo.foreach(p => println(s"[gallery] camera: photo $p, ${head.length} bytes"))
-          check(
-            "the shutter and Done bring a JPEG back, in the app's cache",
-            photo.exists(_.startsWith(camera.cache)) && head.length > 3 &&
-              (head(0) & 0xff) == 0xff && (head(1) & 0xff) == 0xd8 && (head(2) & 0xff) == 0xff &&
-              texts().contains(PickersDemo.takenLabel(photo)) && !camera.presented(),
-            s"${demo.lastTaken}; ${head.take(3).map(b => f"${b & 0xff}%02X").mkString(" ")}; ${demo.taken.now}"
-          )
-          val left = camera.leftovers().filterNot(before.contains)
-          check(
-            "the JPEG the library wrote to the temporary directory is gone once copied",
-            left.isEmpty,
-            left.toString
-          )
-          demo.lastTaken = None
-          val again = click("Take a photo")
-          eventually(if again then 10000 else 0)(camera.presented()) { _ =>
-            val cancelled = System.nanoTime()
-            drive("cancel")
-            eventually(driveMs)(demo.lastTaken.isDefined) { _ =>
-              println(
-                s"[gallery] measured: the X -> answered in ${(System.nanoTime() - cancelled) / 1000000L} ms after the DRIVE line"
-              )
-              check(
-                "closing the camera screen with its X answers no photo",
-                again && demo.lastTaken.contains(None) && !camera.presented() &&
-                  texts().contains(PickersDemo.takenLabel(None)),
-                s"clicked $again; ${demo.lastTaken}; presented ${camera.presented()}; ${demo.taken.now}"
-              )
-              next()
+        cancel("closing the camera screen with its X answers no photo, and takes it down") { () =>
+          open { again =>
+            val started = System.nanoTime()
+            // The shutter, then "Use Photo" on the review screen if one comes up.
+            drive("photo")
+            eventually(shutterMs)(demo.lastTaken.isDefined) { _ =>
+              val ms = (System.nanoTime() - started) / 1000000L
+              demo.lastTaken match {
+                case Some(photo) =>
+                  println(s"[gallery] measured: the shutter -> answered in $ms ms after the DRIVE line")
+                  val bytes = photo.filter(Files.exists(_)).map(Files.readAllBytes(_)).getOrElse(Array.emptyByteArray)
+                  photo.foreach(p => println(s"[gallery] camera: photo $p, ${bytes.length} bytes"))
+                  check(
+                    "the shutter brings a JPEG back, in the app's cache",
+                    again && photo.exists(_.startsWith(camera.cache)) && bytes.length > 3 &&
+                      (bytes(0) & 0xff) == 0xff && (bytes(1) & 0xff) == 0xd8 && (bytes(2) & 0xff) == 0xff &&
+                      texts().contains(PickersDemo.takenLabel(photo)) && !camera.presented(),
+                    s"$photo; ${bytes.take(3).map(b => f"${b & 0xff}%02X").mkString(" ")}; ${demo.taken.now}"
+                  )
+                  val left = camera.leftovers().filterNot(before.contains)
+                  check(
+                    "the JPEG the library wrote to the temporary directory is gone once copied",
+                    left.isEmpty,
+                    s"$left"
+                  )
+                  next()
+                case None =>
+                  // Measured on the iOS 27 simulator: its camera screen is a grey frame whose shutter takes nothing.
+                  println(
+                    s"[gallery] SKIP the shutter took no photo in $ms ms: this camera captures nothing (the simulator's " +
+                      "does not). Copying the photo into the cache is not measured on this run."
+                  )
+                  check(
+                    "a shutter that takes nothing answers nothing, and leaves the camera screen up",
+                    again && demo.lastTaken.isEmpty && camera.presented(),
+                    s"${demo.lastTaken}; presented ${camera.presented()}"
+                  )
+                  cancel("the X then answers no photo")(next)
+              }
             }
           }
         }

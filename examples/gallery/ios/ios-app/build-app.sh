@@ -70,8 +70,9 @@ drive() {
     geo\ *) xcrun simctl location "$DEVICE" set "${1#geo }" ;;
     wait\ *) sleep "${1#wait }" ;;
     deny | allow) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "$1" ;;
-    # The camera screen (#129): the shutter, then "Done" on its review screen; or its X.
-    photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Take Picture|Done" ;;
+    # The camera screen (#129): the shutter, then "Use Photo" if a review screen comes up (the
+    # simulator's shutter takes nothing, so none does); or its X.
+    photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Take Picture|?Use Photo" ;;
     cancel) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Dismiss" ;;
     *) echo "unknown DRIVE action: $1" ;;
   esac
