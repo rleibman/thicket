@@ -242,7 +242,14 @@ must come back as a copy in the app's cache, byte for byte.
 The same section takes a photo. On Android `build.sh` presses the shutter and Done in the
 emulator's camera app (`DRIVE photo`); the photo must come back as a JPEG in the app's cache,
 and the MediaStore entry the camera wrote to must be gone. Backing out answers no photo. On GTK
-the section says the desktop has no camera screen.
+and macOS the section says the desktop has no camera screen. On iOS (#129) the build script grants
+the camera with `simctl privacy`; "Take a photo" must put `UIImagePickerController`'s camera
+screen up, a second request must answer no photo at once, and its X, tapped through the
+XCUITest tapper (`DRIVE cancel`), must answer no photo. The iOS 27 simulator has a camera
+screen whose shutter takes nothing: after `DRIVE photo` the camera must answer nothing and stay
+up, and the run says the copy into the cache was not measured. A device's shutter would bring a
+JPEG back, checked for `FF D8 FF` in the cache; no device has run it. The section shows the
+camera alone where the host has no pickers yet (Apple, until #125).
 
 The Share section shares a text and a small file. On Android the gallery is also a share
 target ("Thicket gallery inbox", `ShareTargetActivity`): `build.sh` taps it in the system's

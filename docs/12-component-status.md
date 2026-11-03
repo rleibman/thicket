@@ -249,7 +249,7 @@ every remaining entry before it is built, not after.
 | Clipboard | `modules/clipboard`, `clipboard-gtk`, `clipboard-android`, `clipboard-apple` | done on GTK (`GdkClipboard`, read asynchronously) and Android (`ClipboardManager`) (2026-10-30), and on macOS and iOS (`NSPasteboard`, `UIPasteboard`, #123, 2026-10-30) — text only. The gallery copies and pastes twice, each paste showing that round's copy; on Apple `bin/verify-apple.sh` reads the last copy from outside the app. On iOS, reading text this process did not write shows "Allow Paste". `modules/clipboard/README.md` |
 | Haptics | `modules/haptics`, `haptics-android`, `haptics-apple` | done on Android (2026-10-30) — `performHapticFeedback`, which `build.sh` finds in the system's vibrator history; GTK uses `Haptics.none`. Apple (#123, 2026-10-30): iOS's feedback generators and macOS's `NSHapticFeedbackManager` (a Force Touch trackpad); the self-test can only show the calls return — the simulator plays nothing. `modules/haptics/README.md` |
 | Pickers | `modules/pickers`, `pickers-gtk`, `pickers-android` | done on GTK (`GtkFileDialog`) and Android (the photo picker, the Storage Access Framework) (2026-10-30) — `Photos.pick(limit)`, `Documents.open(types)` and `save(name, bytes)`; every picked file is copied into the app's cache and handed back as a `Path`, by callback. The gallery's self-tests answer the real pickers: `build.sh` taps Android's, the GTK test answers the in-process chooser. Apple is a Mac issue. `modules/pickers/README.md` |
-| Camera capture | `modules/camera`, `camera-android` | done on Android 10+ (2026-10-30) — `Camera.capturePhoto`: the camera app's screen, the photo copied into the app's cache as a JPEG, the MediaStore entry it was written to deleted; GTK uses `Camera.unavailable`. The gallery's self-test presses the emulator camera's shutter and Done, and backs out. Apple is a Mac issue. `modules/camera/README.md` |
+| Camera capture | `modules/camera`, `camera-android` | done on Android 10+ (2026-10-30) — `Camera.capturePhoto`: the camera app's screen, the photo copied into the app's cache as a JPEG, the MediaStore entry it was written to deleted; GTK uses `Camera.unavailable`. The gallery's self-test presses the emulator camera's shutter and Done, and backs out. iOS (2026-11-02, #129): `thicket-camera-apple` over `UIImagePickerController` (its own Swift library), the photo written as a JPEG and copied into the cache; the app's `Info.plist` must declare `NSCameraUsageDescription` (else `IllegalStateException`). The iOS 27 simulator has a camera screen whose shutter takes nothing: the gallery opens it, checks one request at a time, and closes it with its X; the capture itself is unmeasured (no device). macOS uses `Camera.unavailable`. `modules/camera/README.md` |
 | Share | `modules/share`, `share-android` | done on Android (2026-11-01) — `Share.text` and `Share.file` through the chooser; a file is copied and served by Thicket's own `ThicketFileProvider`, read-only, with a grant for the chosen app; the app declares the provider in its manifest. GTK uses `Share.unavailable`. The gallery's self-test shares to its own share target, tapped in the real chooser. Apple is a Mac issue. `modules/share/README.md` |
 | UI-thread seam | `UiThread`, `Host.install` | done — every host installs it since 2026-10-20; before that none did, so a ZIO effect's result was written from a worker thread. The default now throws |
 | Apple ABI description + consistency check | `tools/shim-gen` | done — every `sui_*` function (110 externs in `Shim.scala`) and all 26 kind codes described; `thicket_apple.h` and `Shim.scala` are generated from it (adopted 2026-09-29, #3) and checked byte-for-byte; the two Swift shims' signatures and per-platform widget choice are checked against it, on any machine. Since #90 also `thicket-http-apple`'s 12 `thk_http_*` functions (`HttpAbi`): `thicket_http.h` and `HttpShim.scala` generated, `HttpShim.swift` checked |
@@ -367,7 +367,7 @@ someone who did not write the framework, running on all three targets.
 | `hapticsJVM` / `hapticsNative` | 2 — `RecordingHaptics`, `Haptics.none` (2026-10-30) |
 | `motionJVM` / `motionNative` | 5 — each reading follows its sensor, attitude as roll/pitch/yaw; stop in the background and with the owner; the rate asked for; a missing sensor; `Motion.unavailable` (2026-10-30) |
 | `secretsApple` | 4 (2026-10-27, a Mac only: `bin/verify-apple.sh`'s `secrets` step) — an unsigned binary gets the login keychain; the 11 checks; services are separate; a status in Security's words |
-| `shimGen` | 37 (the `thk_dev` ABI's 7 included, 2026-10-30; the `thk_mot` ABI's 7, 2026-10-31) |
+| `shimGen` | 44 (the `thk_dev` ABI's 7 included, 2026-10-30; the `thk_mot` ABI's 7, 2026-10-31; the `thk_cam` ABI's 7, 2026-11-02) |
 | `sbtThicket` | 9 |
 
 Measured 2026-10-20 with `sbt --error testFull`, which `sbt checkLinux` and CI run; the
@@ -390,6 +390,10 @@ Clipboard and haptics section's 3 included. The two together are not measured ye
 2026-11-01 (#118): iOS simulator **199** (191 + 8, the Location section, the listeners counted
 through a wrapping provider and in `libthicketdevice.a`), macOS **192** with the screen locked
 (191 + 1, location unavailable).
+2026-11-02 (#129, `bin/verify-apple.sh "iPhone Air"`, 19/19 steps): iOS simulator **213** (main's
+checks + 6, the camera: ready, the screen up, one at a time, the X twice, a shutter that takes
+nothing; the Device section's camera check flipped to `Granted`), macOS **197** with the screen
+locked (+ 1: the desktop has no camera screen).
 
 Four rules the migration established:
 
