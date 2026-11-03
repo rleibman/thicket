@@ -323,7 +323,7 @@ this means many modules. Names follow the published ones:
 | clipboard | `thicket-clipboard` (built) | `-gtk`, `-android`, `-apple` (built) |
 | haptics | `thicket-haptics` (built) | `-android`, `-apple` (built); GTK uses `Haptics.none` |
 | pickers: photos, documents | `thicket-pickers` (built; `Documents`, not `Files`) | `-gtk`, `-android` (built); `-apple` (Mac issue) |
-| camera capture | `thicket-camera` (built) | `-android` (built), `-apple` (Mac issue); GTK and macOS use `Camera.unavailable` |
+| camera capture | `thicket-camera` (built) | `-android` (built), `-apple` (built, iOS; #129); GTK and macOS use `Camera.unavailable` |
 | share | `thicket-share` (built) | `-android` (built; Thicket's own `ThicketFileProvider`, declared in the app's manifest), `-apple` (Mac issue); GTK uses `Share.unavailable` |
 
 The implementations need the host (`ThicketActivity`, `GtkApp`, a Swift library), so each
@@ -465,7 +465,10 @@ Every service gets a gallery section and self-test checks on every host where it
    - *Camera capture done on Android, `Unavailable` on GTK, 2026-10-30
      (`modules/camera/README.md`):* the camera app writes to a MediaStore entry Thicket makes,
      and the photo is copied into the cache and the entry deleted. Android 10+. `build.sh`
-     presses the shutter and Done in the emulator's camera app.
+     presses the shutter and Done in the emulator's camera app. *iOS done 2026-11-02 (#129):*
+     `thicket-camera-apple` over `UIImagePickerController`; macOS uses `Camera.unavailable`. The
+     iOS 27 simulator has a camera screen, but its shutter takes nothing, so the copy into the
+     cache is unmeasured on Apple.
    - *Share done on Android, `Unavailable` on GTK, 2026-11-01 (`modules/share/README.md`):*
      text and files through the chooser. Files are served by Thicket's own `ContentProvider`
      (owner's decision 2026-11-01: not AndroidX's `FileProvider`), which the app declares in its

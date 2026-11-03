@@ -30,7 +30,8 @@ EXTRA_LINK=-lsqlite3
 # The same THICKET_GALLERY_SELFTEST the macOS example reads. Up to 6 min (#78, #114, #118): the gallery
 # times 1 000 vs 2 000 children.
 RUN_ENV=THICKET_GALLERY_SELFTEST=1
-WAIT_SECONDS=360
+# 480 since #129: the camera gives its shutter 60 s to bring a photo back, and the simulator's never does.
+WAIT_SECONDS=480
 SCREENSHOT=1
 KEEP_UNSTRIPPED=1
 
