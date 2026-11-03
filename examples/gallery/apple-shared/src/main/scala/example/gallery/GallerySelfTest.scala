@@ -248,7 +248,9 @@ object GallerySelfTest {
     storageChecks(() =>
       deviceChecks(() =>
         locationChecks(() =>
-          motionChecks(() => cameraChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+          motionChecks(() =>
+            cameraChecks(() => shareChecks(() => clipboardChecks(() => sheet(all)(() => bigList(() => finish())))))
+          )
         )
       )
     )
@@ -290,6 +292,17 @@ object GallerySelfTest {
       label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
       () => AppleInspect.allTexts(AppleApp.rootHandle),
       camera
+    )(next)
+
+  /** The share sheet (#134), in [[GalleryShareChecks]]. Before the clipboard's: on iOS it taps "Copy" in the sheet, and
+    * the clipboard's own last copy must be the pasteboard's text when the run ends (`bin/verify-apple.sh`).
+    */
+  private def shareChecks(next: () => Unit): Unit =
+    GalleryShareChecks.run(
+      checker,
+      label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
+      () => AppleInspect.allTexts(AppleApp.rootHandle),
+      storage.map(_.dirs.cache)
     )(next)
 
   /** The clipboard and haptics (#123), the GTK host's `clipboardChecks` asked of Apple. "Copy" then "Paste", twice,

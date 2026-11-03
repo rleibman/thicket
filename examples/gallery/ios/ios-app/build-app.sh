@@ -61,9 +61,24 @@ NSCameraUsageDescription=The gallery takes a photo with the camera screen."
 # No simulated position before the launch, so the first one the self-test sets is a change it sees.
 before_launch() { xcrun simctl location "$DEVICE" clear; }
 
+# The Share section (#134): "Copy" tapped in the gallery's share sheet through XCUITest, then the
+# simulator's pasteboard read from outside the app, which must hold the text the gallery shared.
+share_copy() {
+  "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "$BUNDLE_ID|Copy" || return 1
+  local got=""
+  for _ in 1 2 3 4 5; do
+    got=$(xcrun simctl pbpaste "$DEVICE" 2>/dev/null || true)
+    [ "$got" = "$1" ] && break
+    sleep 1
+  done
+  echo "-- after \"Copy\" in the share sheet, simctl pbpaste reads \"$got\"; the gallery shared \"$1\""
+  [ "$got" = "$1" ]
+}
+
 # What the self-test asks the user to do: another app in front (Settings), the gallery launched
-# again (the same process comes back), the notifications alert answered through XCUITest, and
-# the device moved (`geo <lat>,<lon>`, #118).
+# again (the same process comes back), the notifications alert answered through XCUITest, the
+# device moved (`geo <lat>,<lon>`, #118), the camera screen's buttons through XCUITest (#129), and
+# "Copy" in the share sheet (`share-copy <text>`, #134).
 drive() {
   case "$1" in
     home) xcrun simctl launch "$DEVICE" com.apple.Preferences ;;
@@ -75,6 +90,7 @@ drive() {
     # simulator's shutter takes nothing, so none does); or its X.
     photo) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Take Picture|?Use Photo" ;;
     cancel) "$REPO/examples/ios-host/tapper/tap.sh" "$DEVICE" "app $BUNDLE_ID Dismiss" ;;
+    share-copy\ *) share_copy "${1#share-copy }" ;;
     *) echo "unknown DRIVE action: $1" ;;
   esac
 }

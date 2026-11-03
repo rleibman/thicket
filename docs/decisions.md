@@ -127,6 +127,51 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     Restored. The control the issue proposed (availability ignoring `isSourceTypeAvailable`)
     cannot fail on a simulator that has a camera, so it was not run.
 
+- 2026-11-02 — **Apple share: `thicket-share-apple`, a C helper over the Objective-C runtime,
+  no Swift; `UIActivityViewController` on iOS, `NSSharingServicePicker` on macOS** (#134, the
+  Apple half of docs/16 §16.10 item 5).
+  - **C, and the subject kept.** iOS asks for a subject through `UIActivityItemSource`, a
+    protocol, which looked like the one reason for Swift. The helper makes the class at run
+    time instead (`objc_allocateClassPair`, three `class_addMethod`s, `class_addProtocol`), with
+    the text and subject as associated objects: about 30 lines, against a Swift library, a build
+    script, an archive in the jar and a shim-gen ABI. So `thicket_share.c` is compiled by Scala
+    Native's own clang, as `thicket_pasteboard.c` (#123) is. macOS has no subject for a text and
+    drops it.
+  - **Presentation.** iOS presents over whatever is on top of the key window (a Thicket sheet
+    included), anchored at the top view's centre on an iPad. macOS shows the picker below the key
+    window's content view. That is a popover (`_NSPopoverWindow`, measured on macOS 27): it is
+    not modal, the call returns at once, and the service list inside is an `NSRemoteView`
+    drawn by another process.
+  - **Files.** A file is copied first, through `SharedFiles`, into `<cache>/thicket-shared`, and
+    that copy's URL is shared. The copy is made on the calling thread, so a large file blocks
+    the UI while it copies. Android copies on a worker; this keeps errors (a missing file)
+    synchronous to the caller. The type is the extension's, as Apple reads it; `mimeType` is
+    kept beside the copy, but nothing on Apple asks for it. With no window to show it from, a
+    call throws `IllegalStateException`. `AppleShare(storage.dirs.cache)` in both galleries.
+  - **What the self-test drives** (`GalleryShareChecks`). macOS: the picker's window is found
+    (up in 442 ms for the text, 53 ms for the file), and the services its delegate was offered
+    are read: 5 for the text (Messages, Notes, Freeform, Journal, Reminders), 9 for the file
+    (AirDrop, Mail, …). AppKit asks the delegate twice per picker (5 then 0 services for the
+    text), so the titles accumulate. The picker is closed with `close`, and the delegate hears
+    no choice (about 530 ms). **No macOS service is driven:** there is no "Copy" among them, the
+    remote view takes no clicks from the app, and driving it from outside needs the
+    Accessibility permission (`AXIsProcessTrusted` is false here). iOS: the
+    `UIActivityViewController` is on top. The item source answers UIKit's questions with the
+    text, and with the subject for Mail (Mail itself is not on the simulator). `DRIVE share-copy`
+    has an XCUITest tap the sheet's "Copy" cell; the sheet goes, the pasteboard's change count
+    rises, and `simctl pbpaste`, outside the app, reads the shared text. On both platforms the
+    file arrives as a copy with its bytes and type.
+  - **Controls.** With the presentation call removed, macOS failed 6 checks and iOS 7, every
+    "appears" among them. With the item source answering another text and no subject, iOS failed
+    the two item-source checks and the `share-copy` DRIVE: `pbpaste` did not read the shared
+    text.
+  - **The tapper stops at the tap.** On this Mac, XCTest's tear-down took 300–308 s after every
+    tap (3 runs: "Tear Down", with nothing under it). The location checks' 30 s waits ran out
+    behind it. So `tap.sh` now returns when the test prints its line, and stops xcodebuild:
+    7.2 s for a tap, 25.7 s for a miss. A `<bundle id>|<label>` form taps a cell in an app,
+    after activating it. Cells only: the gallery has a "Copy" button of its own, which
+    otherwise matched first.
+
 - 2026-11-02 — **Apple CI: a notifications read that times out is "no answer", not Denied**
   (#128). Every failed `apple.yml` run since #132 merged (5 of 5 checked: 41391530485,
   41390412068, 41374569722, 41374441105, 41374248305) failed one step, `ios-gallery`, on

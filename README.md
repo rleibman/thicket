@@ -321,7 +321,7 @@ modules/
   haptics/           haptic taps; haptics-android/, haptics-apple/ (GTK: Haptics.none)
   pickers/           photo and document pickers, save dialog; pickers-gtk/, pickers-android/
   camera/            taking a photo with the camera app; camera-android/, camera-apple/ (GTK, macOS: Camera.unavailable)
-  share/             the share sheet; share-android/ (GTK: Share.unavailable)
+  share/             the share sheet; share-android/, share-apple/ (GTK: Share.unavailable)
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)

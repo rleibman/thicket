@@ -24,6 +24,7 @@ import thicket.clipboard.apple.AppleClipboard
 import thicket.haptics.apple.AppleHaptics
 import thicket.renderer.apple.AppleApp
 import thicket.secrets.apple.AppleSecrets
+import thicket.share.apple.AppleShare
 import thicket.sqlite.NativeSqlite
 import thicket.storage.apple.AppleStorage
 
@@ -60,7 +61,9 @@ object GalleryMac {
             // No camera screen on the desktop (docs/16 §16.3, decision 7), as on GTK.
             camera = Some(Camera.unavailable(GalleryCameraChecks.noDesktopCamera)),
             clipboard = Some(AppleClipboard()),
-            haptics = Some(AppleHaptics())
+            haptics = Some(AppleHaptics()),
+            // The share sheet (#134): a file is shared as a copy under the cache directory.
+            share = Some(AppleShare(storage.dirs.cache))
           )
         )
       // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise
