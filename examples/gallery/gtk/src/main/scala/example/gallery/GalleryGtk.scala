@@ -539,6 +539,7 @@ object GalleryGtk {
     def create(): Ptr[GtkWidget] = {
       val w = Zone(gtk_label_new(toCString(text)))
       NativeLabel.made += w
+      if NativeLabel.made.length > 2 then NativeLabel.made.remove(0, NativeLabel.made.length - 2)
       w
     }
 
