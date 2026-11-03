@@ -18,7 +18,7 @@ typedef void (*thk_cam_text_cb)(int64_t ctx, const char *path);
 
 /* --- capture ----------------------------------------------------------------- */
 /* 1 if UIImagePickerController.isSourceTypeAvailable(.camera): the device has a camera
-   the picker can use. 0 otherwise, and on the simulator, which has none. */
+   the picker can use. 0 otherwise (including on devices/simulators without camera support). */
 int32_t thk_cam_available(void);
 /* Presents UIImagePickerController with sourceType .camera over the key window's topmost
    controller and returns 1; returns 0, presenting nothing and never calling `done`, when
