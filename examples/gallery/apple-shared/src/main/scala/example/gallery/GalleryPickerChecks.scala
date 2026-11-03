@@ -182,8 +182,11 @@ object GalleryPickerChecks {
                 demo.saved.now == PickersDemo.savedLabel(Some(PickersDemo.savedName)) && written,
                 s"${demo.saved.now}; written $written"
               )
-              val staged = Files.exists(cache.resolve("thicket-save")) &&
-                Files.list(cache.resolve("thicket-save")).count() > 0
+              val staged = Files.exists(cache.resolve("thicket-save")) && {
+                val s = Files.list(cache.resolve("thicket-save"))
+                try s.findAny().isPresent
+                finally s.close()
+              }
               check("the file staged for the save is gone from the cache", !staged, s"staged $staged")
               check("no picker is left up", t.describe.isEmpty, t.describe)
               next()
