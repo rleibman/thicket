@@ -80,10 +80,7 @@ final class ApplePickers(cache: Path) {
     )(
       onResult: Option[String] => Unit
     ): Unit = {
-      val dir = cache.resolve("thicket-save").resolve(s"${System.currentTimeMillis()}-${nextId.getAndIncrement()}")
-      val file = dir.resolve(PickedFiles.safeName(name))
-      def discard(): Unit = scala.util.Try { Files.deleteIfExists(file); Files.deleteIfExists(dir) }: Unit
-      onWorker(scala.util.Try { Files.createDirectories(dir); Files.write(file, bytes) }.isSuccess) { written =>
+      def discard(): Unit = { scala.util.Try { Files.deleteIfExists(file); Files.deleteIfExists(dir) }; () }
         if !written then onResult(None)
         else {
           val id = nextId.getAndIncrement()
