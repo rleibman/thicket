@@ -72,6 +72,39 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-03 — **The embedding point on Apple: `ApplePlatformView`, kind 28 `Platform`,
+  `sui_platform_set_view`** (#145, the Apple half of `docs/17` step 1; #148 builds on it).
+  - **Trait:** `ApplePlatformView extends PlatformView { def create(): Ptr[Byte]; def
+    release(view: Ptr[Byte]): Unit = () }` in `renderer-apple`. Scala-facing, not Swift-facing:
+    a module (the camera preview's `-apple`) implements it in Scala and calls its own Swift
+    library from `create`, so the renderer's shim knows nothing of it and needs no callback into
+    a second library. `Ptr[Byte]`, not `Shim.Handle`, so a module needs nothing from the shim's
+    generated bindings. One trait for both toolkits, as one `AppleRenderer` serves both.
+  - **Ownership, exactly:** `create` returns an `NSView*`/`UIView*` in no superview with one
+    retain the caller owns (`Unmanaged.passRetained` in Swift, `alloc`/`init` in C).
+    `sui_platform_set_view(host, view)` *takes that retain over* (`takeRetainedValue`), so the
+    host's subview reference is the only one; the module never releases it. On destroy or
+    replacement the renderer calls `release(view)` first — the view alive and still in its
+    host — then `sui_platform_set_view(host, NULL)` removes it, which frees it. `sui_destroy`
+    of a host also empties it. A view that is not an `ApplePlatformView`, or a `null` from
+    `create`, shows `<description>: not available on AppKit` (or `UIKit`) through `sui_set_text`
+    on the host, a label of its own; `release` is not called for it.
+  - **Host:** `PlatformHost`, a plain view pinning its one child to its four edges, so the
+    view is sized by the host's frame and measured by its own constraints. Kind **28**, not
+    26: #150 (RadioGroup, Stepper) is built beside this and takes the next two codes.
+  - **Gallery:** the host's view is an `NSTextField` / a `UILabel` made in C through the
+    Objective-C runtime (`apple-shared/src/main/resources/scala-native`), outside the renderer.
+    Its `release` asks a weak reference whether the view is alive (reading a freed view would
+    be a use-after-free), then its superview and text; after the replacement the weak
+    reference must go nil — the shim held the only retain.
+  - **Measured.** macOS gallery **228** ok, 0 failed (the section's heading and 5 checks among
+    them; the first label 1435×16 pt, the size of its host; freed 358 ms after the
+    replacement). iOS simulator ("iPhone 17e"): IOS_RESULT. `shimGen/testFull` 51/51.
+  - **Falsified on macOS**, each failing exactly its check (223 ok, 1 failed): `release`
+    skipped (released `[]`); `release` after the shim dropped the view (in its host `false`);
+    an empty "not available" label; the shim keeping the caller's retain (`takeUnretainedValue`:
+    the old view still alive after 2 015 ms).
+
 - 2026-11-03 — **The camera preview: `thicket-camera-preview` and `-android`** (`docs/17` step 2;
   Apple is #148, after #145; GTK later, §17.8.2).
   - **API:** `CameraPreview` with `availability`, `facing: Var[Facing]`, `running: Signal[Boolean]`,

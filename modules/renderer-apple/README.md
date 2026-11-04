@@ -147,6 +147,39 @@ The three iOS build constraints from S1 all still apply and are encoded in
 linktime property `target.os -> "darwin"` without which javalib's `PosixThread` reaches for
 `pthread_condattr_setclock` and the link fails.
 
+## Hosting a view made elsewhere: `ApplePlatformView` (#145)
+
+`dsl.Platform(view)` (`docs/17` §17.3) shows a view that a module of its own makes — the camera
+preview's `-apple` module next (#148). On Apple the view extends `ApplePlatformView`:
+
+```scala
+trait ApplePlatformView extends PlatformView {
+  def create(): Ptr[Byte]                    // an NSView* / UIView*, +1 retained, in no superview
+  def release(view: Ptr[Byte]): Unit = ()    // it is about to go; still alive, still in its host
+}
+```
+
+- **Ownership.** `create`'s retain is the caller's, and the renderer hands it to the shim
+  (`sui_platform_set_view`), which keeps the view as the only subview of a `PlatformHost`
+  (kind 28), pinned to its edges. The module never releases that retain. In Swift, return
+  `Unmanaged.passRetained(view).toOpaque()`; in C, the result of `alloc`/`init`. A module may
+  keep an unretained or weak reference of its own.
+- **`release`** runs once per view `create` made, on the main thread, when the widget is
+  destroyed or given another view, *before* the shim removes the view and drops its reference.
+  Stop what the view does not own there (an `AVCaptureSession`); do not release the view.
+- **Sizing.** The view fills its host, and the host is measured from the view's constraints
+  and intrinsic size, like any leaf. A view with no intrinsic size (a preview layer's) gives
+  itself one, an aspect ratio for example.
+- **Nothing for this toolkit.** A view that is not an `ApplePlatformView`, or whose `create`
+  returns `null`, shows `<description>: not available on AppKit` (or `UIKit`) in a label of the
+  host's own, and `release` is not called. One trait serves both toolkits, as one renderer
+  does; `AppleRenderer.platform` says which is running.
+- **From a separate module.** The module depends on `thicket-renderer-apple`, implements the
+  trait in Scala, and calls its own Swift library's `@_cdecl` function from `create` — a
+  library like `thicket-camera-apple`'s, with its own shim-gen ABI. The gallery's label is the
+  smallest example: `examples/gallery/apple-shared/.../GalleryPlatformChecks.scala`, with the
+  view made in C through the Objective-C runtime (`thicket_gallery_native_label.c`).
+
 ## Next
 
 - `Divider` is implemented but unexercised — `TodoApp` does not use it.

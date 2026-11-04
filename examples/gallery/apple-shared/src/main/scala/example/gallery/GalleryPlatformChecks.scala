@@ -172,7 +172,8 @@ object GalleryPlatformChecks {
           s"$entries before, ${AppleApp.renderer.tableEntries} after"
         )
         println(
-          s"[gallery]   Platform: the first label was ${firstSize.getOrElse("-")}; freed $ms ms after the replacement"
+          s"[gallery]   Platform: the first label was ${firstSize.getOrElse("-")}; " +
+            (if first.exists(!_.alive) then s"freed $ms ms after the replacement" else s"still alive $ms ms after it")
         )
         next()
       }
