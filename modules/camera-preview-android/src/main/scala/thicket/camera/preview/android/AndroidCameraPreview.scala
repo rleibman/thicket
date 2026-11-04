@@ -369,18 +369,21 @@ final class AndroidCameraPreview(
     reader: ImageReader,
     g:      Int
   ): Unit = {
-    val written = Try {
+    val written: Try[Option[Path]] = Try {
       val image = reader.acquireLatestImage()
-      try {
-        val buffer = image.getPlanes()(0).getBuffer
-        val bytes = new Array[Byte](buffer.remaining)
-        buffer.get(bytes)
-        val dir = app.getCacheDir.toPath.resolve("thicket-preview")
-        Files.createDirectories(dir)
-        Files.write(dir.resolve(s"preview-${System.currentTimeMillis()}.jpg"), bytes)
-      } finally image.close()
+      if image == null then None
+      else
+        try {
+          val buffer = image.getPlanes()(0).getBuffer
+          val bytes = new Array[Byte](buffer.remaining)
+          buffer.get(bytes)
+          val dir = app.getCacheDir.toPath.resolve("thicket-preview")
+          Files.createDirectories(dir)
+          Some(Files.write(dir.resolve(s"preview-${System.currentTimeMillis()}.jpg"), bytes))
+        } finally image.close()
     }
     written.failed.foreach(e => Log.w(Tag, s"camera preview: the photo could not be written: $e"))
+    val _ = main.post(() => if g == generation then finishCapture(written.toOption.flatten))
     val _ = main.post(() => if g == generation then finishCapture(written.toOption))
   }
 
