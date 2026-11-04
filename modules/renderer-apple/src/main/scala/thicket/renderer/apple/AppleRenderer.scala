@@ -55,6 +55,9 @@ final class AppleRenderer extends Renderer {
   /** TabView and Tab (#69): the controllers are the shim's; the rule for keeping the user on their tab is here. */
   private val tabs = AppleTabs()
 
+  /** Platform (#145): the view each host shows, released before the shim drops it; see `ApplePlatformView`. */
+  private val platformViews = ApplePlatformViews(perHandle, () => toolkitName)
+
   private val kinds = perHandle[WidgetKind]
   private val tapIds = perHandle[Long]
   private val editIds = perHandle[Long]
@@ -152,8 +155,8 @@ final class AppleRenderer extends Renderer {
       // An NSTabViewController / a UITabBarController, and one item each (#69).
       case WidgetKind.TabView => ShimKind.TabView
       case WidgetKind.Tab     => ShimKind.Tab
-      // The embedding point (docs/17 §17.3) needs the shims to host a view made outside them, which is the Mac's
-      // half: until then a Platform widget is a label saying so (Prop.View), as on a platform the view has nothing for.
+        // The embedding point (docs/17 §17.3, #145): a host holding one view made outside the shim; the view comes
+        // with Prop.View (ApplePlatformView).
       case WidgetKind.Platform => ShimKind.Label
       // §12.2a exceptions (#150): radio NSButtons / a checkmark list, driven by the picker's functions; an NSStepper /
       // a UIStepper beside a label, driven by the slider's and sui_set_step.
@@ -504,6 +507,8 @@ final class AppleRenderer extends Renderer {
     // no view.
     rowIds.remove(handle).foreach(Handles.release)
     placeholders.remove(handle).foreach(Shim.sui_destroy)
+    // A Platform host's view is released while it is still alive, before the shim drops it.
+    platformViews.destroy(handle)
     // Everything else keyed by this handle, in every table.
     perHandleMaps.foreach(_.remove(handle))
     perHandleSets.foreach(_ -= handle)

@@ -12,7 +12,19 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
   <defs
-     id="defs12" />
+     id="defs12">
+    <style
+       id="style1">
+      .ink { stroke: #09242B; }
+      .wordmark { fill: #09242B; }
+      .tagline { fill: #607B8B; }
+      @media (prefers-color-scheme: dark) {
+        .ink { stroke: #D5EFF6; }
+        .wordmark { fill: #D5EFF6; }
+        .tagline { fill: #96ADBC; }
+      }
+    </style>
+  </defs>
   <sodipodi:namedview
      id="namedview12"
      pagecolor="#ffffff"
@@ -38,6 +50,7 @@
   <!-- Transparent background -->
   <!-- Branches: rounded, dark blue-black -->
   <g
+     class="ink"
      fill="none"
      stroke="#09242B"
      stroke-width="28"
@@ -105,6 +118,7 @@
      font-weight="700"
      letter-spacing="-5"
      fill="#09242B"
+     class="wordmark"
      id="text11">Thicket</text>
   <!-- Tagline -->
   <text
@@ -116,5 +130,6 @@
      font-weight="400"
      letter-spacing="5"
      fill="#607B8B"
+     class="tagline"
      id="text12">Scala UI for Native Apps</text>
 </svg>

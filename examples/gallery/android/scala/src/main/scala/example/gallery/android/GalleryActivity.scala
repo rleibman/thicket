@@ -29,6 +29,7 @@ import thicket.clipboard.android.AndroidClipboard
 import thicket.haptics.android.AndroidHaptics
 import thicket.pickers.android.AndroidPickers
 import thicket.camera.android.AndroidCamera
+import thicket.camera.preview.android.AndroidCameraPreview
 import thicket.share.android.AndroidShare
 import thicket.renderer.android.{AndroidPlatformView, ThicketActivity}
 import scala.collection.mutable
@@ -47,7 +48,8 @@ import thicket.storage.android.AndroidStorage
   */
 class GalleryActivity extends ThicketActivity {
 
-  protected def createApp(saved: Option[Bundle])(using Owner): AppRoot =
+  protected def createApp(saved: Option[Bundle])(using Owner): AppRoot = {
+    val device = AndroidDevice(this)
     Gallery.app(
       logo = assetBytes(Gallery.logo),
       services = Some(
@@ -55,7 +57,7 @@ class GalleryActivity extends ThicketActivity {
           AndroidStorage(this),
           AndroidSqlite.driver,
           () => Right(AndroidSecrets(this)),
-          device = Some(AndroidDevice(this)),
+          device = Some(device),
           location = Some(AndroidLocation(this)),
           motion = Some(AndroidMotion(this)),
           clipboard = Some(AndroidClipboard(this)),
@@ -65,11 +67,13 @@ class GalleryActivity extends ThicketActivity {
             (p.photos, p.documents)
           },
           camera = Some(AndroidCamera(this)),
-          share = Some(AndroidShare(this))
+          share = Some(AndroidShare(this)),
+          cameraPreview = Some(AndroidCameraPreview(this, device))
         )
       ),
       nativeView = NativeLabel(_)
     )
+  }
 
   override protected def started(): Unit =
     if getIntent != null && getIntent.getBooleanExtra("selftest", false) then GallerySelfTest.run(this)

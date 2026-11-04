@@ -25,6 +25,7 @@ import thicket.haptics.Haptics
 import thicket.pickers.gtk.GtkPickers
 import thicket.camera.Camera
 import thicket.share.Share
+import thicket.camera.preview.CameraPreview
 import thicket.sqlite.{NativeSqlite, Sqlite}
 import thicket.sqlite.testing.JdbcConformance
 import thicket.secrets.gtk.GtkSecrets
@@ -97,6 +98,7 @@ object GalleryGtk {
       "ForEach — keyed, with a context menu on each row",
       "Provide — a theme scoped to one subtree",
       "SafeArea — a prop, because no toolkit models it as a widget",
+      "Camera preview — live, in the app's own layout",
       "Platform — a view the platform's own code makes",
       "BuildInfo — this module's own, from git",
       "Errors — a handler that throws is reported, and the app carries on",
@@ -524,6 +526,7 @@ object GalleryGtk {
 
     radioStepperChecks(root)
     platformChecks(root)
+    previewChecks(root)
     storageChecks(root)(
       deviceChecks(root)(
         locationChecks(root)(motionChecks(root)(clipboardChecks(root)(pickerChecks(root)(presentedAndNav(root)))))
@@ -639,6 +642,33 @@ object GalleryGtk {
       "Platform: replacing the view leaves the renderer's tables as they were",
       GtkInspect.rendererEntries == entries,
       s"$entries before, ${GtkInspect.rendererEntries} after"
+    )
+  }
+
+  /** The camera preview on GTK (`docs/17`): unavailable, and saying so in its status, in its widget and in a capture's
+    * answer.
+    */
+  private def previewChecks(root: Ptr[GtkWidget]): Unit = {
+    def texts = GtkInspect.allTexts(root)
+    val status = CameraPreviewDemo.statusLabel(running = false, Availability.Unavailable(noPreview))
+    check(
+      "Preview: the status says it is stopped and why",
+      texts.contains(status),
+      texts.filter(_.startsWith("Preview")).toString
+    )
+    val widget = s"Camera preview ($noPreview): not available on GTK"
+    check(
+      "Preview: its widget says it is not available on GTK",
+      texts.contains(widget),
+      texts.filter(_.startsWith("Camera preview")).toString
+    )
+    GtkInspect
+      .findAll(root)(w => GtkInspect.isButton(w) && GtkInspect.allTexts(w) == List("Take from the preview"))
+      .headOption.foreach(GtkInspect.click)
+    check(
+      "Preview: a capture answers no photo",
+      GtkInspect.allTexts(root).contains(CameraPreviewDemo.photoLabel(Some(None))),
+      GtkInspect.allTexts(root).filter(_.contains("photo")).toString
     )
   }
 
@@ -914,6 +944,9 @@ object GalleryGtk {
 
   /** Why the desktop has no share: GTK has no share sheet (docs/16 §16.3). */
   val noShare: String = "no share sheet on the desktop"
+
+  /** Why GTK has no camera preview yet: the portal and GStreamer come after Android and Apple (`docs/17` §17.8.2). */
+  val noPreview: String = "no camera preview on the desktop yet"
 
   /** Why the desktop has no haptics: there is no haptic hardware to drive (docs/16 §16.3). */
   val noHaptics: String = "no haptics on the desktop"
@@ -1300,7 +1333,8 @@ object GalleryGtk {
             haptics = Some(Haptics.none(noHaptics)),
             pickers = Some((pickers.photos, pickers.documents)),
             camera = Some(Camera.unavailable(noCamera)),
-            share = Some(Share.unavailable(noShare))
+            share = Some(Share.unavailable(noShare)),
+            cameraPreview = Some(CameraPreview.unavailable(noPreview))
           )
         ),
         nativeView = NativeLabel(_)

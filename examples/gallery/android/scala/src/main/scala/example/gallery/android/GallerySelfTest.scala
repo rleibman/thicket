@@ -50,6 +50,7 @@ import thicket.motion.android.AndroidMotionProvider
 import thicket.haptics.Impact
 import thicket.haptics.android.AndroidHaptics
 import thicket.camera.android.AndroidCamera
+import thicket.camera.preview.android.AndroidCameraPreview
 import thicket.sqlite.Sqlite
 import thicket.sqlite.android.AndroidSqlite
 import thicket.sqlite.testing.JdbcConformance
@@ -538,7 +539,7 @@ object GallerySelfTest {
         activity,
         () => texts
       ) ++ clipboardSteps(() => texts, click) ++ pickerSteps(activity, () => texts, click) ++
-        shareSteps(() => texts, click) ++ List(() => {
+        shareSteps(() => texts, click) ++ previewSteps(activity, () => texts, click) ++ List(() => {
           if httpPort > 0 then {
             httpWorker.start()
             awaitHttp(SystemClock.uptimeMillis() + 30000)
@@ -582,11 +583,12 @@ object GallerySelfTest {
           !granted && answer == "Notifications: Denied",
           s"granted $granted; $answer"
         )
-        val undeclared = scala.util.Try(AndroidPermissions(activity).status(Permission.Camera))
+        // The microphone: the gallery declares CAMERA since the camera preview (docs/17), and nothing records sound.
+        val undeclared = scala.util.Try(AndroidPermissions(activity).status(Permission.Microphone))
         check(
           "a permission the manifest does not declare throws, naming it, instead of answering Denied",
           undeclared.failed.toOption.exists(e =>
-            e.isInstanceOf[IllegalStateException] && e.getMessage.contains("android.permission.CAMERA")
+            e.isInstanceOf[IllegalStateException] && e.getMessage.contains("android.permission.RECORD_AUDIO")
           ),
           undeclared.toString
         )
@@ -960,6 +962,126 @@ object GallerySelfTest {
     * taps the gallery's own share target there (`DRIVE share-pick`), and that target, [[ShareTargetActivity]], reads
     * what it was given, the file through the grant Thicket's provider served it under.
     */
+  /** The camera preview (docs/17 §17.6): Camera2 into a TextureView, from the emulator's back camera (a rendered scene,
+    * `hw.camera.back = emulated`); the s2test AVD has no front camera. Frames arrive and change, a capture is a JPEG of
+    * the preview's size, Home closes the camera and coming back opens it again, and a camera that is not there says so.
+    */
+  private def previewSteps(
+    activity: GalleryActivity,
+    texts:    () => List[String],
+    click:    String => Unit
+  ): List[() => Unit] = {
+    def demo = Gallery.currentPreview
+    def preview = demo.map(_.preview).collect { case p: AndroidCameraPreview => p }
+    def running = preview.exists(_.running.now)
+    def frames = preview.map(_.testing.framesShown).getOrElse(0)
+    def open = preview.map(_.testing.devicesOpen).getOrElse(-1)
+    def sample(): Option[Array[Int]] =
+      preview.flatMap(_.testing.textureView).flatMap(t => Option(t.getBitmap(32, 32))).map { b =>
+        val px = new Array[Int](32 * 32)
+        b.getPixels(px, 0, 32, 0, 0, 32, 32)
+        px
+      }
+    var first: Option[Array[Int]] = None
+    var framesBefore = 0
+    List(
+      () => {
+        // A TextureView gets its surface when it is drawn: bring the section on screen.
+        preview.flatMap(_.testing.textureView).foreach { t =>
+          val _ = t.requestRectangleOnScreen(android.graphics.Rect(0, 0, t.getWidth, t.getHeight), true)
+        }
+      },
+      Await(15000, () => running && frames > 5),
+      () => {
+        check(
+          "Preview: the Android host's preview is available and running, the back camera open",
+          preview.exists(_.availability == Availability.Available) && running && open == 1,
+          s"${preview.map(_.availability)}; running $running; devices open $open; ${texts().filter(_.startsWith("Preview"))}"
+        )
+        first = sample()
+        framesBefore = frames
+      },
+      Await(1500, () => false),
+      () => {
+        val second = sample()
+        val differ = (first, second) match {
+          case (Some(a), Some(b)) => a.indices.count(i => a(i) != b(i))
+          case _                  => -1
+        }
+        val distinct = second.map(_.distinct.length).getOrElse(0)
+        check(
+          "Preview: frames keep arriving, and the picture is not blank",
+          frames > framesBefore && distinct > 8,
+          s"frames $framesBefore then $frames; $distinct distinct colours in a 32x32 sample; $differ pixels changed in 1.5 s"
+        )
+        click("Take from the preview")
+      },
+      Await(10000, () => demo.exists(_.lastPhoto.now.isDefined)),
+      () => {
+        val photo = demo.flatMap(_.lastPhoto.now).flatten
+        val bounds = photo.map { p =>
+          val o = android.graphics.BitmapFactory.Options()
+          o.inJustDecodeBounds = true
+          val _ = android.graphics.BitmapFactory.decodeFile(p.toString, o)
+          (o.outWidth, o.outHeight)
+        }
+        val size = preview
+          .flatMap(_.testing.sizes).map(
+            (
+              _,
+              j
+            ) => (j.getWidth, j.getHeight)
+          )
+        check(
+          "Preview: a capture is a JPEG in the app's cache, the size the preview runs at",
+          photo.exists(p => p.startsWith(activity.getCacheDir.toPath) && java.nio.file.Files.size(p) > 1000) &&
+            bounds.isDefined && size.exists(s => bounds.contains(s) || bounds.contains(s.swap)),
+          s"$photo; decoded $bounds; preview/JPEG size $size"
+        )
+        drive("home")
+      },
+      Await(10000, () => AndroidLifecycle.state.now == AppState.Background && open == 0),
+      () => {
+        // Android also takes the camera from a background app, and destroys the texture with the stopped window: the
+        // first reason is what shows the preview's own lifecycle closed it, before either.
+        val reasons = preview.map(_.testing.stopReasons).getOrElse(Nil)
+        check(
+          "Preview: in the background the camera is closed, by the preview's own lifecycle first",
+          !running && open == 0 && reasons.lastOption.contains("background"),
+          s"running $running; devices open $open; stops $reasons"
+        )
+        framesBefore = frames
+        drive("front")
+      },
+      Await(15000, () => running && frames > framesBefore + 5),
+      () => {
+        check(
+          "Preview: back in front it opens the camera again, and frames arrive",
+          running && open == 1 && frames > framesBefore,
+          s"running $running; devices open $open; frames $framesBefore then $frames"
+        )
+        click("Flip the camera")
+      },
+      Await(5000, () => !running && open == 0),
+      () => {
+        check(
+          "Preview: a camera the device does not have says so, and nothing runs",
+          preview.exists(_.availability == Availability.Unavailable("no front camera")) && !running && open == 0 &&
+            texts().exists(_.contains("unavailable (no front camera)")),
+          s"${preview.map(_.availability)}; running $running; open $open; ${texts().filter(_.startsWith("Preview"))}"
+        )
+        click("Flip the camera")
+      },
+      Await(15000, () => running),
+      () =>
+        check(
+          "Preview: flipping back opens the back camera again",
+          running && open == 1,
+          s"running $running; devices open $open"
+        )
+    )
+  }
+
   private def shareSteps(
     texts: () => List[String],
     click: String => Unit

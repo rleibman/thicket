@@ -152,6 +152,7 @@ object GallerySelfTest {
       "ForEach — keyed, with a context menu on each row",
       "Provide — a theme scoped to one subtree",
       "SafeArea — a prop, because no toolkit models it as a widget",
+      "Platform — a view the platform's own code makes",
       "BuildInfo — this module's own, from git",
       "Errors — a handler that throws is reported, and the app carries on",
       "Effects — a ZIO effect, its result posted back to the UI thread",
@@ -253,12 +254,14 @@ object GallerySelfTest {
       s"${AppleInspect.presentedCount} presented"
     )
 
-    storageChecks(() =>
-      deviceChecks(() =>
-        locationChecks(() =>
-          motionChecks(() =>
-            cameraChecks(() =>
-              shareChecks(() => clipboardChecks(() => pickerChecks(() => sheet(all)(() => bigList(() => finish())))))
+    platformChecks(() =>
+      storageChecks(() =>
+        deviceChecks(() =>
+          locationChecks(() =>
+            motionChecks(() =>
+              cameraChecks(() =>
+                shareChecks(() => clipboardChecks(() => pickerChecks(() => sheet(all)(() => bigList(() => finish())))))
+              )
             )
           )
         )
@@ -274,6 +277,13 @@ object GallerySelfTest {
     ok,
     d
   ) => check(n, ok, d)
+
+  /** The embedding point (#145), in [[GalleryPlatformChecks]]. */
+  private def platformChecks(next: () => Unit): Unit =
+    GalleryPlatformChecks.run(
+      checker,
+      label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click)
+    )(next)
 
   /** Lifecycle and permissions (#114), in [[GalleryDeviceChecks]]. */
   private def deviceChecks(next: () => Unit): Unit =

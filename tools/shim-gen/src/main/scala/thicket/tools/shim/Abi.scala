@@ -325,6 +325,14 @@ object Abi {
       "StepperView(",
       "StepperView(",
       "an NSStepper / a UIStepper beside a label showing the value, which neither draws"
+    ),
+    // 28, not 26: #150 (RadioGroup, Stepper) is being built beside this and takes the next two.
+    built(
+      28,
+      "Platform",
+      "PlatformHost(",
+      "PlatformHost(",
+      "holds one view made outside the shim (sui_platform_set_view), pinned to its edges"
     )
   )
 
@@ -574,6 +582,24 @@ object Abi {
     */
   val zstack: List[Fn] = List(
     setter("sui_set_stack_alignment", "horizontal" -> I32, "vertical" -> I32)
+  )
+
+  /** The embedding point (`docs/17` §17.3, #145): a `Platform` host shows one view that code outside the shim made — a
+    * camera preview's `-apple` module, the gallery's own label. The view crosses as an `NSView *` / `UIView *` with one
+    * retain the caller owns (`Unmanaged.passRetained` in Swift, `[[NSTextField alloc] init…]` in C); this call takes
+    * that retain over, so the caller does not release it. The host pins the view to its four edges, so the view is
+    * sized by the host's frame, like any leaf, and measured by its own constraints and intrinsic size.
+    *
+    * Replacing or clearing removes the old view from the host and drops the host's reference, which frees it unless
+    * someone else holds one. `AppleRenderer` calls `ApplePlatformView.release` *before* this, while the old view is
+    * still in the host and alive.
+    */
+  val platformViews: List[Fn] = List(
+    setter("sui_platform_set_view", "view" -> Handle).copy(
+      doc = "Shows `view` in a Platform host, replacing what it showed. `view` is +1 retained and\n" +
+        "   this takes the retain over; NULL empties the host. sui_set_text on a host shows that\n" +
+        "   text in a label of the host's own instead (a view with nothing for this toolkit)."
+    )
   )
 
   /** A `DatePicker`'s date, as an **epoch day**: days since 1970-01-01. A day, not an instant — the shims read it at
@@ -970,6 +996,7 @@ object Abi {
     Group("picker", picker),
     Group("stepper", stepper),
     Group("zstack", zstack),
+    Group("platform views", platformViews),
     Group("dates", dates),
     Group("links", links),
     Group("navigation", navigation),

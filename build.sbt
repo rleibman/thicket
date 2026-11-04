@@ -330,7 +330,10 @@ lazy val appleSystemSqlite = Seq(
   */
 lazy val galleryAppleSharedSources = Seq(
   Compile / unmanagedSourceDirectories +=
-    (ThisBuild / baseDirectory).value / "examples" / "gallery" / "apple-shared" / "src" / "main" / "scala"
+    (ThisBuild / baseDirectory).value / "examples" / "gallery" / "apple-shared" / "src" / "main" / "scala",
+  // `scala-native/`: the Platform section's native label, in C through the Objective-C runtime (#145).
+  Compile / unmanagedResourceDirectories +=
+    (ThisBuild / baseDirectory).value / "examples" / "gallery" / "apple-shared" / "src" / "main" / "resources"
 )
 
 /** AppKit renderer (macOS). Scala Native only, and never aggregated: it links a Swift static library and AppKit, so it
@@ -832,6 +835,27 @@ lazy val camera = crossProject(JVMPlatform, NativePlatform)
   .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
   .nativeSettings(libraryDependencies ++= zioTestNative)
 
+/** A live camera preview in the app's layout, with a still capture from it (`docs/17`): the handle, its widget through
+  * `core`'s embedding point, and a fake. Only an app that shows a preview links a platform camera stack.
+  */
+lazy val cameraPreview = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/camera-preview"))
+  .dependsOn(core, device)
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .settings(commonSettings, zioTestFramework, name := "thicket-camera-preview")
+  .jvmSettings(libraryDependencies ++= zioTestJvm, scalacOptions ++= Seq("-release", "17"))
+  .nativeSettings(libraryDependencies ++= zioTestNative)
+
+/** The camera preview on Android: Camera2 into a `TextureView` (not CameraX, which is AndroidX), and a JPEG
+  * `ImageReader` on the same session for the capture.
+  */
+lazy val cameraPreviewAndroid = project
+  .in(file("modules/camera-preview-android"))
+  .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning)
+  .dependsOn(cameraPreview.jvm, rendererAndroid)
+  .settings(commonSettings, name := "thicket-camera-preview-android", scalacOptions ++= Seq("-release", "17"))
+
 /** The camera on Android: the camera app's `ACTION_IMAGE_CAPTURE`, writing to a MediaStore entry. */
 lazy val cameraAndroid = project
   .in(file("modules/camera-android"))
@@ -1027,7 +1051,7 @@ lazy val galleryShared = crossProject(JVMPlatform, NativePlatform)
   .in(file("examples/gallery/shared"))
   // effect-zio too: the gallery runs one real effect, so every host proves it installed a UI-thread poster.
   // storage and sqlite: the device services' section; each host supplies its platform's implementation.
-  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics, pickers, camera, share)
+  .dependsOn(core, effectZio, storage, sqlite, secrets, device, location, motion, clipboard, haptics, pickers, camera, share, cameraPreview)
   .enablePlugins(AutomateHeaderPlugin, com.github.sbt.git.GitVersioning, BuildInfoPlugin)
   .settings(thicketBuildInfo("example.gallery.buildinfo", buildTime = true))
   .settings(commonSettings, name := "thicket-gallery-shared", publish / skip := true)
@@ -1068,9 +1092,8 @@ lazy val galleryAndroid = project
     clipboardAndroid,
     hapticsAndroid,
     pickersAndroid,
-    pickersApple,
     cameraAndroid,
-    cameraApple,
+    cameraPreviewAndroid,
     shareAndroid,
     httpChecks.jvm,
     httpAndroid
@@ -1297,6 +1320,7 @@ lazy val platforms = project
     pickersApple,
     cameraAndroid,
     cameraApple,
+    cameraPreviewAndroid,
     shareAndroid,
     clipboardApple,
     hapticsApple,
@@ -1360,6 +1384,8 @@ lazy val root = project
     pickers.native,
     camera.jvm,
     camera.native,
+    cameraPreview.jvm,
+    cameraPreview.native,
     share.jvm,
     share.native,
     httpGtk,

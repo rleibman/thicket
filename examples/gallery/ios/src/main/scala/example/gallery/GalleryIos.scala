@@ -115,7 +115,9 @@ object GalleryIos {
               // The share sheet (#134): a file is shared as a copy under the cache directory.
               share = Some(AppleShare(storage.dirs.cache))
             )
-          )
+          ),
+          // The Platform section's view (#145): a UILabel made outside the renderer.
+          nativeView = NativeLabel(_)
         )
       }
     }

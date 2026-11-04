@@ -128,6 +128,72 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     digits: the precision check fails on GTK; on Android, the wrong precision fails it and no
     clamp fails "stops at its maximum".
 
+- 2026-11-03 — **The embedding point on Apple: `ApplePlatformView`, kind 28 `Platform`,
+  `sui_platform_set_view`** (#145, the Apple half of `docs/17` step 1; #148 builds on it).
+  - **Trait:** `ApplePlatformView extends PlatformView { def create(): Ptr[Byte]; def
+    release(view: Ptr[Byte]): Unit = () }` in `renderer-apple`. Scala-facing, not Swift-facing:
+    a module (the camera preview's `-apple`) implements it in Scala and calls its own Swift
+    library from `create`, so the renderer's shim knows nothing of it and needs no callback into
+    a second library. `Ptr[Byte]`, not `Shim.Handle`, so a module needs nothing from the shim's
+    generated bindings. One trait for both toolkits, as one `AppleRenderer` serves both.
+  - **Ownership, exactly:** `create` returns an `NSView*`/`UIView*` in no superview with one
+    retain the caller owns (`Unmanaged.passRetained` in Swift, `alloc`/`init` in C).
+    `sui_platform_set_view(host, view)` *takes that retain over* (`takeRetainedValue`), so the
+    host's subview reference is the only one; the module never releases it. On destroy or
+    replacement the renderer calls `release(view)` first — the view alive and still in its
+    host — then `sui_platform_set_view(host, NULL)` removes it, which frees it. `sui_destroy`
+    of a host also empties it. A view that is not an `ApplePlatformView`, or a `null` from
+    `create`, shows `<description>: not available on AppKit` (or `UIKit`) through `sui_set_text`
+    on the host, a label of its own; `release` is not called for it.
+  - **Host:** `PlatformHost`, a plain view pinning its one child to its four edges, so the
+    view is sized by the host's frame and measured by its own constraints. Kind **28**, not
+    26: #150 (RadioGroup, Stepper) is built beside this and takes the next two codes.
+  - **Gallery:** the host's view is an `NSTextField` / a `UILabel` made in C through the
+    Objective-C runtime (`apple-shared/src/main/resources/scala-native`), outside the renderer.
+    Its `release` asks a weak reference whether the view is alive (reading a freed view would
+    be a use-after-free), then its superview and text; after the replacement the weak
+    reference must go nil — the shim held the only retain.
+  - **Measured.** macOS gallery **228** ok, 0 failed (the section's heading and 5 checks among
+    them; the first label 1435×16 pt, the size of its host; freed 358 ms after the
+    replacement). iOS simulator ("iPhone 17e") **239** ok, 0 failed, on the warm simulator (the first
+    label 358×20.3 pt; freed 63–129 ms after the replacement in four runs). `shimGen/testFull`
+    51/51. `bin/verify-apple.sh "iPhone 17e"`: 19 of 20 steps; `ios-gallery` failed only on
+    the fresh boot's "notifications start not yet asked" (the known trap #140 eased; the
+    Platform checks passed in it), and passed alone on the warm simulator right after. Two
+    earlier lone runs under load average 85–99 failed in the camera and location sections'
+    driven steps, the Platform checks passing in both. macOS ran with the screen locked
+    in `verify-apple.sh` (224 a run, the lifecycle checks skipped).
+  - **Falsified on macOS**, each failing exactly its check (223 ok, 1 failed): `release`
+    skipped (released `[]`); `release` after the shim dropped the view (in its host `false`);
+    an empty "not available" label; the shim keeping the caller's retain (`takeUnretainedValue`:
+    the old view still alive after 2 015 ms).
+
+- 2026-11-03 — **The camera preview: `thicket-camera-preview` and `-android`** (`docs/17` step 2;
+  Apple is #148, after #145; GTK later, §17.8.2).
+  - **API:** `CameraPreview` with `availability`, `facing: Var[Facing]`, `running: Signal[Boolean]`,
+    `view(fit)` (through `dsl.Platform`; `Cover` by default) and `capture` (a JPEG in the cache,
+    `None` when not running or busy). `CameraPreview.unavailable(reason)` for GTK; a fake.
+  - **Android:** Camera2 into a `TextureView`, the camera's callbacks on the UI thread, a JPEG
+    `ImageReader` on the same session (the size both offer, at most 1920×1080; 1280×720 on
+    `s2test`). Orientation by hand: the view's transform turns the frame back by the display's
+    rotation and scales it to the fit. `createCaptureSession(List, …)`, deprecated, since
+    `SessionConfiguration` needs API 28 and the framework's minimum is 26. The widget takes the
+    frame's aspect when the layout leaves its height open.
+  - **Runs only while mounted, its surface ready, in front and permitted;** one preview at a
+    time. Each close records why (`testing.stopReasons`): Android takes the camera from a
+    background app by itself (`error 3`, then `disconnected`), so "closed in the background"
+    alone could not tell whether the preview's own lifecycle did it; the check asks for the
+    lifecycle's stop first.
+  - **The gallery declares `CAMERA`** (granted by `build.sh`'s `install -g`). The Device
+    section's "an undeclared permission throws" check moved to the microphone.
+  - **Measured.** `CameraPreviewSpec` 2/2, JVM and Native. GTK gallery **148** (144 + 4), todo
+    69. Android gallery **102** (95 + 7) on `s2test`: the back camera runs, frames arrive and
+    the picture is not blank, a capture is a 1280×720 JPEG in the cache, Home closes the camera,
+    front reopens it, the missing front camera says so, flipping back reopens the back one.
+  - **Falsified.** Without the lifecycle's background stop, the background check fails (stops
+    `facing…, error 3, disconnected`); with `capture` stubbed, the JPEG check fails.
+  - **Found on the way:** #147, `galleryAndroid` depended on `pickersApple` and `cameraApple`.
+
 - 2026-11-02 — **The embedding point: `WidgetKind.Platform`, `Prop.View`, built on GTK and
   Android** (`docs/17` §17.3, step 1 of §17.7; the Apple half is #145).
   - **Shape:** `trait PlatformView { def description: String }` in `renderer-api`, and
