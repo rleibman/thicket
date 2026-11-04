@@ -242,7 +242,9 @@ private final class StepperView: UIStackView {
   var digits: Int32 = 0
 
   func show() {
-    label.text = String(format: "%.\(max(0, digits))f", stepper.value)
+    let scale = Int16(max(0, digits))
+    let behavior = NSDecimalNumberHandler(roundingMode: .plain, scale: scale, raiseOnExactness: false, raiseOnOverflow: false, raiseOnUnderflow: false, raiseOnDivideByZero: false)
+    label.text = NSDecimalNumber(value: stepper.value).rounding(accordingToBehavior: behavior).stringValue
   }
 }
 
