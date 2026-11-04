@@ -384,7 +384,6 @@ final class AndroidCameraPreview(
     }
     written.failed.foreach(e => Log.w(Tag, s"camera preview: the photo could not be written: $e"))
     val _ = main.post(() => if g == generation then finishCapture(written.toOption.flatten))
-    val _ = main.post(() => if g == generation then finishCapture(written.toOption))
   }
 
   /** Degrees the display is turned from the device's natural orientation. */
