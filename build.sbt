@@ -330,7 +330,10 @@ lazy val appleSystemSqlite = Seq(
   */
 lazy val galleryAppleSharedSources = Seq(
   Compile / unmanagedSourceDirectories +=
-    (ThisBuild / baseDirectory).value / "examples" / "gallery" / "apple-shared" / "src" / "main" / "scala"
+    (ThisBuild / baseDirectory).value / "examples" / "gallery" / "apple-shared" / "src" / "main" / "scala",
+  // `scala-native/`: the Platform section's native label, in C through the Objective-C runtime (#145).
+  Compile / unmanagedResourceDirectories +=
+    (ThisBuild / baseDirectory).value / "examples" / "gallery" / "apple-shared" / "src" / "main" / "resources"
 )
 
 /** AppKit renderer (macOS). Scala Native only, and never aggregated: it links a Swift static library and AppKit, so it

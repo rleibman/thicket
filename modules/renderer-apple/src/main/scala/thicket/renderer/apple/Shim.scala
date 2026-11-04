@@ -94,6 +94,7 @@ object Shim {
   def sui_get_selected(h: Handle): CInt = extern
   def sui_on_select(h: Handle, cb: IntCb, ctx: Long): Unit = extern
   def sui_set_stack_alignment(h: Handle, horizontal: CInt, vertical: CInt): Unit = extern
+  def sui_platform_set_view(h: Handle, view: Handle): Unit = extern
   def sui_set_date(h: Handle, epochDay: CInt): Unit = extern
   def sui_get_date(h: Handle): CInt = extern
   def sui_on_date_change(h: Handle, cb: IntCb, ctx: Long): Unit = extern
@@ -191,6 +192,7 @@ object ShimKind {
   inline val IconButton = 23
   inline val TabView = 24
   inline val Tab = 25
+  inline val Platform = 28
 
   /** Codes reserved and not built by the AppKit shim, and by the UIKit one (D9). `AppleRenderer` asks `sui_platform`
     * which it runs on (#79), shows a labelled placeholder for a code in that toolkit's set, and throws under a self-test.

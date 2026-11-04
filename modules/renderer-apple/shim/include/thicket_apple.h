@@ -66,7 +66,8 @@ int32_t sui_image_decodes(const uint8_t *data, int32_t length);
      22 Grid               GridView()                     GridView()        an NSGridView, rows rebuilt in order / UIKit has none: a layout guide per column and row
      23 IconButton         NSButton()                     UIButton()        image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit
      24 TabView            TabHostView()                  TabHostView()     an NSTabViewController, segmented control on top / a UITabBarController, a child controller
-     25 Tab                TabPage()                      TabPage()         one tab: holds its one child; the title and symbol go on the item */
+     25 Tab                TabPage()                      TabPage()         one tab: holds its one child; the title and symbol go on the item
+     28 Platform           PlatformHost()                 PlatformHost()    holds one view made outside the shim (sui_platform_set_view), pinned to its edges */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
 
@@ -200,6 +201,12 @@ void sui_on_select(sui_handle h, sui_int_cb cb, int64_t ctx);
 
 /* --- zstack ------------------------------------------------------------------ */
 void sui_set_stack_alignment(sui_handle h, int32_t horizontal, int32_t vertical);
+
+/* --- platform views ---------------------------------------------------------- */
+/* Shows `view` in a Platform host, replacing what it showed. `view` is +1 retained and
+   this takes the retain over; NULL empties the host. sui_set_text on a host shows that
+   text in a label of the host's own instead (a view with nothing for this toolkit). */
+void sui_platform_set_view(sui_handle h, sui_handle view);
 
 /* --- dates ------------------------------------------------------------------- */
 void sui_set_date(sui_handle h, int32_t epochDay);

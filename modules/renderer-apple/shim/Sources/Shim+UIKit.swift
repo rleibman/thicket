@@ -907,6 +907,38 @@ private final class TabPage: UIView {
 /// answered by UIKit. The rules for keeping the user on their tab are the renderer's
 /// (`TabSelection`); this only inserts, removes and selects, and reports the user's choices,
 /// which `tabBarController(_:didSelect:)` receives and a programmatic selection never does.
+/// Kind 28, a `Platform` (#145, `docs/17` §17.3): a plain view holding one view made outside
+/// the shim — a camera preview's, the gallery's label — pinned to its four edges, so it is as
+/// large as the host's frame and measured by its own constraints and intrinsic size. The host
+/// owns it the way any superview owns a subview: `show` removes the old one, which drops the
+/// only reference the shim had. `sui_platform_set_view` hands it in; `sui_set_text` shows a
+/// label of the host's own instead, for a view UIKit has nothing for.
+private final class PlatformHost: UIView {
+  init() { super.init(frame: .zero) }
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  func show(_ c: UIView?) {
+    subviews.forEach { $0.removeFromSuperview() }
+    guard let c else { return }
+    c.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(c)
+    NSLayoutConstraint.activate([
+      c.leadingAnchor.constraint(equalTo: leadingAnchor),
+      c.trailingAnchor.constraint(equalTo: trailingAnchor),
+      c.topAnchor.constraint(equalTo: topAnchor),
+      c.bottomAnchor.constraint(equalTo: bottomAnchor)
+    ])
+  }
+
+  func showText(_ s: String) {
+    if let l = subviews.first as? TextLabel, l.text == s { return }
+    let l = TextLabel()
+    l.numberOfLines = 0
+    l.text = s
+    show(l)
+  }
+}
+
 private final class TabHostView: UIView, UITabBarControllerDelegate {
   let controller = UITabBarController()
   private var programmatic = 0
@@ -1261,6 +1293,9 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 25:
     return retained(TabPage())
 
+  case 28:
+    return retained(PlatformHost())
+
   case 23:
     // A plain button showing only its image, as in a toolbar or a navigation bar. The symbol
     // is sized by the body text style, so it follows Dynamic Type like the text beside it.
@@ -1332,6 +1367,9 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
   selections.removeValue(forKey: id)
   // A page leaves its TabView's controller, which would otherwise keep it alive and shown.
   if let page = v as? TabPage { page.host?.remove(page) }
+  // A hosted view goes now, not whenever the host itself is freed: the renderer has released
+  // it (ApplePlatformView.release) just before this, and nothing may outlive that by accident.
+  (v as? PlatformHost)?.show(nil)
   // Detaching is part of destroying, not a separate step the caller performs first.
   if let stack = v.superview as? UIStackView { stack.removeArrangedSubview(v) }
   gridOf(v)?.remove(v)
@@ -1358,6 +1396,8 @@ public func sui_set_text(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CCh
     c.toggle.accessibilityLabel = s
   case let page as TabPage:
     page.title = s
+  case let host as PlatformHost:
+    host.showText(s)
   case let l as UILabel:
     l.text = s
   case let f as UITextField:
@@ -1731,6 +1771,14 @@ public func sui_set_stack_alignment(_ h: UnsafeMutableRawPointer, _ horizontal: 
   z.horizontal = horizontal
   z.vertical = vertical
   z.realign()
+}
+
+@_cdecl("sui_platform_set_view")
+public func sui_platform_set_view(_ h: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer?) {
+  // The caller's +1 is taken over here: a balanced Swift reference from now on, so the host's
+  // subview reference is the only one left once this returns (and none, if `h` is no host).
+  let hosted = child.map { Unmanaged<UIView>.fromOpaque($0).takeRetainedValue() }
+  (view(h) as? PlatformHost)?.show(hosted)
 }
 
 @_cdecl("sui_on_select")

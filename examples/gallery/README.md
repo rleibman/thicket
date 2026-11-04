@@ -114,6 +114,17 @@ three; unmounting is timed and printed, not checked). Grid on iOS went from 3.9 
 (2.1). The stack checks passed before the fix too (ratio 2.6–2.8, now 2.1–2.5), so for stacks
 the check guards a regression to quadratic, not the small search the fix removed.
 
+**#145** gave the Apple hosts the Platform section's checks: the host's view is an
+`NSTextField` / a `UILabel` made in C through the Objective-C runtime
+(`apple-shared/src/main/resources/scala-native/thicket_gallery_native_label.c`), handed to the
+renderer +1 retained. The checks find that very view in the window, filling its host; read
+the "not available on AppKit/UIKit" label; replace the view; and find the old one was
+released while alive and in its host (asked through a weak reference first), then freed —
+the weak reference goes nil, so the shim held the only retain — with the renderer's tables
+unchanged. **228** on macOS, **239** on the iOS simulator. Falsified on macOS: `release`
+skipped, `release` after the shim dropped the view, an empty label, and the shim keeping the
+caller's retain each fail exactly their check.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name
@@ -167,10 +178,9 @@ tappable `Row`, the screen's `Scroll` with both padding and `.safeArea()`, a pad
 can be deleted and renamed, a per-row `ContextMenu`, subtree theming with `Provide`, a
 handler that throws, a ZIO effect, the two presented widgets (`Alert` and `Sheet`), toolbar
 `Action`s, a navigation push, a `TabView` with a tab inserted in the middle, a `Platform` view
-(`docs/17` §17.3) that the host makes itself — a `GtkLabel`, a `TextView` — and replaces,
-the self-test checking the host's own widget is the one on screen and was released while
-still alive, beside one that no platform has and says so (Apple shows that label for both
-until its half is built), and storage: a
+(`docs/17` §17.3) that the host makes itself — a `GtkLabel`, a `TextView`, an `NSTextField`,
+a `UILabel` — and replaces, the self-test checking the host's own widget is the one on screen
+and was released while still alive, beside one that no platform has and says so, and storage: a
 launch counter in preferences and notes in SQLite, written on a worker thread, with the JDBC
 conformance checks run against the platform's driver (GTK, Android, macOS and iOS),
 Magnum's checks on GTK, macOS and iOS, and a secret in the platform's secure store, kept from

@@ -2,7 +2,7 @@
 
 Status: **approved, 2026-11-01; step 1 of §17.7, the embedding point, built on GTK and
 Android 2026-11-02** (`WidgetKind.Platform`, `Prop.View`, `GtkPlatformView`,
-`AndroidPlatformView`; the Apple half is #145). Step 2, **the preview on Android, built 2026-11-03** (`thicket-camera-preview`,
+`AndroidPlatformView`), and on AppKit and UIKit 2026-11-03 (`ApplePlatformView`, #145). Step 2, **the preview on Android, built 2026-11-03** (`thicket-camera-preview`,
 `-android`; `modules/camera-preview/README.md`). Apple (step 3) is the Mac's; GTK (step 4) later. `docs/16` §16.3 puts the live camera
 preview first in tier 3 ("each its own design"), and the owner said yes to tier 3 on
 2026-11-01. This is that design. The owner answered §17.8's questions the same day, taking
@@ -100,7 +100,8 @@ the device says otherwise.
 The largest piece in the plan (`docs/16` §16.3 says so). Proposed order, each its own PR:
 
 1. The embedding point (§17.3) on GTK and Android, with the gallery's trivial platform view;
-   Apple as a Mac issue. *Done on GTK and Android, 2026-11-02 (decision log).*
+   Apple as a Mac issue. *Done on GTK and Android, 2026-11-02, and on Apple, 2026-11-03 (#145)
+   (decision log).*
 2. `thicket-camera-preview` and `-android`, measured on the emulator. *Done, 2026-11-03.*
 3. `-apple`, the Mac's (iOS and macOS).
 4. `-gtk`, after Android and Apple (§17.8.2).
