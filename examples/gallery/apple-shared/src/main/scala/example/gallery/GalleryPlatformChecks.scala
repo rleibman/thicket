@@ -175,6 +175,10 @@ object GalleryPlatformChecks {
           s"[gallery]   Platform: the first label was ${firstSize.getOrElse("-")}; " +
             (if first.exists(!_.alive) then s"freed $ms ms after the replacement" else s"still alive $ms ms after it")
         )
+        // Cleanup: thk_gallery_weak_new mallocs a weak slot per view; free it once we're done observing it.
+        NativeLabel.made.foreach(m => NativeLabelC.thk_gallery_weak_free(m.weak))
+        NativeLabel.made.clear()
+        NativeLabel.released.clear()
         next()
       }
     }
