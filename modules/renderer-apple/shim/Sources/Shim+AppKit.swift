@@ -757,6 +757,38 @@ private final class TabHostView: NSView {
 
 /// Escape on a sheet arrives as `cancelOperation`. That is the platform closing it without
 /// a choice, which is what `OnDismiss` reports; the app then takes it down by unmounting.
+/// Kind 28, a `Platform` (#145, `docs/17` §17.3): a plain view holding one view made outside
+/// the shim — a camera preview's, the gallery's label — pinned to its four edges, so it is as
+/// large as the host's frame and measured by its own constraints and intrinsic size. The host
+/// owns it the way any superview owns a subview: `show` removes the old one, which drops the
+/// only reference the shim had. `sui_platform_set_view` hands it in; `sui_set_text` shows a
+/// label of the host's own instead, for a view AppKit has nothing for.
+private final class PlatformHost: NSView {
+  init() { super.init(frame: .zero) }
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  func show(_ c: NSView?) {
+    subviews.forEach { $0.removeFromSuperview() }
+    guard let c else { return }
+    c.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(c)
+    NSLayoutConstraint.activate([
+      c.leadingAnchor.constraint(equalTo: leadingAnchor),
+      c.trailingAnchor.constraint(equalTo: trailingAnchor),
+      c.topAnchor.constraint(equalTo: topAnchor),
+      c.bottomAnchor.constraint(equalTo: bottomAnchor)
+    ])
+  }
+
+  func showText(_ s: String) {
+    if let l = subviews.first as? LabelField, l.stringValue == s { return }
+    let l = LabelField(labelWithString: s)
+    l.lineBreakMode = .byWordWrapping
+    l.maximumNumberOfLines = 0
+    show(l)
+  }
+}
+
 private final class SheetWindow: NSWindow {
   var onCancel: (() -> Void)?
   override func cancelOperation(_ sender: Any?) { onCancel?() }
@@ -977,6 +1009,9 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
   case 25:
     return retained(TabPage())
 
+  case 28:
+    return retained(PlatformHost())
+
   case 23:
     // Borderless and image-only: AppKit's icon button, as in a window's toolbar. The symbol
     // is a template image, so it draws in the control's text colour and dims when disabled.
@@ -1111,6 +1146,9 @@ public func sui_destroy(_ h: UnsafeMutableRawPointer) {
     sheet.sheetWindow?.contentView = nil
     sheet.sheetWindow = nil
   }
+  // A hosted view goes now, not whenever the host itself is freed: the renderer has released
+  // it (ApplePlatformView.release) just before this, and nothing may outlive that by accident.
+  (v as? PlatformHost)?.show(nil)
   // Detaching is part of destroying, not a separate step the caller performs first — the
   // contract says so, and the reconciler destroys depth-first.
   gridOf(v)?.remove(v)
@@ -1134,6 +1172,8 @@ public func sui_set_text(_ h: UnsafeMutableRawPointer, _ text: UnsafePointer<CCh
     sheet.heading?.stringValue = s
   case let page as TabPage:
     page.title = s
+  case let host as PlatformHost:
+    host.showText(s)
   case let f as NSTextField:
     // Only write when it actually differs. Writing unconditionally moves the caret to the
     // end on every keystroke, because the app writes back what the user just typed.
@@ -1400,6 +1440,14 @@ public func sui_set_stack_alignment(_ h: UnsafeMutableRawPointer, _ horizontal: 
   z.horizontal = horizontal
   z.vertical = vertical
   z.realign()
+}
+
+@_cdecl("sui_platform_set_view")
+public func sui_platform_set_view(_ h: UnsafeMutableRawPointer, _ child: UnsafeMutableRawPointer?) {
+  // The caller's +1 is taken over here: a balanced Swift reference from now on, so the host's
+  // subview reference is the only one left once this returns (and none, if `h` is no host).
+  let hosted = child.map { Unmanaged<NSView>.fromOpaque($0).takeRetainedValue() }
+  (view(h) as? PlatformHost)?.show(hosted)
 }
 
 @_cdecl("sui_on_select")

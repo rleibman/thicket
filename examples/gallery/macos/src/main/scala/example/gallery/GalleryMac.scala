@@ -77,8 +77,9 @@ object GalleryMac {
       // is not reported to take SVG, and an image view given bytes it cannot decode is an empty
       // frame, with nothing beside it to fall back to.
       val svg = Gallery.logoBytes(Gallery.logoSvg)
-      if AppleApp.decodesImage(svg) then Gallery.app(Gallery.logoSvg, svg, services)
-      else Gallery.app(services = services)
+      // The Platform section's view (#145): an NSTextField made outside the renderer.
+      if AppleApp.decodesImage(svg) then Gallery.app(Gallery.logoSvg, svg, services, nativeView = NativeLabel(_))
+      else Gallery.app(services = services, nativeView = NativeLabel(_))
     }
 
 }
