@@ -392,8 +392,9 @@ public func thk_prev_test_facing() -> Int32 {
 @_cdecl("thk_prev_test_gravity")
 public func thk_prev_test_gravity(_ view: UnsafeMutableRawPointer) -> Int32 {
   let v = Unmanaged<PreviewBase>.fromOpaque(view).takeUnretainedValue()
-  guard let p = v as? PreviewView else { return -1 }
-  return fitCode(p.previewLayer.videoGravity)
+  // The view's own layer, not the property: on macOS this also asks that the backing layer is the preview's.
+  guard v is PreviewView, let layer = v.layer as? AVCaptureVideoPreviewLayer else { return -1 }
+  return fitCode(layer.videoGravity)
 }
 
 @_cdecl("thk_prev_test_fit")

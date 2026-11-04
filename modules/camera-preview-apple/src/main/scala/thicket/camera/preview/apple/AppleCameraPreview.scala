@@ -22,7 +22,7 @@ import thicket.camera.preview.{CameraPreview, Facing}
 import thicket.core.{GcState, UiThread}
 import thicket.device.{AppState, Availability, Device, Permission, PermissionStatus}
 import thicket.renderer.{ContentFit, PlatformView}
-import thicket.renderer.apple.ApplePlatformView
+import thicket.renderer.apple.{AppleApp, ApplePlatformView}
 import thicket.signals.{Owner, Signal, Var}
 
 /** The camera preview on iOS and macOS (`docs/17` §17.4, #148): an `AVCaptureSession` shown by an
@@ -32,8 +32,8 @@ import thicket.signals.{Owner, Signal, Var}
   *   - **Runs** while its widget is mounted, the app is in front ([[Device]]'s lifecycle) and the camera permission is
   *     granted; anything else stops the session. The app declares `NSCameraUsageDescription` and asks through
   *     `device.permissions` (`AVCaptureDevice.requestAccess`).
-  *   - **Fit:** `Cover` is `.resizeAspectFill`, `Contain` `.resizeAspect`, `Fill` `.resize`. The view takes the
-  *     frame's aspect as shown, so a layout that leaves its height open still gives it one.
+  *   - **Fit:** `Cover` is `.resizeAspectFill`, `Contain` `.resizeAspect`, `Fill` `.resize`. The view takes the frame's
+  *     aspect as shown, so a layout that leaves its height open still gives it one.
   *   - **Facing:** on iOS the built-in front or back camera. On macOS `Front` is the first camera, built-in or USB, and
   *     `Back` is none, `Unavailable`, unless the system reports one on the back.
   *   - **Orientation:** the preview and the photo upright through `AVCaptureDevice.RotationCoordinator` on iOS; a Mac's
@@ -50,8 +50,8 @@ import thicket.signals.{Owner, Signal, Var}
   *   the app's cache directory, e.g. `AppleStorage(bundleId).dirs.cache`: photos go under `<cache>/thicket-preview`
   */
 final class AppleCameraPreview(
-  device: Device,
-  cache:  Path
+  device:      Device,
+  cache:       Path
 )(using owner: Owner
 ) extends CameraPreview {
 
@@ -125,6 +125,17 @@ final class AppleCameraPreview(
       capturing = Some(onResult)
       val sent = Zone(PreviewShim.thk_prev_capture(toCString(dir.toString), captured, generation))
       if sent == 0 then finishCapture(None)
+      else {
+        // A capture AVFoundation never answers must still answer the app.
+        val g = generation
+        AppleApp.postToUiAfter(CaptureTimeoutMs) { () =>
+          if g == generation && capturing.contains(onResult) then {
+            // Restarted, so the library's capture under way is dropped with its session.
+            stop("capture timed out")
+            tryStart()
+          }
+        }
+      }
     }
 
   /** For the self-tests: what the preview and AVFoundation are doing, read on the main thread. */
@@ -162,7 +173,8 @@ final class AppleCameraPreview(
       mounted.flatMap(v => ContentFit.values.lift(PreviewShim.thk_prev_test_gravity(v)))
 
     /** The fit a view made for `fit` has, read back from its layer's gravity; the view is not kept. */
-    def fitOfNew(fit: ContentFit): Option[ContentFit] = ContentFit.values.lift(PreviewShim.thk_prev_test_fit(fit.ordinal))
+    def fitOfNew(fit: ContentFit): Option[ContentFit] =
+      ContentFit.values.lift(PreviewShim.thk_prev_test_fit(fit.ordinal))
 
     /** The aspect the mounted view gives itself, height over width. */
     def aspect: Option[Double] = mounted.map(PreviewShim.thk_prev_test_aspect)
@@ -235,11 +247,16 @@ final class AppleCameraPreview(
     path: String
   ): Unit =
     if g == generation then
-      finishCapture(Option.when(path.nonEmpty)(Paths.get(path)).filter(p => Files.isRegularFile(p) && Files.size(p) > 0))
+      finishCapture(
+        Option.when(path.nonEmpty)(Paths.get(path)).filter(p => Files.isRegularFile(p) && Files.size(p) > 0)
+      )
 
 }
 
 object AppleCameraPreview {
+
+  /** Longer than a still takes on an Apple camera; Android gives 5 s. */
+  private val CaptureTimeoutMs = 10000
 
   private var generations = 0L
 

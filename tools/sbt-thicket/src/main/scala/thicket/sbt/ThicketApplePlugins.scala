@@ -271,8 +271,8 @@ object ThicketMacPlugin extends AutoPlugin {
     lazy val thicketPickersApple =
       taskKey[Option[File]]("thicket-pickers-apple's Swift library, if the app depends on it")
 
-    /** `thicket-camera-preview-apple`'s Swift library, unpacked from its jar, or `None` when the app does not depend
-      * on it (#148). On iOS the host's link takes `ios-sim/libthicketpreview.a` from here.
+    /** `thicket-camera-preview-apple`'s Swift library, unpacked from its jar, or `None` when the app does not depend on
+      * it (#148). On iOS the host's link takes `ios-sim/libthicketpreview.a` from here.
       */
     @transient
     lazy val thicketCameraPreviewApple =
@@ -281,10 +281,10 @@ object ThicketMacPlugin extends AutoPlugin {
     lazy val thicketMacSettings: Seq[Setting[?]] = Seq(
       thicketVersion := BuildInfo.version,
       libraryDependencies ++= ThicketAppleShim.dependencies(thicketVersion.value),
-      thicketAppleShim    := ThicketAppleShim.unpackTask.value,
-      thicketHttpApple    := ThicketHttpApple.unpackTask.value,
-      thicketDeviceApple  := ThicketDeviceApple.unpackTask.value,
-      thicketPickersApple := ThicketPickersApple.unpackTask.value,
+      thicketAppleShim          := ThicketAppleShim.unpackTask.value,
+      thicketHttpApple          := ThicketHttpApple.unpackTask.value,
+      thicketDeviceApple        := ThicketDeviceApple.unpackTask.value,
+      thicketPickersApple       := ThicketPickersApple.unpackTask.value,
       thicketCameraPreviewApple := ThicketCameraPreviewApple.unpackTask.value,
       // Uncached: it depends on files unpacked into `target/`, and a NativeConfig has no JSON form for sbt 2's cache.
       nativeConfig := Def.uncached {
@@ -341,12 +341,12 @@ object ThicketIosPlugin extends AutoPlugin {
     lazy val thicketIosSettings: Seq[Setting[?]] = Seq(
       thicketVersion := BuildInfo.version,
       libraryDependencies ++= ThicketAppleShim.dependencies(thicketVersion.value),
-      ThicketMacPlugin.autoImport.thicketAppleShim    := ThicketAppleShim.unpackTask.value,
-      ThicketMacPlugin.autoImport.thicketHttpApple    := ThicketHttpApple.unpackTask.value,
-      ThicketMacPlugin.autoImport.thicketDeviceApple  := ThicketDeviceApple.unpackTask.value,
-      thicketMotionIos                                := ThicketMotionIos.unpackTask.value,
-      thicketCameraApple                              := ThicketCameraApple.unpackTask.value,
-      ThicketMacPlugin.autoImport.thicketPickersApple := ThicketPickersApple.unpackTask.value,
+      ThicketMacPlugin.autoImport.thicketAppleShim          := ThicketAppleShim.unpackTask.value,
+      ThicketMacPlugin.autoImport.thicketHttpApple          := ThicketHttpApple.unpackTask.value,
+      ThicketMacPlugin.autoImport.thicketDeviceApple        := ThicketDeviceApple.unpackTask.value,
+      thicketMotionIos                                      := ThicketMotionIos.unpackTask.value,
+      thicketCameraApple                                    := ThicketCameraApple.unpackTask.value,
+      ThicketMacPlugin.autoImport.thicketPickersApple       := ThicketPickersApple.unpackTask.value,
       ThicketMacPlugin.autoImport.thicketCameraPreviewApple := ThicketCameraPreviewApple.unpackTask.value,
       nativeConfig ~= ThicketNativeFlags.ios()
     )

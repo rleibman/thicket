@@ -20,8 +20,9 @@ import java.nio.file.{Files, Paths}
 import zio.test.*
 import scala.jdk.CollectionConverters.*
 
-/** [[ConsistencySpec]] for `thicket-camera-preview-apple`'s `thk_prev_*` surface ([[PreviewAbi]]): the generated header, the
-  * generated Scala externs and the hand-written Swift library all declare the same functions, with the same types.
+/** [[ConsistencySpec]] for `thicket-camera-preview-apple`'s `thk_prev_*` surface ([[PreviewAbi]]): the generated
+  * header, the generated Scala externs and the hand-written Swift library all declare the same functions, with the same
+  * types.
   *
   * The answer callbacks are the ones to watch: a context and an `int32_t`, a context and a C string. A `CFuncPtr2`
   * whose types drift from the Swift `@convention(c)` type compiles on both sides and hands Scala a register that is not
@@ -90,7 +91,9 @@ object PreviewConsistencySpec extends ZIOSpecDefault {
           externsSource.contains("type TextCb = CFuncPtr2[Long, CString, Unit]")
         )
       },
-      test("the surface overlaps none of the renderer's, HTTP's, the device's, motion's, the pickers' or the camera's") {
+      test(
+        "the surface overlaps none of the renderer's, HTTP's, the device's, motion's, the pickers' or the camera's"
+      ) {
         val names = PreviewAbi.all.map(_.name).toSet
         assertTrue(
           PreviewAbi.all.forall(_.name.startsWith(s"${prefix}_")),

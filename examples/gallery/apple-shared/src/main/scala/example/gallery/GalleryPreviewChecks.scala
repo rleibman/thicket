@@ -29,8 +29,8 @@ import thicket.renderer.apple.{AppleApp, AppleInspect}
   * view, through the embedding point.
   *
   * Asked of whichever camera the device has, in each facing:
-  *   - **Available** (the iOS simulator's simulated camera, granted by `simctl privacy`; a Mac's own camera once its user
-  *     has allowed it): the session runs, one of it, on that facing, and frames arrive; the view takes the frame's
+  *   - **Available** (the iOS simulator's simulated camera, granted by `simctl privacy`; a Mac's own camera once its
+  *     user has allowed it): the session runs, one of it, on that facing, and frames arrive; the view takes the frame's
   *     aspect; a capture is a JPEG (`FF D8 FF`) under `<cache>/thicket-preview/` of the format's shape, deleted once
   *     read; in the background the preview's own lifecycle stops the session, and back in front it runs again.
   *   - **Not permitted** (a Mac whose user has not answered): nothing runs and the section says so. With
@@ -38,9 +38,9 @@ import thicket.renderer.apple.{AppleApp, AppleInspect}
   *   - **No such camera** (a Mac's back): `Unavailable` with that reason, and nothing runs.
   *
   * The self-test keeps the widget unmounted until these checks, so the camera screen's (#129) have the camera to
-  * themselves. Then, if a session ran, hiding the widget unmounts it, which stops the session, and showing it again starts one. The
-  * three fits map to the layer's three gravities whatever the camera. Photos from a Mac's camera are checked only for
-  * their format and size, and deleted unread.
+  * themselves. Then, if a session ran, hiding the widget unmounts it, which stops the session, and showing it again
+  * starts one. The three fits map to the layer's three gravities whatever the camera. Photos from a Mac's camera are
+  * checked only for their format and size, and deleted unread.
   */
 object GalleryPreviewChecks {
 
@@ -93,7 +93,7 @@ object GalleryPreviewChecks {
       case Some(demo) =>
         demo.preview match {
           case p: AppleCameraPreview => Steps(check, click, texts, demo, p).start(next)
-          case other                 =>
+          case other =>
             check("Preview: the Apple host's preview is AppleCameraPreview", false, other.toString)
             next()
         }
@@ -248,14 +248,17 @@ object GalleryPreviewChecks {
           val photo = demo.lastPhoto.now.flatten
           val bytes = photo.map(Files.readAllBytes)
           val dims = bytes.flatMap(jpegSize)
-          val magic = bytes.exists(b => b.length > 3 && (b(0) & 0xff) == 0xff && (b(1) & 0xff) == 0xd8 && (b(2) & 0xff) == 0xff)
+          val magic =
+            bytes.exists(b => b.length > 3 && (b(0) & 0xff) == 0xff && (b(1) & 0xff) == 0xd8 && (b(2) & 0xff) == 0xff)
           println(
             s"[gallery] measured: preview ($name) capture answered in $ms ms: ${bytes.map(_.length)} bytes, $dims"
           )
           check(
             s"Preview ($name): a capture is a JPEG under <cache>/thicket-preview/, of the format's shape",
             clicked && photo.exists(_.startsWith(t.photoDir)) && magic && bytes.exists(_.length > 1000) &&
-              dims.exists(d => size.exists(s => math.abs(ratio(d) - ratio(s)) < 0.01 || math.abs(ratio(d) - 1 / ratio(s)) < 0.01)) &&
+              dims.exists(d =>
+                size.exists(s => math.abs(ratio(d) - ratio(s)) < 0.01 || math.abs(ratio(d) - 1 / ratio(s)) < 0.01)
+              ) &&
               texts().exists(_.startsWith("Photo from the preview: ")),
             s"clicked $clicked; $photo; magic $magic; ${bytes.map(_.length)} bytes; $dims; format $size"
           )
@@ -267,7 +270,7 @@ object GalleryPreviewChecks {
     }
 
     private def leave(): Unit = if ios then drive("home") else { val _ = AppleDevice.testing.hide(true) }
-    private def come(): Unit = if ios then drive("front") else { val _ = AppleDevice.testing.hide(false) }
+    private def come():  Unit = if ios then drive("front") else { val _ = AppleDevice.testing.hide(false) }
 
     private def background(name: String)(k: () => Unit): Unit = {
       leave()
