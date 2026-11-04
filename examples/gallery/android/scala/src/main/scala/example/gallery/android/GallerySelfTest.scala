@@ -142,8 +142,9 @@ object GallerySelfTest {
     def text(prefix: String) = texts.find(_.startsWith(prefix)).getOrElse("")
     def button(label: String) =
       findAll(screen) { case b: Button => b.getText.toString == label; case _ => false }.headOption
-    def click(label: String) = button(label).foreach(_.performClick())
-    def label(t:     String) = findAll(screen) { case tv: TextView => tv.getText.toString == t; case _ => false }
+    def click(label:   String) = button(label).foreach(_.performClick())
+    def buttons(label: String) = findAll(screen) { case b: Button => b.getText.toString == label; case _ => false }
+    def label(t:       String) = findAll(screen) { case tv: TextView => tv.getText.toString == t; case _ => false }
     def spinner = findAll(screen) { case _: Spinner => true; case _ => false }.headOption.map(_.asInstanceOf[Spinner])
     var reportsBefore = ""
     var entriesBefore = 0
@@ -210,6 +211,52 @@ object GallerySelfTest {
             texts.filter(_.startsWith("Load")).toString
           )
         },
+        // RadioGroup and Stepper (docs/12 §12.2a): Android's own radio buttons, and a stepper built from framework views
+        // (Android has none), driven as the user would.
+        () => {
+          def radios =
+            Gallery.sizes.flatMap(l =>
+              findAll(screen) { case b: _root_.android.widget.RadioButton => b.getText.toString == l; case _ => false }
+            )
+          def checked = radios.map(_.asInstanceOf[_root_.android.widget.RadioButton].isChecked)
+          val grouped = radios.headOption.map(_.getParent).exists {
+            case g: _root_.android.widget.RadioGroup => g.getOrientation == _root_.android.widget.LinearLayout.VERTICAL
+            case _ => false
+          }
+          check(
+            "RadioGroup: Android's RadioButtons in a vertical RadioGroup, the model's choice checked",
+            radios.length == 3 && grouped && checked == List(false, true, false) && texts.contains(
+              Gallery.sizeLabel(1)
+            ),
+            s"${radios.length} buttons; grouped $grouped; checked $checked"
+          )
+          radios.lift(2).foreach(_.performClick())
+          check(
+            "RadioGroup: choosing another reports it, and the group unchecks the rest",
+            checked == List(false, false, true) && texts.contains(Gallery.sizeLabel(2)),
+            s"checked $checked; ${texts.filter(_.startsWith("Size"))}"
+          )
+          check(
+            "Stepper: built as − / value / +, showing the value to its step's precision",
+            label("2").nonEmpty && label("1.50").nonEmpty && buttons("\u2212").length == 2 && buttons("+").length == 2,
+            s"− ${buttons("\u2212").length}, + ${buttons("+").length}; 2: ${label("2").length}; 1.50: ${label("1.50").length}"
+          )
+          buttons("+").foreach(_.performClick())
+        },
+        () => {
+          check(
+            "Stepper: + moves each a step, and the app hears it",
+            texts.contains("Count: 3") && texts.contains("Amount: 1.75"),
+            texts.filter(t => t.startsWith("Count") || t.startsWith("Amount")).toString
+          )
+          (1 to 4).foreach(_ => buttons("+").headOption.foreach(_.performClick()))
+        },
+        () =>
+          check(
+            "Stepper: it stops at its maximum, its + disabled",
+            texts.contains("Count: 5") && buttons("+").headOption.exists(!_.isEnabled),
+            s"${texts.filter(_.startsWith("Count"))}; + enabled ${buttons("+").headOption.map(_.isEnabled)}"
+          ),
         // The embedding point (docs/17 §17.3): the TextView the host's view made is the one on screen, a view Android
         // has nothing for says so, and replacing the view releases the old one before it is removed.
         () => {

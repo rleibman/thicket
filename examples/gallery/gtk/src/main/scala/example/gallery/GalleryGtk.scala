@@ -85,6 +85,7 @@ object GalleryGtk {
       "Picker — a choice from a fixed list",
       "DatePicker — a day, in the platform's own chooser",
       "SegmentedControl — one of a few, all on screen",
+      "RadioGroup and Stepper — the platform's own, built where it has none",
       "Link — opens a URL, drawn as each platform draws a link",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
@@ -523,12 +524,54 @@ object GalleryGtk {
       s"${GtkInspect.cssParseErrors} CSS parse errors"
     )
 
+    radioStepperChecks(root)
     platformChecks(root)
     previewChecks(root)
     storageChecks(root)(
       deviceChecks(root)(
         locationChecks(root)(motionChecks(root)(clipboardChecks(root)(pickerChecks(root)(presentedAndNav(root)))))
       )
+    )
+  }
+
+  /** RadioGroup and Stepper on GTK (`docs/12` §12.2a): grouped `GtkCheckButton`s and `GtkSpinButton`s, each driven as
+    * the user would, with the bound labels proving the value went round.
+    */
+  private def radioStepperChecks(root: Ptr[GtkWidget]): Unit = {
+    def texts = GtkInspect.allTexts(root)
+    def radios =
+      Gallery.sizes.flatMap(label =>
+        GtkInspect.findAll(root)(w => GtkInspect.isCheckButton(w) && GtkInspect.allTexts(w) == List(label))
+      )
+    def active = radios.map(GtkInspect.checkActive)
+    check(
+      "RadioGroup: one GtkCheckButton per option, the model's choice active",
+      radios.length == 3 && active == List(false, true, false) && texts.contains(Gallery.sizeLabel(1)),
+      s"${radios.length} buttons; active $active"
+    )
+    radios.lift(2).foreach(GtkInspect.checkClick)
+    check(
+      "RadioGroup: choosing another reports it, and the group lets only it be active",
+      active == List(false, false, true) && texts.contains(Gallery.sizeLabel(2)),
+      s"active $active; ${texts.filter(_.startsWith("Size"))}"
+    )
+    val spins = GtkInspect.findAll(root)(GtkInspect.isSpinButton)
+    check(
+      "Stepper: a GtkSpinButton each, showing its value to its step's precision",
+      spins.map(GtkInspect.spinText) == List("2", "1.50"),
+      spins.map(GtkInspect.spinText).toString
+    )
+    spins.foreach(GtkInspect.spinStep(_, forward = true))
+    check(
+      "Stepper: + moves each a step, and the app hears it",
+      texts.contains("Count: 3") && texts.contains("Amount: 1.75"),
+      texts.filter(t => t.startsWith("Count") || t.startsWith("Amount")).toString
+    )
+    spins.headOption.foreach(sb => (1 to 4).foreach(_ => GtkInspect.spinStep(sb, forward = true)))
+    check(
+      "Stepper: it stops at its maximum",
+      spins.headOption.map(GtkInspect.spinValue).contains(5.0) && texts.contains("Count: 5"),
+      s"${spins.headOption.map(GtkInspect.spinValue)}; ${texts.filter(_.startsWith("Count"))}"
     )
   }
 

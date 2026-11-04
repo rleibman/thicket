@@ -72,6 +72,62 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-03 — **Apple `RadioGroup` and `Stepper`: radio `NSButton`s / an iOS checkmark list;
+  `NSStepper` / `UIStepper`** (#150, the Apple half of the entry below).
+  - **Shim kinds 26 and 27**, `RadioGroupView` / `RadioListView` and `StepperView` on both
+    shims. The radio group is driven by the picker's functions (`sui_picker_*`,
+    `sui_set_selected`, `sui_on_select`, the read-backs), the stepper by the slider's
+    (`sui_set_range`, `sui_set_value`, `sui_on_value_change`, `sui_get_value`). Two functions
+    are new: `sui_set_step(by, digits)`, whose `digits` is `Steps.digits(by)` from Scala so
+    the label uses the shared rule rather than a Swift copy of it, and `sui_step`, which
+    presses + or − for the self-test.
+  - **AppKit:** a vertical stack of `NSButton(radioButtonWithTitle:)`. AppKit groups them
+    because they share a superview, so the shim never turns a sibling off. Measured: a
+    different action per button still grouped them on macOS 27; a separate superview did not.
+    Beside it, an `NSStepper` (`valueWraps` off) and a label.
+  - **UIKit:** a stack of rows, each a `UIButton` with a trailing `checkmark` shown only on
+    the chosen row. The exclusion is the construction's own. Beside it, a `UIStepper` and a
+    `UILabel`.
+  - **Pressing a stepper from a test.** On AppKit, `sui_step` presses the arrow's
+    accessibility element (`NSAccessibilityStepperArrowButton`, the element VoiceOver
+    presses). `NSStepper.accessibilityPerformIncrement()` moved nothing. A synthesised
+    mouse-down moved it only in the half opposite the arrow it was aimed at. On UIKit, which
+    offers no public press, `sui_step` writes value ± `stepValue`, which the control's setter
+    clamps, and sends `.valueChanged` only when the value moved, the way the checkbox's click
+    sends its event.
+  - **Measured.** `bin/verify-apple.sh "iPhone Air"` passed 20/20 steps on 2a1e900 plus the
+    final self-test. iOS simulator gallery **246**. macOS gallery **231** with the screen locked,
+    each of its two runs. Earlier, unlocked and before the grouping check, macOS was **234**.
+    13 checks are new on each, the section heading among them. `shimGen/testFull` 51/51.
+  - **Falsified on both:** with the radios ungrouped, the check "with nothing written back,
+    only the clicked one stays chosen" fails (Small and Large both on). The check is new
+    because the app's own write-back otherwise re-exclusively selects and hid the
+    ungrouping. With the range opened to max + 100, "stops at 5" fails (7). With an app
+    write echoed as an event, the two "not reported back" checks fail (macOS). With 0
+    digits, the precision check fails (macOS: `2, 2`).
+
+- 2026-11-03 — **`RadioGroup` and `Stepper`, the last two v1 widgets, as §12.2a exceptions**
+  (owner's decision; Apple's own controls are #150).
+  - **Owner's decision:** build both, each platform's own control where it has one and a
+    construction where it has none, as `TabView` on Android; on iOS, `Radio` is a checkmark list.
+    This reverses only the "not in the catalogue" part of `docs/12` §12.2a; its reasons are why
+    each is built as it is.
+  - **`RadioGroup`, not `Radio`:** a group, because Android's exclusion is a container and GTK's
+    a pointer between siblings. It takes `Picker`'s props (an index, `-1` for none). GTK: grouped
+    `GtkCheckButton`s, sharing the segmented control's code; Android: a vertical `RadioGroup`,
+    which the segmented control already was.
+  - **`Stepper`** takes `Slider`'s props and a new `Prop.Step`. GTK: `GtkSpinButton`, its digits
+    from the step. Android has none: − / value / + from framework views, clamped, the bound's
+    button disabled. `thicket.renderer.Steps.format` shows a value to its step's precision, shared
+    so a renderer that draws the number agrees with one whose toolkit does.
+  - **Apple, until #150:** `RadioGroup` maps to the existing picker and `Stepper` to the slider,
+    with the same props, so the Apple galleries keep running; docs/12 says partial.
+  - **Measured.** `RadioStepperSpec` 4/4 on JVM, Native and JS (core 176). GTK gallery **150**
+    (144 + 6), todo 69; Android gallery **100** (95 + 5) on `s2test`.
+  - **Falsified.** Radio buttons ungrouped: "only it active" fails on GTK. No spin-button
+    digits: the precision check fails on GTK; on Android, the wrong precision fails it and no
+    clamp fails "stops at its maximum".
+
 - 2026-11-03 — **The embedding point on Apple: `ApplePlatformView`, kind 28 `Platform`,
   `sui_platform_set_view`** (#145, the Apple half of `docs/17` step 1; #148 builds on it).
   - **Trait:** `ApplePlatformView extends PlatformView { def create(): Ptr[Byte]; def

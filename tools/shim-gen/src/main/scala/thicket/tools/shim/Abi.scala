@@ -312,6 +312,20 @@ object Abi {
       "TabPage(",
       "one tab: holds its one child; the title and symbol go on the item"
     ),
+    built(
+      26,
+      "RadioGroup",
+      "RadioGroupView(",
+      "RadioListView(",
+      "radio NSButtons in one stack / UIKit has none: a checkmark list; the picker's functions drive it"
+    ),
+    built(
+      27,
+      "Stepper",
+      "StepperView(",
+      "StepperView(",
+      "an NSStepper / a UIStepper beside a label showing the value, which neither draws"
+    ),
     // 28, not 26: #150 (RadioGroup, Stepper) is being built beside this and takes the next two.
     built(
       28,
@@ -540,6 +554,24 @@ object Abi {
       .copy(doc =
         "The index the user chose. Never fired for the app's own selection, nor a TabView's insert or remove."
       )
+  )
+
+  /** A `Stepper`'s step (#150). Its value, bounds and change callback are the slider's (`sui_set_value`,
+    * `sui_set_range`, `sui_get_value`, `sui_on_value_change`), and its options-free shape is why it needs only this.
+    *
+    * `digits` is `thicket.renderer.Steps.digits(by)`, computed in Scala so that the label beside the control shows the
+    * value to the precision every renderer uses, rather than a Swift copy of the rule.
+    */
+  val stepper: List[Fn] = List(
+    setter("sui_set_step", "by" -> F64, "digits" -> I32)
+      .copy(doc = "How far one press moves a Stepper, and the decimals its label shows. Before sui_set_value."),
+    Fn(
+      "sui_step",
+      I32,
+      List(p("h", Handle), p("forward", I32)),
+      doc = "Presses a Stepper's + (forward 1) or - (0) through the control, as a user would: the\n" +
+        "   control moves and clamps its value and sends its action. 0 when `h` is not a Stepper."
+    )
   )
 
   /** A `ZStack`'s placement of its children, on both axes. `0` start, `1` centre, `2` end — the order of the contract's
@@ -962,6 +994,7 @@ object Abi {
     Group("presentation", presentation),
     Group("context menus", contextMenus),
     Group("picker", picker),
+    Group("stepper", stepper),
     Group("zstack", zstack),
     Group("platform views", platformViews),
     Group("dates", dates),

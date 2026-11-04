@@ -139,6 +139,7 @@ object GallerySelfTest {
       "Picker — a choice from a fixed list",
       "DatePicker — a day, in the platform's own chooser",
       "SegmentedControl — one of a few, all on screen",
+      "RadioGroup and Stepper — the platform's own, built where it has none",
       "Link — opens a URL, drawn as each platform draws a link",
       "Slider, ProgressBar, ActivityIndicator",
       "Layout — Spacer, Grow, Divider, nested Row and Column",
@@ -234,6 +235,7 @@ object GallerySelfTest {
     )
 
     newControls(all)
+    radioStepperChecks(all)
     // First, while the screen is scrolled to its top: it measures content positions against the
     // safe area. It swaps the horizontal Scroll's child and back, so the steps after it gather
     // their handles again rather than use `all`, whose labels in that Scroll are gone.
@@ -1185,6 +1187,121 @@ object GallerySelfTest {
           large < small * 3,
           f"$small%.1f -> $large%.1f ms"
         )
+    }
+  }
+
+  /** RadioGroup and Stepper (#150), the questions GTK and Android ask, read from the platform's controls: radio
+    * `NSButton`s and a checkmark list's rows, each chosen through its own click or tap; `NSStepper` and `UIStepper`,
+    * each pressed through `sui_step`, with the label beside it read for the number. The bound labels below each prove
+    * the value reached the app. Then what the gallery's buttons cannot show: an app write is not reported back, the
+    * index survives new options, and `-1` shows none chosen.
+    */
+  private def radioStepperChecks(all: List[H]): Unit = {
+    def ofKind(k: WidgetKind) = all.filter(h => AppleApp.renderer.kindOf(h).contains(k))
+    def texts = AppleInspect.allTexts(AppleApp.rootHandle)
+    def sizeTexts = texts.filter(t => t.startsWith("Size") || t == "(no size)")
+
+    val groups = ofKind(WidgetKind.RadioGroup)
+    check("one RadioGroup", groups.length == 1, groups.length.toString)
+    groups.headOption.foreach { g =>
+      // The radio controls wherever they sit under the group: a radio NSButton, or a checkmark list's row.
+      def radios =
+        AppleInspect.all(g).filter { h =>
+          val c = AppleInspect.className(h)
+          c == "NSButton" || c.endsWith("RadioRow")
+        }
+      def chosen = radios.map(AppleInspect.checked)
+      def shows = s"chosen $chosen, shows '${AppleInspect.shownOption(g)}', selected ${AppleInspect.selected(g)}"
+      val classes = radios.map(AppleInspect.className).distinct
+      println(s"[gallery]   RadioGroup: ${radios.length} × ${classes.mkString(", ")}")
+      check(
+        "RadioGroup: a radio control per option, the model's Medium chosen",
+        radios.length == 3 && AppleInspect.options(g) == Gallery.sizes && chosen == List(false, true, false) &&
+          sizeTexts == List(Gallery.sizeLabel(1)),
+        s"${radios.length} of $classes; options ${AppleInspect.options(g)}; $shows; $sizeTexts"
+      )
+      val clicked = radios.lift(2).exists(AppleInspect.click)
+      check(
+        "RadioGroup: choosing Large reports it, and only Large stays chosen",
+        clicked && chosen == List(false, false, true) && AppleInspect.shownOption(g) == "Large" &&
+          sizeTexts == List(Gallery.sizeLabel(2)),
+        s"clicked $clicked; $shows; $sizeTexts"
+      )
+      AppleApp.renderer.update(g, Seq(Prop.Selected(0)))
+      check(
+        "RadioGroup: the app's own Selected shows, and is not reported back as a choice",
+        chosen == List(true, false, false) && sizeTexts == List(Gallery.sizeLabel(2)),
+        s"$shows; $sizeTexts"
+      )
+      AppleApp.renderer.update(g, Seq(Prop.Selected(2)))
+      val renamed = Gallery.sizes.map(_.toUpperCase)
+      AppleApp.renderer.update(g, Seq(Prop.Options(renamed)))
+      check(
+        "RadioGroup: new options keep the chosen index",
+        AppleInspect.options(g) == renamed && chosen == List(false, false, true) &&
+          AppleInspect.shownOption(g) == "LARGE" && sizeTexts == List(Gallery.sizeLabel(2)),
+        s"options ${AppleInspect.options(g)}; $shows; $sizeTexts"
+      )
+      AppleApp.renderer.update(g, Seq(Prop.Options(Gallery.sizes)))
+      AppleApp.renderer.update(g, Seq(Prop.Selected(-1)))
+      check(
+        "RadioGroup: Selected(-1) shows none chosen",
+        chosen == List(false, false, false) && AppleInspect.shownOption(g) == "" && AppleInspect.selected(g) == -1,
+        shows
+      )
+      AppleApp.renderer.update(g, Seq(Prop.Selected(2)))
+      // The app writes each choice back, and that write alone would leave one chosen. So, last, a handler that only
+      // records: what stays chosen now is the platform's grouping (AppKit's) or the construction's (the list's).
+      val heard = mutable.ListBuffer.empty[Int]
+      AppleApp.renderer.update(g, Seq(Prop.OnSelect(i => heard += i)))
+      val clickedSmall = radios.headOption.exists(AppleInspect.click)
+      check(
+        "RadioGroup: with nothing written back, the group itself leaves only the clicked one chosen",
+        clickedSmall && heard.toList == List(0) && chosen == List(true, false, false),
+        s"clicked $clickedSmall; heard ${heard.toList}; $shows"
+      )
+      AppleApp.renderer.update(g, Seq(Prop.Selected(2)))
+    }
+
+    val steppers = ofKind(WidgetKind.Stepper)
+    def shown = steppers.map(s => AppleInspect.allTexts(s).mkString)
+    def counts = texts.filter(t => t.startsWith("Count") || t.startsWith("Amount"))
+    val controls = steppers.flatMap(AppleInspect.children).map(AppleInspect.className)
+    println(s"[gallery]   Stepper: ${steppers.length}, each of ${controls.distinct.mkString(", ")}")
+    check(
+      "Stepper: the platform's stepper each, beside a label showing its value to its step's precision",
+      steppers.length == 2 && controls.count(c => c == "NSStepper" || c == "UIStepper") == 2 &&
+        shown == List("2", "1.50"),
+      s"${steppers.length}; $controls; shows $shown"
+    )
+    val pressed = steppers.map(AppleInspect.step(_, forward = true))
+    check(
+      "Stepper: + moves each a step, and the app hears it",
+      pressed == List(true, true) && shown == List("3", "1.75") && counts == List("Count: 3", "Amount: 1.75"),
+      s"pressed $pressed; shows $shown; $counts"
+    )
+    val amountBefore = steppers.lift(1).map(AppleInspect.value)
+    steppers.lift(1).foreach(AppleInspect.step(_, forward = false))
+    check(
+      "Stepper: − moves it back a step",
+      amountBefore.contains(1.75) && steppers.lift(1).map(AppleInspect.value).contains(1.5) &&
+        shown.lift(1).contains("1.50") && counts.lift(1).contains("Amount: 1.50"),
+      s"from $amountBefore; shows $shown; $counts"
+    )
+    steppers.headOption.foreach { s =>
+      (1 to 4).foreach(_ => AppleInspect.step(s, forward = true))
+      check(
+        "Stepper: the count stops at 5",
+        AppleInspect.value(s) == 5.0 && shown.headOption.contains("5") && counts.headOption.contains("Count: 5"),
+        s"value ${AppleInspect.value(s)}; shows $shown; $counts"
+      )
+      AppleApp.renderer.update(s, Seq(Prop.Value(1.0)))
+      check(
+        "Stepper: the app's own Value shows, and is not reported back as a change",
+        AppleInspect.value(s) == 1.0 && shown.headOption.contains("1") && counts.headOption.contains("Count: 5"),
+        s"value ${AppleInspect.value(s)}; shows $shown; $counts"
+      )
+      AppleApp.renderer.update(s, Seq(Prop.Value(5.0)))
     }
   }
 

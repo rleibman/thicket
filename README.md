@@ -32,7 +32,7 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | | |
 |---|---|
 | Works today | Linux/GTK4, Android, macOS, iOS simulator — the same app on all four |
-| Widgets | **24 of 32** as widgets, every one measured on every renderer (`TabView` reached AppKit and UIKit in [#69](https://github.com/rleibman/thicket/issues/69)). **30 of 32** covered, counting the six the framework provides another way (SafeArea and Link as props, List as `LazyColumn`, NavigationStack as `Nav`, Menu as a context-menu prop, Toolbar as screen actions); the last two, Radio and Stepper, are reclassified under §12.2a → [docs/12](docs/12-component-status.md) |
+| Widgets | **26 of 32** as widgets, all 26 measured on every renderer (`TabView` reached AppKit and UIKit in [#69](https://github.com/rleibman/thicket/issues/69); `RadioGroup` and `Stepper`, built as §12.2a exceptions, in [#150](https://github.com/rleibman/thicket/issues/150): radio `NSButton`s and an iOS checkmark list, `NSStepper` and `UIStepper`). **32 of 32** covered, counting the six the framework provides another way (SafeArea and Link as props, List as `LazyColumn`, NavigationStack as `Nav`, Menu as a context-menu prop, Toolbar as screen actions) → [docs/12](docs/12-component-status.md) |
 | Navigation | Native container on all four: `AdwNavigationView`, a `FrameLayout` + `Slide`, `UINavigationController`, a macOS sidebar. Back gesture and title bar are the platform's own |
 | Theming | By role, scoped to a subtree with `Provide` |
 | Published artefacts | `net.leibman`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |
@@ -40,11 +40,11 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | Windows | Not started, and out of the 0.1 scope |
 
 This is early, and the honest shape of it is: the parts that exist are finished on all four
-platforms rather than sketched on one. Twenty-four widgets on every renderer, with a self-test on each host that reads the tree back out of the real
+platforms rather than sketched on one. Twenty-six widgets on every renderer, with a self-test on each host that reads the tree back out of the real
 toolkit. Where a prop is handled but not yet honoured on a platform, docs/12 §12.4 says which.
 
 What is genuinely missing: nothing from the v1 catalogue — its last two entries, Radio and
-Stepper, fail §12.2a and are deliberately not built — and Maven Central publishing. An app can be built from
+Stepper, are built as §12.2a exceptions (#150) — and Maven Central publishing. An app can be built from
 outside this repo on GTK, macOS and the iOS simulator — `bin/verify-getting-started.sh` and
 `bin/verify-getting-started-apple.sh` check exactly that, by building a template outside the
 repo against published artefacts and running it.
@@ -361,7 +361,7 @@ SELFTEST=1 examples/todo-android/build.sh
 
 `checkLinux` is what CI runs (`.github/workflows/ci.yml`), with the GTK self-tests under
 xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 2026-11-02:
-signals 30, core 172, effect-zio 25, storage 14, sqlite 2 and secrets 2 per backend,
+signals 30, core 176, effect-zio 25, storage 14, sqlite 2 and secrets 2 per backend,
 storage-gtk 4, storage-apple 4, secrets-gtk 2, http-gtk 5, http-android 5, device 8,
 location 7, motion 5, clipboard 1, haptics 2, pickers 4, camera 2, share 5 and camera-preview 2 per backend, shim-gen 15,
 sbt-thicket 9; GTK 148 + 69 self-test checks, Android 102 + 84 (2026-11-03, the gallery's with

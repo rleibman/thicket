@@ -155,9 +155,13 @@ final class AppleRenderer extends Renderer {
       // An NSTabViewController / a UITabBarController, and one item each (#69).
       case WidgetKind.TabView => ShimKind.TabView
       case WidgetKind.Tab     => ShimKind.Tab
-      // The embedding point (docs/17 §17.3, #145): a host holding one view made outside the shim; the view comes
-      // with Prop.View (ApplePlatformView).
-      case WidgetKind.Platform => ShimKind.Platform
+        // The embedding point (docs/17 §17.3, #145): a host holding one view made outside the shim; the view comes
+        // with Prop.View (ApplePlatformView).
+      case WidgetKind.Platform => ShimKind.Label
+      // §12.2a exceptions (#150): radio NSButtons / a checkmark list, driven by the picker's functions; an NSStepper /
+      // a UIStepper beside a label, driven by the slider's and sui_set_step.
+      case WidgetKind.RadioGroup => ShimKind.RadioGroup
+      case WidgetKind.Stepper    => ShimKind.Stepper
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
@@ -347,7 +351,11 @@ final class AppleRenderer extends Renderer {
 
       case Prop.OpenUrl(url) => Zone(Shim.sui_set_open_url(handle, toCString(url)))
 
-      case Prop.View(view) => platformViews.setView(handle, view)
+      // The label beside the stepper shows Steps.digits(by) decimals, the rule every renderer shares.
+      case Prop.Step(by) => Shim.sui_set_step(handle, by, Steps.digits(by))
+
+      case Prop.View(view) =>
+        Zone(Shim.sui_set_text(handle, toCString(s"${view.description}: not available on $toolkitName yet")))
 
       case Prop.StackAlignment(h, v) => Shim.sui_set_stack_alignment(handle, alignCode(h), alignCode(v))
 
