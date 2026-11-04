@@ -109,7 +109,7 @@ final class AndroidCameraPreview(
       case None => Availability.Unavailable(s"no ${facing.now.toString.toLowerCase} camera")
       case Some(_) if holder.exists(_ ne this) => Availability.Unavailable("in use by another preview")
       case Some(_)                             =>
-        Try(device.permissions.status(Permission.Camera)).getOrElse(PermissionStatus.Denied) match {
+        device.permissions.status(Permission.Camera) match {
           case PermissionStatus.Granted    => Availability.Available
           case PermissionStatus.Restricted => Availability.Unavailable("the camera is restricted on this device")
           case PermissionStatus.Denied     => Availability.NeedsPermission(Permission.Camera)
