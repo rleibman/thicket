@@ -69,6 +69,12 @@ object AppleInspect {
   /** A slider's value, in the app's own units. */
   def value(h: Shim.Handle): Double = Shim.sui_get_value(h)
 
+  /** Presses a Stepper's + (or −) through the control (`sui_step`). False when `h` is not an enabled Stepper. */
+  def step(
+    h:       Shim.Handle,
+    forward: Boolean
+  ): Boolean = Shim.sui_step(h, if forward then 1 else 0) != 0
+
   /** Whether a field masks what is typed into it. */
   def isSecure(h: Shim.Handle): Boolean = Shim.sui_is_secure(h) != 0
 
