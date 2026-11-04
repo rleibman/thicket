@@ -84,6 +84,27 @@ private final class Proxy: NSObject, UIGestureRecognizerDelegate {
     c.cb(c.ctx, Double(sender.value))
   }
 
+  /// A row of a RadioGroup's checkmark list (#150): it becomes the one chosen, which UIKit does
+  /// not do for us, and the app hears which.
+  @objc func radioTapped(_ sender: UIButton) {
+    guard let g = sender.superview as? RadioListView, let r = sender as? RadioRow,
+      let i = g.rows.firstIndex(of: r)
+    else { return }
+    g.select(i)
+    let id = ObjectIdentifier(g)
+    guard !suppressed.contains(id), let s = selections[id] else { return }
+    s.cb(s.ctx, Int32(i))
+  }
+
+  /// A Stepper's UIStepper moved (#150): the label follows, and the app hears it.
+  @objc func stepped(_ sender: UIStepper) {
+    guard let v = sender.superview as? StepperView else { return }
+    v.show()
+    let id = ObjectIdentifier(v)
+    guard !suppressed.contains(id), let c = valueChanges[id] else { return }
+    c.cb(c.ctx, sender.value)
+  }
+
   @objc func switched(_ sender: UISwitch) {
     let id = ObjectIdentifier(sender)
     guard !suppressed.contains(id), let t = toggles[id] else { return }
@@ -156,6 +177,73 @@ private final class CheckboxView: UIStackView {
   }
 
   required init(coder: NSCoder) { fatalError("not from a nib") }
+}
+
+/// One row of a RadioGroup's checkmark list (#150): the option's title leading and, on the
+/// chosen row only, a checkmark trailing, in the tint colour — the list Settings uses for one
+/// choice of several. A button, so a tap is a `.touchUpInside` and VoiceOver reads it as one,
+/// with the selected trait on the chosen row.
+private final class RadioRow: UIButton {
+  let check = UIImageView(image: UIImage(systemName: "checkmark"))
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    setTitleColor(.label, for: .normal)
+    titleLabel?.font = .preferredFont(forTextStyle: .body)
+    titleLabel?.adjustsFontForContentSizeCategory = true
+    contentHorizontalAlignment = .leading
+    check.translatesAutoresizingMaskIntoConstraints = false
+    check.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .body, scale: .medium)
+    check.isHidden = true
+    addSubview(check)
+    NSLayoutConstraint.activate([
+      heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+      check.trailingAnchor.constraint(equalTo: trailingAnchor),
+      check.centerYAnchor.constraint(equalTo: centerYAnchor)
+    ])
+    addTarget(proxy, action: #selector(Proxy.radioTapped(_:)), for: .touchUpInside)
+  }
+
+  required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+  override var isSelected: Bool {
+    didSet { check.isHidden = !isSelected }
+  }
+}
+
+/// A RadioGroup on UIKit, which has no radio control (#150): a vertical stack of `RadioRow`s.
+/// The one-of exclusion is this construction's, kept in `select`.
+private final class RadioListView: UIStackView {
+  var rows: [RadioRow] { arrangedSubviews.compactMap { $0 as? RadioRow } }
+
+  var selected: Int { rows.firstIndex(where: \.isSelected) ?? -1 }
+
+  func add(_ title: String) {
+    let r = RadioRow(frame: .zero)
+    r.setTitle(title, for: .normal)
+    addArrangedSubview(r)
+  }
+
+  func clear() {
+    for r in rows { removeArrangedSubview(r); r.removeFromSuperview() }
+  }
+
+  /// -1, or past the end, for none.
+  func select(_ index: Int) {
+    for (i, r) in rows.enumerated() { r.isSelected = i == index }
+  }
+}
+
+/// A Stepper (#150): a `UIStepper`, which draws no number, beside a label showing its value to
+/// its step's precision (`digits`, from Scala's `Steps.digits`).
+private final class StepperView: UIStackView {
+  let label = UILabel()
+  let stepper = UIStepper()
+  var digits: Int32 = 0
+
+  func show() {
+    label.text = String(format: "%.\(max(0, digits))f", stepper.value)
+  }
 }
 
 /// The switch a Checkbox or a Toggle flips.
@@ -1285,6 +1373,28 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     p.addTarget(proxy, action: #selector(Proxy.dated(_:)), for: .valueChanged)
     return retained(p)
 
+  case 26:
+    let g = RadioListView()
+    g.axis = .vertical
+    g.alignment = .fill
+    g.spacing = 0
+    return retained(g)
+
+  case 27:
+    let v = StepperView()
+    v.axis = .horizontal
+    v.alignment = .center
+    v.spacing = 8
+    v.label.font = .preferredFont(forTextStyle: .body)
+    v.label.adjustsFontForContentSizeCategory = true
+    v.stepper.wraps = false
+    v.stepper.autorepeat = true
+    v.stepper.addTarget(proxy, action: #selector(Proxy.stepped(_:)), for: .valueChanged)
+    v.addArrangedSubview(v.label)
+    v.addArrangedSubview(v.stepper)
+    v.show()
+    return retained(v)
+
   case 14:
     // Only construction differs from a TextField; text, placeholder and edits are shared.
     let f = UITextField()
@@ -1395,7 +1505,9 @@ public func sui_set_checked(_ h: UnsafeMutableRawPointer, _ on: Int32) {
 
 @_cdecl("sui_get_checked")
 public func sui_get_checked(_ h: UnsafeMutableRawPointer) -> Int32 {
-  (switchOf(view(h))?.isOn ?? false) ? 1 : 0
+  // A RadioGroup's row is "checked" when it draws its checkmark (#150).
+  if let r = view(h) as? RadioRow { return r.check.isHidden ? 0 : 1 }
+  return (switchOf(view(h))?.isOn ?? false) ? 1 : 0
 }
 
 @_cdecl("sui_set_enabled")
@@ -1585,6 +1697,12 @@ public func sui_set_progress(_ h: UnsafeMutableRawPointer, _ has: Int32, _ fract
 
 @_cdecl("sui_set_range")
 public func sui_set_range(_ h: UnsafeMutableRawPointer, _ lo: Double, _ hi: Double) {
+  if let v = view(h) as? StepperView {
+    v.stepper.minimumValue = lo
+    v.stepper.maximumValue = hi
+    v.show()
+    return
+  }
   guard let s = view(h) as? UISlider else { return }
   s.minimumValue = Float(lo)
   s.maximumValue = Float(hi)
@@ -1592,6 +1710,15 @@ public func sui_set_range(_ h: UnsafeMutableRawPointer, _ lo: Double, _ hi: Doub
 
 @_cdecl("sui_set_value")
 public func sui_set_value(_ h: UnsafeMutableRawPointer, _ value: Double) {
+  if let v = view(h) as? StepperView {
+    // UIKit sends no .valueChanged for a programmatic value; suppressed all the same, as the slider is.
+    let id = ObjectIdentifier(v)
+    suppressed.insert(id)
+    if v.stepper.value != value { v.stepper.value = value }
+    v.show()
+    suppressed.remove(id)
+    return
+  }
   guard let s = view(h) as? UISlider, s.value != Float(value) else { return }
   let id = ObjectIdentifier(s)
   suppressed.insert(id)
@@ -1633,6 +1760,30 @@ public func sui_on_checked_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping 
 @_cdecl("sui_on_value_change")
 public func sui_on_value_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping sui_value_cb, _ ctx: Int64) {
   valueChanges[ObjectIdentifier(view(h))] = ValueChange(cb: cb, ctx: ctx)
+}
+
+// MARK: - stepper (#150)
+
+@_cdecl("sui_set_step")
+public func sui_set_step(_ h: UnsafeMutableRawPointer, _ by: Double, _ digits: Int32) {
+  guard let v = view(h) as? StepperView else { return }
+  v.stepper.stepValue = by
+  v.digits = digits
+  v.show()
+}
+
+/// UIKit offers no public way to press a UIStepper's + or −, so this does what the press does
+/// short of the touch: the value moved by `stepValue` is written to the control, whose setter
+/// clamps it to its bounds, and `.valueChanged` is sent only when the value moved — as the
+/// checkbox's click flips the switch and sends its event. At a bound nothing is sent.
+@_cdecl("sui_step")
+public func sui_step(_ h: UnsafeMutableRawPointer, _ forward: Int32) -> Int32 {
+  guard let v = view(h) as? StepperView, v.stepper.isEnabled else { return 0 }
+  let s = v.stepper
+  let before = s.value
+  s.value = before + (forward != 0 ? s.stepValue : -s.stepValue)
+  if s.value != before { s.sendActions(for: .valueChanged) }
+  return 1
 }
 
 // MARK: - picker
@@ -1682,6 +1833,7 @@ private func rebuildPickerMenu(_ b: UIButton) {
 
 @_cdecl("sui_picker_clear_options")
 public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
+  if let g = view(h) as? RadioListView { g.clear(); return }
   if let seg = view(h) as? UISegmentedControl { seg.removeAllSegments(); return }
   guard let b = view(h) as? UIButton else { return }
   pickerOptions[ObjectIdentifier(b)] = []
@@ -1690,6 +1842,7 @@ public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
 
 @_cdecl("sui_picker_add_option")
 public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>?) {
+  if let g = view(h) as? RadioListView { g.add(str(label)); return }
   if let seg = view(h) as? UISegmentedControl {
     seg.insertSegment(withTitle: label.map { String(cString: $0) } ?? "", at: seg.numberOfSegments, animated: false)
     return
@@ -1702,6 +1855,13 @@ public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafeP
 @_cdecl("sui_set_selected")
 public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
   if let t = view(h) as? TabHostView { t.select(Int(index)); return }
+  if let g = view(h) as? RadioListView {
+    let id = ObjectIdentifier(g)
+    suppressed.insert(id)
+    g.select(Int(index))
+    suppressed.remove(id)
+    return
+  }
   if let seg = view(h) as? UISegmentedControl {
     // UIKit sends no .valueChanged for a programmatic change, so no suppression is needed.
     seg.selectedSegmentIndex =
@@ -1720,6 +1880,7 @@ public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
 @_cdecl("sui_get_selected")
 public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
   if let t = view(h) as? TabHostView { return Int32(t.selected) }
+  if let g = view(h) as? RadioListView { return Int32(g.selected) }
   if let seg = view(h) as? UISegmentedControl { return Int32(seg.selectedSegmentIndex) }
   guard let b = view(h) as? UIButton else { return -1 }
   return Int32(pickerSelected[ObjectIdentifier(b)] ?? -1)
@@ -2196,7 +2357,8 @@ public func sui_get_progress(_ h: UnsafeMutableRawPointer) -> Double {
 
 @_cdecl("sui_get_value")
 public func sui_get_value(_ h: UnsafeMutableRawPointer) -> Double {
-  Double((view(h) as? UISlider)?.value ?? 0)
+  if let v = view(h) as? StepperView { return v.stepper.value }
+  return Double((view(h) as? UISlider)?.value ?? 0)
 }
 
 @_cdecl("sui_is_secure")
@@ -2784,6 +2946,7 @@ public func sui_scroll_offset(_ h: UnsafeMutableRawPointer) -> Double {
 public func sui_option_count(_ h: UnsafeMutableRawPointer) -> Int32 {
   switch view(h) {
   case let s as UISegmentedControl: return Int32(s.numberOfSegments)
+  case let g as RadioListView: return Int32(g.rows.count)
   case let b as UIButton: return Int32(pickerElements(b).count)
   case let t as TabHostView: return Int32(t.controller.tabBar.items?.count ?? 0)
   default: return 0
@@ -2797,6 +2960,8 @@ public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Un
   switch view(h) {
   case let s as UISegmentedControl where i >= 0 && i < s.numberOfSegments:
     return scratch(s.titleForSegment(at: i) ?? "")
+  case let g as RadioListView where i >= 0 && i < g.rows.count:
+    return scratch(g.rows[i].title(for: .normal) ?? "")
   case let b as UIButton:
     let items = pickerElements(b)
     guard i >= 0, i < items.count else { return nil }
@@ -2819,6 +2984,9 @@ public func sui_shown_option(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CCha
   case let s as UISegmentedControl:
     let i = s.selectedSegmentIndex
     return scratch(i >= 0 && i < s.numberOfSegments ? (s.titleForSegment(at: i) ?? "") : "")
+  case let g as RadioListView:
+    // Every row drawing its checkmark, so a list that let two show one would name both.
+    return scratch(g.rows.filter { !$0.check.isHidden }.compactMap { $0.title(for: .normal) }.joined(separator: ", "))
   case let b as UIButton:
     // `currentTitle`, not `titleLabel.text`: the label is redrawn on a later pass, and read
     // straight after a change it still held the previous choice (measured, #77).
@@ -2834,6 +3002,12 @@ public func sui_shown_option(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CCha
 @_cdecl("sui_choose")
 public func sui_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
   if let t = view(h) as? TabHostView { return chooseTab(t, Int(index)) }
+  if let g = view(h) as? RadioListView {
+    // A tap on the row: its .touchUpInside, as sui_perform_click sends a button's.
+    guard index >= 0, Int(index) < g.rows.count, g.rows[Int(index)].isEnabled else { return 0 }
+    g.rows[Int(index)].sendActions(for: .touchUpInside)
+    return 1
+  }
   guard let s = view(h) as? UISegmentedControl, index >= 0, Int(index) < s.numberOfSegments else { return 0 }
   s.selectedSegmentIndex = Int(index)
   s.sendActions(for: .valueChanged)

@@ -81,6 +81,26 @@ private final class Proxy: NSObject, NSTextFieldDelegate {
     c.cb(c.ctx, sender.doubleValue)
   }
 
+  /// A radio button of a RadioGroup (#150). AppKit has already turned its siblings off — they
+  /// share a superview and this action, which is what groups radio buttons — so this only
+  /// reports which one the user chose.
+  @objc func radioed(_ sender: NSButton) {
+    guard let g = sender.superview as? RadioGroupView, let i = g.buttons.firstIndex(of: sender) else { return }
+    let id = ObjectIdentifier(g)
+    guard !suppressed.contains(id), let s = selections[id] else { return }
+    s.cb(s.ctx, Int32(i))
+  }
+
+  /// A Stepper's NSStepper moved (#150): the label shows the new value whether or not the app
+  /// writes it back, as the stepper itself does, and the app hears it.
+  @objc func stepped(_ sender: NSStepper) {
+    guard let v = sender.superview as? StepperView else { return }
+    v.show()
+    let id = ObjectIdentifier(v)
+    guard !suppressed.contains(id), let c = valueChanges[id] else { return }
+    c.cb(c.ctx, sender.doubleValue)
+  }
+
   func controlTextDidChange(_ note: Notification) {
     guard let field = note.object as? NSTextField else { return }
     let id = ObjectIdentifier(field)
@@ -279,6 +299,41 @@ private final class LabelField: NSTextField {
   var logicalAlign: Int32 = 0
   override var userInterfaceLayoutDirection: NSUserInterfaceLayoutDirection {
     didSet { alignment = resolvedAlignment(logicalAlign, userInterfaceLayoutDirection) }
+  }
+}
+
+/// A RadioGroup (#150): one radio `NSButton` per option, stacked vertically. AppKit groups
+/// radio buttons that share a superview and an action, so this stack *is* the group: a click
+/// on one turns the others off, and the shim does not.
+private final class RadioGroupView: NSStackView {
+  var buttons: [NSButton] { arrangedSubviews.compactMap { $0 as? NSButton } }
+
+  /// The first option drawn as chosen, or -1.
+  var selected: Int { buttons.firstIndex(where: { $0.state == .on }) ?? -1 }
+
+  func add(_ title: String) {
+    addArrangedSubview(NSButton(radioButtonWithTitle: title, target: proxy, action: #selector(Proxy.radioed(_:))))
+  }
+
+  func clear() {
+    for b in buttons { removeArrangedSubview(b); b.removeFromSuperview() }
+  }
+
+  /// The app's choice; -1, or past the end, for none. Setting `state` sends no action.
+  func select(_ index: Int) {
+    for (i, b) in buttons.enumerated() { b.state = i == index ? .on : .off }
+  }
+}
+
+/// A Stepper (#150): an `NSStepper`, which draws no number, beside a label showing its value
+/// to its step's precision (`digits`, from Scala's `Steps.digits`).
+private final class StepperView: NSStackView {
+  let label = LabelField(labelWithString: "")
+  let stepper = NSStepper()
+  var digits: Int32 = 0
+
+  func show() {
+    label.stringValue = String(format: "%.\(max(0, digits))f", stepper.doubleValue)
   }
 }
 
@@ -1007,6 +1062,27 @@ public func sui_create(_ kind: Int32) -> UnsafeMutableRawPointer {
     p.action = #selector(Proxy.dated(_:))
     return retained(p)
 
+  case 26:
+    let g = RadioGroupView()
+    g.orientation = .vertical
+    g.alignment = .leading
+    g.spacing = 6
+    return retained(g)
+
+  case 27:
+    let v = StepperView()
+    v.orientation = .horizontal
+    v.alignment = .centerY
+    v.spacing = 8
+    v.stepper.valueWraps = false
+    v.stepper.autorepeat = true
+    v.stepper.target = proxy
+    v.stepper.action = #selector(Proxy.stepped(_:))
+    v.addArrangedSubview(v.label)
+    v.addArrangedSubview(v.stepper)
+    v.show()
+    return retained(v)
+
   case 14:
     // A separate class on AppKit, which is why SecureField is a kind rather than a prop.
     let f = NSSecureTextField(string: "")
@@ -1283,6 +1359,12 @@ public func sui_set_progress(_ h: UnsafeMutableRawPointer, _ has: Int32, _ fract
 
 @_cdecl("sui_set_range")
 public func sui_set_range(_ h: UnsafeMutableRawPointer, _ lo: Double, _ hi: Double) {
+  if let v = view(h) as? StepperView {
+    v.stepper.minValue = lo
+    v.stepper.maxValue = hi
+    v.show()
+    return
+  }
   guard let s = view(h) as? NSSlider else { return }
   s.minValue = lo
   s.maxValue = hi
@@ -1290,6 +1372,15 @@ public func sui_set_range(_ h: UnsafeMutableRawPointer, _ lo: Double, _ hi: Doub
 
 @_cdecl("sui_set_value")
 public func sui_set_value(_ h: UnsafeMutableRawPointer, _ value: Double) {
+  if let v = view(h) as? StepperView {
+    // Setting the value sends no action; the suppression is for the same guarantee as the slider's.
+    let id = ObjectIdentifier(v)
+    suppressed.insert(id)
+    if v.stepper.doubleValue != value { v.stepper.doubleValue = value }
+    v.show()
+    suppressed.remove(id)
+    return
+  }
   guard let s = view(h) as? NSSlider, s.doubleValue != value else { return }
   let id = ObjectIdentifier(s)
   suppressed.insert(id)
@@ -1336,10 +1427,39 @@ public func sui_on_value_change(_ h: UnsafeMutableRawPointer, _ cb: @escaping su
   valueChanges[ObjectIdentifier(view(h))] = ValueChange(cb: cb, ctx: ctx)
 }
 
+// MARK: - stepper (#150)
+
+@_cdecl("sui_set_step")
+public func sui_set_step(_ h: UnsafeMutableRawPointer, _ by: Double, _ digits: Int32) {
+  guard let v = view(h) as? StepperView else { return }
+  v.stepper.increment = by
+  v.digits = digits
+  v.show()
+}
+
+/// Presses the stepper's own + or − arrow: the accessibility element AppKit gives each arrow
+/// (`NSAccessibilityStepperArrowButton`, subrole increment / decrement arrow), which is what
+/// VoiceOver presses. The control moves its value by its increment, keeps it in bounds — it
+/// does not wrap: `valueWraps` is off — and sends its action, as for a click. Measured (#150):
+/// `NSStepper.accessibilityPerformIncrement()` returns false and moves nothing, and a
+/// synthesised mouse-down moved it only when it landed in the arrow the drawing does not
+/// suggest, so neither is the press.
+@_cdecl("sui_step")
+public func sui_step(_ h: UnsafeMutableRawPointer, _ forward: Int32) -> Int32 {
+  guard let v = view(h) as? StepperView, v.stepper.isEnabled else { return 0 }
+  let want: NSAccessibility.Subrole = forward != 0 ? .incrementArrow : .decrementArrow
+  let arrows = (v.stepper.cell?.accessibilityChildren() ?? []).compactMap { $0 as? NSAccessibilityElement }
+  guard let arrow = arrows.first(where: { $0.accessibilitySubrole() == want }) else { return 0 }
+  // It answers false even when it pressed (measured): the value read back is the evidence.
+  _ = arrow.accessibilityPerformPress()
+  return 1
+}
+
 // MARK: - picker
 
 @_cdecl("sui_picker_clear_options")
 public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
+  if let g = view(h) as? RadioGroupView { g.clear(); return }
   if let seg = view(h) as? NSSegmentedControl { seg.segmentCount = 0; return }
   guard let b = view(h) as? NSPopUpButton else { return }
   b.removeAllItems()
@@ -1347,6 +1467,7 @@ public func sui_picker_clear_options(_ h: UnsafeMutableRawPointer) {
 
 @_cdecl("sui_picker_add_option")
 public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>?) {
+  if let g = view(h) as? RadioGroupView { g.add(str(label)); return }
   if let seg = view(h) as? NSSegmentedControl {
     seg.segmentCount += 1
     seg.setLabel(label.map { String(cString: $0) } ?? "", forSegment: seg.segmentCount - 1)
@@ -1362,6 +1483,13 @@ public func sui_picker_add_option(_ h: UnsafeMutableRawPointer, _ label: UnsafeP
 @_cdecl("sui_set_selected")
 public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
   if let t = view(h) as? TabHostView { t.select(Int(index)); return }
+  if let g = view(h) as? RadioGroupView {
+    let id = ObjectIdentifier(g)
+    suppressed.insert(id)
+    g.select(Int(index))
+    suppressed.remove(id)
+    return
+  }
   if let seg = view(h) as? NSSegmentedControl {
     let id = ObjectIdentifier(seg)
     suppressed.insert(id)
@@ -1389,6 +1517,7 @@ public func sui_set_selected(_ h: UnsafeMutableRawPointer, _ index: Int32) {
 @_cdecl("sui_get_selected")
 public func sui_get_selected(_ h: UnsafeMutableRawPointer) -> Int32 {
   if let t = view(h) as? TabHostView { return Int32(t.selected) }
+  if let g = view(h) as? RadioGroupView { return Int32(g.selected) }
   if let seg = view(h) as? NSSegmentedControl { return Int32(seg.selectedSegment) }
   guard let b = view(h) as? NSPopUpButton else { return -1 }
   return Int32(b.indexOfSelectedItem)
@@ -1609,7 +1738,8 @@ private func syncColumnFill(_ stack: NSStackView) {
 /// each column is meant to be as wide as its widest cell. Those keep the leading edge.
 private func fillsColumn(_ c: NSView) -> Bool {
   switch c {
-  case is NSButton, is NSSwitch, is NSSegmentedControl, is NSDatePicker, is ImageView, is GridView:
+  case is NSButton, is NSSwitch, is NSSegmentedControl, is NSDatePicker, is ImageView, is GridView,
+    is RadioGroupView, is StepperView:
     return false
   case let p as NSProgressIndicator:
     return p.style == .bar
@@ -1887,7 +2017,8 @@ public func sui_get_progress(_ h: UnsafeMutableRawPointer) -> Double {
 
 @_cdecl("sui_get_value")
 public func sui_get_value(_ h: UnsafeMutableRawPointer) -> Double {
-  (view(h) as? NSSlider)?.doubleValue ?? 0
+  if let v = view(h) as? StepperView { return v.stepper.doubleValue }
+  return (view(h) as? NSSlider)?.doubleValue ?? 0
 }
 
 @_cdecl("sui_is_secure")
@@ -2411,6 +2542,7 @@ public func sui_option_count(_ h: UnsafeMutableRawPointer) -> Int32 {
   switch view(h) {
   case let p as NSPopUpButton: return Int32(p.numberOfItems)
   case let s as NSSegmentedControl: return Int32(s.segmentCount)
+  case let g as RadioGroupView: return Int32(g.buttons.count)
   case let t as TabHostView: return Int32(t.bar?.segmentCount ?? 0)
   default: return 0
   }
@@ -2422,6 +2554,7 @@ public func sui_option_label(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Un
   switch view(h) {
   case let p as NSPopUpButton where i >= 0 && i < p.numberOfItems: return scratch(p.itemTitle(at: i))
   case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount: return scratch(s.label(forSegment: i) ?? "")
+  case let g as RadioGroupView where i >= 0 && i < g.buttons.count: return scratch(g.buttons[i].title)
   case let t as TabHostView:
     guard let s = t.bar, i >= 0, i < s.segmentCount else { return nil }
     return scratch(s.label(forSegment: i) ?? "")
@@ -2440,6 +2573,9 @@ public func sui_shown_option(_ h: UnsafeMutableRawPointer) -> UnsafePointer<CCha
   case let s as NSSegmentedControl:
     let i = s.selectedSegment
     return scratch(i >= 0 && i < s.segmentCount ? (s.label(forSegment: i) ?? "") : "")
+  case let g as RadioGroupView:
+    // Every button drawn on, so a group that let two stay on would show both.
+    return scratch(g.buttons.filter { $0.state == .on }.map(\.title).joined(separator: ", "))
   default:
     return nil
   }
@@ -2457,6 +2593,10 @@ public func sui_choose(_ h: UnsafeMutableRawPointer, _ index: Int32) -> Int32 {
   case let s as NSSegmentedControl where i >= 0 && i < s.segmentCount:
     s.selectedSegment = i
     return s.sendAction(s.action, to: s.target) ? 1 : 0
+  case let g as RadioGroupView where i >= 0 && i < g.buttons.count:
+    // A click on the button: AppKit turns it on, its siblings off, and sends the action.
+    g.buttons[i].performClick(nil)
+    return 1
   case let t as TabHostView:
     // The controller's own segmented control, clicked through its own action.
     guard let s = t.bar, i >= 0, i < s.segmentCount else { return 0 }
