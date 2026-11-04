@@ -737,7 +737,9 @@ object Steps {
   def format(
     value: Double,
     by:    Double
-  ): String = BigDecimal(value).setScale(digits(by), BigDecimal.RoundingMode.HALF_UP).toString
+  ): String =
+    if value.isNaN || value.isInfinite then value.toString
+    else BigDecimal(value).setScale(digits(by), BigDecimal.RoundingMode.HALF_UP).toString
 
 }
 
