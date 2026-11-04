@@ -13,12 +13,12 @@ Android gallery built, Apple gaps the review found filed as #73–#79).
 |---|---|
 | Widgets in the v1 catalogue (`docs/07` §7.10) | 32 |
 | Widgets implemented on at least one renderer | **26** — `RadioGroup` and `Stepper`, the §12.2a exceptions, since 2026-11-03 |
-| Widgets implemented on **every** renderer that exists | **24** — measured on all four since #45/#46, `Grid` since #62, `IconButton` since #66 and `TabView` since #69 |
+| Widgets implemented on **every** renderer that exists | **26** — measured on all four since #45/#46, `Grid` since #62, `IconButton` since #66, `TabView` since #69, and `RadioGroup` and `Stepper` since #150 |
 | Renderers | **4** (GTK4, Android, AppKit, UIKit) |
 | Props in the contract | **39** |
-| Props implemented on every renderer | **37** — `View`, the embedding point's (`docs/17` §17.3, 2026-11-02), is GTK and Android so far; Apple shows a label in its place until the Mac's half (#145). `Step` (2026-11-03) is GTK and Android; Apple's interim stepper ignores it (#150) |
+| Props implemented on every renderer | **38** — `View`, the embedding point's (`docs/17` §17.3, 2026-11-02), is GTK and Android so far; Apple shows a label in its place until the Mac's half (#145). `Step` (2026-11-03) reached AppKit and UIKit in #150 |
 
-**Twenty-four of thirty-two, every one on every renderer, and measured on every one.** `IconButton` reached AppKit and UIKit in #66, and `TabView` in #69. `Grid` reached AppKit and UIKit in #62: gallery **58/58** on macOS and **57/57** on the iOS simulator. `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
+**Twenty-six of thirty-two, every one on every renderer, and measured on every one.** `RadioGroup` and `Stepper` reached AppKit and UIKit in #150. `IconButton` reached AppKit and UIKit in #66, and `TabView` in #69. `Grid` reached AppKit and UIKit in #62: gallery **58/58** on macOS and **57/57** on the iOS simulator. `Picker` (#45), `ZStack`, `SegmentedControl` and `DatePicker` (#46) were written on Linux and first run on the Mac in #45/#46, which found one crash (below the table) and is otherwise what the gallery's new checks measure: **48/48** on macOS and **47/47** on the iOS simulator. The six phase 2 widgets landed on
 AppKit and UIKit in #4 and the two presented ones, `Alert` and `Sheet`, in #18; context
 menus followed in #19, and the Apple hosts render `AppRoot.pages` since #25. The Apple
 self-test is **87/87** on macOS and **82/82** on the iOS simulator; the five iOS does not
@@ -173,8 +173,8 @@ Slice 2:
 | `Grid` | `WidgetKind.Grid` | done | done | done | done | **A §12.2a exception** (#60, the project owner's decision): UIKit has no grid view. `GtkGrid` with cells placed through `GtkGridLayoutChild` / `GridLayout`'s own auto-flow / `NSGridView` / a constraint grid on UIKit. Children flow into `Prop.Columns` columns in child order; each column as wide as its widest cell |
 | `DatePicker` | `WidgetKind.DatePicker` | done | done | done | done | The **compact** idiom on all four: a `GtkMenuButton` opening a `GtkCalendar` / a field opening `DatePickerDialog` / a text-field `NSDatePicker` / a `.compact` `UIDatePicker`. The value is a `CalendarDate` — a day, no time, no zone — and crosses the Apple ABI as an epoch day read at midnight UTC |
 | `SegmentedControl` | `WidgetKind.SegmentedControl` | done | done | done | done | **The §12.2a exception**, by the project owner's decision on #50: native only on Apple (`NSSegmentedControl` / `UISegmentedControl`). GTK gets a `linked` box of grouped `GtkToggleButton`s, Android a horizontal `RadioGroup` — each platform's own construction, not an imitation of Apple's. Same props as `Picker` |
-| `RadioGroup` | `WidgetKind.RadioGroup` | done | done | partial | partial | **A §12.2a exception** (owner's decision 2026-11-03): `Radio` as a group, since Android's exclusion is a container and UIKit has no radio control. Grouped `GtkCheckButton`s / a vertical `RadioGroup`; the props are `Picker`'s (an index, `-1` for none). AppKit is to be radio `NSButton`s and iOS a checkmark list (#150); until then Apple shows its `Picker` |
-| `Stepper` | `WidgetKind.Stepper`, `Prop.Step` | done | done | partial | partial | **A §12.2a exception** (owner's decision 2026-11-03): `GtkSpinButton`; Android has none, so − / value / + from framework views, the value shown to the step's precision (`Steps.format`) and + / − disabled at the bounds. `NSStepper` / `UIStepper` with a label are #150; until then Apple shows its `Slider` |
+| `RadioGroup` | `WidgetKind.RadioGroup` | done | done | done | done | **A §12.2a exception** (owner's decision 2026-11-03): `Radio` as a group, since Android's exclusion is a container and UIKit has no radio control. Grouped `GtkCheckButton`s / a vertical `RadioGroup`; the props are `Picker`'s (an index, `-1` for none). AppKit: radio `NSButton`s in one stack, which AppKit groups; UIKit: a checkmark list of rows, the exclusion the construction's (#150) |
+| `Stepper` | `WidgetKind.Stepper`, `Prop.Step` | done | done | done | done | **A §12.2a exception** (owner's decision 2026-11-03): `GtkSpinButton`; Android has none, so − / value / + from framework views, the value shown to the step's precision (`Steps.format`) and + / − disabled at the bounds. AppKit and UIKit: `NSStepper` / `UIStepper` beside a label, which neither draws, showing `Steps.digits` decimals; the control clamps (#150) |
 | `SecureField` | `WidgetKind.SecureField` | done | done | done | done | Entry visibility / password input type. A kind rather than a prop because `NSSecureTextField` is a separate class |
 
 Slice 1:
@@ -198,7 +198,7 @@ UIKit. It is recorded as indeterminate and read back as such, rather than faked.
 | Group | Left to do |
 |---|---|
 | Layout | — |
-| Controls | — (`Radio` and `Stepper` built as §12.2a exceptions, 2026-11-03; their Apple controls are #150) |
+| Controls | — (`Radio` and `Stepper` built as §12.2a exceptions, 2026-11-03; on every renderer since #150) |
 | Containers | — |
 
 `IconButton` and `Link` were held back for the same reason — one needed an icon system, the
@@ -410,6 +410,8 @@ The pickers and the camera were each measured on their own branch; the gallery w
 2026-11-02 (#134): macOS **208**, the Share section's 8 included (**204** with the screen locked,
 in `bin/verify-apple.sh`); iOS simulator ("iPhone 18 Pro") **216**, its 9 included.
 Each measured on its own branch; the gallery with both sections has not been run yet.
+2026-11-03 (#150, `bin/verify-apple.sh "iPhone Air"`, 20/20 steps): iOS simulator **246**, macOS
+**231** with the screen locked, the RadioGroup and Stepper section's 13 included on each.
 
 Four rules the migration established:
 

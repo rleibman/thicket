@@ -1194,7 +1194,12 @@ object GallerySelfTest {
     val groups = ofKind(WidgetKind.RadioGroup)
     check("one RadioGroup", groups.length == 1, groups.length.toString)
     groups.headOption.foreach { g =>
-      def radios = AppleInspect.children(g)
+      // The radio controls wherever they sit under the group: a radio NSButton, or a checkmark list's row.
+      def radios =
+        AppleInspect.all(g).filter { h =>
+          val c = AppleInspect.className(h)
+          c == "NSButton" || c.endsWith("RadioRow")
+        }
       def chosen = radios.map(AppleInspect.checked)
       def shows = s"chosen $chosen, shows '${AppleInspect.shownOption(g)}', selected ${AppleInspect.selected(g)}"
       val classes = radios.map(AppleInspect.className).distinct
@@ -1233,6 +1238,17 @@ object GallerySelfTest {
         "RadioGroup: Selected(-1) shows none chosen",
         chosen == List(false, false, false) && AppleInspect.shownOption(g) == "" && AppleInspect.selected(g) == -1,
         shows
+      )
+      AppleApp.renderer.update(g, Seq(Prop.Selected(2)))
+      // The app writes each choice back, and that write alone would leave one chosen. So, last, a handler that only
+      // records: what stays chosen now is the platform's grouping (AppKit's) or the construction's (the list's).
+      val heard = mutable.ListBuffer.empty[Int]
+      AppleApp.renderer.update(g, Seq(Prop.OnSelect(i => heard += i)))
+      val clickedSmall = radios.headOption.exists(AppleInspect.click)
+      check(
+        "RadioGroup: with nothing written back, the group itself leaves only the clicked one chosen",
+        clickedSmall && heard.toList == List(0) && chosen == List(true, false, false),
+        s"clicked $clickedSmall; heard ${heard.toList}; $shows"
       )
       AppleApp.renderer.update(g, Seq(Prop.Selected(2)))
     }

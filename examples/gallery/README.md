@@ -114,6 +114,16 @@ three; unmounting is timed and printed, not checked). Grid on iOS went from 3.9 
 (2.1). The stack checks passed before the fix too (ratio 2.6–2.8, now 2.1–2.5), so for stacks
 the check guards a regression to quadratic, not the small search the fix removed.
 
+**#150** added the Apple checks for RadioGroup and Stepper, 13 on each toolkit. Each radio
+control is clicked through its own action: a radio `NSButton`, or a checkmark-list row's
+`.touchUpInside`. The steppers are pressed with `sui_step`, and the label beside each is read
+for `2` / `1.50`, then `3` / `1.75`, then a stop at 5. The app's own `Selected` and `Value`
+writes must not come back as events. A last click with a handler that only records shows
+the platform's own grouping. The app's write-back would otherwise hide an ungrouped set.
+**246** on the iOS simulator, **231** on macOS with the screen locked. Falsified: with the
+radios ungrouped, with the range opened, and with an echoed write, the matching check
+fails each time.
+
 Entry symbols are checked without a Mac. An iOS example is three files in three languages
 that meet only at link time, matched by name alone, so `shimGen`'s `HostEntrySpec` asserts
 that Scala's `@exported`, the bridging header's `extern` and the Swift host's call all name
@@ -159,7 +169,7 @@ Labels in every `TextRole` and alignment, buttons by role and disabled, `TextFie
 `SecureField`, `Checkbox`, `Toggle`, a `Picker` whose options can be swapped and its
 selection cleared, every curated `Icon` as an `IconButton`, `SegmentedControl`, a
 `DatePicker` on a leap day, `RadioGroup` and two `Stepper`s (one of step 0.25) built as §12.2a
-exceptions — on Android a − / value / + row, two `Link`s (one also tappable), a tappable `Label`, `Slider`, determinate and
+exceptions — on Android a − / value / + row, on iOS a checkmark list, `NSStepper` and `UIStepper` beside a label — two `Link`s (one also tappable), a tappable `Label`, `Slider`, determinate and
 indeterminate `ProgressBar`, `ActivityIndicator`, `Divider`, `Spacer` in a Row and in a
 Column, `Grow`, a two-column `Grid` with a row inserted in the middle, `ZStack` as a corner
 badge and as a centred overlay, `Image` in all three fits from a file and from bytes, a
