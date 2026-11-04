@@ -297,10 +297,16 @@ final class AndroidCameraPreview(
   ): Unit = {
     val chars = manager.getCameraCharacteristics(id)
     val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-    val (previewSize, jpegSize) = chooseSizes(
-      map.getOutputSizes(classOf[SurfaceTexture]).toList,
-      map.getOutputSizes(ImageFormat.JPEG).toList
-    )
+    val previewSizes =
+      Option(map).flatMap(m => Option(m.getOutputSizes(classOf[SurfaceTexture]))).map(_.toList).getOrElse(Nil)
+    val jpegSizes = Option(map).flatMap(m => Option(m.getOutputSizes(ImageFormat.JPEG))).map(_.toList).getOrElse(Nil)
+    if previewSizes.isEmpty || jpegSizes.isEmpty then {
+      Log.w(Tag, s"camera preview: camera $id has no usable output sizes")
+      camera.close()
+      if g == generation then stop("no output sizes")
+      return
+    }
+    val (previewSize, jpegSize) = chooseSizes(previewSizes, jpegSizes)
     val sensor = Option(chars.get(CameraCharacteristics.SENSOR_ORIENTATION)).map(_.intValue).getOrElse(0)
     mounted match {
       case None               => camera.close()
