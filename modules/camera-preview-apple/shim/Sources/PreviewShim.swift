@@ -396,6 +396,11 @@ public func thk_prev_test_gravity(_ view: UnsafeMutableRawPointer) -> Int32 {
   return fitCode(p.previewLayer.videoGravity)
 }
 
+@_cdecl("thk_prev_test_fit")
+public func thk_prev_test_fit(_ fit: Int32) -> Int32 {
+  fitCode(PreviewView(fit: fit).previewLayer.videoGravity)
+}
+
 @_cdecl("thk_prev_test_aspect")
 public func thk_prev_test_aspect(_ view: UnsafeMutableRawPointer) -> Double {
   let v = Unmanaged<PreviewBase>.fromOpaque(view).takeUnretainedValue()

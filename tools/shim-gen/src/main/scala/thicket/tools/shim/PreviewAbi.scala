@@ -125,6 +125,12 @@ object PreviewAbi {
       doc = "The preview layer's gravity in `view`, as a fit code (0 contain, 1 cover, 2 fill); -1 otherwise."
     ),
     Fn(
+      "thk_prev_test_fit",
+      I32,
+      List(Abi.p("fit", I32)),
+      doc = "The gravity, as a fit code, of a view thk_prev_view_new makes for `fit`; the view is not kept."
+    ),
+    Fn(
       "thk_prev_test_aspect",
       F64,
       List(Abi.p("view", Handle)),

@@ -27,5 +27,6 @@ private[apple] object PreviewShim {
   def thk_prev_test_size(width: Ptr[CDouble], height: Ptr[CDouble]): CInt = extern
   def thk_prev_test_facing(): CInt = extern
   def thk_prev_test_gravity(view: Handle): CInt = extern
+  def thk_prev_test_fit(fit: CInt): CInt = extern
   def thk_prev_test_aspect(view: Handle): CDouble = extern
 }

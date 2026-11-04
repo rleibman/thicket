@@ -152,6 +152,7 @@ object GallerySelfTest {
       "Provide — a theme scoped to one subtree",
       "SafeArea — a prop, because no toolkit models it as a widget",
       "Platform — a view the platform's own code makes",
+      "Camera preview — live, in the app's own layout",
       "BuildInfo — this module's own, from git",
       "Errors — a handler that throws is reported, and the app carries on",
       "Effects — a ZIO effect, its result posted back to the UI thread",
@@ -258,7 +259,11 @@ object GallerySelfTest {
           locationChecks(() =>
             motionChecks(() =>
               cameraChecks(() =>
-                shareChecks(() => clipboardChecks(() => pickerChecks(() => sheet(all)(() => bigList(() => finish())))))
+                previewChecks(() =>
+                  shareChecks(() =>
+                    clipboardChecks(() => pickerChecks(() => sheet(all)(() => bigList(() => finish()))))
+                  )
+                )
               )
             )
           )
@@ -310,6 +315,14 @@ object GallerySelfTest {
       label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
       () => AppleInspect.allTexts(AppleApp.rootHandle),
       camera
+    )(next)
+
+  /** The live camera preview (#148), in [[GalleryPreviewChecks]]. */
+  private def previewChecks(next: () => Unit): Unit =
+    GalleryPreviewChecks.run(
+      checker,
+      label => buttonIn(AppleInspect.all(AppleApp.rootHandle), label).exists(AppleInspect.click),
+      () => AppleInspect.allTexts(AppleApp.rootHandle)
     )(next)
 
   /** The pickers (#125), in [[GalleryPickerChecks]]. */

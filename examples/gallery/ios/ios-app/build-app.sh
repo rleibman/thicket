@@ -54,13 +54,17 @@ PICKERS_LIB="$REPO/modules/pickers-apple/shim/build-ios/libthicketpickers.a"
 # simulator has a camera (a simulated grey frame), so the photo is taken through its screen.
 CAMERA_LIB="$REPO/modules/camera-apple/shim/build-ios/libthicketcamera.a"
 [ -f "$CAMERA_LIB" ] || { echo "Missing $CAMERA_LIB — run modules/camera-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
-EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB $PICKERS_LIB $CAMERA_LIB"
+# The Camera preview section (#148): thicket-camera-preview-apple's Swift library, over
+# AVCaptureSession; the same camera grant and usage string.
+PREVIEW_LIB="$REPO/modules/camera-preview-apple/shim/build-ios/libthicketpreview.a"
+[ -f "$PREVIEW_LIB" ] || { echo "Missing $PREVIEW_LIB — run modules/camera-preview-apple/shim/build-shim.sh ios-sim" >&2; exit 1; }
+EXTRA_LIBS="$DEVICE_LIB $MOTION_LIB $PICKERS_LIB $CAMERA_LIB $PREVIEW_LIB"
 FRESH_INSTALL=1
 # Location (#118) granted too, with its usage string, without which iOS ignores the request.
 PRIVACY_GRANT="microphone location camera"
 USAGE_STRINGS="NSMicrophoneUsageDescription=The gallery checks that a granted permission answers Granted.
 NSLocationWhenInUseUsageDescription=The gallery shows where the device is while it is in front.
-NSCameraUsageDescription=The gallery takes a photo with the camera screen."
+NSCameraUsageDescription=The gallery takes a photo with the camera screen, and shows a live camera preview."
 
 # Files' "On My iPhone": the Files app's local storage, where the document picker opens the test
 # document and saves the gallery's (#125).

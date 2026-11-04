@@ -67,6 +67,8 @@ int32_t thk_prev_test_size(double *width, double *height);
 int32_t thk_prev_test_facing(void);
 /* The preview layer's gravity in `view`, as a fit code (0 contain, 1 cover, 2 fill); -1 otherwise. */
 int32_t thk_prev_test_gravity(sui_handle view);
+/* The gravity, as a fit code, of a view thk_prev_view_new makes for `fit`; the view is not kept. */
+int32_t thk_prev_test_fit(int32_t fit);
 /* The aspect `view` gives itself, height over width. */
 double thk_prev_test_aspect(sui_handle view);
 

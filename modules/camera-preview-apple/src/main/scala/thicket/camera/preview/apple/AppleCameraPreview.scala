@@ -161,6 +161,9 @@ final class AppleCameraPreview(
     def fit: Option[ContentFit] =
       mounted.flatMap(v => ContentFit.values.lift(PreviewShim.thk_prev_test_gravity(v)))
 
+    /** The fit a view made for `fit` has, read back from its layer's gravity; the view is not kept. */
+    def fitOfNew(fit: ContentFit): Option[ContentFit] = ContentFit.values.lift(PreviewShim.thk_prev_test_fit(fit.ordinal))
+
     /** The aspect the mounted view gives itself, height over width. */
     def aspect: Option[Double] = mounted.map(PreviewShim.thk_prev_test_aspect)
 
