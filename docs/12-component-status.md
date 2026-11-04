@@ -405,6 +405,8 @@ The pickers and the camera were each measured on their own branch; the gallery w
 2026-11-02 (#134): macOS **208**, the Share section's 8 included (**204** with the screen locked,
 in `bin/verify-apple.sh`); iOS simulator ("iPhone 18 Pro") **216**, its 9 included.
 Each measured on its own branch; the gallery with both sections has not been run yet.
+2026-11-03 (#145): macOS **228** (224 with the screen locked), iOS simulator ("iPhone 17e")
+**239**, each with the Platform section's 6, its heading among them.
 
 Four rules the migration established:
 

@@ -99,7 +99,14 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
     reference must go nil — the shim held the only retain.
   - **Measured.** macOS gallery **228** ok, 0 failed (the section's heading and 5 checks among
     them; the first label 1435×16 pt, the size of its host; freed 358 ms after the
-    replacement). iOS simulator ("iPhone 17e"): IOS_RESULT. `shimGen/testFull` 51/51.
+    replacement). iOS simulator ("iPhone 17e") **239** ok, 0 failed, on the warm simulator (the first
+    label 358×20.3 pt; freed 63–129 ms after the replacement in four runs). `shimGen/testFull`
+    51/51. `bin/verify-apple.sh "iPhone 17e"`: 19 of 20 steps; `ios-gallery` failed only on
+    the fresh boot's "notifications start not yet asked" (the known trap #140 eased; the
+    Platform checks passed in it), and passed alone on the warm simulator right after. Two
+    earlier lone runs under load average 85–99 failed in the camera and location sections'
+    driven steps, the Platform checks passing in both. macOS ran with the screen locked
+    in `verify-apple.sh` (224 a run, the lifecycle checks skipped).
   - **Falsified on macOS**, each failing exactly its check (223 ok, 1 failed): `release`
     skipped (released `[]`); `release` after the shim dropped the view (in its host `false`);
     an empty "not available" label; the shim keeping the caller's retain (`takeUnretainedValue`:
