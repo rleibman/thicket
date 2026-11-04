@@ -72,6 +72,32 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-03 — **The camera preview: `thicket-camera-preview` and `-android`** (`docs/17` step 2;
+  Apple is #148, after #145; GTK later, §17.8.2).
+  - **API:** `CameraPreview` with `availability`, `facing: Var[Facing]`, `running: Signal[Boolean]`,
+    `view(fit)` (through `dsl.Platform`; `Cover` by default) and `capture` (a JPEG in the cache,
+    `None` when not running or busy). `CameraPreview.unavailable(reason)` for GTK; a fake.
+  - **Android:** Camera2 into a `TextureView`, the camera's callbacks on the UI thread, a JPEG
+    `ImageReader` on the same session (the size both offer, at most 1920×1080; 1280×720 on
+    `s2test`). Orientation by hand: the view's transform turns the frame back by the display's
+    rotation and scales it to the fit. `createCaptureSession(List, …)`, deprecated, since
+    `SessionConfiguration` needs API 28 and the framework's minimum is 26. The widget takes the
+    frame's aspect when the layout leaves its height open.
+  - **Runs only while mounted, its surface ready, in front and permitted;** one preview at a
+    time. Each close records why (`testing.stopReasons`): Android takes the camera from a
+    background app by itself (`error 3`, then `disconnected`), so "closed in the background"
+    alone could not tell whether the preview's own lifecycle did it; the check asks for the
+    lifecycle's stop first.
+  - **The gallery declares `CAMERA`** (granted by `build.sh`'s `install -g`). The Device
+    section's "an undeclared permission throws" check moved to the microphone.
+  - **Measured.** `CameraPreviewSpec` 2/2, JVM and Native. GTK gallery **148** (144 + 4), todo
+    69. Android gallery **102** (95 + 7) on `s2test`: the back camera runs, frames arrive and
+    the picture is not blank, a capture is a 1280×720 JPEG in the cache, Home closes the camera,
+    front reopens it, the missing front camera says so, flipping back reopens the back one.
+  - **Falsified.** Without the lifecycle's background stop, the background check fails (stops
+    `facing…, error 3, disconnected`); with `capture` stubbed, the JPEG check fails.
+  - **Found on the way:** #147, `galleryAndroid` depended on `pickersApple` and `cameraApple`.
+
 - 2026-11-02 — **The embedding point: `WidgetKind.Platform`, `Prop.View`, built on GTK and
   Android** (`docs/17` §17.3, step 1 of §17.7; the Apple half is #145).
   - **Shape:** `trait PlatformView { def description: String }` in `renderer-api`, and

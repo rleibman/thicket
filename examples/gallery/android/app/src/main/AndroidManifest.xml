@@ -7,6 +7,8 @@
     <!-- The Location section: fine for the GPS provider, which the self-test moves with `adb emu geo fix`. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- The Camera preview section: Camera2 needs it (docs/17). build.sh installs with it granted. -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <application android:label="Thicket gallery" android:allowBackup="false"
                  android:networkSecurityConfig="@xml/network_security_config"
                  android:enableOnBackInvokedCallback="true">

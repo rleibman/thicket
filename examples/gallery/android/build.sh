@@ -21,7 +21,7 @@ echo "== sbt: building the Scala JARs =="
   "motionJVM/package" "motionAndroid/package" \
   "clipboardJVM/package" "clipboardAndroid/package" "hapticsJVM/package" "hapticsAndroid/package" \
   "pickersJVM/package" "pickersAndroid/package" "cameraJVM/package" "cameraAndroid/package" \
-  "shareJVM/package" "shareAndroid/package" \
+  "shareJVM/package" "shareAndroid/package" "cameraPreviewJVM/package" "cameraPreviewAndroid/package" \
   "httpChecksJVM/package" "httpAndroid/package" \
   "rendererAndroid/package" "gallerySharedJVM/package" "galleryAndroid/package" >/dev/null)
 
@@ -40,7 +40,7 @@ for module in thicket-signals thicket-renderer-api thicket-core thicket-effect-z
               thicket-location thicket-location-android thicket-motion thicket-motion-android \
               thicket-clipboard thicket-clipboard-android thicket-haptics thicket-haptics-android \
               thicket-pickers thicket-pickers-android thicket-camera thicket-camera-android \
-              thicket-share thicket-share-android \
+              thicket-share thicket-share-android thicket-camera-preview thicket-camera-preview-android \
               http-checks thicket-http-android \
               thicket-renderer-android thicket-gallery-shared gallery-android; do
   # sbt 2 publishes artifacts as symlinks into a content-addressed store, hence readlink.

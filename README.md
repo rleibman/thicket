@@ -322,6 +322,7 @@ modules/
   pickers/           photo and document pickers, save dialog; pickers-gtk/, pickers-android/
   camera/            taking a photo with the camera app; camera-android/, camera-apple/ (GTK, macOS: Camera.unavailable)
   share/             the share sheet; share-android/, share-apple/ (GTK: Share.unavailable)
+  camera-preview/    a live camera preview in the app's layout; camera-preview-android/ (GTK: CameraPreview.unavailable)
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)
@@ -362,9 +363,9 @@ SELFTEST=1 examples/todo-android/build.sh
 xvfb; the Apple self-tests run on a self-hosted Mac (`apple.yml`). Counts as of 2026-11-02:
 signals 30, core 172, effect-zio 25, storage 14, sqlite 2 and secrets 2 per backend,
 storage-gtk 4, storage-apple 4, secrets-gtk 2, http-gtk 5, http-android 5, device 8,
-location 7, motion 5, clipboard 1, haptics 2, pickers 4, camera 2 and share 5 per backend, shim-gen 15,
-sbt-thicket 9; GTK 144 + 69 self-test checks, Android 95 + 84 (2026-11-02, the gallery's with
-the HTTP checks, every device section's and the Platform section's),
+location 7, motion 5, clipboard 1, haptics 2, pickers 4, camera 2, share 5 and camera-preview 2 per backend, shim-gen 15,
+sbt-thicket 9; GTK 148 + 69 self-test checks, Android 102 + 84 (2026-11-03, the gallery's with
+the HTTP checks, every device section's, the Platform section's and the Camera preview's),
 the HTTP checks on Linux 12.
 
 Coverage over the JVM-tested modules:

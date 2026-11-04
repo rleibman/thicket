@@ -25,6 +25,7 @@ import thicket.haptics.Haptics
 import thicket.pickers.{Documents, Photos}
 import thicket.camera.Camera
 import thicket.share.Share
+import thicket.camera.preview.CameraPreview
 import thicket.secrets.Secrets
 import thicket.signals.Var
 import thicket.sqlite.{Sqlite, SqliteDriver}
@@ -58,19 +59,22 @@ import java.util.concurrent.{Executors, ThreadFactory}
   *   taking a photo with the platform's camera screen: Android's camera app; on GTK, `Camera.unavailable`.
   * @param share
   *   the share sheet: Android's chooser, files served by Thicket's own provider; on GTK, `Share.unavailable`.
+  * @param cameraPreview
+  *   a live camera preview (`docs/17`): Camera2 on Android; on GTK, `CameraPreview.unavailable` until its own.
   */
 final case class Services(
-  storage:   Storage,
-  sqlite:    SqliteDriver,
-  secrets:   () => Either[String, Secrets] = () => Left("not on this platform yet"),
-  device:    Option[Device] = None,
-  location:  Option[Location] = None,
-  motion:    Option[Motion] = None,
-  clipboard: Option[Clipboard] = None,
-  haptics:   Option[Haptics] = None,
-  pickers:   Option[(Photos, Documents)] = None,
-  camera:    Option[Camera] = None,
-  share:     Option[Share] = None
+  storage:       Storage,
+  sqlite:        SqliteDriver,
+  secrets:       () => Either[String, Secrets] = () => Left("not on this platform yet"),
+  device:        Option[Device] = None,
+  location:      Option[Location] = None,
+  motion:        Option[Motion] = None,
+  clipboard:     Option[Clipboard] = None,
+  haptics:       Option[Haptics] = None,
+  pickers:       Option[(Photos, Documents)] = None,
+  camera:        Option[Camera] = None,
+  share:         Option[Share] = None,
+  cameraPreview: Option[CameraPreview] = None
 )
 
 /** The Storage section's state: a launch counter in preferences, and a table of notes in SQLite.
