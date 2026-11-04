@@ -91,8 +91,24 @@ object RadioStepperSpec extends ZIOSpecDefault {
           Steps.format(2.75, 0.25) == "2.75",
           Steps.format(2.5, 0.25) == "2.50",
           Steps.format(0.30000000000000004, 0.1) == "0.3",
-          Steps.digits(10.0) == 0
+          Steps.digits(10.0) == 0,
+          Steps.format(Double.NaN, 0.25) == "NaN",
+          Steps.format(Double.PositiveInfinity, 0.25) == "Infinity",
+          Steps.format(Double.NegativeInfinity, 0.25) == "-Infinity"
         )
+      },
+      test("invalid Stepper bounds and step values are rejected") {
+        val badBounds = List(
+          () => Stepper(0.0, min = Double.NaN, max = 1.0)(identity),
+          () => Stepper(0.0, min = 0.0, max = Double.PositiveInfinity)(identity),
+          () => Stepper(Double.NaN, min = 0.0, max = 1.0)(identity),
+          () => Stepper(0.0, min = 1.0, max = 0.0)(identity),
+          () => Stepper(0.0, step = 0.0)(identity),
+          () => Stepper(0.0, step = -1.0)(identity),
+          () => Stepper(0.0, step = Double.NaN)(identity),
+          () => Stepper(0.0, step = Double.PositiveInfinity)(identity)
+        )
+        assertTrue(badBounds.forall(th => scala.util.Try(th()).isFailure))
       }
     ) @@ TestAspect.sequential
 

@@ -731,14 +731,14 @@ object Steps {
 
   /** Decimals in `by`, at most 6. */
   def digits(by: Double): Int =
-    if by.isNaN || by.isInfinite then 0
+    if !by.isFinite then 0
     else math.min(6, math.max(0, BigDecimal(by).bigDecimal.stripTrailingZeros.scale))
 
   def format(
     value: Double,
     by:    Double
   ): String =
-    if value.isNaN || value.isInfinite then value.toString
+    if !value.isFinite then value.toString
     else BigDecimal(value).setScale(digits(by), BigDecimal.RoundingMode.HALF_UP).toString
 
 }

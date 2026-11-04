@@ -480,8 +480,14 @@ object dsl {
   )(
     onChange: Double => Unit
   ): Element = {
+    require(min.isFinite && max.isFinite, s"Stepper bounds must be finite numbers, not min=$min max=$max")
     require(min <= max, s"Stepper min ($min) must be <= max ($max)")
-    require(step > 0.0 && !step.isNaN && !step.isInfinite, s"Stepper step must be a positive finite number, not $step")
+    require(step > 0.0 && step.isFinite, s"Stepper step must be a positive finite number, not $step")
+    value match {
+      case d: Double if !d.isFinite =>
+        throw new IllegalArgumentException(s"Stepper value must be finite, not $d")
+      case _ =>
+    }
     val valueAttr = value match {
       case d: Double                    => Static(Prop.Value(d))
       case s: Signal[Double] @unchecked => Reactive(s, Prop.Value(_))

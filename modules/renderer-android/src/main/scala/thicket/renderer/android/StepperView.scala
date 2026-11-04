@@ -59,20 +59,24 @@ final private[android] class StepperView(context: Context) extends LinearLayout(
     lo: Double,
     hi: Double
   ): Unit = {
-    min = lo
-    max = hi
+    min = if lo.isFinite then lo else 0.0
+    max = if hi.isFinite then hi else 100.0
+    if !min.isFinite || !max.isFinite || min > max then {
+      min = 0.0
+      max = 100.0
+    }
     current = clamp(current)
     render()
   }
 
   def setStep(by: Double): Unit = {
-    step = if by.isNaN || by.isInfinite || by <= 0.0 then 1.0 else by
+    step = if by.isFinite && by > 0.0 then by else 1.0
     render()
   }
 
   /** The app's write: shown, not reported. */
   def setValue(v: Double): Unit = {
-    current = clamp(v)
+    current = if v.isFinite then clamp(v) else clamp(0.0)
     render()
   }
 
