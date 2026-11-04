@@ -66,7 +66,7 @@ final private[android] class StepperView(context: Context) extends LinearLayout(
   }
 
   def setStep(by: Double): Unit = {
-    step = by
+    step = if by.isNaN || by.isInfinite || by <= 0.0 then 1.0 else by
     render()
   }
 
