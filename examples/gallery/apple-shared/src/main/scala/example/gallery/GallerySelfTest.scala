@@ -111,6 +111,9 @@ object GallerySelfTest {
     this.motion = motion
     this.camera = camera
     this.pickers = pickers
+    // The camera preview stays unmounted until its own checks (#148): one camera user at a time, and the camera
+    // screen's checks (#129) come first. Unmounted, its session never starts.
+    Gallery.currentPreview.foreach(_.shown.set(false))
     eventually(5000)(AppleInspect.allTexts(AppleApp.rootHandle).contains(Gallery.effectResult))(_ => catalogue())
   }
 

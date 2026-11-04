@@ -37,7 +37,8 @@ import thicket.renderer.apple.{AppleApp, AppleInspect}
   *     `THICKET_PREVIEW_ASK=1` the macOS run asks through the system's own dialog and waits for its user.
   *   - **No such camera** (a Mac's back): `Unavailable` with that reason, and nothing runs.
   *
-  * Then, if a session ran, hiding the widget unmounts it, which stops the session, and showing it again starts one. The
+  * The self-test keeps the widget unmounted until these checks, so the camera screen's (#129) have the camera to
+  * themselves. Then, if a session ran, hiding the widget unmounts it, which stops the session, and showing it again starts one. The
   * three fits map to the layer's three gravities whatever the camera. Photos from a Mac's camera are checked only for
   * their format and size, and deleted unread.
   */
@@ -115,7 +116,18 @@ object GalleryPreviewChecks {
     /** Whether a session ran in some facing: the unmount checks need one. */
     private var ran = false
 
+    /** The self-test kept the widget unmounted until now: nothing ran, and showing it mounts it. */
     def start(next: () => Unit): Unit = {
+      check(
+        "Preview: while the widget is unmounted, no view and no session",
+        t.view.isEmpty && !running && sessions == 0,
+        s"view ${t.view.isDefined}; running $running; sessions $sessions; stops ${t.stopReasons}"
+      )
+      demo.shown.set(true)
+      eventually(2000)(t.view.isDefined && t.view.exists(v => AppleInspect.frame(v)._3 > 0))(_ => mounted(next))
+    }
+
+    private def mounted(next: () => Unit): Unit = {
       val viewFrame = t.view.map(AppleInspect.frame)
       check(
         "Preview: the widget is the library's view, mounted, its layer Cover's gravity; Contain and Fill map to theirs",

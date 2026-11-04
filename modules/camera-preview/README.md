@@ -8,10 +8,10 @@ a receipt). The design is `docs/17-camera-preview.md`, approved 2026-11-01.
 |---|---|---|
 | `thicket-camera-preview` | JVM, Native | the API: `CameraPreview`, `Facing`; `CameraPreview.unavailable(reason)`; `testing.FakeCameraPreview` |
 | `thicket-camera-preview-android` | Android 8+ | Camera2 into a `TextureView`, a JPEG `ImageReader` on the same session; not CameraX, which is AndroidX |
+| `thicket-camera-preview-apple` | iOS 17+, macOS 13+ | `AVCaptureSession` shown by an `AVCaptureVideoPreviewLayer` in a `UIView` / `NSView`, an `AVCapturePhotoOutput` on the same session; a Swift library of its own in the jar (`libthicketpreview.a`, `macos/` and `ios-sim/`) |
 
-Not built yet: Apple (iOS and macOS, `AVCaptureSession`; the Mac's, #148) and GTK (the camera portal
-and GStreamer, after the others: `docs/17` §17.8.2). Until then, use
-`CameraPreview.unavailable(reason)`: its widget shows the reason.
+Not built yet: GTK (the camera portal and GStreamer, after the others: `docs/17` §17.8.2). Until
+then, use `CameraPreview.unavailable(reason)`: its widget shows the reason.
 
 ```scala
 val device  = AndroidDevice(this)                    // in createApp
@@ -21,6 +21,14 @@ Column(spacing = 8)(
   Button("Take")(preview.capture(_.foreach(attach))),
   Button("Flip")(preview.facing.update(f => if f == Facing.Back then Facing.Front else Facing.Back))
 )
+```
+
+On Apple (#148), the same handle from `AppleCameraPreview(device, cache)`:
+
+```scala
+val storage = AppleStorage(bundleId)
+val device  = AppleDevice()
+val preview = AppleCameraPreview(device, storage.dirs.cache)   // needs an Owner in scope
 ```
 
 - **The widget** is `core`'s embedding point (`dsl.Platform`, `docs/17` §17.3), so the
@@ -39,6 +47,30 @@ Column(spacing = 8)(
   `JPEG_ORIENTATION` as `CaptureRequest` documents it.
 - **One preview at a time** in the app: a second is `Unavailable("in use by another preview")`.
   A camera the device does not have is `Unavailable("no front camera")`.
+
+### On Apple
+
+- **`AVCaptureSession`**, configured, started and stopped on a serial queue of the library's own
+  (`startRunning` blocks), with an `AVCapturePhotoOutput` for `capture` and an
+  `AVCaptureVideoDataOutput` that only counts frames, for the self-tests. Preset `.photo`.
+- **Fit:** `Cover` is `.resizeAspectFill`, `Contain` `.resizeAspect`, `Fill` `.resize`. The view
+  has no size of its own, so it gives itself an aspect (height = width × aspect, priority 999):
+  4:3 upright on iOS and 3:4 on macOS until a session runs, then the frame's as shown.
+- **Orientation** on iOS through `AVCaptureDevice.RotationCoordinator`: the preview's connection
+  follows `videoRotationAngleForHorizonLevelPreview`, and the photo is taken at
+  `videoRotationAngleForHorizonLevelCapture`. A Mac's camera needs none.
+- **Facing:** iOS's built-in wide-angle camera at that position. On macOS `Front` is the first
+  camera not on the back, built-in or USB; `Back` is one the system reports on the back, so
+  usually `Unavailable("no back camera")` (`docs/17` §17.4).
+- **Permission:** the app's `Info.plist` declares `NSCameraUsageDescription` (iOS terminates an
+  app that opens the camera without it; `availability` throws, naming the key, instead). A macOS
+  executable run outside an app bundle embeds one: `ThicketNativeFlags.appleInfoPlist(plist)`,
+  as the macOS gallery does. Asked through `thicket-device-apple`'s
+  `Permissions.request(Camera)` (`AVCaptureDevice.requestAccess`); granted after the preview was
+  made, remount the widget to start it.
+- **`release`** (the embedding point's, #145) stops the session; the view itself is the shim's.
+- **Link:** `libthicketpreview.a` at the app's final link, from the jar
+  (`thicketCameraPreviewApple` in `sbt-thicket`), with `thicket-device-apple`'s library.
 
 ## How it is checked
 
