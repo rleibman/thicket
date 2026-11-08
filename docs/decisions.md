@@ -72,6 +72,55 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-03 — **The camera preview on Apple: `thicket-camera-preview-apple`** (#148, `docs/17`
+  step 3, on #145's `ApplePlatformView`). Built for iOS and macOS; **no session has run yet**.
+  - **Library:** `libthicketpreview.a`, one Swift file for both targets (`#if os(iOS)`), its own
+    `thk_prev_*` ABI in shim-gen (`PreviewAbi`, 12 functions, `PreviewConsistencySpec`), carried
+    in the jar (`macos/`, `ios-sim/`) and unpacked by `sbt-thicket`'s
+    `thicketCameraPreviewApple`. Push, main thread only; the session is configured, started and
+    stopped on a serial queue of the library's own (`startRunning` blocks). One session in the
+    process; the photo crosses as a path the library wrote into `<cache>/thicket-preview/`.
+  - **View:** a `UIView` whose `layerClass` is `AVCaptureVideoPreviewLayer`, or a layer-backed
+    `NSView` whose `makeBackingLayer` returns one. Fit to gravity: `Cover` `.resizeAspectFill`,
+    `Contain` `.resizeAspect`, `Fill` `.resize`. It sizes itself with height = width x aspect at
+    priority 999 (4:3 upright on iOS, 3:4 on macOS, then the frame's as shown), as #145 asks.
+  - **Session:** preset `.photo`, an `AVCapturePhotoOutput` (JPEG where offered), and an
+    `AVCaptureVideoDataOutput` that only counts frames for the self-tests. iOS turns the preview
+    and the photo upright with `AVCaptureDevice.RotationCoordinator` (iOS 17, the minimum).
+    Facing: iOS's built-in wide-angle camera at that position; macOS front = the first camera not
+    on the back (built-in or external), back = one reported on the back (§17.4).
+  - **Scala (`AppleCameraPreview(device, cache)`):** Android's shape: runs while mounted, in
+    front (`Device`'s lifecycle) and permitted; `release` stops the session; `stopReasons`; a
+    capture not answered within 10 s answers `None` and restarts the session.
+  - **The macOS gallery declares `NSCameraUsageDescription`** in an `Info.plist` embedded in the
+    executable (`-sectcreate __TEXT __info_plist`, `ThicketNativeFlags.appleInfoPlist`), which is
+    where `Bundle.main` reads it from. Without one, `ApplePermissions` throws, as it should. No
+    `CFBundleIdentifier`, so notifications still say they need a bundle. The Device section's
+    "a missing usage string throws" check moves to the microphone.
+  - **The preview stays unmounted until its own checks** on Apple: the first iOS run, with the
+    session mounted from launch, failed the camera screen's `DRIVE photo` (#129) and ran out of
+    time. The gallery gains "Hide or show the preview" (a `Show` around the widget), which is
+    how unmounting is checked.
+  - **Measured.** iOS 27 simulator: AVFoundation lists **0** capture devices (a `simctl spawn`
+    probe over every device type; `default(for: .video)` nil). The simulated camera #129 found
+    is `UIImagePickerController`'s only, so both facings are `Unavailable`. macOS: the back is
+    `Unavailable("no back camera")`; the front (FaceTime HD) is `NeedsPermission(Camera)`,
+    because TCC is `notDetermined` for the responsible app (iTerm2). One run with
+    `THICKET_PREVIEW_ASK=1` asked through the system's own dialog, and nobody answered it in
+    120 s (still `notDetermined` afterwards). It was not retried, and access was not granted any
+    other way. So the live checks (frames, aspect, JPEG, background stop, restart, unmount stop)
+    are written but **have not run on either platform**. No photo or frame was taken from the
+    Mac's camera, so there was no test capture to delete; the check deletes any JPEG it reads.
+  - Galleries: macOS **230** ok, 0 failed; iOS simulator ("iPhone 18 Pro") **244** ok, 1 failed
+    on a fresh boot ("notifications start not yet asked", the known trap). Then
+    `bin/verify-apple.sh "iPhone 18 Pro"` on f07d3a3: **21/21 steps** (the new `shim-preview`
+    among them), the macOS gallery 230 ok in each of its two runs, the iOS gallery 245 ok,
+    0 failed. Libraries: macOS 122 080 bytes, ios-sim 113 936. `shimGen/testFull` 58/58.
+  - **Falsified on macOS** (228 ok, 2 failed, exactly those two): `Contain` mapped to
+    `.resizeAspectFill`; the aspect constraint left inactive (the view laid out 1435x240 at
+    aspect 0.75). The background stop and `capture` could not be falsified, because their checks
+    need a running session.
+
 - 2026-11-03 — **The embedding point on Apple: `ApplePlatformView`, kind 28 `Platform`,
   `sui_platform_set_view`** (#145, the Apple half of `docs/17` step 1; #148 builds on it).
   - **Trait:** `ApplePlatformView extends PlatformView { def create(): Ptr[Byte]; def

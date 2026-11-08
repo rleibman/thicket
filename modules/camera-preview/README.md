@@ -85,3 +85,14 @@ val preview = AppleCameraPreview(device, storage.dirs.cache)   // needs an Owner
   JPEG check fails.
 - GTK shows `CameraPreview.unavailable`: its status, its widget's "not available on GTK", and a
   capture's `None`.
+- The Apple galleries (#148), in `GalleryPreviewChecks`: the widget mounted only for its checks;
+  the layer's gravity for each fit, read from the view's own layer; the view laid out at its
+  aspect; then each facing as the camera allows it: running (one session on that facing, frames,
+  the frame's aspect, a JPEG of the format's shape in `<cache>/thicket-preview/`, deleted once
+  read, stopped in the background by the preview's own lifecycle and running again in front, and
+  unmounting stops it), not permitted, or no such camera. **Measured so far only without a
+  session:** the iOS 27 simulator lists no `AVCaptureDevice` (0 devices, from a `simctl spawn`
+  probe), so both facings are `Unavailable`; on the Mac the back is `Unavailable` and the front
+  `NeedsPermission(Camera)`, the system's dialog unanswered. The live checks are written but have
+  not run; the background stop and `capture` could not be falsified for that reason. The fit
+  mapping and the aspect constraint were (each broken, its check failed).
