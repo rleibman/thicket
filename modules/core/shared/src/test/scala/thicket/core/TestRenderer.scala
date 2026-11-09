@@ -224,6 +224,7 @@ final class TestRenderer extends Renderer {
       case Prop.AccessibleLabel(t)   => n.props("label") = t
       case Prop.OpenUrl(u)           => n.props("url") = u
       case Prop.View(v)              => n.props("view") = v.description
+      case Prop.Step(by)             => n.props("step") = by.toString
       case Prop.DateValue(d)         => n.props("date") = d.toString
       case Prop.OnDateChange(f)      => n.onDateChange = Some(f)
       case Prop.StackAlignment(h, v) =>

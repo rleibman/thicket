@@ -245,6 +245,34 @@ object GtkInspect {
   def toggleActive(widget: Ptr[GtkWidget]): Boolean =
     gtk_toggle_button_get_active(widget.asInstanceOf[Ptr[GtkToggleButton]]).asInstanceOf[CInt] != 0
 
+  def isCheckButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_check_button_get_type())
+
+  def checkActive(widget: Ptr[GtkWidget]): Boolean =
+    gtk_check_button_get_active(widget.asInstanceOf[Ptr[GtkCheckButton]]).asInstanceOf[CInt] != 0
+
+  /** What a user's click does to a check button: makes it active, which in a group deactivates the others. */
+  def checkClick(widget: Ptr[GtkWidget]): Unit =
+    gtk_check_button_set_active(widget.asInstanceOf[Ptr[GtkCheckButton]], Handles.gbool(true))
+
+  def isSpinButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_spin_button_get_type())
+
+  def spinValue(widget: Ptr[GtkWidget]): Double = gtk_spin_button_get_value(widget.asInstanceOf[Ptr[GtkSpinButton]])
+
+  /** The text the spin button shows. */
+  def spinText(widget: Ptr[GtkWidget]): String =
+    fromCString(gtk_editable_get_text(widget.asInstanceOf[Ptr[GtkEditable]]))
+
+  /** What its + (`forward`) or − does: one step, through GTK's own spin. */
+  def spinStep(
+    widget:  Ptr[GtkWidget],
+    forward: Boolean
+  ): Unit =
+    gtk_spin_button_spin(
+      widget.asInstanceOf[Ptr[GtkSpinButton]],
+      if forward then GtkSpinType.GTK_SPIN_STEP_FORWARD else GtkSpinType.GTK_SPIN_STEP_BACKWARD,
+      0.0
+    )
+
   def isMenuButton(widget: Ptr[GtkWidget]): Boolean = isA(widget, gtk_menu_button_get_type())
 
   def menuButtonLabel(widget: Ptr[GtkWidget]): String = {

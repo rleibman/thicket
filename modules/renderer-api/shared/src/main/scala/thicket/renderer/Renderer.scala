@@ -254,6 +254,25 @@ enum WidgetKind {
     */
   case Tab
 
+  /** One choice from a short list, every option shown with a radio mark: [[Prop.Options]], [[Prop.Selected]] (an index,
+    * `-1` for none) and [[Prop.OnSelect]], as for [[Picker]].
+    *
+    * **A §12.2a exception** (`docs/12`, the owner's decision 2026-11-03). GTK groups `GtkCheckButton`s, Android has its
+    * `RadioGroup` container, AppKit radio `NSButton`s; **UIKit has no radio control**, so iOS shows its idiom for one
+    * choice of several, a list with a checkmark on the chosen row, as Settings does. A group, not a prop on each
+    * button: Android's mutual exclusion is structural, and a group is the one shape every platform can take.
+    */
+  case RadioGroup
+
+  /** A number changed a step at a time with − and +: [[Prop.Value]], [[Prop.Range]], [[Prop.Step]] and
+    * [[Prop.OnValueChange]], as a [[Slider]] has without the step.
+    *
+    * **A §12.2a exception** (`docs/12`, the owner's decision 2026-11-03): `GtkSpinButton`, `NSStepper` and `UIStepper`;
+    * **Android has none** (`NumberPicker` is a scrolling wheel, a different control), so its stepper is built from
+    * framework views: a − button, the value, a + button.
+    */
+  case Stepper
+
   /** A view the platform's own code makes, which no other kind describes: a camera preview, later a map or a web view
     * (`docs/17` §17.3, the owner's decision 2026-11-01). The view is [[Prop.View]]: a [[PlatformView]] that the
     * renderer asks for its native widget, so the renderer itself knows nothing of cameras and an app links a camera
@@ -381,6 +400,9 @@ enum Prop {
   )
 
   case OnValueChange(handler: Double => Unit)
+
+  /** How far one press of a [[WidgetKind.Stepper]]'s − or + moves its [[Value]]. */
+  case Step(by: Double)
 
   /** The body text of an [[WidgetKind.Alert]]. [[Text]] is its title.
     *
@@ -698,6 +720,26 @@ final case class MenuItem(
 ) {
 
   def onSelect(): Unit = body
+
+}
+
+/** How a [[WidgetKind.Stepper]] shows its value: as many decimals as its step has, so a step of 1 shows `3` and a step
+  * of 0.25 shows `2.75`. Shared so that every renderer that draws the number itself (Android's) agrees with the
+  * platforms that draw it (`GtkSpinButton`'s digits).
+  */
+object Steps {
+
+  /** Decimals in `by`, at most 6. */
+  def digits(by: Double): Int =
+    if !by.isFinite then 0
+    else math.min(6, math.max(0, BigDecimal(by).bigDecimal.stripTrailingZeros.scale))
+
+  def format(
+    value: Double,
+    by:    Double
+  ): String =
+    if !value.isFinite then value.toString
+    else BigDecimal(value).setScale(digits(by), BigDecimal.RoundingMode.HALF_UP).toString
 
 }
 

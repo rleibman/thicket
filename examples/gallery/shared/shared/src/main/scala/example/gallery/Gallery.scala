@@ -29,6 +29,7 @@ import thicket.renderer.{
   MenuItem,
   Orientation,
   PlatformView,
+  Steps,
   TextRole
 }
 import example.gallery.buildinfo.BuildInfo
@@ -79,6 +80,9 @@ object Gallery {
     val busy:     Var[Boolean] = Var(false)
     val sheet:    Var[Boolean] = Var(false)
     val alerting: Var[Boolean] = Var(false)
+    val size:     Var[Int] = Var(1)
+    val count:    Var[Double] = Var(2.0)
+    val amount:   Var[Double] = Var(1.5)
     // Which native label the Platform section shows: each new number is a new view, so the old one is released.
     val nativeView: Var[Int] = Var(1)
 
@@ -122,6 +126,11 @@ object Gallery {
   /** Where the gallery's links go. On the object so the self-test can say what should have opened. */
   val repoUrl:    String = "https://github.com/rleibman/thicket"
   val licenceUrl: String = "https://www.apache.org/licenses/LICENSE-2.0"
+
+  /** The RadioGroup's options. */
+  val sizes: Seq[String] = Seq("Small", "Medium", "Large")
+
+  def sizeLabel(i: Int): String = sizes.lift(i).fold("(no size)")(s => s"Size: $s")
 
   /** The text of the native label the host's view makes for the Platform section, the `n`th time. */
   def nativeLabelText(n: Int): String = s"A native label, made by the host ($n)"
@@ -275,6 +284,16 @@ object Gallery {
               Button("Select first")(model.span.set(0)),
               Button("Clear")(model.span.set(-1))
             )
+          ),
+          // Two §12.2a exceptions (docs/12, 2026-11-03): each platform's own control where it has one, and a
+          // construction where it has none — iOS's checkmark list, Android's − / value / + row.
+          section("RadioGroup and Stepper — the platform's own, built where it has none")(
+            RadioGroup(Gallery.sizes, model.size)(model.size.set),
+            Label(model.size.map(Gallery.sizeLabel)),
+            Stepper(model.count, min = 0, max = 5)(model.count.set),
+            Label(model.count.map(c => s"Count: ${Steps.format(c, 1)}")),
+            Stepper(model.amount, min = 0, max = 3, step = 0.25)(model.amount.set),
+            Label(model.amount.map(a => s"Amount: ${Steps.format(a, 0.25)}"))
           ),
           section("Link — opens a URL, drawn as each platform draws a link")(
             Link("thicket on GitHub", Gallery.repoUrl),

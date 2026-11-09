@@ -67,6 +67,8 @@ int32_t sui_image_decodes(const uint8_t *data, int32_t length);
      23 IconButton         NSButton()                     UIButton()        image only, an SF Symbol: borderless on AppKit, a plain configuration on UIKit
      24 TabView            TabHostView()                  TabHostView()     an NSTabViewController, segmented control on top / a UITabBarController, a child controller
      25 Tab                TabPage()                      TabPage()         one tab: holds its one child; the title and symbol go on the item
+     26 RadioGroup         RadioGroupView()               RadioListView()   radio NSButtons in one stack / UIKit has none: a checkmark list; the picker's functions drive it
+     27 Stepper            StepperView()                  StepperView()     an NSStepper / a UIStepper beside a label showing the value, which neither draws
      28 Platform           PlatformHost()                 PlatformHost()    holds one view made outside the shim (sui_platform_set_view), pinned to its edges */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
@@ -198,6 +200,13 @@ void sui_set_selected(sui_handle h, int32_t index);
 int32_t sui_get_selected(sui_handle h);
 /* The index the user chose. Never fired for the app's own selection, nor a TabView's insert or remove. */
 void sui_on_select(sui_handle h, sui_int_cb cb, int64_t ctx);
+
+/* --- stepper ----------------------------------------------------------------- */
+/* How far one press moves a Stepper, and the decimals its label shows. Before sui_set_value. */
+void sui_set_step(sui_handle h, double by, int32_t digits);
+/* Presses a Stepper's + (forward 1) or - (0) through the control, as a user would: the
+   control moves and clamps its value and sends its action. 0 when `h` is not a Stepper. */
+int32_t sui_step(sui_handle h, int32_t forward);
 
 /* --- zstack ------------------------------------------------------------------ */
 void sui_set_stack_alignment(sui_handle h, int32_t horizontal, int32_t vertical);

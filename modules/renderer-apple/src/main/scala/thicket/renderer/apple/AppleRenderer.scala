@@ -158,6 +158,10 @@ final class AppleRenderer extends Renderer {
       // The embedding point (docs/17 §17.3, #145): a host holding one view made outside the shim; the view comes
       // with Prop.View (ApplePlatformView).
       case WidgetKind.Platform => ShimKind.Platform
+      // §12.2a exceptions (#150): radio NSButtons / a checkmark list, driven by the picker's functions; an NSStepper /
+      // a UIStepper beside a label, driven by the slider's and sui_set_step.
+      case WidgetKind.RadioGroup => ShimKind.RadioGroup
+      case WidgetKind.Stepper    => ShimKind.Stepper
 
       // Presented rather than inserted (WidgetKind.presented): the alert's handle is a
       // placeholder holding its configuration, the sheet's a real container its children
@@ -346,6 +350,9 @@ final class AppleRenderer extends Renderer {
       case Prop.AccessibleLabel(t) => Zone(Shim.sui_set_accessible_label(handle, toCString(t)))
 
       case Prop.OpenUrl(url) => Zone(Shim.sui_set_open_url(handle, toCString(url)))
+
+      // The label beside the stepper shows Steps.digits(by) decimals, the rule every renderer shares.
+      case Prop.Step(by) => Shim.sui_set_step(handle, by, Steps.digits(by))
 
       case Prop.View(view) => platformViews.setView(handle, view)
 

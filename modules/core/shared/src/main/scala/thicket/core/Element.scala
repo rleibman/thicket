@@ -448,6 +448,63 @@ object dsl {
     * Both arguments take a plain value or a `Signal`, so a picker whose options are themselves loaded — a list of
     * countries, say — needs no special case.
     */
+  /** One choice from a short list, every option on screen with a radio mark; `selected` is an index, `-1` for none, as
+    * for `Picker`. On iOS, which has no radio control, a list with a checkmark on the chosen row.
+    */
+  def RadioGroup(
+    options:  Seq[String] | Signal[Seq[String]],
+    selected: Int | Signal[Int]
+  )(
+    onSelect: Int => Unit
+  ): Element = {
+    val optionsAttr = options match {
+      case s: Seq[String] @unchecked         => Static(Prop.Options(s))
+      case s: Signal[Seq[String]] @unchecked => Reactive(s, Prop.Options(_))
+    }
+    val selectedAttr = selected match {
+      case i: Int                    => Static(Prop.Selected(i))
+      case s: Signal[Int] @unchecked => Reactive(s, Prop.Selected(_))
+    }
+    // Options before the selection, as for Picker.
+    Widget(WidgetKind.RadioGroup, Seq(optionsAttr, selectedAttr, Static(Prop.OnSelect(onSelect))), Nil)
+  }
+
+  /** A number changed a `step` at a time with − and +, within `min` to `max`. On Android, which has no stepper, a −
+    * button, the value and a + button.
+    */
+  def Stepper(
+    value: Double | Signal[Double],
+    min:   Double = 0.0,
+    max:   Double = 100.0,
+    step:  Double = 1.0
+  )(
+    onChange: Double => Unit
+  ): Element = {
+    require(min.isFinite && max.isFinite, s"Stepper bounds must be finite numbers, not min=$min max=$max")
+    require(min <= max, s"Stepper min ($min) must be <= max ($max)")
+    require(step > 0.0 && step.isFinite, s"Stepper step must be a positive finite number, not $step")
+    value match {
+      case d: Double if !d.isFinite =>
+        throw new IllegalArgumentException(s"Stepper value must be finite, not $d")
+      case _ =>
+    }
+    val valueAttr = value match {
+      case d: Double                    => Static(Prop.Value(d))
+      case s: Signal[Double] @unchecked => Reactive(s, Prop.Value(_))
+    }
+    // Range and step first: a value is clamped to the range and shown to the step's precision.
+    Widget(
+      WidgetKind.Stepper,
+      Seq(
+        Static(Prop.Range(min, max)),
+        Static(Prop.Step(step)),
+        valueAttr,
+        Static(Prop.OnValueChange(onChange))
+      ),
+      Nil
+    )
+  }
+
   def Picker(
     options:  Seq[String] | Signal[Seq[String]],
     selected: Int | Signal[Int]
