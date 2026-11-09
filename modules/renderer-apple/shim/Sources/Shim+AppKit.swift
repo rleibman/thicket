@@ -335,7 +335,10 @@ private final class StepperView: NSStackView {
   func show() {
     let scale = Int16(max(0, digits))
     let behavior = NSDecimalNumberHandler(roundingMode: .plain, scale: scale, raiseOnExactness: false, raiseOnOverflow: false, raiseOnUnderflow: false, raiseOnDivideByZero: false)
-    label.stringValue = NSDecimalNumber(value: stepper.doubleValue).rounding(accordingToBehavior: behavior).stringValue
+    // NSDecimalNumber's stringValue drops trailing zeros (1.50 shows as "1.5"), so round with it
+    // and then print exactly `digits` decimals, as Steps.format does.
+    let rounded = NSDecimalNumber(value: stepper.doubleValue).rounding(accordingToBehavior: behavior).doubleValue
+    label.stringValue = String(format: "%.*f", Int(scale), rounded)
   }
 }
 

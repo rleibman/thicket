@@ -354,8 +354,7 @@ final class AppleRenderer extends Renderer {
       // The label beside the stepper shows Steps.digits(by) decimals, the rule every renderer shares.
       case Prop.Step(by) => Shim.sui_set_step(handle, by, Steps.digits(by))
 
-      case Prop.View(view) =>
-        Zone(Shim.sui_set_text(handle, toCString(s"${view.description}: not available on $toolkitName yet")))
+      case Prop.View(view) => platformViews.setView(handle, view)
 
       case Prop.StackAlignment(h, v) => Shim.sui_set_stack_alignment(handle, alignCode(h), alignCode(v))
 
