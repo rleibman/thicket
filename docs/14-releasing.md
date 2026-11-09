@@ -187,10 +187,11 @@ then dropped in the Portal; nothing was published. What it settled:
   when adding it means you are in the wrong account.
 - **Credentials:** the environment variables work. sbt 2's global directory here is
   `~/.config/sbt/2/`; `~/.sbt/1.0/` is sbt 1's and sbt 2 does not read it.
-- **Release from one machine, the Mac.** Off a Mac only the seven Apple modules with Swift
-  are skipped; the five without (`clipboard-apple`, `haptics-apple`, `secrets-apple`,
-  `share-apple`, `storage-apple`) are staged anyway. A Linux upload plus a Mac upload of
-  the same version would therefore collide on those five.
+- **Release from one machine, the Mac.** On non-Mac hosts the seven Apple modules gated by
+  `publish / skip := !isMac` are skipped (they require Xcode); this includes `thicket-location-apple`
+  even though its Swift code lives in `thicket-device-apple`. The five without (`clipboard-apple`,
+  `haptics-apple`, `secrets-apple`, `share-apple`, `storage-apple`) are staged anyway. A Linux upload
+  plus a Mac upload of the same version would therefore collide on those five.
 - **Rehearse with `sonaUpload`, then Drop** in the Portal (Deployments → the deployment →
   Drop). Only Publish is permanent.
 - **Every published module sets `description`**, next to its `name` in `build.sbt`. The
