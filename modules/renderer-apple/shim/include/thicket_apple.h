@@ -68,8 +68,7 @@ int32_t sui_image_decodes(const uint8_t *data, int32_t length);
      24 TabView            TabHostView()                  TabHostView()     an NSTabViewController, segmented control on top / a UITabBarController, a child controller
      25 Tab                TabPage()                      TabPage()         one tab: holds its one child; the title and symbol go on the item
      26 RadioGroup         RadioGroupView()               RadioListView()   radio NSButtons in one stack / UIKit has none: a checkmark list; the picker's functions drive it
-     27 Stepper            StepperView()                  StepperView()     an NSStepper / a UIStepper beside a label showing the value, which neither draws */
-     25 Tab                TabPage()                      TabPage()         one tab: holds its one child; the title and symbol go on the item
+     27 Stepper            StepperView()                  StepperView()     an NSStepper / a UIStepper beside a label showing the value, which neither draws
      28 Platform           PlatformHost()                 PlatformHost()    holds one view made outside the shim (sui_platform_set_view), pinned to its edges */
 sui_handle sui_create(int32_t kind);
 void sui_destroy(sui_handle h);
