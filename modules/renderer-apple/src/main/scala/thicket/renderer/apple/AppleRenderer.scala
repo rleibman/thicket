@@ -155,8 +155,8 @@ final class AppleRenderer extends Renderer {
       // An NSTabViewController / a UITabBarController, and one item each (#69).
       case WidgetKind.TabView => ShimKind.TabView
       case WidgetKind.Tab     => ShimKind.Tab
-        // The embedding point (docs/17 §17.3, #145): a host holding one view made outside the shim; the view comes
-        // with Prop.View (ApplePlatformView).
+      // The embedding point (docs/17 §17.3, #145): a host holding one view made outside the shim; the view comes
+      // with Prop.View (ApplePlatformView).
       case WidgetKind.Platform => ShimKind.Label
       // §12.2a exceptions (#150): radio NSButtons / a checkmark list, driven by the picker's functions; an NSStepper /
       // a UIStepper beside a label, driven by the slider's and sui_set_step.
