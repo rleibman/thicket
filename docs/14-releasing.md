@@ -175,6 +175,28 @@ shim in it.
 4. Run `bin/verify-getting-started.sh` and `bin/verify-getting-started-apple.sh` against the
    released version (`THICKET_VERSION=0.2.0`) once Central shows it.
 
+### What the practice run found (2026-11-09)
+
+A full rehearsal ran from Linux on a clean clone tagged `v0.2.0` locally: `publishSigned`
+staged 62 modules (jar, sources, javadoc, POM, each signed; 56 MB), every external
+dependency resolved on Central, and `sonaUpload` reached `VALIDATED`. The deployment was
+then dropped in the Portal; nothing was published. What it settled:
+
+- **The token belongs to the account that owns `net.leibman`**, which is an older Sonatype
+  login, not necessarily the one you would sign in with today. A "namespace exists" error
+  when adding it means you are in the wrong account.
+- **Credentials:** the environment variables work. sbt 2's global directory here is
+  `~/.config/sbt/2/`; `~/.sbt/1.0/` is sbt 1's and sbt 2 does not read it.
+- **Release from one machine, the Mac.** Off a Mac only the seven Apple modules with Swift
+  are skipped; the five without (`clipboard-apple`, `haptics-apple`, `secrets-apple`,
+  `share-apple`, `storage-apple`) are staged anyway. A Linux upload plus a Mac upload of
+  the same version would therefore collide on those five.
+- **Rehearse with `sonaUpload`, then Drop** in the Portal (Deployments → the deployment →
+  Drop). Only Publish is permanent.
+- **Every published module sets `description`**, next to its `name` in `build.sbt`. The
+  POM's description is what the Central and Maven search pages show; without one it is the
+  module name. A new module adds one.
+
 The examples have `publish / skip := true`; the `platforms` aggregate publishes the three
 renderers and the platform modules that are not in `root`: `thicket-http-apple`,
 `thicket-storage-android`, `thicket-sqlite-android`, `thicket-secrets-android`,
