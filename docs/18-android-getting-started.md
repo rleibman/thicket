@@ -1,6 +1,6 @@
 # 18. An Android app outside this repository
 
-Status: **proposed, 2026-11-12; the questions in §18.6 are open.** Nothing in here is built.
+Status: **approved, 2026-11-12: option A, a debug APK by default (§18.6).** Being built.
 
 ## 18.1 The gap
 
@@ -100,7 +100,7 @@ coming from Central and a `build.sh` that runs sbt and then Gradle.
 
 **Cost:** an afternoon.
 
-## 18.6 Questions for the owner
+## 18.6 Questions for the owner — answered 2026-11-12
 
 1. **Which shape?** A (recommended), B (spike first), or C.
 2. **Release or debug by default.**
@@ -111,3 +111,8 @@ coming from Central and a `build.sh` that runs sbt and then Gradle.
    Recommended: debug by default, and `thicketApk` taking `release` as an option.
 3. **An AAB for the Play Store**, or only an APK for now. Recommended: APK only; the AAB is a
    Gradle task the app can run when it gets to the Store.
+
+**Answers (2026-11-12):**
+1. **A**: `ThicketAndroidPlugin` and a template with an app-owned Gradle shell.
+2. **A debug APK by default**, with release as an option.
+3. **No AAB task.** The Play Store bundle is the app's own Gradle task when it gets there.
