@@ -72,6 +72,24 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-12 — **An Android app outside this repository: an sbt plugin, and a Gradle project the
+  app owns** (`docs/18`, option A; the owner's choice).
+  - **Built:** `ThicketAndroidPlugin` in `sbt-thicket` adds `thicket-renderer-android`,
+    `-release 17` and the SDK's `android.jar` for compiling. `thicketApk` /
+    `thicketApkRelease` copy the runtime jars into the Gradle project's `app/libs` and run
+    Gradle.
+  - **The template:** `templates/hello-thicket-android` carries the Gradle project, with S2's
+    three mandatory settings in it. After copying, it is the app's.
+  - **Rejected:** Gradle only, with a separate Scala module (option B). It is unmeasured, and
+    a cross-platform app would need sbt anyway.
+  - **Rejected:** a template only (option C). It would ship `build.sh`'s workaround to every
+    app.
+  - **Default build:** a debug APK, with release as an option. No AAB task: the app's Gradle
+    project has one when it gets to the Store.
+  - **sbt 2 and `android.jar`:** S2 had found that sbt 2 would not take a `File` on a
+    classpath. `Attributed.blank[HashedVirtualFileRef](fileConverter.value.toVirtualFile(path))`
+    inside `Def.uncached` works, so the plugin needs no `lib/` symlink.
+
 - 2026-11-03 — **Apple `RadioGroup` and `Stepper`: radio `NSButton`s / an iOS checkmark list;
   `NSStepper` / `UIStepper`** (#150, the Apple half of the entry below).
   - **Shim kinds 26 and 27**, `RadioGroupView` / `RadioListView` and `StepperView` on both

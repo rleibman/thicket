@@ -214,6 +214,25 @@ resolved jar, so nothing has to be cloned or built (#41).
 
 `./bin/verify-getting-started-apple.sh` checks both on a Mac.
 
+**On Android** sbt compiles the Scala and the app's own Gradle project packages it, because
+Gradle's Scala plugin cannot be applied to an Android module (`docs/18`).
+[templates/hello-thicket-android](templates/hello-thicket-android) is the sbt project plus an
+`android/` Gradle project that is yours to change, with the three settings Scala needs on
+Android already in it:
+
+```bash
+cp -r templates/hello-thicket-android ~/my-android-app && cd ~/my-android-app
+sbt thicketApk          # a debug APK; thicketApkRelease for the R8-shrunk one
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+`enablePlugins(ThicketAndroidPlugin)` adds `thicket-renderer-android`, `-release 17` and the
+SDK's `android.jar` for compiling (from `ANDROID_HOME`), and `thicketApk` copies the app's
+jars into `android/app/libs` before running Gradle, which needs a non-EA JDK 17+
+(`JAVA_HOME`). `./bin/verify-getting-started-android.sh` builds it outside the repo, installs
+it on the emulator, and taps the button. `ThicketAndroidPlugin` is new since 0.2.0, so until
+the next release this needs the local publish above (with `rendererAndroid/publishLocal`).
+
 `./bin/verify-getting-started.sh` checks all of the above still works, by building the
 template outside the repo against a fresh local publish. See
 [docs/14-releasing.md](docs/14-releasing.md) for versions and the compatibility policy.

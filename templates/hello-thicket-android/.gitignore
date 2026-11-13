@@ -1,0 +1,6 @@
+# Build output. app/libs is written by `sbt thicketApk` (the plugin's thicketAndroidJars).
+target/
+android/.gradle/
+android/app/build/
+android/app/libs/
+android/local.properties
