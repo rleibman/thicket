@@ -88,3 +88,40 @@ lazy val app = project.in(file(".")).enablePlugins(ThicketIosPlugin)   // iOS: a
 Both were first run by `bin/verify-getting-started-apple.sh`, which publishes locally, copies
 the two templates outside the repository and builds and runs them: the macOS app owns a window
 titled "Hello Thicket" after 10 s, and the iOS app is still running in the simulator after 10 s.
+
+## Android: `ThicketAndroidPlugin`
+
+```scala
+lazy val app = project.in(file(".")).enablePlugins(ThicketAndroidPlugin)
+```
+
+The one platform where this plugin does not produce the app. Gradle's `scala` plugin cannot be
+applied to an Android module: it applies `JavaPlugin`, which collides with AGP's
+configurations (measured in phase 0, S2). And nothing but Gradle packages an Android app well.
+So sbt compiles, and the app's own Gradle project packages (`docs/18`, option A).
+
+- **Dependencies:** `thicket-renderer-android` at the plugin's own version.
+- **Compiling:** `-release 17` (Scala 3.9's lowest Java output version). The SDK's
+  `android.jar` goes on the compile classpath only, taken from `thicketAndroidSdk`
+  (`ANDROID_HOME`, else `ANDROID_SDK_ROOT`, else the platform's default location) and
+  `thicketAndroidPlatform` (`android-36`). The device has the real one, so it is never copied.
+- **`exportJars`:** the app's own classes reach Gradle as a jar, like everything else.
+- **`thicketAndroidJars`:** writes the runtime classpath, Scala library included, into
+  `thicketGradleProject/app/libs`. It first deletes the jars a previous build left there.
+- **`thicketApk` / `thicketApkRelease`:** run that, then `gradlew assembleDebug` or
+  `assembleRelease` with `thicketGradleJavaHome` (`JAVA_HOME`; AGP refuses an EA JDK), and
+  return the APK.
+
+The Gradle project is not generated. It comes with
+[`templates/hello-thicket-android`](../../templates/hello-thicket-android) and belongs to the
+app from then on. It carries the three settings S2 found Scala needs on Android:
+`android.enableR8.fullMode=false`, the `*$lzy*` keep rule, and the `**/*.tasty` packaging
+exclusion.
+
+`bin/verify-getting-started-android.sh` builds the template outside the repo, installs it on
+the emulator, and reads the screen with `uiautomator`. The counter must read "Clicked 0
+times", and a tap on the button must make it "Clicked 1 times".
+- Measured 2026-11-12: debug 3 320 274 bytes; release (`VARIANT=release`) 182 026 bytes. Both
+  pass.
+- Without `.safeArea()` on the template's root, the check fails: Android 15+ draws edge to
+  edge, so the title bar sat over the button and took the tap.

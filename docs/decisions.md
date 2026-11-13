@@ -72,6 +72,45 @@ Go decision (see `08` §8.1) is made after S1, S2, S3 have reports.
 
 ## Decision log
 
+- 2026-11-12 — **An Android app outside this repository: an sbt plugin, and a Gradle project the
+  app owns** (`docs/18`, option A; the owner's choice).
+  - **Built:** `ThicketAndroidPlugin` in `sbt-thicket` adds `thicket-renderer-android`,
+    `-release 17` and the SDK's `android.jar` for compiling. `thicketApk` /
+    `thicketApkRelease` copy the runtime jars into the Gradle project's `app/libs` and run
+    Gradle.
+  - **The template:** `templates/hello-thicket-android` carries the Gradle project, with S2's
+    three mandatory settings in it. After copying, it is the app's.
+  - **Rejected:** Gradle only, with a separate Scala module (option B). It is unmeasured, and
+    a cross-platform app would need sbt anyway.
+  - **Rejected:** a template only (option C). It would ship `build.sh`'s workaround to every
+    app.
+  - **Default build:** a debug APK, with release as an option. No AAB task: the app's Gradle
+    project has one when it gets to the Store.
+  - **sbt 2 and `android.jar`:** S2 had found that sbt 2 would not take a `File` on a
+    classpath. `Attributed.blank[HashedVirtualFileRef](fileConverter.value.toVirtualFile(path))`
+    inside `Def.uncached` works, so the plugin needs no `lib/` symlink.
+
+- 2026-11-12 — **Releases: the Mac builds, Linux signs and uploads** (owner's choice,
+  2026-11-09; `bin/release.sh`, `docs/14` §14.5).
+  - **Why two machines.** Only a Mac can build every artefact: seven Apple modules carry Swift
+    libraries that need Xcode, and off a Mac their `publish` is skipped. But the signing key
+    and the Central token are on Linux. The Mac was missing gpg, the key and the token, so the
+    choice was between installing them there or bringing the Mac's output here.
+  - **Chosen:** the Mac runs `publish; platforms/publish` unsigned on a clone of the tag. The
+    staging directory comes back here, without macOS's `._*` files. It is checked, signed with
+    the key here, and uploaded as `USER_MANAGED`. Publishing is a click in the Portal, by the
+    owner.
+  - **Rejected:** a split upload, with Linux uploading its modules and the Mac uploading the
+    Apple ones. Off a Mac the five Apple modules without Swift are staged anyway, so two
+    uploads of one version would collide on them.
+  - **Rejected:** `sonaRelease`, which publishes as soon as the bundle validates. A Central
+    release can never be withdrawn, so the last step stays a person's.
+  - **Measured:**
+    - 0.2.0 went out this way on 2026-11-09: 69 modules, deployment `8fe68b2e…`, validated,
+      then published.
+    - `bin/release.sh 0.2.0` with `RELEASE_UPLOAD=0`, on 2026-11-12, rebuilt and signed the
+      same 69 (276 signatures, all verified).
+
 - 2026-11-03 — **The camera preview on Apple: `thicket-camera-preview-apple`** (#148, `docs/17`
   step 3, on #145's `ApplePlatformView`). Built for iOS and macOS; **no session has run yet**.
   - **Library:** `libthicketpreview.a`, one Swift file for both targets (`#if os(iOS)`), its own

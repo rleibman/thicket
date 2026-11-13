@@ -7,7 +7,7 @@
 **Native thick-client UIs in Scala 3.** One `Element` tree, real platform widgets —
 `android.view.*` on Android, UIKit/AppKit on iOS and macOS, GTK4 on Linux.
 
-Scala 3.9 · sbt 2.0.9 · Scala Native 0.5.12 · Apache-2.0 · **pre-release, not on Maven Central yet**
+Scala 3.9 · sbt 2.0.9 · Scala Native 0.5.12 · Apache-2.0 · **pre-release, 0.2.0 on Maven Central**
 
 <p align="center">
   <img src="docs/screenshots/android-todo.png" width="260" alt="The demo app on Android">
@@ -35,7 +35,7 @@ accessibility comes with the control rather than being retrofitted onto a canvas
 | Widgets | **26 of 32** as widgets, all 26 measured on every renderer (`TabView` reached AppKit and UIKit in [#69](https://github.com/rleibman/thicket/issues/69); `RadioGroup` and `Stepper`, built as §12.2a exceptions, in [#150](https://github.com/rleibman/thicket/issues/150): radio `NSButton`s and an iOS checkmark list, `NSStepper` and `UIStepper`). **32 of 32** covered, counting the six the framework provides another way (SafeArea and Link as props, List as `LazyColumn`, NavigationStack as `Nav`, Menu as a context-menu prop, Toolbar as screen actions) → [docs/12](docs/12-component-status.md) |
 | Navigation | Native container on all four: `AdwNavigationView`, a `FrameLayout` + `Slide`, `UINavigationController`, a macOS sidebar. Back gesture and title bar are the platform's own |
 | Theming | By role, scoped to a subtree with `Provide` |
-| Published artefacts | `net.leibman`, tagged **v0.1.0** — but not on Maven Central yet, so `publishLocal` is the only route. [docs/14](docs/14-releasing.md) |
+| Published artefacts | **0.2.0 on Maven Central** (2026-11-09), group `net.leibman`, 69 modules: the framework, every renderer and device service, and the `sbt-thicket` plugin. Two known Apple faults in it, fixed on `main` by #159. [docs/14](docs/14-releasing.md) |
 | API stability | **None.** Expect breaking changes without notice |
 | Windows | Not started, and out of the 0.1 scope |
 
@@ -44,10 +44,14 @@ platforms rather than sketched on one. Twenty-six widgets on every renderer, wit
 toolkit. Where a prop is handled but not yet honoured on a platform, docs/12 §12.4 says which.
 
 What is genuinely missing: nothing from the v1 catalogue — its last two entries, Radio and
-Stepper, are built as §12.2a exceptions (#150) — and Maven Central publishing. An app can be built from
-outside this repo on GTK, macOS and the iOS simulator — `bin/verify-getting-started.sh` and
-`bin/verify-getting-started-apple.sh` check exactly that, by building a template outside the
-repo against published artefacts and running it.
+Stepper, are built as §12.2a exceptions (#150). An app can be built from outside this repo,
+from Maven Central alone, on GTK, macOS and the iOS simulator — `bin/verify-getting-started.sh`
+and `bin/verify-getting-started-apple.sh` check exactly that, by building a template outside
+the repo against the released artefacts and running it. Android has its template and plugin
+too (`templates/hello-thicket-android`, `ThicketAndroidPlugin`, checked on the emulator by
+`bin/verify-getting-started-android.sh`), but they are newer than 0.2.0: until the next
+release an Android app needs a local publish. And the Apple jars carry simulator-only Swift
+libraries, so nothing runs on a real iPhone yet (#161).
 
 ## Getting started
 
@@ -166,11 +170,13 @@ cp -r templates/hello-thicket ~/my-app && cd ~/my-app
 sbt nativeLink && ./target/out/native0.5/scala-3.9.0/hello-thicket/hello-thicket
 ```
 
-It depends on published artefacts rather than on this repo. Until a release is on Maven
-Central you need a local publish first:
+It depends on published artefacts rather than on this repo: by default the latest release on
+Maven Central, `0.2.0`. To build it against this checkout instead, publish locally first and
+name that version:
 
 ```bash
 cd /path/to/thicket && sbt 'signalsNative/publishLocal; rendererApiNative/publishLocal; coreNative/publishLocal; rendererGtk/publishLocal; sbtThicket/publishLocal'
+cd ~/my-app && THICKET_VERSION=<the version sbt printed> sbt nativeLink
 ```
 
 The whole of the build configuration is one plugin:
@@ -213,6 +219,25 @@ resolved jar, so nothing has to be cloned or built (#41).
   `ios-app/build-app.sh`.
 
 `./bin/verify-getting-started-apple.sh` checks both on a Mac.
+
+**On Android** sbt compiles the Scala and the app's own Gradle project packages it, because
+Gradle's Scala plugin cannot be applied to an Android module (`docs/18`).
+[templates/hello-thicket-android](templates/hello-thicket-android) is the sbt project plus an
+`android/` Gradle project that is yours to change, with the three settings Scala needs on
+Android already in it:
+
+```bash
+cp -r templates/hello-thicket-android ~/my-android-app && cd ~/my-android-app
+sbt thicketApk          # a debug APK; thicketApkRelease for the R8-shrunk one
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+`enablePlugins(ThicketAndroidPlugin)` adds `thicket-renderer-android`, `-release 17` and the
+SDK's `android.jar` for compiling (from `ANDROID_HOME`), and `thicketApk` copies the app's
+jars into `android/app/libs` before running Gradle, which needs a non-EA JDK 17+
+(`JAVA_HOME`). `./bin/verify-getting-started-android.sh` builds it outside the repo, installs
+it on the emulator, and taps the button. `ThicketAndroidPlugin` is new since 0.2.0, so until
+the next release this needs the local publish above (with `rendererAndroid/publishLocal`).
 
 `./bin/verify-getting-started.sh` checks all of the above still works, by building the
 template outside the repo against a fresh local publish. See
@@ -413,6 +438,8 @@ the framework's source.*
 | 14 | [docs/14-releasing.md](docs/14-releasing.md) | Versions from tags, `early-semver`, what a consumer needs, how to cut a release |
 | 15 | [docs/15-icon-system.md](docs/15-icon-system.md) | The icon system: the design, and where what was built differs |
 | 16 | [docs/16-device-services.md](docs/16-device-services.md) | Device services — location, motion, camera, files, storage, HTTP: what Thicket provides, what libraries cover, the plan |
+| 17 | [docs/17-camera-preview.md](docs/17-camera-preview.md) | The live camera preview, and the embedding point it needed: a platform view inside the tree |
+| 18 | [docs/18-android-getting-started.md](docs/18-android-getting-started.md) | An Android app outside this repository: the options for a template and plugin (proposed) |
 | 11 | [docs/11-what-it-looks-like.md](docs/11-what-it-looks-like.md) | The design ideas, and the gap each one exposed |
 | 10 | [docs/10-phase-0-findings.md](docs/10-phase-0-findings.md) | Every phase-0 measurement and the GO decision |
 | — | [docs/decisions.md](docs/decisions.md) | Versions, tooling, the dated decision log |
