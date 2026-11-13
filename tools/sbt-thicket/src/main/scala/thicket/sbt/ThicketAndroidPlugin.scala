@@ -153,13 +153,17 @@ object ThicketAndroidPlugin extends AutoPlugin {
     variant:  String,
     log:      Logger
   ): File = {
-    val wrapper = project / "gradlew"
+    val isWindows = sys.props.getOrElse("os.name", "").toLowerCase.contains("win")
+    val wrapper = if isWindows then project / "gradlew.bat" else project / "gradlew"
     if !wrapper.isFile then sys.error(s"thicket: no Gradle wrapper at $wrapper (thicketGradleProject)")
-    val _ = wrapper.setExecutable(true)
+    if !isWindows then wrapper.setExecutable(true)
     val task = s"assemble${variant.capitalize}"
     val env = javaHome.map(h => "JAVA_HOME" -> h.getAbsolutePath).toSeq
+    val cmd =
+      if isWindows then Seq("cmd", "/c", wrapper.getAbsolutePath, task, "--console=plain", "-q")
+      else Seq(wrapper.getAbsolutePath, task, "--console=plain", "-q")
     log.info(s"thicket: gradle $task in $project")
-    val code = Process(Seq(wrapper.getAbsolutePath, task, "--console=plain", "-q"), project, env*).!(log)
+    val code = Process(cmd, project, env*).!(log)
     if code != 0 then sys.error(s"thicket: gradle $task failed (exit $code)")
     val apks = (project / "app" / "build" / "outputs" / "apk" / variant * "*.apk").get()
     val apk = apks.headOption.getOrElse(sys.error(s"thicket: gradle $task wrote no APK"))
