@@ -1,6 +1,6 @@
 # 18. An Android app outside this repository
 
-Status: **approved, 2026-11-12: option A, a debug APK by default (§18.6).** Being built.
+Status: **built, 2026-11-12 (#164): option A, a debug APK by default (§18.6).** `ThicketAndroidPlugin`, `templates/hello-thicket-android` and `bin/verify-getting-started-android.sh`; measured in `tools/sbt-thicket/README.md`. Not in a release yet: 0.2.0 predates it.
 
 ## 18.1 The gap
 

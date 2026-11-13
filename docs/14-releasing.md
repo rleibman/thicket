@@ -86,7 +86,7 @@ And the plugin, which is what a consumer actually adds:
 
 | Artefact | For |
 |---|---|
-| `net.leibman:sbt-thicket` (`_sbt2_3`) | the build: GTK or Apple link flags, the Scala Native mode and GC, and the dependencies above. `ThicketGtkPlugin`, `ThicketMacPlugin`, `ThicketIosPlugin` |
+| `net.leibman:sbt-thicket` (`_sbt2_3`) | the build: GTK or Apple link flags, the Scala Native mode and GC, and the dependencies above. `ThicketGtkPlugin`, `ThicketMacPlugin`, `ThicketIosPlugin`; and, since after 0.2.0, `ThicketAndroidPlugin` (compiles for Android and hands the jars to the app's Gradle project, `docs/18`) |
 
 The plugin takes the group id from the build that published it (`BuildInfo.organization`),
 as it takes the version, so it cannot ask for a group the framework was not published under.
