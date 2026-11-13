@@ -535,8 +535,10 @@ private[apple] object CameraShim {
 
 #include <stdint.h>
 
-/* An NSView * or UIView *, as in thicket_apple.h. */
+/* An NSView * or UIView *. If thicket_apple_types.h was already included, avoid redefining it. */
+#ifndef THICKET_APPLE_TYPES_H
 typedef void *sui_handle;
+#endif
 typedef void (*thk_prev_int_cb)(int64_t ctx, int32_t result);
 typedef void (*thk_prev_text_cb)(int64_t ctx, const char *path);
 """)
