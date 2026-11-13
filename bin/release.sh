@@ -6,7 +6,7 @@
 # The route the first release took (0.2.0, 2026-11-09; docs/14 §14.5):
 #
 #   1. The Mac clones the tag `v<version>` and runs `publish; platforms/publish` unsigned into
-#      `target/sona-staging`. Only a Mac can build every artefact: seven Apple modules carry
+#      `target/sona-staging`. Only a Mac can build every artefact: eight Apple modules carry
 #      Swift libraries that need Xcode, and off a Mac their `publish` is skipped. The Mac needs
 #      no gpg and no Central token.
 #   2. The staging directory comes back here, without macOS's AppleDouble `._*` files.

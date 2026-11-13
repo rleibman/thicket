@@ -598,17 +598,20 @@ object Gallery {
                 )
             }
           ),
-          // A live preview in the app's own layout (docs/17), through the embedding point. Android's is Camera2.
+          // A live preview in the app's own layout (docs/17), through the embedding point. Android's is Camera2,
+          // Apple's AVCaptureSession (#148).
           section("Camera preview — live, in the app's own layout")(
             preview match {
               case None       => Label("No camera preview on this platform yet", emphasis = Emphasis.Secondary)
               case Some(demo) =>
                 Column(spacing = 8)(
                   Label(demo.status),
-                  demo.preview.view(),
+                  // Hidden, the widget is unmounted, which must release the camera.
+                  Show(demo.shown)(demo.preview.view()),
                   Row(spacing = 8)(
                     Button("Take from the preview")(demo.take()),
-                    Button("Flip the camera")(demo.flip())
+                    Button("Flip the camera")(demo.flip()),
+                    Button("Hide or show the preview")(demo.toggleShown())
                   ),
                   Label(demo.lastPhoto.map(CameraPreviewDemo.photoLabel))
                 )

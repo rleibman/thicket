@@ -18,6 +18,7 @@ package example.gallery
 
 import scala.scalanative.unsafe.exported
 import thicket.camera.apple.AppleCamera
+import thicket.camera.preview.apple.AppleCameraPreview
 import thicket.core.GcState
 import thicket.device.apple.AppleDevice
 import thicket.location.apple.AppleLocation
@@ -61,6 +62,7 @@ object GalleryIos {
         val camera = AppleCamera(storage.dirs.cache)
         // PHPickerViewController and UIDocumentPickerViewController (#125).
         val pickers = ApplePickers(storage.dirs.cache)
+        val device = AppleDevice()
         if sys.env.contains("THICKET_GALLERY_SELFTEST") then
           AppleApp.postToUi { () =>
             GallerySelfTest.run(
@@ -104,7 +106,7 @@ object GalleryIos {
               storage,
               NativeSqlite.driver,
               () => AppleSecrets.open(bundleId),
-              device = Some(AppleDevice()),
+              device = Some(device),
               // CLLocationManager (#118), listened to while the app is in front.
               location = Some(AppleLocation()),
               motion = Some(IosMotion()),
@@ -113,7 +115,9 @@ object GalleryIos {
               haptics = Some(AppleHaptics()),
               pickers = Some(pickers.photos -> pickers.documents),
               // The share sheet (#134): a file is shared as a copy under the cache directory.
-              share = Some(AppleShare(storage.dirs.cache))
+              share = Some(AppleShare(storage.dirs.cache)),
+              // The live preview (#148): AVCaptureSession in a UIView.
+              cameraPreview = Some(AppleCameraPreview(device, storage.dirs.cache))
             )
           ),
           // The Platform section's view (#145): a UILabel made outside the renderer.

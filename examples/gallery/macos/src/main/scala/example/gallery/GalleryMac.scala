@@ -17,6 +17,7 @@
 package example.gallery
 
 import thicket.camera.Camera
+import thicket.camera.preview.apple.AppleCameraPreview
 import thicket.device.apple.AppleDevice
 import thicket.location.Location
 import thicket.motion.Motion
@@ -48,6 +49,7 @@ object GalleryMac {
       val storage = AppleStorage(bundleId)
       // NSOpenPanel and NSSavePanel, as sheets on the gallery's window (#125).
       val pickers = ApplePickers(storage.dirs.cache)
+      val device = AppleDevice()
       if sys.env.contains("THICKET_GALLERY_SELFTEST") then
         AppleApp.postToUi(() =>
           GallerySelfTest.run(Some(storage), bundleId, svgWhereDecoded = true, pickers = Some(pickers -> false))
@@ -58,7 +60,7 @@ object GalleryMac {
             storage,
             NativeSqlite.driver,
             () => AppleSecrets.open(bundleId),
-            device = Some(AppleDevice()),
+            device = Some(device),
             // No location service on the desktop yet (docs/16 §16.9, decision 7), as on GTK.
             location = Some(Location.unavailable(GalleryLocationChecks.noLocation)),
             // No CMMotionManager on macOS (docs/16 §16.9, decision 7), as on GTK.
@@ -69,7 +71,9 @@ object GalleryMac {
             haptics = Some(AppleHaptics()),
             pickers = Some(pickers.photos -> pickers.documents),
             // The share sheet (#134): a file is shared as a copy under the cache directory.
-            share = Some(AppleShare(storage.dirs.cache))
+            share = Some(AppleShare(storage.dirs.cache)),
+            // The live preview (#148): AVCaptureSession in an NSView, the Mac's own camera as Front.
+            cameraPreview = Some(AppleCameraPreview(device, storage.dirs.cache))
           )
         )
       // The SVG where NSImage draws it - macOS 14 and later - and the PNG made from it otherwise
