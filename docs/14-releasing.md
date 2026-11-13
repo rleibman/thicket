@@ -130,15 +130,28 @@ and `bin/verify-getting-started-apple.sh` builds and runs `templates/hello-thick
 ## 14.4 Checking the getting-started still works
 
 ```bash
-./bin/verify-getting-started.sh
+bin/verify-getting-started.sh                          # this checkout, published locally
+THICKET_VERSION=0.2.0 bin/verify-getting-started.sh    # a release, from Maven Central alone
 ```
 
-Publishes the framework **and `sbt-thicket`** locally, copies `templates/hello-thicket`
-**outside** the repo, and builds and runs it against the published artefacts. The plugin is
-resolved by the template's meta-build, so a plugin that does not publish or does not load
-fails before anything is compiled. Outside is the point: building the
+The first form publishes the framework **and `sbt-thicket`** locally, copies
+`templates/hello-thicket` **outside** the repo, and builds and runs it against the published
+artefacts. The plugin is resolved by the template's meta-build, so a plugin that does not
+publish or does not load fails before anything is compiled. Outside is the point: building the
 template in place would resolve the modules as project dependencies and prove nothing about
 what a stranger gets from a jar.
+
+The second form checks a release. Nothing is published; sbt gets an empty coursier cache, Ivy
+home and global base, so a jar left in `~/.ivy2/local` cannot stand in for Central; and the
+script fails unless every thicket jar the build used was downloaded from `repo1.maven.org`.
+Until 2026-11-12 the script ignored `THICKET_VERSION` and always published locally, so "run it
+against the release" checked the local jars. Measured: `0.2.0` passes; `0.2.0-SNAPSHOT`, which
+exists only in `~/.ivy2/local`, fails to resolve.
+
+`bin/verify-getting-started-apple.sh` takes the same two forms on the Mac, for
+`templates/hello-thicket-macos` and `templates/hello-thicket-ios` (the simulator). Against
+`0.2.0` from Central, 2026-11-12: the macOS app showed its 320×192 window and the iOS app came
+up in the simulator.
 
 A GUI app does not exit on its own, so staying up is the pass — the script treats a 10s
 timeout as success and any other exit, or a `signal 11`, `CRITICAL` or theme-parser line, as
@@ -151,29 +164,64 @@ person can measure that; this checks the half that does not need one.
 
 The group id is `net.leibman` (decision log, 2026-10-20), on the Central Portal.
 
-Prerequisites, once per machine: a GPG key whose public half is on a keyserver, and
-`SONATYPE_USERNAME` / `SONATYPE_PASSWORD` in the environment (a Central Portal user token,
-not the login), which sbt 2's built-in `sonaUpload` reads. Neither goes in the repository;
-`.gitignore` refuses `*.asc`, `*.gpg` and `.env*`.
+**The Mac builds; Linux signs and uploads** (decision log, 2026-11-12). Only a Mac can build
+every artefact: seven Apple modules carry Swift libraries that need Xcode, and off a Mac their
+`publish` is skipped rather than shipping a jar with no library in it. The signing key and the
+Central token stay on Linux, so the Mac needs neither gpg nor credentials.
+`bin/release.sh` does the whole of it.
 
-The jars come from two machines, because `thicket-renderer-apple` carries a Swift library
-only Xcode can build — off a Mac its `publish` is skipped rather than shipping a jar with no
-shim in it.
+Prerequisites, once, on Linux:
+- a GPG key whose public half is on a keyserver (`keyserver.ubuntu.com` is enough);
+- `SONATYPE_USERNAME` / `SONATYPE_PASSWORD` in the environment: a Central Portal **user
+  token**, not the login, generated in the account that owns `net.leibman`;
+- ssh to the Mac without a password, and the Android SDK's `android.jar` (the Mac has no
+  Android SDK; the script copies it over).
 
-1. On a clean `main` that CI has passed: `git tag v0.2.0` and push the tag.
-2. Check the version is the release and not a describe version:
-   `sbt "show coreJVM/version"` must print `0.2.0`.
-3. **On the Mac** (it can build every artefact, the Apple one included):
+None of it goes in the repository; `.gitignore` refuses `*.asc`, `*.gpg` and `.env*`.
+
+1. On a `main` that CI has passed: `git tag -a v0.3.0 -m "…"` and push the tag.
+2. Rehearse, which uploads nothing:
    ```bash
-   modules/renderer-android/setup.sh                  # android.jar, for the Android renderer
-   sbt "publishSigned; platforms/publishSigned"       # root + renderers, into localStaging
-   sbt sonaUpload                                     # upload; release by hand in the Portal UI
+   THICKET_MAC_HOST=<mac> THICKET_GPG_KEY=<fingerprint> RELEASE_UPLOAD=0 bin/release.sh 0.3.0
    ```
-   `sonaRelease` instead of `sonaUpload` publishes as soon as the bundle validates. Prefer
-   `sonaUpload` until the procedure has run once end to end: a Central release cannot be
-   withdrawn.
-4. Run `bin/verify-getting-started.sh` and `bin/verify-getting-started-apple.sh` against the
-   released version (`THICKET_VERSION=0.2.0`) once Central shows it.
+3. The same without `RELEASE_UPLOAD=0`. The script:
+   - checks that the tag is on `origin/main`, and refuses anything but `X.Y.Z`, `-M<n>` or `-RC<n>`;
+   - has the Mac clone the tag into a temporary directory and run `publish; platforms/publish`,
+     **unsigned**, into `target/sona-staging`;
+   - copies the staging back **without** macOS's `._*` files (`COPYFILE_DISABLE=1 tar
+     --no-xattrs`; a plain `tar` adds one beside every file);
+   - checks every module has a jar, sources, javadoc and a POM with the fields Central
+     requires, that every checksum matches and nothing depends on a SNAPSHOT;
+   - signs every artefact here and verifies every signature;
+   - uploads the bundle as `USER_MANAGED` and waits until Central reports `VALIDATED`.
+
+   **It does not publish.**
+4. In the Portal, View Deployments, check the component list, then **Publish** — the only
+   permanent step: a Central release can never be withdrawn or replaced — or Drop.
+5. Once `repo1.maven.org` has it (10–30 minutes), run both verify scripts with
+   `THICKET_VERSION` (§14.4). The search sites lag by hours, and mvnrepository.com, which is
+   not Sonatype's, by days or weeks; dependency resolution uses neither.
+6. Move the templates' default to the new version, in a PR: the `getOrElse("THICKET_VERSION",
+   …)` in each `templates/*/project/plugins.sbt`. A template that defaults to an unpublished
+   version fails for anyone who copies it — measured: until 2026-11-12 all three defaulted to
+   `0.1.0`, which was never published, and the GTK template failed to resolve
+   `sbt-thicket_sbt2_3:0.1.0` with empty caches.
+
+### 0.2.0, the first release (2026-11-09)
+
+Tag `v0.2.0` on `3b37d27`. 69 modules (jar, sources, javadoc, POM, each signed; 52 MB zipped),
+deployment `8fe68b2e-b442-43c9-a690-ce6673702adf`, validated, then published by hand. All 69
+POMs on `repo1.maven.org` the same day; the jars downloaded from there match the ones uploaded
+(checked for four, the Apple renderer among them).
+
+Released knowing two Apple faults that #159 fixes: a `Platform` host shows "not available"
+instead of its view, and the Stepper's label drops trailing zeros.
+
+**Rebuilds are not byte-identical.** `bin/release.sh` rehearsed against `v0.2.0` on
+2026-11-12: the 44 JVM and Scala.js jars matched Central's exactly, the 25 Scala Native jars
+did not. The cause is not established; the build directory (a different temporary clone) is
+the likely difference. It does not affect users, but a release cannot be verified by
+rebuilding it.
 
 ### What the practice run found (2026-11-09)
 
@@ -187,13 +235,13 @@ then dropped in the Portal; nothing was published. What it settled:
   when adding it means you are in the wrong account.
 - **Credentials:** the environment variables work. sbt 2's global directory here is
   `~/.config/sbt/2/`; `~/.sbt/1.0/` is sbt 1's and sbt 2 does not read it.
-- **Release from one machine, the Mac.** On non-Mac hosts the seven Apple modules gated by
+- **Build on one machine, the Mac.** On non-Mac hosts the seven Apple modules gated by
   `publish / skip := !isMac` are skipped (they require Xcode); this includes `thicket-location-apple`
   even though its Swift code lives in `thicket-device-apple`. The five without (`clipboard-apple`,
   `haptics-apple`, `secrets-apple`, `share-apple`, `storage-apple`) are staged anyway. A Linux upload
   plus a Mac upload of the same version would therefore collide on those five.
-- **Rehearse with `sonaUpload`, then Drop** in the Portal (Deployments → the deployment →
-  Drop). Only Publish is permanent.
+- **Rehearse, then Drop** in the Portal (Deployments → the deployment → Drop). Only
+  Publish is permanent. `bin/release.sh` now rehearses without uploading (`RELEASE_UPLOAD=0`).
 - **Every published module sets `description`**, next to its `name` in `build.sbt`. The
   POM's description is what the Central and Maven search pages show; without one it is the
   module name. A new module adds one.

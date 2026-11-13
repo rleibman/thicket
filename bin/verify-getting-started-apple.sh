@@ -11,6 +11,13 @@
 # "It came up" is measured, not assumed:
 #   macOS  the app is still running after 10s, it owns a window, and no crash report appeared;
 #   iOS    the app is still running in the simulator after 10s (ios-app/build-app.sh checks).
+#
+# Two modes, as in bin/verify-getting-started.sh:
+#   bin/verify-getting-started-apple.sh ["iPhone 17"]                  publishes this checkout
+#   THICKET_VERSION=0.2.0 bin/verify-getting-started-apple.sh [...]    a release, from Maven
+#                                                                     Central alone
+# In the second nothing is published, sbt gets an empty coursier cache, Ivy home and global
+# base, and the script fails unless every thicket jar the builds used came from repo1.maven.org.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -19,27 +26,56 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 device="${1:-iPhone 17}"
 
-echo "== publishing the framework locally (needs Xcode: the renderer's jar carries the Swift shim) =="
-for t in signalsNative rendererApiNative coreNative rendererApple sbtThicket; do
-  sbt --error "$t/publishLocal"
-done
+if [ -n "${THICKET_VERSION:-}" ]; then
+  ver="$THICKET_VERSION"
+  echo "== a released version, $ver: resolving from Maven Central only =="
+  export COURSIER_CACHE="$work/coursier"
+  export SBT_OPTS="${SBT_OPTS:-} -Dsbt.ivy.home=$work/ivy -Dsbt.global.base=$work/sbt-global -Dsbt.boot.directory=$HOME/.sbt/boot"
+  # The server's socket lives under the global base, and macOS's $TMPDIR is long enough that
+  # the socket path passes the 104-byte limit ("socket file absolute path too long" —
+  # measured). sbt's own suggested fix: a short server directory.
+  server_dir=$(mktemp -d /tmp/thk.XXXXXX)
+  trap 'rm -rf "$work" "$server_dir"' EXIT
+  export SBT_GLOBAL_SERVER_DIR="$server_dir"
+else
+  echo "== publishing the framework locally (needs Xcode: the renderer's jar carries the Swift shim) =="
+  for t in signalsNative rendererApiNative coreNative rendererApple sbtThicket; do
+    sbt --error "$t/publishLocal"
+  done
 
-# The version, wherever it is on the line. sbt's thin client surrounds it with "[success]"
-# lines and terminal escape sequences, and under the CI runner an escape *precedes* the
-# version on its own line — so escapes are stripped and the version matched anywhere, not
-# at the start. `|| true`: under `pipefail` a grep that finds nothing would otherwise end the
-# script silently, before the message below could say why.
-version_of() {
-  sbt --error "print $1/version" | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' |
-    grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*' | tail -1 || true
+  # The version, wherever it is on the line. sbt's thin client surrounds it with "[success]"
+  # lines and terminal escape sequences, and under the CI runner an escape *precedes* the
+  # version on its own line — so escapes are stripped and the version matched anywhere, not
+  # at the start. `|| true`: under `pipefail` a grep that finds nothing would otherwise end the
+  # script silently, before the message below could say why.
+  version_of() {
+    sbt --error "print $1/version" | tr -d '\r' | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' |
+      grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*' | tail -1 || true
+  }
+  ver=$(version_of coreNative)
+  pluginver=$(version_of sbtThicket)
+  [ -n "$ver" ] || { echo "FAIL: could not read the version from sbt" >&2; exit 1; }
+  # The plugin puts its own version on the dependencies it adds; one build makes both, so they
+  # agree — checked, because the failure would be a resolution error in someone else's project.
+  [ "$ver" = "$pluginver" ] || { echo "FAIL: framework $ver but sbt-thicket $pluginver" >&2; exit 1; }
+  echo "== version $ver =="
+fi
+
+# In released mode: every thicket jar the builds used must have come from Maven Central, and
+# the ones named must be among them.
+from_central() {
+  [ -n "${THICKET_VERSION:-}" ] || return 0
+  local jars m
+  jars=$(find "$COURSIER_CACHE" -path '*/net/leibman/*' -name "*-$ver.jar" ! -name '*-sources.jar' ! -name '*-javadoc.jar')
+  echo "$jars" | sed -E 's|.*/https/([^/]+)/.*/([^/]+)$|== resolved \2 from \1|'
+  for m in "$@"; do
+    echo "$jars" | grep -q "/https/repo1.maven.org/maven2/net/leibman/$m/$ver/" ||
+      { echo "FAIL: $m $ver was not downloaded from Maven Central" >&2; exit 1; }
+  done
+  if echo "$jars" | grep -v '/https/repo1.maven.org/' | grep -q .; then
+    echo "FAIL: a thicket jar came from somewhere other than Maven Central" >&2; exit 1
+  fi
 }
-ver=$(version_of coreNative)
-pluginver=$(version_of sbtThicket)
-[ -n "$ver" ] || { echo "FAIL: could not read the version from sbt" >&2; exit 1; }
-# The plugin puts its own version on the dependencies it adds; one build makes both, so they
-# agree — checked, because the failure would be a resolution error in someone else's project.
-[ "$ver" = "$pluginver" ] || { echo "FAIL: framework $ver but sbt-thicket $pluginver" >&2; exit 1; }
-echo "== version $ver =="
 
 # --- macOS -------------------------------------------------------------------------------
 cp -r templates/hello-thicket-macos "$work/mac"
@@ -99,11 +135,13 @@ crashes_after=$(ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -c '^hell
 if grep -qiE "Unhandled signal|uncaught|Fatal error" "$work/mac-run.log"; then
   echo "FAIL: the macOS app reported a problem:" >&2; cat "$work/mac-run.log" >&2; exit 1
 fi
-echo "PASS: macOS — outside the repo, it resolves, links and runs against $ver"
+from_central sbt-thicket_sbt2_3 thicket-core_native0.5_3 thicket-renderer-apple_native0.5_3 thicket-signals_native0.5_3
+echo "PASS: macOS — outside the repo, it resolves, links and runs against $ver${THICKET_VERSION:+ from Maven Central}"
 
 # --- iOS simulator -----------------------------------------------------------------------
 cd "$root"
 cp -r templates/hello-thicket-ios "$work/ios"
 echo "== iOS: building the template outside the repo, and running it on '$device' =="
 THICKET_VERSION="$ver" "$work/ios/ios-app/build-app.sh" "$device"
-echo "PASS: iOS simulator — outside the repo, it resolves, links and runs against $ver"
+from_central sbt-thicket_sbt2_3 thicket-core_native0.5_3 thicket-renderer-apple_native0.5_3
+echo "PASS: iOS simulator — outside the repo, it resolves, links and runs against $ver${THICKET_VERSION:+ from Maven Central}"
