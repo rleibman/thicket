@@ -21,7 +21,7 @@ import java.nio.file.{Files, Path, Paths}
 /** Writes the generated artefacts into the repository, or checks that they are current.
   *
   * {{{
-  * sbt shimGen/run                          # regenerate the renderer, http, device, motion, pickers and camera headers and externs
+  * sbt shimGen/run                          # regenerate the renderer, http, device, motion, pickers, camera and preview headers and externs
   * sbt "shimGen/run --check"                # exit 1 if any differs from what Abi or HttpAbi generates
   * sbt "shimGen/run --scaffold <dir>"       # Swift @_cdecl signatures for a new shim, into <dir>
   * }}}
@@ -51,7 +51,11 @@ object Main {
       Emit.pickersScalaExterns()
     ),
     "modules/camera-apple/shim/include/thicket_camera.h"                        -> (() => Emit.cameraHeader()),
-    "modules/camera-apple/src/main/scala/thicket/camera/apple/CameraShim.scala" -> (() => Emit.cameraScalaExterns())
+    "modules/camera-apple/src/main/scala/thicket/camera/apple/CameraShim.scala" -> (() => Emit.cameraScalaExterns()),
+    "modules/camera-preview-apple/shim/include/thicket_preview.h"               -> (() => Emit.previewHeader()),
+    "modules/camera-preview-apple/src/main/scala/thicket/camera/preview/apple/PreviewShim.scala" -> (() =>
+      Emit.previewScalaExterns()
+    )
   )
 
   private def root: Path = Paths.get(sys.props.getOrElse("thicket.root", ".")).toAbsolutePath.normalize
@@ -75,7 +79,7 @@ object Main {
               println(s"wrote     $rel")
             }
         }
-        println(s"${Abi.all.size} sui functions, ${Abi.kinds.size} kind codes, ${HttpAbi.all.size} thk_http functions, ${DeviceAbi.all.size} thk_dev functions, ${MotionAbi.all.size} thk_mot functions, ${PickersAbi.all.size} thk_pick functions, ${CameraAbi.all.size} thk_cam functions.")
+        println(s"${Abi.all.size} sui functions, ${Abi.kinds.size} kind codes, ${HttpAbi.all.size} thk_http functions, ${DeviceAbi.all.size} thk_dev functions, ${MotionAbi.all.size} thk_mot functions, ${PickersAbi.all.size} thk_pick functions, ${CameraAbi.all.size} thk_cam functions, ${PreviewAbi.all.size} thk_prev functions.")
 
       case "--check" :: Nil =>
         val stale = generated.collect { case (rel, text) if !current(root.resolve(rel)).contains(text()) => rel }

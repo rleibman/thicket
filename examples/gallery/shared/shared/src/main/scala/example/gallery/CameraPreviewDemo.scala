@@ -49,6 +49,14 @@ final class CameraPreviewDemo(val preview: CameraPreview) {
     flips.update(_ + 1)
   }
 
+  /** Whether the preview's widget is in the layout: hiding it unmounts it, which must stop the camera (#148). */
+  val shown: Var[Boolean] = Var(true)
+
+  def toggleShown(): Unit = shown.update(!_)
+
+  /** Reads the availability again, after a permission was answered. */
+  def refresh(): Unit = flips.update(_ + 1)
+
 }
 
 object CameraPreviewDemo {

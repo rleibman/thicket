@@ -487,4 +487,5 @@ Every service gets a gallery section and self-test checks on every host where it
 6. **Tier 3** as separate designs, live camera preview first if wanted. *The owner wants tier 3
    (2026-11-01); the camera preview's design is `docs/17-camera-preview.md`, approved with every
    recommendation (2026-11-01). The embedding point is built (2026-11-02, #146), and the preview
-   on Android (2026-11-03, `thicket-camera-preview`, `-android`); Apple is the Mac's, GTK later.*
+   on Android (2026-11-03, `thicket-camera-preview`, `-android`), and on Apple (2026-11-03, #148,
+   `-apple`; no session measured yet, `docs/17`); GTK later.*

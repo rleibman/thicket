@@ -84,20 +84,23 @@ object GalleryDeviceChecks {
           s"$lc; " + texts().filter(t => t.startsWith("The app") || t.startsWith("Back"))
         )
         // #129: iOS declares NSCameraUsageDescription for the camera in the Pickers section, and the build script grants
-        // it with simctl privacy. The macOS gallery is a plain executable with no Info.plist to declare it in.
+        // it with simctl privacy. #148: the macOS gallery declares it too, in an Info.plist embedded in the executable,
+        // for the camera preview; it declares no NSMicrophoneUsageDescription, so the microphone is the one that throws.
         val camera = Try(ApplePermissions.status(Permission.Camera))
+        val microphone = Try(ApplePermissions.status(Permission.Microphone))
         check(
           if ios then "the camera, declared in the Info.plist and granted by simctl privacy, is Granted"
           else
-            "a permission whose Info.plist usage string is missing throws, naming the key, instead of answering Denied"
+            "the camera, declared in the embedded Info.plist, answers; the microphone, whose usage string is missing, " +
+              "throws, naming the key, instead of answering Denied"
           ,
           if ios then camera.toOption.contains(PermissionStatus.Granted)
           else
-            camera.failed.toOption.exists(e =>
-              e.isInstanceOf[IllegalStateException] && e.getMessage.contains("NSCameraUsageDescription")
+            camera.isSuccess && microphone.failed.toOption.exists(e =>
+              e.isInstanceOf[IllegalStateException] && e.getMessage.contains("NSMicrophoneUsageDescription")
             )
           ,
-          camera.toString
+          s"camera $camera; microphone $microphone"
         )
         // #118: iOS has NSLocationWhenInUseUsageDescription and the build script's grant; the macOS gallery is a
         // plain executable, with no Info.plist to declare NSLocationUsageDescription in.

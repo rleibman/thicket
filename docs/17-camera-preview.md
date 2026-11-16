@@ -3,7 +3,8 @@
 Status: **approved, 2026-11-01; step 1 of §17.7, the embedding point, built on GTK and
 Android 2026-11-02** (`WidgetKind.Platform`, `Prop.View`, `GtkPlatformView`,
 `AndroidPlatformView`), and on AppKit and UIKit 2026-11-03 (`ApplePlatformView`, #145). Step 2, **the preview on Android, built 2026-11-03** (`thicket-camera-preview`,
-`-android`; `modules/camera-preview/README.md`). Apple (step 3) is the Mac's; GTK (step 4) later. `docs/16` §16.3 puts the live camera
+`-android`; `modules/camera-preview/README.md`). Step 3, **Apple, built 2026-11-03** (`-apple`, #148): no session
+has run yet, since the iOS 27 simulator lists no capture device and the Mac's camera was not permitted (decision log). GTK (step 4) later. `docs/16` §16.3 puts the live camera
 preview first in tier 3 ("each its own design"), and the owner said yes to tier 3 on
 2026-11-01. This is that design. The owner answered §17.8's questions the same day, taking
 every recommendation (decision log, 2026-11-01).
@@ -103,7 +104,8 @@ The largest piece in the plan (`docs/16` §16.3 says so). Proposed order, each i
    Apple as a Mac issue. *Done on GTK and Android, 2026-11-02, and on Apple, 2026-11-03 (#145)
    (decision log).*
 2. `thicket-camera-preview` and `-android`, measured on the emulator. *Done, 2026-11-03.*
-3. `-apple`, the Mac's (iOS and macOS).
+3. `-apple`, the Mac's (iOS and macOS). *Built, 2026-11-03 (#148); the live preview not yet
+   measured on either (decision log).*
 4. `-gtk`, after Android and Apple (§17.8.2).
 
 ## 17.8 Questions for the owner — answered 2026-11-01

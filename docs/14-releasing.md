@@ -68,6 +68,7 @@ The artefacts, with explicit suffixes, because sbt 2 has no `%%%`:
 | `net.leibman:thicket-camera-apple_native0.5_3` | taking a photo on iOS with `UIImagePickerController`, with its own Swift library inside the jar (`ios-sim/libthicketcamera.a`); the app's `Info.plist` needs `NSCameraUsageDescription`; on macOS, `Camera.unavailable` from `thicket-camera` |
 | `net.leibman:thicket-share_3` / `_native0.5_3`, `thicket-share-android_3` | the share sheet; on Android the app declares `ThicketFileProvider`; on GTK, `Share.unavailable` |
 | `net.leibman:thicket-camera-preview_3` / `_native0.5_3`, `thicket-camera-preview-android_3` | a live camera preview in the app's layout (`docs/17`): Camera2 on Android, the app declaring `CAMERA`; elsewhere, `CameraPreview.unavailable` from `thicket-camera-preview` |
+| `net.leibman:thicket-camera-preview-apple_native0.5_3` | the preview on iOS and macOS: `AVCaptureSession` in a `UIView` / `NSView`, with its own Swift library inside the jar (`macos/` and `ios-sim/libthicketpreview.a`); the app's `Info.plist` needs `NSCameraUsageDescription` (a macOS executable outside a bundle embeds one, `ThicketNativeFlags.appleInfoPlist`) |
 | `net.leibman:thicket-renderer-android_3` | the Android renderer (plain JVM bytecode, `-release 17`; R8 dexes it) |
 | `net.leibman:thicket-renderer-apple_native0.5_3` | the AppKit and UIKit renderers, with the Swift shim inside the jar |
 | `net.leibman:thicket-storage-apple_native0.5_3` | app directories and preferences on macOS and iOS (`thicket-storage` comes with it); no Swift |
@@ -165,7 +166,7 @@ person can measure that; this checks the half that does not need one.
 The group id is `net.leibman` (decision log, 2026-10-20), on the Central Portal.
 
 **The Mac builds; Linux signs and uploads** (decision log, 2026-11-12). Only a Mac can build
-every artefact: seven Apple modules carry Swift libraries that need Xcode, and off a Mac their
+every artefact: eight Apple modules carry Swift libraries that need Xcode, and off a Mac their
 `publish` is skipped rather than shipping a jar with no library in it. The signing key and the
 Central token stay on Linux, so the Mac needs neither gpg nor credentials.
 `bin/release.sh` does the whole of it.
@@ -253,5 +254,5 @@ renderers and the platform modules that are not in `root`: `thicket-http-apple`,
 `thicket-location-android`, `thicket-location-apple`, `thicket-motion-android`, `thicket-motion-ios`, `thicket-clipboard-gtk`,
 `thicket-clipboard-android`, `thicket-clipboard-apple`, `thicket-haptics-android`,
 `thicket-haptics-apple`, `thicket-pickers-gtk`, `thicket-pickers-android`, `thicket-pickers-apple`,
-`thicket-camera-android`, `thicket-camera-apple`, `thicket-share-android`, `thicket-share-apple` and
-`thicket-camera-preview-android`.
+`thicket-camera-android`, `thicket-camera-apple`, `thicket-share-android`, `thicket-share-apple`,
+`thicket-camera-preview-android` and `thicket-camera-preview-apple`.

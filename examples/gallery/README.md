@@ -302,7 +302,16 @@ The Camera preview section (`docs/17`) shows a live preview with "Take from the 
 the picture is not blank, takes a JPEG of the session's size, sends the app Home and back
 (`DRIVE home`, `DRIVE front`) to see the camera closed by the preview's own lifecycle and opened
 again, then flips to the front camera `s2test` does not have, which must say so. On GTK the
-section shows `CameraPreview.unavailable`; on Apple it says there is none yet (#148).
+section shows `CameraPreview.unavailable`. On Apple (#148) it is `AppleCameraPreview`; the self-test
+keeps the widget unmounted until the section's own checks, so the camera screen's checks (#129)
+have the camera to themselves, then mounts it and checks the layer's gravity for each fit and
+that the view is laid out at its own aspect. For each facing it takes the path the camera allows:
+running (frames, the frame's aspect, a JPEG under `<cache>/thicket-preview/`, checked for its
+format and size and deleted, the background and back), not permitted (nothing runs; the macOS
+run asks through the system's dialog with `THICKET_PREVIEW_ASK=1`), or no such camera; then, if a
+session ran, "Hide or show the preview" unmounts it, which must stop the session. The iOS 27
+simulator lists no capture device, and the Mac's back is none, so those say so. The macOS
+executable declares `NSCameraUsageDescription` in an embedded `Info.plist` (`macos/Info.plist`).
 
 When the desktop is locked, GNOME suspends every window and the Device section's foreground
 check fails. A private headless shell avoids that:

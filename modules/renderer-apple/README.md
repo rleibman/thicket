@@ -150,7 +150,7 @@ linktime property `target.os -> "darwin"` without which javalib's `PosixThread` 
 ## Hosting a view made elsewhere: `ApplePlatformView` (#145)
 
 `dsl.Platform(view)` (`docs/17` §17.3) shows a view that a module of its own makes — the camera
-preview's `-apple` module next (#148). On Apple the view extends `ApplePlatformView`:
+preview's `-apple` module (#148, `modules/camera-preview`). On Apple the view extends `ApplePlatformView`:
 
 ```scala
 trait ApplePlatformView extends PlatformView {

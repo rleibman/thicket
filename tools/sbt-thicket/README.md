@@ -78,6 +78,12 @@ lazy val app = project.in(file(".")).enablePlugins(ThicketIosPlugin)   // iOS: a
 - **`thicketCameraApple`** (#129): the same, `ThicketIosPlugin` only, for `thicket-camera-apple`
   (`ios-sim/libthicketcamera.a`, `include/thicket_camera.h`). macOS has no camera screen and
   uses `Camera.unavailable`. Not yet run by a template: the iOS gallery links it by path.
+- **`thicketCameraPreviewApple`** (#148): both plugins, for `thicket-camera-preview-apple`
+  (`libthicketpreview.a`, `include/thicket_preview.h`), linked on macOS through
+  `ThicketNativeFlags.appleCameraPreview`; on iOS the host's link takes
+  `ios-sim/libthicketpreview.a`. Either app needs `NSCameraUsageDescription`; a macOS executable
+  run outside an app bundle can embed an `Info.plist` with `ThicketNativeFlags.appleInfoPlist`.
+  Not yet run by a template: the galleries link it by path.
 
 Both were first run by `bin/verify-getting-started-apple.sh`, which publishes locally, copies
 the two templates outside the repository and builds and runs them: the macOS app owns a window

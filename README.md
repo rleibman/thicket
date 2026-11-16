@@ -347,7 +347,7 @@ modules/
   pickers/           photo and document pickers, save dialog; pickers-gtk/, pickers-android/
   camera/            taking a photo with the camera app; camera-android/, camera-apple/ (GTK, macOS: Camera.unavailable)
   share/             the share sheet; share-android/, share-apple/ (GTK: Share.unavailable)
-  camera-preview/    a live camera preview in the app's layout; camera-preview-android/ (GTK: CameraPreview.unavailable)
+  camera-preview/    a live camera preview in the app's layout; camera-preview-android/, camera-preview-apple/ (GTK: CameraPreview.unavailable)
   renderer-gtk/      GTK4           (Scala Native)
   renderer-android/  android.view   (Scala on ART)
   renderer-apple/    AppKit + UIKit (Scala Native + Swift shim)

@@ -145,6 +145,33 @@ object ThicketNativeFlags {
       )
     )
 
+  /** `thicket-camera-preview-apple`'s Swift library on macOS (#148): `libthicketpreview.a`. The object names
+    * AVFoundation, CoreMedia and AppKit itself (Swift's autolink), so no framework flags; on top of [[apple]], as
+    * [[appleDevice]]. Not needed on iOS, where the host's own link takes the archive.
+    *
+    * @param libDir
+    *   the directory holding `libthicketpreview.a`
+    */
+  def appleCameraPreview(libDir: File)(c: NativeConfig): NativeConfig =
+    c.withLinkingOptions(
+      c.linkingOptions ++ Seq(
+        "-L" + libDir.getAbsolutePath,
+        "-lthicketpreview"
+      )
+    )
+
+  /** An `Info.plist` embedded in a macOS executable that runs outside an app bundle (`__TEXT,__info_plist`), which is
+    * where `Bundle.main` reads one from then: how such an executable declares a usage string, such as
+    * `NSCameraUsageDescription` (#148).
+    *
+    * @param plist
+    *   the `Info.plist` to embed
+    */
+  def appleInfoPlist(plist: File)(c: NativeConfig): NativeConfig =
+    c.withLinkingOptions(
+      c.linkingOptions ++ Seq("-Wl,-sectcreate,__TEXT,__info_plist," + plist.getAbsolutePath)
+    )
+
   /** The iOS simulator variant. Three differences from the macOS one, each forced:
     *
     *   - `libraryStatic`, because the host owns `@main` (iOS 27 requires UIScene adoption, and a scene delegate cannot

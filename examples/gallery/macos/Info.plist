@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Embedded in the gallery-macos executable (__TEXT,__info_plist; ThicketNativeFlags.appleInfoPlist),
+  which runs outside an app bundle: Bundle.main reads it from there (#148). Only the usage string
+  the camera preview needs. No CFBundleIdentifier: the gallery checks that notifications, which
+  need an app bundle, say so.
+-->
+<plist version="1.0">
+<dict>
+  <key>NSCameraUsageDescription</key>
+  <string>The gallery shows a live camera preview in its own layout.</string>
+</dict>
+</plist>
